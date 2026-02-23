@@ -3,9 +3,27 @@ import { createClient } from '@/lib/supabase/server';
 import { handleLinkedInCallback } from '@/lib/auth/linkedin-auth-server';
 import { logger } from '@/lib/utils/logger';
 
+/**
+ * Gets the canonical base URL for redirects.
+ * In production: prefers NEXT_PUBLIC_APP_URL, then x-forwarded-* headers, then request URL.
+ * Avoids redirecting to localhost when deployed behind a proxy (e.g. Vercel).
+ */
+function getRedirectBase(request: NextRequest): string {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (appUrl) return appUrl.replace(/\/$/, "");
+
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProto = request.headers.get("x-forwarded-proto") || "https";
+  if (forwardedHost) return `${forwardedProto === "https" ? "https" : "http"}://${forwardedHost}`;
+
+  const { origin } = new URL(request.url);
+  return origin;
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams, origin } = new URL(request.url);
+    const { searchParams } = new URL(request.url);
+    const baseUrl = getRedirectBase(request);
     const code = searchParams.get('code');
     const error = searchParams.get('error');
     const errorDescription = searchParams.get('error_description');
@@ -14,16 +32,14 @@ export async function GET(request: NextRequest) {
     if (error) {
       logger.error('OAuth callback error:', { error, errorDescription });
       return NextResponse.redirect(
-        new URL(`/auth/login?error=${encodeURIComponent(errorDescription || error)}`, origin)
+        `${baseUrl}/auth/login?error=${encodeURIComponent(errorDescription || error)}`
       );
     }
 
     // Check for authorization code
     if (!code) {
       logger.error('OAuth callback missing code');
-      return NextResponse.redirect(
-        new URL('/auth/login?error=no_code', origin)
-      );
+      return NextResponse.redirect(`${baseUrl}/auth/login?error=no_code`);
     }
 
     const supabase = await createClient();
@@ -33,9 +49,7 @@ export async function GET(request: NextRequest) {
 
     if (exchangeError || !session) {
       logger.error('Failed to exchange code for session:', exchangeError);
-      return NextResponse.redirect(
-        new URL('/auth/login?error=auth_failed', origin)
-      );
+      return NextResponse.redirect(`${baseUrl}/auth/login?error=auth_failed`);
     }
 
     // Handle LinkedIn callback to create/update profile
@@ -95,22 +109,12 @@ export async function GET(request: NextRequest) {
       next = '/dashboard';
     }
 
-    // Handle forwarded host for production (behind load balancer)
-    const forwardedHost = request.headers.get('x-forwarded-host');
-    const isLocalEnv = process.env.NODE_ENV === 'development';
-
-    if (isLocalEnv) {
-      return NextResponse.redirect(new URL(next, origin));
-    } else if (forwardedHost) {
-      return NextResponse.redirect(`https://${forwardedHost}${next}`);
-    } else {
-      return NextResponse.redirect(new URL(next, origin));
-    }
+    return NextResponse.redirect(`${baseUrl}${next}`);
   } catch (error) {
     logger.error('Callback route error:', error);
-    const { origin } = new URL(request.url);
+    const fallbackBase = getRedirectBase(request);
     return NextResponse.redirect(
-      new URL('/auth/login?error=callback_error', origin)
+      `${fallbackBase}/auth/login?error=callback_error`
     );
   }
 }

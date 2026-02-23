@@ -80,7 +80,7 @@ function loadConfig(): EnvironmentConfig {
       apiUrl:
         process.env.NEXT_PUBLIC_API_URL ||
         process.env.NEXT_PUBLIC_APP_URL ||
-        "http://localhost:3000",
+        (isDevelopment ? "http://localhost:3000" : "https://andoxa.fr"),
 
       // Supabase
       supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || "",
