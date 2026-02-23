@@ -53,9 +53,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Handle LinkedIn callback to create/update profile
-    // Pass the session directly to avoid using getSession() which is insecure
+    // Pass supabase client so it has the new session (cookies may not propagate to fresh client yet)
     try {
-      await handleLinkedInCallback(session);
+      await handleLinkedInCallback(session, supabase);
     } catch (profileError) {
       logger.error('Failed to handle LinkedIn callback:', profileError);
       // Continue anyway - session is valid, profile can be updated later

@@ -1,18 +1,26 @@
 import { createClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/utils/logger';
 import type { Session } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
  * Handle LinkedIn OAuth callback
  * Called after user returns from LinkedIn authentication
  * Creates or updates user profile with LinkedIn data
  * SERVER-SIDE ONLY - Use this in server components/route handlers
- * 
- * @param session - The session from exchangeCodeForSession (optional, will fetch if not provided)
+ *
+ * IMPORTANT: Pass the supabase client that performed exchangeCodeForSession so it has the new session.
+ * A fresh createClient() may not yet see the session cookies in the same request.
+ *
+ * @param session - The session from exchangeCodeForSession (required when supabaseClient provided)
+ * @param supabaseClient - Optional. Use the client from the callback route that has the new session.
  */
-export async function handleLinkedInCallback(session?: Session) {
-  const supabase = await createClient();
-  
+export async function handleLinkedInCallback(
+  session?: Session,
+  supabaseClient?: SupabaseClient
+) {
+  const supabase = supabaseClient ?? (await createClient());
+
   // If session is provided, use it. Otherwise, verify user and get session
   let userSession = session;
   
