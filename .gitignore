@@ -61,7 +61,7 @@ test-results/
 
 # database
 *.sql
-supabase/
+/supabase/
 src/supabase_issues
 
 # vscode
