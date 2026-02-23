@@ -9,10 +9,11 @@ import { logger } from '@/lib/utils/logger';
 export async function signInWithLinkedIn() {
   const supabase = createClient();
 
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'linkedin_oidc',
     options: {
-      redirectTo: `${window.location.origin}/auth/callback`,
+      redirectTo: `${baseUrl.replace(/\/$/, "")}/auth/callback`,
       scopes: 'openid profile email',
     },
   });
