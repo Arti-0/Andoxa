@@ -1,0 +1,69 @@
+{
+  "buildCommand": "bun run build",
+  "outputDirectory": ".next",
+  "installCommand": "bun install",
+  "framework": "nextjs",
+  "regions": ["cdg1"],
+  "functions": {
+    "src/app/api/**/*.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/notifications/[...queue]/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/workflows/**/*.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/queues/**/*.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/cron/**/*.ts": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "origin-when-cross-origin"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=31536000; includeSubDomains"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/webhooks/stripe",
+      "destination": "/api/paiements/webhook"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/www/(.*)",
+      "destination": "/$1",
+      "permanent": true
+    }
+  ],
+  "env": {
+    "NEXT_PUBLIC_DEBUG_MODE": "false",
+    "NEXT_PUBLIC_LOG_LEVEL": "error"
+  }
+}

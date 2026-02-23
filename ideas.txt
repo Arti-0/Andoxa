@@ -1,0 +1,5 @@
+Shadcn Extension                                    - Starred
+Stepperize - Multi step flows/forms                 - Starred
+Maily.to - Email templates and personnalisation     - Starred
+Onborda - Onboarding flow tooltips                  - Starred
+Invoify - Invoice generator

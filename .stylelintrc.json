@@ -1,0 +1,8 @@
+{
+  "ignoreFiles": [
+    ".cursor/**",
+    "**/*.mdc"
+  ]
+}
+
+
