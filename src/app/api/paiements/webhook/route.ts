@@ -1,29 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServiceClient } from '@/lib/supabase/service';
 import Stripe from 'stripe';
 
-// Initialize Stripe
-const stripe = process.env.STRIPE_SECRET_KEY
-  ? new Stripe(process.env.STRIPE_SECRET_KEY)
-  : null;
-
-const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
-// Créer le client service role UNE SEULE FOIS en dehors du handler
-// Cela évite de créer un nouveau client à chaque requête webhook
-// IMPORTANT: Utilise SECRET_KEY pour contourner RLS (pas de session utilisateur dans les webhooks)
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  }
-);
+// Initialize Stripe lazily (not at module load) so build can succeed without env vars
+function getStripe(): Stripe | null {
+  const key = process.env.STRIPE_SECRET_KEY;
+  return key ? new Stripe(key) : null;
+}
 
 export async function POST(request: NextRequest) {
+  const stripe = getStripe();
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!stripe || !endpointSecret) {
     console.error(
       "Stripe is not configured. Please set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET environment variables."
@@ -57,8 +44,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Utiliser le client admin (contourne RLS - pas de session utilisateur dans les webhooks)
-    const supabase = supabaseAdmin;
+    const supabase = createServiceClient();
 
     // Handle the event
     console.log(`[Webhook] Received event: ${event.type}`, {
