@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { unipileFetch } from "@/lib/unipile/client";
+import type { UnipileAccount } from "@/lib/unipile/types";
 
 /**
- * Unipile webhook payload
- * - message_received: event, chat_id, account_id, etc.
- * - Hosted Auth callback: status (CREATION_SUCCESS, RECONNECTED), account_id, name (our user_id)
+ * Unipile webhook payloads:
+ * - Hosted Auth notify_url: { status, account_id, name } — name = our user_id
+ * - Dashboard AccountStatus: { AccountStatus: { account_id, message, account_type } } — no name
  */
 interface UnipileWebhookPayload {
   account_id?: string;
@@ -15,7 +17,12 @@ interface UnipileWebhookPayload {
   message?: string;
   timestamp?: string;
   status?: string;
-  name?: string; // our internal user_id (from Hosted Auth link request)
+  name?: string;
+  AccountStatus?: {
+    account_id?: string;
+    message?: string;
+    account_type?: string;
+  };
   account_info?: { user_id?: string };
   sender?: { attendee_provider_id?: string };
 }
@@ -45,9 +52,15 @@ export async function POST(req: NextRequest) {
   const isHostedAuthCallback =
     body.status && body.account_id && body.name;
 
+  const accountStatus = body.AccountStatus;
+  const isAccountStatusCallback =
+    accountStatus?.account_id &&
+    accountStatus?.message &&
+    ["CREATION_SUCCESS", "RECONNECTED"].includes(accountStatus.message);
+
   // Auth: required for dashboard webhooks (message_received, etc.)
   // Hosted Auth callback may not send Unipile-Auth header – skip auth check for it
-  if (!isHostedAuthCallback) {
+  if (!isHostedAuthCallback && !isAccountStatusCallback) {
     const secret = process.env.UNIPILE_WEBHOOK_SECRET;
     if (secret) {
       const authHeader =
@@ -58,44 +71,57 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Hosted Auth callback: account connected (status, account_id, name)
+  async function storeUnipileAccount(userId: string, accountId: string) {
+    const supabase = createServiceClient();
+    const { error } = await supabase.from("user_unipile_accounts").upsert(
+      [
+        {
+          user_id: userId,
+          unipile_account_id: accountId,
+          account_type: "LINKEDIN",
+          updated_at: new Date().toISOString(),
+        },
+      ],
+      { onConflict: "user_id" }
+    );
+    if (error) {
+      console.error("[Unipile webhook] upsert user_unipile_accounts:", error);
+      throw new Error("Failed to store account");
+    }
+  }
+
+  // 1. Hosted Auth notify_url: { status, account_id, name }
   if (isHostedAuthCallback) {
     const validStatuses = ["CREATION_SUCCESS", "RECONNECTED"];
     if (validStatuses.includes(body.status!)) {
-      console.log("[Unipile webhook] Hosted Auth callback:", {
-        status: body.status,
-        account_id: body.account_id,
-        user_id: body.name,
-      });
       try {
-        const supabase = createServiceClient();
-        const { error } = await supabase.from("user_unipile_accounts").upsert(
-          [
-            {
-              user_id: body.name!,
-              unipile_account_id: body.account_id!,
-              account_type: "LINKEDIN",
-              updated_at: new Date().toISOString(),
-            },
-          ],
-          { onConflict: "user_id" }
-        );
-        if (error) {
-          console.error("[Unipile webhook] upsert user_unipile_accounts:", error);
-          return NextResponse.json(
-            { error: "Failed to store account" },
-            { status: 500 }
-          );
-        }
+        await storeUnipileAccount(body.name!, body.account_id!);
+        return NextResponse.json({ received: true }, { status: 200 });
       } catch (err) {
-        console.error("[Unipile webhook] createServiceClient or upsert:", err);
+        console.error("[Unipile webhook] Hosted Auth store:", err);
         return NextResponse.json(
-          { error: "Internal error" },
+          { error: err instanceof Error ? err.message : "Internal error" },
           { status: 500 }
         );
       }
     }
     return NextResponse.json({ received: true }, { status: 200 });
+  }
+
+  // 2. Dashboard AccountStatus: { AccountStatus: { account_id, message } } — fetch account.name (user_id)
+  if (isAccountStatusCallback) {
+    const accountId = accountStatus!.account_id!;
+    try {
+      const account = await unipileFetch<UnipileAccount>(`/accounts/${accountId}`);
+      const userId = account?.name;
+      if (userId) {
+        await storeUnipileAccount(userId, accountId);
+      }
+      return NextResponse.json({ received: true }, { status: 200 });
+    } catch (err) {
+      console.error("[Unipile webhook] AccountStatus fetch/store:", err);
+      return NextResponse.json({ received: true }, { status: 200 });
+    }
   }
 
   const event = body.event;
