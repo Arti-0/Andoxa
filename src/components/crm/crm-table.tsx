@@ -11,7 +11,7 @@ import {
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { DataTableLayout } from "@/components/ui/data-table";
-import { prospectColumns } from "./prospect-columns";
+import { getProspectColumns } from "./prospect-columns";
 import { getBddColumns } from "./bdd-columns";
 import type { FilterState } from "./prospect-filters";
 import type { Prospect } from "@/lib/types/prospects";
@@ -90,6 +90,8 @@ interface CrmTableProps {
   memberNames: Map<string, string>;
   /** Callback appelé quand la sélection des prospects change (vue prospects uniquement) */
   onSelectionChange?: (prospects: Prospect[]) => void;
+  /** Callback appelé quand la sélection des listes change (vue listes uniquement) */
+  onListesSelectionChange?: (listes: BddRow[]) => void;
 }
 
 export function CrmTable({
@@ -100,6 +102,7 @@ export function CrmTable({
   onSelectList,
   memberNames,
   onSelectionChange,
+  onListesSelectionChange,
 }: CrmTableProps) {
   const queryClient = useQueryClient();
   const [pagination, setPagination] = useState<PaginationState>({
@@ -107,6 +110,10 @@ export function CrmTable({
     pageSize: DEFAULT_PAGE_SIZE,
   });
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
+  const [listesRowSelection, setListesRowSelection] = useState<
+    Record<string, boolean>
+  >({});
+  const lastSelectedListesIdsRef = useRef<string>("");
 
   const page = pagination.pageIndex + 1;
   const pageSize = pagination.pageSize;
@@ -186,9 +193,30 @@ export function CrmTable({
   });
 
   const handleDeleteBdd = (id: string) => {
-    if (confirm("Supprimer cette liste ? Les prospects associés seront conservés.")) {
+    if (
+      confirm(
+        "Supprimer cette liste ? Les prospects associés seront conservés."
+      )
+    ) {
       deleteBddMutation.mutate(id);
     }
+  };
+
+  const deleteProspectMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/prospects/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(String(res.status));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["prospects"] });
+    },
+  });
+
+  const handleDeleteProspect = (prospect: Prospect) => {
+    deleteProspectMutation.mutate(prospect.id);
   };
 
   if (mode === "prospects") {
@@ -198,7 +226,7 @@ export function CrmTable({
 
     const table = useReactTable({
       data: items,
-      columns: prospectColumns,
+      columns: getProspectColumns(handleDeleteProspect),
       getCoreRowModel: getCoreRowModel(),
       getPaginationRowModel: getPaginationRowModel(),
       manualPagination: true,
@@ -277,17 +305,35 @@ export function CrmTable({
   };
   const listesItems = page === 1 ? [allRow, ...bddItems] : bddItems;
 
+  useEffect(() => {
+    if (!onListesSelectionChange || mode !== "listes") return;
+    const selected = Object.entries(listesRowSelection)
+      .filter(([, v]) => v)
+      .map(([k]) => listesItems[parseInt(k, 10)])
+      .filter((r): r is BddRow => Boolean(r) && r.id !== "__all__");
+    const ids = selected
+      .map((r) => r.id)
+      .sort()
+      .join(",");
+    if (ids !== lastSelectedListesIdsRef.current) {
+      lastSelectedListesIdsRef.current = ids;
+      onListesSelectionChange(selected);
+    }
+  }, [listesRowSelection, listesItems, onListesSelectionChange, mode]);
+
   const bddColumns = getBddColumns(onSelectList, handleDeleteBdd, memberNames);
 
-  const table = useReactTable({
+  const listesTable = useReactTable({
     data: listesItems,
     columns: bddColumns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     manualPagination: true,
     pageCount: totalPages,
-    state: { pagination },
+    enableRowSelection: (row) => row.original.id !== "__all__",
+    state: { pagination, rowSelection: listesRowSelection },
     onPaginationChange: setPagination,
+    onRowSelectionChange: setListesRowSelection,
   });
 
   const footer = (
@@ -305,7 +351,7 @@ export function CrmTable({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => table.previousPage()}
+          onClick={() => listesTable.previousPage()}
           disabled={page <= 1 || bddLoading}
         >
           Précédent
@@ -313,7 +359,7 @@ export function CrmTable({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => table.nextPage()}
+          onClick={() => listesTable.nextPage()}
           disabled={page >= totalPages || bddLoading}
         >
           Suivant
@@ -334,7 +380,7 @@ export function CrmTable({
   return (
     <div className="h-full overflow-hidden rounded-lg border bg-card">
       <DataTableLayout
-        table={table}
+        table={listesTable}
         isLoading={bddLoading}
         emptyMessage={emptyMessage}
         footer={footer}

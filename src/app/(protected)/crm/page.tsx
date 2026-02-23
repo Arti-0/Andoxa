@@ -6,6 +6,7 @@ import { LayoutGrid } from "lucide-react";
 import { useWorkspace } from "../../../lib/workspace";
 import {
   CrmTable,
+  type BddRow,
   type ListesFilterState,
 } from "../../../components/crm/crm-table";
 import type { Prospect } from "../../../lib/types/prospects";
@@ -39,8 +40,12 @@ export default function CrmPage() {
   const [listesFilters, setListesFilters] = useState<ListesFilterState>(defaultListesFilters);
   const [view, setView] = useState<"listes" | "prospects" | "kanban">("listes");
   const [selectedProspects, setSelectedProspects] = useState<Prospect[]>([]);
+  const [selectedListes, setSelectedListes] = useState<BddRow[]>([]);
   const onSelectionChange = useCallback((prospects: Prospect[]) => {
     setSelectedProspects(prospects);
+  }, []);
+  const onListesSelectionChange = useCallback((listes: BddRow[]) => {
+    setSelectedListes(listes);
   }, []);
 
   const { data: membersData } = useQuery({
@@ -80,6 +85,7 @@ export default function CrmPage() {
         onReset={() => setProspectFilters(defaultProspectFilters)}
         onListesReset={() => setListesFilters(defaultListesFilters)}
         selectedProspects={selectedProspects}
+        selectedListes={selectedListes}
       />
 
       {(view === "listes" || view === "prospects") && (
@@ -110,6 +116,7 @@ export default function CrmPage() {
                 onSelectList={handleSelectList}
                 memberNames={memberNames}
                 onSelectionChange={onSelectionChange}
+                onListesSelectionChange={onListesSelectionChange}
               />
             </div>
           )}

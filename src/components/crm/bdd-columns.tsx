@@ -1,6 +1,7 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ChevronRight, List, Trash2, Users } from "lucide-react";
 import { formatDate } from "@/lib/utils/format";
 import type { BddRow } from "./crm-table";
@@ -20,6 +21,41 @@ export function getBddColumns(
   memberNames: Map<string, string>
 ): ColumnDef<BddRow>[] {
   return [
+    {
+      id: "select",
+      header: ({ table }) => (
+        <div className="flex justify-center">
+          <Checkbox
+            checked={
+              table.getIsAllPageRowsSelected() ||
+              (table.getIsSomePageRowsSelected() && "indeterminate")
+            }
+            onCheckedChange={(value) =>
+              table.toggleAllPageRowsSelected(!!value)
+            }
+            aria-label="Tout sélectionner"
+          />
+        </div>
+      ),
+      cell: ({ row }) => {
+        const item = row.original;
+        if (item.id === "__all__") return null;
+        return (
+          <div
+            className="flex justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Checkbox
+              checked={row.getIsSelected()}
+              onCheckedChange={(value) => row.toggleSelected(!!value)}
+              aria-label="Sélectionner la liste"
+            />
+          </div>
+        );
+      },
+      enableSorting: false,
+      size: 48,
+    },
     {
       accessorKey: "name",
       header: "Liste",

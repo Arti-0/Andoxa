@@ -2,7 +2,7 @@
 
 import { ColumnDef } from "@tanstack/react-table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Mail, Phone, ExternalLink } from "lucide-react";
+import { Mail, Phone, ExternalLink, Trash2 } from "lucide-react";
 import type { Prospect } from "@/lib/types/prospects";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -32,7 +32,10 @@ const SOURCE_LABELS: Record<string, string> = {
   website: "Site web",
 };
 
-export const prospectColumns: ColumnDef<Prospect>[] = [
+export function getProspectColumns(
+  onDelete: (prospect: Prospect) => void
+): ColumnDef<Prospect>[] {
+  return [
   {
     id: "select",
     header: ({ table }) => (
@@ -167,4 +170,38 @@ export const prospectColumns: ColumnDef<Prospect>[] = [
       );
     },
   },
-];
+  {
+    id: "actions",
+    header: "",
+    cell: ({ row }) => {
+      const p = row.original;
+      return (
+        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (
+                confirm(
+                  `Supprimer le prospect "${p.full_name ?? p.email ?? "sans nom"}" ?`
+                )
+              ) {
+                onDelete(p);
+              }
+            }}
+            className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            aria-label="Supprimer le prospect"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      );
+    },
+    enableSorting: false,
+    size: 48,
+  },
+  ];
+}
+
+/** Default columns without delete handler (for ProspectTable etc.) */
+export const prospectColumns = getProspectColumns(() => {});

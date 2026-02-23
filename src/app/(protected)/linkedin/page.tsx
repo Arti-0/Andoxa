@@ -26,7 +26,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { MessagingInbox } from "@/components/linkedin/messaging-inbox";
+import { RecentConversationsList } from "@/components/linkedin/recent-conversations-list";
 import { useWorkspace } from "@/lib/workspace";
 import { toast } from "sonner";
 
@@ -295,16 +295,26 @@ export default function LinkedInPage() {
       {/* Section Messagerie */}
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <Send className="h-5 w-5" />
-            <CardTitle>Messagerie centralisée</CardTitle>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <Send className="h-5 w-5" />
+                <CardTitle>Messagerie centralisée</CardTitle>
+              </div>
+              <CardDescription>
+                Conversations récentes. Cliquez pour ouvrir dans la messagerie.
+              </CardDescription>
+            </div>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/messagerie">
+                Voir tout
+                <ExternalLink className="ml-1 h-4 w-4" />
+              </Link>
+            </Button>
           </div>
-          <CardDescription>
-            Gérez vos conversations LinkedIn via Unipile.
-          </CardDescription>
         </CardHeader>
         <CardContent>
-          <MessagingInbox />
+          <RecentConversationsList />
         </CardContent>
       </Card>
     </div>

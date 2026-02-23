@@ -14,6 +14,8 @@ import {
   List,
   UserPlus,
   MessageSquare,
+  Megaphone,
+  Phone,
 } from "lucide-react";
 import { useEffect, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -89,7 +91,9 @@ function groupBddByRecency(items: BddItem[]): {
   return { recent, thisMonth, older };
 }
 
-import type { ListesFilterState } from "./crm-table";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import type { BddRow, ListesFilterState } from "./crm-table";
 import type { Prospect } from "@/lib/types/prospects";
 
 interface CrmToolbarProps {
@@ -102,8 +106,8 @@ interface CrmToolbarProps {
   onListesFiltersChange: (f: ListesFilterState) => void;
   onReset: () => void;
   onListesReset: () => void;
-  /** Prospects sélectionnés (vue prospects uniquement) – pour Inviter/Contacter */
   selectedProspects?: Prospect[];
+  selectedListes?: BddRow[];
 }
 
 export function CrmToolbar({
@@ -117,13 +121,17 @@ export function CrmToolbar({
   onReset,
   onListesReset,
   selectedProspects = [],
+  selectedListes = [],
 }: CrmToolbarProps) {
+  const router = useRouter();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
   const [campaignAction, setCampaignAction] = useState<"invite" | "contact" | null>(null);
 
   const prospectsWithLinkedin = selectedProspects.filter((p) => p.linkedin?.trim());
   const hasLinkedinSelection = prospectsWithLinkedin.length > 0;
+  const hasListesSelection = selectedListes.length > 0;
+  const hasAnySelection = selectedProspects.length > 0 || hasListesSelection;
 
   const openCampaignModal = (action: "invite" | "contact") => {
     setCampaignAction(action);
@@ -243,7 +251,7 @@ export function CrmToolbar({
             />
           </div>
             <div className="flex flex-col items-end gap-2 shrink-0">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {view === "prospects" && hasLinkedinSelection && (
                 <>
                   <button
@@ -261,6 +269,41 @@ export function CrmToolbar({
                   >
                     <MessageSquare className="h-4 w-4" />
                     Contacter ({prospectsWithLinkedin.length})
+                  </button>
+                </>
+              )}
+              {hasAnySelection && (
+                <>
+                  <Link
+                    href="/campaigns"
+                    className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-accent"
+                  >
+                    <Megaphone className="h-4 w-4" />
+                    Voir campagnes
+                  </Link>
+                  {hasLinkedinSelection && (
+                    <Link
+                      href="/messagerie"
+                      className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-accent"
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      Démarrer conversation
+                    </Link>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      router.push(
+                        "/call-sessions/new?" +
+                          (view === "listes"
+                            ? `listes=${selectedListes.map((l) => l.id).join(",")}`
+                            : `prospects=${selectedProspects.map((p) => p.id).join(",")}`)
+                      )
+                    }
+                    className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-accent"
+                  >
+                    <Phone className="h-4 w-4" />
+                    Démarrer session d&apos;appels
                   </button>
                 </>
               )}

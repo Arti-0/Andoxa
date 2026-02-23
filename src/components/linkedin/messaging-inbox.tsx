@@ -131,7 +131,7 @@ export function MessagingInbox({ focusChatId }: MessagingInboxProps) {
   };
 
   const chatLabel = (chat: UnipileChat) =>
-    chat.name?.trim() || `Conversation ${chat.id.slice(0, 8)}`;
+    chat.name?.trim() || "Conversation";
 
   const formatTimestamp = (ts: string | null | undefined) =>
     ts ? new Date(ts).toLocaleString("fr-FR") : "";

@@ -566,6 +566,81 @@ export interface Database {
         };
         Relationships: [];
       };
+      call_sessions: {
+        Row: {
+          id: string;
+          organization_id: string;
+          created_by: string;
+          created_at: string | null;
+          ended_at: string | null;
+          title: string | null;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          created_by: string;
+          created_at?: string | null;
+          ended_at?: string | null;
+          title?: string | null;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          created_by?: string;
+          created_at?: string | null;
+          ended_at?: string | null;
+          title?: string | null;
+        };
+        Relationships: [];
+      };
+      call_session_prospects: {
+        Row: {
+          id: string;
+          call_session_id: string;
+          prospect_id: string;
+        };
+        Insert: {
+          id?: string;
+          call_session_id: string;
+          prospect_id: string;
+        };
+        Update: {
+          id?: string;
+          call_session_id?: string;
+          prospect_id?: string;
+        };
+        Relationships: [];
+      };
+      call_session_notes: {
+        Row: {
+          id: string;
+          call_session_id: string;
+          prospect_id: string;
+          author_id: string;
+          content: string;
+          created_at: string | null;
+          updated_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          call_session_id: string;
+          prospect_id: string;
+          author_id: string;
+          content?: string;
+          created_at?: string | null;
+          updated_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          call_session_id?: string;
+          prospect_id?: string;
+          author_id?: string;
+          content?: string;
+          created_at?: string | null;
+          updated_at?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
