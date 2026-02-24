@@ -109,6 +109,7 @@ export function HeroSectionV3() {
                 height={900}
                 className="w-full h-full object-cover object-top"
                 priority
+                unoptimized
                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 90vw, 1400px"
               />
             ) : (
