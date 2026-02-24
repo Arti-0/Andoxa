@@ -325,38 +325,6 @@ export function CrmToolbar({
                 Nouveau prospect
               </button>
             </div>
-            <div className="flex rounded-lg border p-1" role="group" aria-label="Vue CRM">
-              <button
-                type="button"
-                onClick={() => onViewChange("listes")}
-                className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
-                  view === "listes" ? "bg-primary text-primary-foreground" : "hover:bg-accent"
-                }`}
-              >
-                <LayoutList className="h-4 w-4" />
-                Listes
-              </button>
-              <button
-                type="button"
-                onClick={() => onViewChange("prospects")}
-                className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
-                  view === "prospects" ? "bg-primary text-primary-foreground" : "hover:bg-accent"
-                }`}
-              >
-                <Table2 className="h-4 w-4" />
-                Prospects
-              </button>
-              <button
-                type="button"
-                onClick={() => onViewChange("kanban")}
-                className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
-                  view === "kanban" ? "bg-primary text-primary-foreground" : "hover:bg-accent"
-                }`}
-              >
-                <LayoutGrid className="h-4 w-4" />
-                Kanban
-              </button>
-            </div>
           </div>
         </div>
 

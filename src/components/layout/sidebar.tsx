@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Linkedin,
+  Megaphone,
   MessageSquare,
   Users,
   Calendar,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "../../lib/utils";
+import { LogoDisplay } from "../ui/logo-display";
 import { useWorkspace } from "../../lib/workspace";
 
 /**
@@ -32,7 +34,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   {
     href: "/dashboard",
-    label: "Dashboard",
+    label: "Tableau de bord",
     icon: LayoutDashboard,
   },
   {
@@ -41,14 +43,19 @@ const NAV_ITEMS: NavItem[] = [
     icon: Linkedin,
   },
   {
+    href: "/crm",
+    label: "CRM",
+    icon: Users,
+  },
+  {
     href: "/messagerie",
     label: "Messagerie",
     icon: MessageSquare,
   },
   {
-    href: "/crm",
-    label: "CRM",
-    icon: Users,
+    href: "/campaigns",
+    label: "Campagnes",
+    icon: Megaphone,
   },
   {
     href: "/calendar",
@@ -74,22 +81,24 @@ export function Sidebar() {
         isCollapsed ? "w-16" : "w-64"
       )}
     >
-      {/* Logo / Workspace Name */}
-      <div className="flex h-16 items-center justify-between border-b px-4">
-        {!isCollapsed && (
-          <div className="flex items-center gap-2 overflow-hidden">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
-              {workspace?.name?.charAt(0) || "A"}
-            </div>
-            <span className="truncate font-semibold">
-              {workspace?.name || "Andoxa"}
-            </span>
-          </div>
-        )}
+      {/* Logo Andoxa */}
+      <div className="flex h-16 shrink-0 items-center justify-between border-b px-4">
+        <Link
+          href="/"
+          className={cn(
+            "flex min-w-0 flex-1 items-center justify-start transition-opacity hover:opacity-80",
+            isCollapsed && "justify-center"
+          )}
+        >
+          <LogoDisplay
+            collapsed={isCollapsed}
+            className={cn(isCollapsed ? "h-8 w-8" : "h-5 w-auto")}
+          />
+        </Link>
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="rounded-lg p-1.5 hover:bg-accent"
-          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="shrink-0 rounded-lg p-1.5 hover:bg-accent"
+          aria-label={isCollapsed ? "Développer la barre latérale" : "Réduire la barre latérale"}
         >
           {isCollapsed ? (
             <ChevronRight className="h-4 w-4" />
@@ -100,8 +109,31 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-2">
+      <nav className="flex-1 overflow-auto p-2">
         <ul className="space-y-1">
+          {/* Organization name - first entry */}
+          <li>
+            <div
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-foreground",
+                isCollapsed && "justify-center px-2"
+              )}
+              title={isCollapsed ? workspace?.name || "Andoxa" : undefined}
+            >
+              {!isCollapsed ? (
+                <span className="truncate">
+                  {workspace?.name || "Andoxa"}
+                </span>
+              ) : (
+                <span className="text-lg font-bold">
+                  {workspace?.name?.charAt(0) || "A"}
+                </span>
+              )}
+            </div>
+          </li>
+          <li aria-hidden="true">
+            <div className="my-1 border-t" />
+          </li>
           {NAV_ITEMS.map((item) => {
             const isActive = pathname?.startsWith(item.href);
             const Icon = item.icon;

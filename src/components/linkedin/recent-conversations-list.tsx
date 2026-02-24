@@ -15,8 +15,8 @@ interface AndoxaIdsResponse {
   ids?: string[];
 }
 
-function chatLabel(chat: UnipileChat): string {
-  return chat.name?.trim() || "Conversation";
+function chatLabel(chat: UnipileChat & { interlocutor_name?: string }): string {
+  return chat.interlocutor_name?.trim() || chat.name?.trim() || "Conversation";
 }
 
 function formatTimestamp(ts: string | null | undefined): string {

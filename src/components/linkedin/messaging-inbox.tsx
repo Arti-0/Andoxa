@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageSquare, Loader2 } from "lucide-react";
+import { MessageSquare, Loader2, Paperclip, User, Filter } from "lucide-react";
+import { toast } from "sonner";
 import type { UnipileChat, UnipileMessage } from "@/lib/unipile/types";
 
 interface ChatsApiResponse {
@@ -22,8 +24,15 @@ interface MessagingInboxProps {
   focusChatId?: string | null;
 }
 
+interface AndoxaIdsResponse {
+  ids?: string[];
+  chatToProspect?: Record<string, string>;
+}
+
 export function MessagingInbox({ focusChatId }: MessagingInboxProps) {
+  const router = useRouter();
   const [chats, setChats] = useState<UnipileChat[]>([]);
+  const [chatToProspect, setChatToProspect] = useState<Record<string, string>>({});
   const [selectedChatId, setSelectedChatId] = useState<string | null>(
     focusChatId ?? null
   );
@@ -33,14 +42,19 @@ export function MessagingInbox({ focusChatId }: MessagingInboxProps) {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Afficher les chats dont le prospect n'est pas dans le CRM (désactivé par défaut) */
+  const [showNonCrmChats, setShowNonCrmChats] = useState(false);
 
   const fetchChats = useCallback(async () => {
     setLoadingChats(true);
     setError(null);
     try {
-      const res = await fetch("/api/unipile/chats?account_type=LINKEDIN");
-      const json = await res.json();
-      if (!res.ok) {
+      const [chatsRes, idsRes] = await Promise.all([
+        fetch("/api/unipile/chats?account_type=LINKEDIN", { credentials: "include" }),
+        fetch("/api/unipile/chats/andoxa-ids", { credentials: "include" }),
+      ]);
+      const json = await chatsRes.json();
+      if (!chatsRes.ok) {
         const msg =
           json?.error?.message || "Erreur lors du chargement des conversations";
         setError(msg);
@@ -52,6 +66,12 @@ export function MessagingInbox({ focusChatId }: MessagingInboxProps) {
         (data as ChatsApiResponse)?.items ??
         (Array.isArray(data) ? data : []);
       setChats(Array.isArray(items) ? items : []);
+
+      if (idsRes.ok) {
+        const idsData = (await idsRes.json())?.data ?? (await idsRes.json());
+        const andoxa = idsData as AndoxaIdsResponse;
+        setChatToProspect(andoxa?.chatToProspect ?? {});
+      }
     } catch {
       setError(
         "Impossible de charger les conversations. Vérifiez la configuration Unipile."
@@ -92,12 +112,13 @@ export function MessagingInbox({ focusChatId }: MessagingInboxProps) {
     fetchChats();
   }, [fetchChats]);
 
-  // Sync focus via ?chat= : sélectionner le chat si présent dans la liste
+  // Sync focus via ?chat= : sélectionner le chat si présent ; activer filtre si chat hors CRM
   useEffect(() => {
-    if (focusChatId && chats.some((c) => c.id === focusChatId)) {
-      setSelectedChatId(focusChatId);
-    }
-  }, [focusChatId, chats]);
+    if (!focusChatId || !chats.some((c) => c.id === focusChatId)) return;
+    const inCrm = chatToProspect[focusChatId];
+    if (!inCrm) setShowNonCrmChats(true);
+    setSelectedChatId(focusChatId);
+  }, [focusChatId, chats, chatToProspect]);
 
   useEffect(() => {
     if (selectedChatId) {
@@ -130,11 +151,70 @@ export function MessagingInbox({ focusChatId }: MessagingInboxProps) {
     }
   };
 
-  const chatLabel = (chat: UnipileChat) =>
-    chat.name?.trim() || "Conversation";
+  const chatLabel = (chat: UnipileChat & { interlocutor_name?: string }) =>
+    chat.interlocutor_name?.trim() || chat.name?.trim() || "Conversation";
+
+  const isChatInCrm = (chatId: string) => !!chatToProspect[chatId];
+
+  const displayedChats = showNonCrmChats
+    ? chats
+    : chats.filter((c) => isChatInCrm(c.id));
 
   const formatTimestamp = (ts: string | null | undefined) =>
     ts ? new Date(ts).toLocaleString("fr-FR") : "";
+
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} o`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+  };
+
+  const handleAttachmentClick = async (
+    messageId: string,
+    attachmentId: string,
+    fileName: string
+  ) => {
+    try {
+      const res = await fetch(
+        `/api/unipile/messages/${messageId}/attachments/${attachmentId}`,
+        { credentials: "include" }
+      );
+      if (!res.ok) {
+        const text = await res.text();
+        let msg = "Ce fichier n'est pas disponible au téléchargement.";
+        try {
+          const json = JSON.parse(text);
+          if (json?.error?.detail) {
+            msg = json.error.detail;
+          } else if (json?.error && typeof json.error === "string") {
+            msg = json.error;
+          }
+        } catch {
+          // use default msg
+        }
+        toast.error(msg);
+        return;
+      }
+      const blob = await res.blob();
+      const contentType = res.headers.get("Content-Type") || "";
+      const contentDisposition = res.headers.get("Content-Disposition") || "";
+      const match = contentDisposition.match(/filename[*]?=["']?([^"';]+)/i);
+      const suggestedName =
+        match?.[1]?.trim() || fileName || "piece-jointe";
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = suggestedName;
+      a.target = "_blank";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Erreur lors du téléchargement.");
+    }
+  };
 
   if (loadingChats) {
     return (
@@ -155,55 +235,116 @@ export function MessagingInbox({ focusChatId }: MessagingInboxProps) {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+    <div className="grid h-full min-h-0 grid-cols-1 gap-4 lg:grid-cols-3">
       {/* Liste des conversations */}
-      <div className="rounded-lg border">
-        <div className="border-b px-3 py-2 font-medium text-sm">
-          Conversations
+      <div className="flex min-h-0 flex-col rounded-lg border">
+        <div className="shrink-0 border-b px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium text-sm">Conversations</span>
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+              <Filter className="h-3.5 w-3.5" />
+              <input
+                type="checkbox"
+                checked={showNonCrmChats}
+                onChange={(e) => setShowNonCrmChats(e.target.checked)}
+                className="rounded border-input"
+              />
+              <span>Hors CRM</span>
+            </label>
+          </div>
         </div>
-        <ScrollArea className="h-[280px]">
+        <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-1 p-2">
-            {chats.length === 0 ? (
-              <p className="py-4 text-center text-sm text-muted-foreground">
-                Aucune conversation
-              </p>
+            {displayedChats.length === 0 ? (
+              <div className="py-4 text-center text-sm text-muted-foreground">
+                {chats.length === 0 ? (
+                  <p>Aucune conversation</p>
+                ) : (
+                  <>
+                    <p>
+                      Aucune conversation avec un prospect du CRM.
+                    </p>
+                    <p className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowNonCrmChats(true)}
+                        className="text-primary underline hover:no-underline"
+                      >
+                        Afficher aussi les contacts hors CRM
+                      </button>
+                    </p>
+                  </>
+                )}
+              </div>
             ) : (
-              chats.map((chat) => (
-                <button
-                  key={chat.id}
-                  type="button"
-                  onClick={() => setSelectedChatId(chat.id)}
-                  className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                    selectedChatId === chat.id
-                      ? "bg-primary/10 text-primary ring-1 ring-primary"
-                      : focusChatId === chat.id
-                        ? "ring-1 ring-primary/50 bg-primary/5 hover:bg-accent"
-                        : "hover:bg-accent"
-                  }`}
-                >
-                  <div className="truncate font-medium">{chatLabel(chat)}</div>
-                  {chat.timestamp && (
-                    <div className="truncate text-xs text-muted-foreground">
-                      {formatTimestamp(chat.timestamp)}
+              displayedChats.map((chat) => {
+                const inCrm = isChatInCrm(chat.id);
+                return (
+                  <button
+                    key={chat.id}
+                    type="button"
+                    onClick={() => setSelectedChatId(chat.id)}
+                    className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                      selectedChatId === chat.id
+                        ? "bg-primary/10 text-primary ring-1 ring-primary"
+                        : focusChatId === chat.id
+                          ? "ring-1 ring-primary/50 bg-primary/5 hover:bg-accent"
+                          : "hover:bg-accent"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-medium">{chatLabel(chat)}</span>
+                      {!inCrm && (
+                        <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                          Hors CRM
+                        </span>
+                      )}
                     </div>
-                  )}
-                  {chat.unread_count > 0 && (
-                    <span className="mt-1 inline-block rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
-                      {chat.unread_count} non lu(s)
-                    </span>
-                  )}
-                </button>
-              ))
+                    {chat.timestamp && (
+                      <div className="truncate text-xs text-muted-foreground">
+                        {formatTimestamp(chat.timestamp)}
+                      </div>
+                    )}
+                    {chat.unread_count > 0 && (
+                      <span className="mt-1 inline-block rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
+                        {chat.unread_count} non lu(s)
+                      </span>
+                    )}
+                  </button>
+                );
+              })
             )}
           </div>
         </ScrollArea>
       </div>
 
       {/* Messages + envoi */}
-      <div className="flex flex-col rounded-lg border lg:col-span-2">
+      <div className="flex min-h-0 flex-col rounded-lg border lg:col-span-2">
         {selectedChatId ? (
           <>
-            <ScrollArea className="min-h-[200px] max-h-[280px] flex-1 p-4">
+            {(() => {
+              const selChat = chats.find((c) => c.id === selectedChatId);
+              const prospectId = chatToProspect[selectedChatId];
+              return (
+                <div className="flex shrink-0 items-center justify-between border-b px-4 py-2">
+                  <span className="truncate font-medium text-sm">
+                    {selChat ? chatLabel(selChat as UnipileChat & { interlocutor_name?: string }) : "Conversation"}
+                  </span>
+                  {prospectId && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => router.push(`/prospect/${prospectId}`)}
+                      className="shrink-0"
+                    >
+                      <User className="mr-1.5 h-4 w-4" />
+                      Profil prospect
+                    </Button>
+                  )}
+                </div>
+              );
+            })()}
+            <ScrollArea className="min-h-0 flex-1 p-4">
               <div className="space-y-3">
                 {loadingMessages ? (
                   <div className="flex items-center justify-center py-8">
@@ -217,13 +358,45 @@ export function MessagingInbox({ focusChatId }: MessagingInboxProps) {
                   [...messages].reverse().map((m) => (
                     <div
                       key={m.id}
-                      className={`rounded-lg px-3 py-2 text-sm ${
+                      className={`rounded-lg border border-black/10 px-3 py-2 text-sm dark:border-white/[0.08] ${
                         m.is_sender === 1
-                          ? "ml-8 bg-primary/10"
-                          : "mr-8 bg-muted/50"
+                          ? "ml-8 bg-orange-100 dark:bg-orange-950/40"
+                          : "mr-8 bg-blue-100 dark:bg-blue-950/40"
                       }`}
                     >
-                      <div>{m.text ?? "(pièce jointe)"}</div>
+                      {m.text && <div>{m.text}</div>}
+                      {m.attachments && m.attachments.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {m.attachments.map((a) => {
+                            const attId = a.id ?? (a as { attachment_id?: string }).attachment_id;
+                            const label = a.name || `Pièce jointe ${a.extension || ""}`.trim() || "Fichier";
+                            if (!attId) return null;
+                            return (
+                              <button
+                                key={attId}
+                                type="button"
+                                onClick={() =>
+                                  handleAttachmentClick(m.id, attId, label)
+                                }
+                                className="inline-flex items-center gap-2 rounded border bg-background px-2 py-1.5 text-left text-xs hover:bg-accent"
+                              >
+                                <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate max-w-[180px]">
+                                  {label}
+                                </span>
+                                {a.size != null && (
+                                  <span className="shrink-0 text-muted-foreground">
+                                    ({formatSize(a.size)})
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {!m.text && (!m.attachments || m.attachments.length === 0) && (
+                        <div className="italic text-muted-foreground">(pièce jointe)</div>
+                      )}
                       <div className="mt-1 text-xs text-muted-foreground">
                         {formatTimestamp(m.timestamp)}
                         {m.is_sender === 1 && " · Vous"}

@@ -50,8 +50,31 @@ export const GET = createApiHandler(async (req, ctx) => {
     throw Errors.internal("Failed to fetch prospects");
   }
 
+  const items = data || [];
+  const prospectIds = items.map((p: { id: string }) => p.id);
+
+  let prospectToChat: Record<string, string> = {};
+  if (prospectIds.length > 0) {
+    const { data: chatRows } = await ctx.supabase
+      .from("unipile_chat_prospects")
+      .select("prospect_id, unipile_chat_id")
+      .eq("organization_id", ctx.workspaceId)
+      .in("prospect_id", prospectIds);
+
+    for (const r of chatRows ?? []) {
+      if (r.prospect_id && r.unipile_chat_id) {
+        prospectToChat[r.prospect_id] = r.unipile_chat_id;
+      }
+    }
+  }
+
+  const itemsWithChat = items.map((p: { id: string }) => ({
+    ...p,
+    linked_chat_id: prospectToChat[p.id] ?? null,
+  }));
+
   return {
-    items: data || [],
+    items: itemsWithChat,
     total: count || 0,
     page,
     pageSize,

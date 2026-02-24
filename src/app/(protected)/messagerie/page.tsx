@@ -25,7 +25,7 @@ function MessagerieContent() {
         </p>
       </div>
 
-      <Card className="flex flex-col overflow-hidden">
+      <Card className="flex h-[75vh] max-h-[75vh] flex-col overflow-hidden">
         <CardHeader>
           <div className="flex items-center gap-2">
             <MessageSquare className="h-5 w-5" />
@@ -36,7 +36,7 @@ function MessagerieContent() {
             partagé.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex-1 min-h-0">
+        <CardContent className="flex min-h-0 flex-1 flex-col">
           <MessagingInbox focusChatId={focusChatId} />
         </CardContent>
       </Card>

@@ -32,6 +32,11 @@ export const GET = createApiHandler(async (req, ctx) => {
     query = query.lte("end_time", params.end);
   }
 
+  // Filter by member (created_by)
+  if (params.created_by) {
+    query = query.eq("created_by", params.created_by);
+  }
+
   const { data, error, count } = await query.range(offset, offset + pageSize - 1);
 
   if (error) {
@@ -79,19 +84,21 @@ export const POST = createApiHandler(async (req, ctx) => {
     .insert({
       organization_id: ctx.workspaceId,
       title: body.title,
-      description: body.description,
+      description: body.description ?? null,
       start_time: body.start_time,
       end_time: body.end_time,
-      prospect_id: body.prospect_id,
-      location: body.location,
-      is_all_day: body.is_all_day || false,
+      prospect_id: body.prospect_id ?? null,
+      location: body.location ?? null,
+      is_all_day: body.is_all_day ?? false,
       created_by: ctx.userId,
     })
     .select()
     .single();
 
   if (error) {
-    throw Errors.internal("Failed to create event");
+    console.error("[api/events POST] Supabase error:", error);
+    const msg = error.message || "Erreur lors de la création de l'événement";
+    throw Errors.internal(msg);
   }
 
   return data;

@@ -12,6 +12,7 @@ interface UserProfile {
   organization_id?: string; // Deprecated, kept for backward compatibility
   active_organization_id?: string | null;
   stripe_customer_id?: string;
+  booking_slug?: string | null;
 }
 
 /**

@@ -1,14 +1,14 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   getCoreRowModel,
   getPaginationRowModel,
   useReactTable,
   type PaginationState,
 } from "@tanstack/react-table";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { DataTableLayout } from "@/components/ui/data-table";
 import { getProspectColumns } from "./prospect-columns";
@@ -94,26 +94,24 @@ interface CrmTableProps {
   onListesSelectionChange?: (listes: BddRow[]) => void;
 }
 
-export function CrmTable({
-  mode,
+/** Table prospects - composant séparé pour éviter les violations des Rules of Hooks */
+function ProspectsTableContent({
   workspaceId,
   prospectFilters,
-  listesFilters,
-  onSelectList,
-  memberNames,
   onSelectionChange,
-  onListesSelectionChange,
-}: CrmTableProps) {
+}: {
+  workspaceId: string | null;
+  prospectFilters: FilterState;
+  onSelectionChange?: (prospects: Prospect[]) => void;
+}) {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
     pageSize: DEFAULT_PAGE_SIZE,
   });
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
-  const [listesRowSelection, setListesRowSelection] = useState<
-    Record<string, boolean>
-  >({});
-  const lastSelectedListesIdsRef = useRef<string>("");
+  const lastSelectedIdsRef = useRef<string>("");
 
   const page = pagination.pageIndex + 1;
   const pageSize = pagination.pageSize;
@@ -136,15 +134,14 @@ export function CrmTable({
       const json = await res.json();
       return (json.data ?? json) as ProspectsApiResponse;
     },
-    enabled: !!workspaceId && mode === "prospects",
+    enabled: !!workspaceId,
     placeholderData: (prev) => prev,
   });
 
   const prospectsItems = prospectsData?.items ?? [];
-  const lastSelectedIdsRef = useRef<string>("");
 
   useEffect(() => {
-    if (!onSelectionChange || mode !== "prospects") return;
+    if (!onSelectionChange) return;
     const selected = Object.entries(rowSelection)
       .filter(([, v]) => v)
       .map(([k]) => prospectsItems[parseInt(k, 10)])
@@ -157,7 +154,124 @@ export function CrmTable({
       lastSelectedIdsRef.current = ids;
       onSelectionChange(selected);
     }
-  }, [rowSelection, prospectsItems, onSelectionChange, mode]);
+  }, [rowSelection, prospectsItems, onSelectionChange]);
+
+  const deleteProspectMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/prospects/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(String(res.status));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["prospects"] });
+    },
+  });
+
+  const handleDeleteProspect = (prospect: Prospect) => {
+    deleteProspectMutation.mutate(prospect.id);
+  };
+
+  const items = prospectsData?.items ?? [];
+  const total = prospectsData?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  const table = useReactTable({
+    data: items,
+    columns: getProspectColumns(handleDeleteProspect),
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    manualPagination: true,
+    pageCount: totalPages,
+    enableRowSelection: true,
+    state: { pagination, rowSelection },
+    onPaginationChange: setPagination,
+    onRowSelectionChange: setRowSelection,
+  });
+
+  const footer = (
+    <div className="flex flex-col gap-3 border-t pt-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+      <div>
+        {total > 0 ? (
+          <span>
+            {total} prospect{total > 1 ? "s" : ""} · Page {page} sur {totalPages}
+          </span>
+        ) : (
+          <span>Aucun prospect</span>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => table.previousPage()}
+          disabled={page <= 1 || prospectsLoading}
+        >
+          Précédent
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => table.nextPage()}
+          disabled={page >= totalPages || prospectsLoading}
+        >
+          Suivant
+        </Button>
+      </div>
+    </div>
+  );
+
+  const emptyMessage =
+    prospectFilters.search ||
+    prospectFilters.status.length > 0 ||
+    prospectFilters.source.length > 0 ||
+    prospectFilters.bddId
+      ? "Aucun prospect ne correspond aux filtres."
+      : "Aucun prospect. Ajoutez-en un ou importez une liste depuis l'extension.";
+
+  return (
+    <div className="h-full overflow-hidden rounded-lg border bg-card">
+      <DataTableLayout
+        table={table}
+        isLoading={prospectsLoading}
+        emptyMessage={emptyMessage}
+        footer={footer}
+        maxTableHeightClassName="max-h-[calc(100vh-360px)]"
+        onRowClick={(row) => router.push(`/prospect/${row.original.id}`)}
+      />
+    </div>
+  );
+}
+
+/** Table listes - composant séparé pour éviter les violations des Rules of Hooks */
+function ListesTableContent({
+  workspaceId,
+  prospectFilters,
+  listesFilters,
+  onSelectList,
+  memberNames,
+  onListesSelectionChange,
+}: {
+  workspaceId: string | null;
+  prospectFilters: FilterState;
+  listesFilters: ListesFilterState;
+  onSelectList: (bddId: string | null) => void;
+  memberNames: Map<string, string>;
+  onListesSelectionChange?: (listes: BddRow[]) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: DEFAULT_PAGE_SIZE,
+  });
+  const [listesRowSelection, setListesRowSelection] = useState<
+    Record<string, boolean>
+  >({});
+  const lastSelectedListesIdsRef = useRef<string>("");
+
+  const page = pagination.pageIndex + 1;
+  const pageSize = pagination.pageSize;
 
   const { data: bddData, isLoading: bddLoading } = useQuery({
     queryKey: [
@@ -175,7 +289,7 @@ export function CrmTable({
       const json = await res.json();
       return (json.data ?? json) as BddApiResponse;
     },
-    enabled: !!workspaceId && mode === "listes",
+    enabled: !!workspaceId,
     placeholderData: (prev) => prev,
   });
 
@@ -202,96 +316,6 @@ export function CrmTable({
     }
   };
 
-  const deleteProspectMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(`/api/prospects/${id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(String(res.status));
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["prospects"] });
-    },
-  });
-
-  const handleDeleteProspect = (prospect: Prospect) => {
-    deleteProspectMutation.mutate(prospect.id);
-  };
-
-  if (mode === "prospects") {
-    const items = prospectsData?.items ?? [];
-    const total = prospectsData?.total ?? 0;
-    const totalPages = Math.max(1, Math.ceil(total / pageSize));
-
-    const table = useReactTable({
-      data: items,
-      columns: getProspectColumns(handleDeleteProspect),
-      getCoreRowModel: getCoreRowModel(),
-      getPaginationRowModel: getPaginationRowModel(),
-      manualPagination: true,
-      pageCount: totalPages,
-      enableRowSelection: true,
-      state: { pagination, rowSelection },
-      onPaginationChange: setPagination,
-      onRowSelectionChange: setRowSelection,
-    });
-
-
-    const footer = (
-      <div className="flex flex-col gap-3 border-t pt-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-        <div>
-          {total > 0 ? (
-            <span>
-              {total} prospect{total > 1 ? "s" : ""} · Page {page} sur {totalPages}
-            </span>
-          ) : (
-            <span>Aucun prospect</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={page <= 1 || prospectsLoading}
-          >
-            Précédent
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={page >= totalPages || prospectsLoading}
-          >
-            Suivant
-          </Button>
-        </div>
-      </div>
-    );
-
-    const emptyMessage =
-      prospectFilters.search ||
-      prospectFilters.status.length > 0 ||
-      prospectFilters.source.length > 0 ||
-      prospectFilters.bddId
-        ? "Aucun prospect ne correspond aux filtres."
-        : "Aucun prospect. Ajoutez-en un ou importez une liste depuis l'extension.";
-
-    return (
-      <div className="h-full overflow-hidden rounded-lg border bg-card">
-        <DataTableLayout
-          table={table}
-          isLoading={prospectsLoading}
-          emptyMessage={emptyMessage}
-          footer={footer}
-          maxTableHeightClassName="max-h-[calc(100vh-360px)]"
-        />
-      </div>
-    );
-  }
-
-  // Mode listes
   const bddItems = bddData?.items ?? [];
   const total = bddData?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -306,7 +330,7 @@ export function CrmTable({
   const listesItems = page === 1 ? [allRow, ...bddItems] : bddItems;
 
   useEffect(() => {
-    if (!onListesSelectionChange || mode !== "listes") return;
+    if (!onListesSelectionChange) return;
     const selected = Object.entries(listesRowSelection)
       .filter(([, v]) => v)
       .map(([k]) => listesItems[parseInt(k, 10)])
@@ -319,7 +343,7 @@ export function CrmTable({
       lastSelectedListesIdsRef.current = ids;
       onListesSelectionChange(selected);
     }
-  }, [listesRowSelection, listesItems, onListesSelectionChange, mode]);
+  }, [listesRowSelection, listesItems, onListesSelectionChange]);
 
   const bddColumns = getBddColumns(onSelectList, handleDeleteBdd, memberNames);
 
@@ -392,5 +416,36 @@ export function CrmTable({
         }}
       />
     </div>
+  );
+}
+
+export function CrmTable({
+  mode,
+  workspaceId,
+  prospectFilters,
+  listesFilters,
+  onSelectList,
+  memberNames,
+  onSelectionChange,
+  onListesSelectionChange,
+}: CrmTableProps) {
+  if (mode === "prospects") {
+    return (
+      <ProspectsTableContent
+        workspaceId={workspaceId}
+        prospectFilters={prospectFilters}
+        onSelectionChange={onSelectionChange}
+      />
+    );
+  }
+  return (
+    <ListesTableContent
+      workspaceId={workspaceId}
+      prospectFilters={prospectFilters}
+      listesFilters={listesFilters}
+      onSelectList={onSelectList}
+      memberNames={memberNames}
+      onListesSelectionChange={onListesSelectionChange}
+    />
   );
 }

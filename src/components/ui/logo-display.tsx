@@ -6,9 +6,11 @@ import { useEffect, useState } from "react";
 
 interface LogoDisplayProps {
   className?: string;
+  /** When true, show icon only (for collapsed sidebar). Uses group-data-[collapsible=icon] when not provided. */
+  collapsed?: boolean;
 }
 
-export function LogoDisplay({ className = "" }: LogoDisplayProps) {
+export function LogoDisplay({ className = "", collapsed }: LogoDisplayProps) {
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -29,27 +31,37 @@ export function LogoDisplay({ className = "" }: LogoDisplayProps) {
     ? "/assets/logofiles/logo_mark%203.svg"
     : "/assets/logofiles/logo_mark%201.svg";
 
+  const iconClasses =
+    collapsed === true
+      ? "block"
+      : collapsed === false
+        ? "hidden"
+        : "hidden group-data-[collapsible=icon]:block";
+  const logoClasses =
+    collapsed === true
+      ? "hidden"
+      : collapsed === false
+        ? "block"
+        : "group-data-[collapsible=icon]:hidden";
+
   // Show nothing during hydration to prevent mismatch
   if (!mounted) {
     return (
       <>
-        {/* Full Logo - Default to light theme during SSR */}
         <Image
           src="/assets/logofiles/logo_1.svg"
           alt="Andoxa Logo"
           width={80}
           height={24}
-          className={`h-5 w-auto group-data-[collapsible=icon]:hidden ${className}`}
+          className={`h-5 w-auto ${logoClasses} ${className}`}
           priority
         />
-
-        {/* Icon - Default to light theme during SSR */}
         <Image
           src="/assets/logofiles/logo_mark%201.svg"
           alt="Andoxa Icon"
           width={32}
           height={32}
-          className={`h-8 w-8 hidden group-data-[collapsible=icon]:block ${className}`}
+          className={`h-8 w-8 ${iconClasses} ${className}`}
           priority
         />
       </>
@@ -58,23 +70,20 @@ export function LogoDisplay({ className = "" }: LogoDisplayProps) {
 
   return (
     <>
-      {/* Full Logo */}
       <Image
         src={logoSrc}
         alt="Andoxa Logo"
         width={80}
         height={24}
-        className={`h-5 w-auto group-data-[collapsible=icon]:hidden ${className}`}
+        className={`h-5 w-auto ${logoClasses} ${className}`}
         priority
       />
-
-      {/* Icon */}
       <Image
         src={iconSrc}
         alt="Andoxa Icon"
         width={32}
         height={32}
-        className={`h-8 w-8 hidden group-data-[collapsible=icon]:block ${className}`}
+        className={`h-8 w-8 ${iconClasses} ${className}`}
         priority
       />
     </>

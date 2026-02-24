@@ -3,10 +3,55 @@ import { getAccountIdForUser } from "@/lib/unipile/account";
 import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";
 import type { UnipileChat, UnipileListResponse } from "@/lib/unipile/types";
 
+interface UnipileAttendee {
+  id?: string;
+  provider_id?: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  name?: string | null;
+}
+
+/** Build display name from attendee (first_name, last_name, or name) */
+function attendeeDisplayName(a: UnipileAttendee): string | null {
+  const first = a.first_name?.trim();
+  const last = a.last_name?.trim();
+  if (first || last) return [first, last].filter(Boolean).join(" ").trim() || null;
+  return a.name?.trim() || null;
+}
+
+/** Enrich chats with interlocutor names from attendees API */
+async function enrichChatsWithInterlocutorNames(
+  items: UnipileChat[],
+  maxEnrich = 25
+): Promise<(UnipileChat & { interlocutor_name?: string })[]> {
+  const toEnrich = items.slice(0, maxEnrich);
+  const results = await Promise.allSettled(
+    toEnrich.map((chat) =>
+      unipileFetch<
+        UnipileListResponse<UnipileAttendee> & { items?: UnipileAttendee[] }
+      >(`/chats/${chat.id}/attendees`)
+    )
+  );
+
+  const enriched = items.map((chat, i) => {
+    const ext = chat as UnipileChat & { interlocutor_name?: string };
+    if (i >= toEnrich.length) return ext;
+    const res = results[i];
+    if (res.status !== "fulfilled") return ext;
+    const data = res.value;
+    const attendees = (data as { items?: UnipileAttendee[] })?.items ?? [];
+    const name = attendees.map(attendeeDisplayName).find(Boolean);
+    if (name) ext.interlocutor_name = name;
+    return ext;
+  });
+
+  return enriched;
+}
+
 /**
  * GET /api/unipile/chats
  * List chats – proxy to Unipile API
- * Resolves account_id from user's connected Unipile account.
+ * Enriches each chat with interlocutor_name from attendees when chat.name is empty.
  * Query: account_type (optional), limit, cursor, unread, before, after
  */
 export const GET = createApiHandler(async (req, ctx) => {
@@ -38,7 +83,9 @@ export const GET = createApiHandler(async (req, ctx) => {
 
   try {
     const data = await unipileFetch<UnipileListResponse<UnipileChat>>(path);
-    return data;
+    const items = data?.items ?? [];
+    const enriched = await enrichChatsWithInterlocutorNames(items);
+    return { ...data, items: enriched };
   } catch (err) {
     if (err instanceof UnipileApiError) {
       throw Errors.internal(err.message);

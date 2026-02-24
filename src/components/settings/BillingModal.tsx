@@ -55,7 +55,7 @@ export function BillingModal({
         <div className="space-y-4 py-4">
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Plan actuel</p>
-            <p className="font-medium">{plan || "free"}</p>
+            <p className="font-medium">{plan === "free" ? "Gratuit" : plan || "Gratuit"}</p>
           </div>
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Statut</p>

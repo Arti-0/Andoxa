@@ -19,6 +19,7 @@ interface PasswordModalProps {
 }
 
 export function PasswordModal({ open, onOpenChange }: PasswordModalProps) {
+  const [oldPassword, setOldPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,6 +27,7 @@ export function PasswordModal({ open, onOpenChange }: PasswordModalProps) {
   const [success, setSuccess] = useState(false);
 
   const reset = () => {
+    setOldPassword("");
     setPassword("");
     setConfirm("");
     setError(null);
@@ -40,17 +42,35 @@ export function PasswordModal({ open, onOpenChange }: PasswordModalProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (!oldPassword.trim()) {
+      setError("Veuillez saisir votre mot de passe actuel");
+      return;
+    }
     if (password.length < 6) {
-      setError("Le mot de passe doit contenir au moins 6 caractères");
+      setError("Le nouveau mot de passe doit contenir au moins 6 caractères");
       return;
     }
     if (password !== confirm) {
-      setError("Les mots de passe ne correspondent pas");
+      setError("Les nouveaux mots de passe ne correspondent pas");
       return;
     }
     setLoading(true);
     try {
       const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      const email = user?.email;
+      if (!email) {
+        setError("Impossible de récupérer votre adresse email");
+        return;
+      }
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password: oldPassword,
+      });
+      if (signInError) {
+        setError("Mot de passe actuel incorrect");
+        return;
+      }
       const { error: updateError } = await supabase.auth.updateUser({
         password,
       });
@@ -81,6 +101,17 @@ export function PasswordModal({ open, onOpenChange }: PasswordModalProps) {
               </p>
             ) : (
               <>
+                <div className="space-y-2">
+                  <Label htmlFor="oldPassword">Mot de passe actuel</Label>
+                  <Input
+                    id="oldPassword"
+                    type="password"
+                    value={oldPassword}
+                    onChange={(e) => setOldPassword(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="password">Nouveau mot de passe</Label>
                   <Input

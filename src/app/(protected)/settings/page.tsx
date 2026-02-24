@@ -114,6 +114,7 @@ export default function SettingsPage() {
         onOpenChange={setProfileModalOpen}
         fullName={profile?.full_name ?? null}
         email={profile?.email ?? null}
+        linkedinUrl={profile?.linkedin_url ?? null}
         onSuccess={refresh}
       />
       <PasswordModal open={passwordModalOpen} onOpenChange={setPasswordModalOpen} />

@@ -19,6 +19,16 @@ export interface Prospect {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  linked_chat_id?: string | null;
+  enriched_at?: string | null;
+  enrichment_source?: string | null;
+  enrichment_metadata?: {
+    profile_picture_url?: string | null;
+    work_experience?: unknown;
+    education?: unknown;
+    skills?: unknown;
+    summary?: string | null;
+  } | null;
 }
 
 export interface ProspectScore {

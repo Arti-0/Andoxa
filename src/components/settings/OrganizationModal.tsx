@@ -33,6 +33,7 @@ export function OrganizationModal({
     useWorkspace();
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [loadingOrgs, setLoadingOrgs] = useState(false);
+  const [orgsError, setOrgsError] = useState<string | null>(null);
   const [linkedinUrl, setLinkedinUrl] = useState("");
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -43,9 +44,12 @@ export function OrganizationModal({
   const loadOrgs = useCallback(async () => {
     if (!user?.id) return;
     setLoadingOrgs(true);
+    setOrgsError(null);
     try {
       const list = await getUserOrganizations(user.id);
       setOrgs(list);
+    } catch {
+      setOrgsError("Impossible de charger les organisations");
     } finally {
       setLoadingOrgs(false);
     }
@@ -127,12 +131,11 @@ export function OrganizationModal({
           <DialogTitle>Organisation</DialogTitle>
         </DialogHeader>
         <div className="space-y-6 py-4">
-          {/* Organisation active */}
           <div className="space-y-2">
-            <Label>Organisation active</Label>
-            {loadingOrgs ? (
-              <p className="text-sm text-muted-foreground">Chargement…</p>
-            ) : orgs.length === 0 ? (
+            <Label>Organisation actuelle</Label>
+            {loadingOrgs && orgs.length === 0 ? null : orgsError ? (
+              <p className="text-sm text-destructive">{orgsError}</p>
+            ) : orgs.length === 0 && !loadingOrgs ? (
               <p className="text-sm text-muted-foreground">Aucune organisation</p>
             ) : (
               <div className="flex flex-col gap-2">
@@ -154,7 +157,7 @@ export function OrganizationModal({
                           )}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {isActive ? "Active" : org.plan || "free"}
+                          {isActive ? "Actif" : (org.plan === "free" ? "Gratuit" : org.plan) || "Gratuit"}
                         </p>
                       </div>
                       {!isActive && (

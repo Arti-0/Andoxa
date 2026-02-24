@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { ColumnDef } from "@tanstack/react-table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Mail, Phone, ExternalLink, Trash2 } from "lucide-react";
+import { Mail, Phone, ExternalLink, Trash2, MessageSquare } from "lucide-react";
 import type { Prospect } from "@/lib/types/prospects";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -105,6 +106,7 @@ export function getProspectColumns(
     header: "Contact",
     cell: ({ row }) => {
       const p = row.original;
+      const hasChat = !!p.linked_chat_id;
       return (
         <div className="flex items-center gap-2">
           {p.email && (
@@ -139,7 +141,23 @@ export function getProspectColumns(
               <ExternalLink className="h-4 w-4 text-muted-foreground" />
             </a>
           )}
-          {!p.email && !p.phone && !p.linkedin && "—"}
+          {hasChat ? (
+            <Link
+              href={`/messagerie?chat=${p.linked_chat_id}`}
+              className="rounded p-1 hover:bg-accent"
+              title="Ouvrir le chat"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            </Link>
+          ) : (
+            <span
+              className="rounded p-1 cursor-not-allowed opacity-50"
+              title="Invitez d'abord ce prospect pour ouvrir un chat"
+            >
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            </span>
+          )}
         </div>
       );
     },
@@ -149,7 +167,28 @@ export function getProspectColumns(
     accessorKey: "source",
     header: "Source",
     cell: ({ row }) => {
-      const source = row.original.source ?? "";
+      const p = row.original;
+      const source = p.source ?? "";
+      const isLinkedIn = source === "linkedin_extension" || source === "linkedin";
+      if (isLinkedIn && p.linkedin) {
+        return (
+          <a
+            href={p.linkedin}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            onClick={(e) => e.stopPropagation()}
+          >
+            LinkedIn
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        );
+      }
+      if (isLinkedIn) {
+        return (
+          <span className="text-sm text-muted-foreground">LinkedIn</span>
+        );
+      }
       return (
         <span className="text-sm capitalize text-muted-foreground">
           {(SOURCE_LABELS[source] ?? source) || "—"}

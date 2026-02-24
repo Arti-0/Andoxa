@@ -55,6 +55,7 @@ export interface Database {
           email: string | null;
           full_name: string | null;
           avatar_url: string | null;
+          booking_slug: string | null;
           linkedin_id: string | null;
           linkedin_url: string | null;
           linkedin_access_token_encrypted: string | null;
@@ -69,6 +70,7 @@ export interface Database {
           email?: string | null;
           full_name?: string | null;
           avatar_url?: string | null;
+          booking_slug?: string | null;
           linkedin_id?: string | null;
           linkedin_url?: string | null;
           linkedin_access_token_encrypted?: string | null;
@@ -83,6 +85,7 @@ export interface Database {
           email?: string | null;
           full_name?: string | null;
           avatar_url?: string | null;
+          booking_slug?: string | null;
           linkedin_id?: string | null;
           linkedin_url?: string | null;
           linkedin_access_token_encrypted?: string | null;

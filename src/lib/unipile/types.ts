@@ -27,6 +27,14 @@ export interface UnipileChat {
   provider_id?: string;
 }
 
+export interface UnipileAttachment {
+  id: string;
+  name?: string | null;
+  extension?: string | null;
+  size?: number;
+  mime_type?: string | null;
+}
+
 export interface UnipileMessage {
   object?: "Message";
   id: string;
@@ -35,7 +43,7 @@ export interface UnipileMessage {
   sender_id: string;
   sender_attendee_id?: string;
   is_sender: 0 | 1;
-  attachments?: unknown[];
+  attachments?: UnipileAttachment[];
 }
 
 export interface UnipileMessageSent {
