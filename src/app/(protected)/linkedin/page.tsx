@@ -43,7 +43,6 @@ export default function LinkedInPage() {
   const [copied, setCopied] = useState(false);
   const [unipileConnected, setUnipileConnected] = useState<boolean | null>(null);
   const [connecting, setConnecting] = useState(false);
-  const [extensionDetected, setExtensionDetected] = useState<boolean | null>(null);
 
   const userId = user?.id ?? profile?.id ?? "";
   const fullName = profile?.full_name ?? "Compte Andoxa";
@@ -62,17 +61,6 @@ export default function LinkedInPage() {
   useEffect(() => {
     fetchUnipileMe();
   }, [fetchUnipileMe]);
-
-  useEffect(() => {
-    const check = () => setExtensionDetected(!!(window as Window & { __andoxaScoutInstalled?: boolean }).__andoxaScoutInstalled);
-    check();
-    window.addEventListener("andoxa-scout-ready", check);
-    const t = setTimeout(check, 500);
-    return () => {
-      window.removeEventListener("andoxa-scout-ready", check);
-      clearTimeout(t);
-    };
-  }, []);
 
   const handleConnectUnipile = async () => {
     setConnecting(true);
@@ -161,23 +149,10 @@ export default function LinkedInPage() {
             <CardTitle>Extension Andoxa Scout</CardTitle>
           </div>
           <CardDescription>
-            Statut et instructions pour installer l&apos;extension.
+            Instructions pour installer l&apos;extension.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {extensionDetected === null ? (
-            <p className="text-sm text-muted-foreground mb-4">Vérification de l&apos;extension…</p>
-          ) : extensionDetected ? (
-            <p className="text-sm text-green-600 dark:text-green-500 mb-4 flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 shrink-0" />
-              Extension Andoxa Scout détectée.
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground mb-4">
-              L&apos;extension n&apos;est pas détectée. Collez votre UUID ci-dessus
-              dans l&apos;extension une fois installée.
-            </p>
-          )}
           <Accordion type="single" collapsible>
             <AccordionItem value="install">
               <AccordionTrigger>Installation</AccordionTrigger>
