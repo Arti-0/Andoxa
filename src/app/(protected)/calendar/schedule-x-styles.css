@@ -1,4 +1,4 @@
-/* Blue color for booking events (calendarId: bookings) */
+/* Blue color for booking events (calendarId: bookings) - unchanged in light and dark */
 .sx__calendar {
   --sx-color-blue: rgb(59 130 246);
   --sx-color-blue-container: rgb(219 234 254);
@@ -7,25 +7,33 @@
   height: var(--calendar-page-height, 70vh);
 }
 
+/* Light theme only: explicit violet for default calendar events (RDV stay blue) */
+html:not(.dark) .sx__calendar {
+  --sx-color-primary: #6750a4;
+  --sx-color-on-primary: #fff;
+  --sx-color-primary-container: #eaddff;
+  --sx-color-on-primary-container: #21005e;
+}
+
 .dark .sx__calendar {
   --sx-color-blue: rgb(96 165 250);
   --sx-color-blue-container: rgb(30 58 138);
   --sx-color-on-blue-container: rgb(219 234 254);
+  /* Primary (violet) in dark: keep app primary so default events stay violet */
+  --sx-color-primary: var(--primary);
+  --sx-color-on-primary: var(--primary-foreground);
+  --sx-color-primary-container: var(--accent);
+  --sx-color-on-primary-container: var(--primary-foreground);
 }
 
 .sx__calendar * {
   box-sizing: border-box;
 }
 
-/* Dark theme: background aligned with app theme */
+/* Dark theme: background; events keep blue/violet via inline style using --sx-color-* */
 .dark .sx__calendar,
 .dark .sx__calendar * {
   background-color: var(--background);
-}
-
-.dark .sx__calendar .sx-event,
-.dark .sx__calendar .sx-event * {
-  background-color: hsl(var(--primary)) !important;
 }
 
 /* Today header: blue instead of violet */
@@ -62,7 +70,8 @@
   color: var(--muted-foreground, oklch(0.65 0.02 265));
 }
 
+/* Event text: let Schedule-X use --sx-color-on-primary / --sx-color-on-blue-container per calendar */
 .dark .sx__calendar .sx-event,
 .dark .sx__calendar .sx-event * {
-  color: white !important;
+  color: inherit;
 }

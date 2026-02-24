@@ -29,8 +29,8 @@ export function HeroSectionV3() {
       ? SUPABASE_ASSETS.dark
       : SUPABASE_ASSETS.light;
   return (
-    <section className="relative min-h-screen flex items-center justify-center ">
-      <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-2 md:px-4 lg:px-8 py-12 sm:py-16 md:py-24 w-full min-h-screen flex flex-col items-center justify-start">
+    <section className="relative min-h-screen flex items-center justify-center overflow-visible">
+      <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-2 md:px-4 lg:px-8 py-12 sm:py-16 md:py-24 pb-16 sm:pb-20 w-full min-h-screen flex flex-col items-center justify-start overflow-visible">
         {/* Main Heading - Centered at top */}
         <motion.h1
           initial={{ opacity: 0, y: 20 }}
@@ -103,9 +103,9 @@ export function HeroSectionV3() {
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, delay: 0.5 }}
-          className="relative w-full max-w-7xl mt-auto px-4 sm:px-0"
+          className="relative w-full max-w-7xl mt-auto px-4 sm:px-0 flex-shrink-0"
         >
-          <div className="relative overflow-hidden rounded-t-2xl sm:rounded-t-3xl">
+          <div className="relative overflow-hidden rounded-t-2xl sm:rounded-t-3xl w-full min-h-[50vh] sm:min-h-0 aspect-[4/3] sm:aspect-[16/10] lg:aspect-[16/9]">
             {mounted ? (
               <Image
                 key={dashboardImage}
@@ -115,10 +115,10 @@ export function HeroSectionV3() {
                 height={900}
                 className="w-full h-full object-cover object-top"
                 priority
-                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 90vw, 1400px"
+                sizes="(max-width: 640px) 100vw, (max-width: 768px) 100vw, (max-width: 1200px) 90vw, 1400px"
               />
             ) : (
-              <div className="w-full h-[600px] bg-slate-200 dark:bg-slate-800 animate-pulse rounded-t-2xl sm:rounded-t-3xl" />
+              <div className="w-full h-full min-h-[280px] bg-slate-200 dark:bg-slate-800 animate-pulse rounded-t-2xl sm:rounded-t-3xl" />
             )}
           </div>
         </motion.div>
