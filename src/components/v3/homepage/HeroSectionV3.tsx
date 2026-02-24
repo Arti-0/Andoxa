@@ -17,11 +17,17 @@ export function HeroSectionV3() {
     setMounted(true);
   }, []);
 
-  // Determine which image to show based on theme
+  // Images hébergées sur Supabase Storage (bucket assets)
+  const SUPABASE_ASSETS = {
+    light:
+      "https://uggsuchjyysjpcyeqqgy.supabase.co/storage/v1/object/public/assets/light.png",
+    dark: "https://uggsuchjyysjpcyeqqgy.supabase.co/storage/v1/object/public/assets/dark.png",
+  } as const;
+
   const dashboardImage =
     mounted && (resolvedTheme === "dark" || theme === "dark")
-      ? "/assets/images/dark.png"
-      : "/assets/images/light.png";
+      ? SUPABASE_ASSETS.dark
+      : SUPABASE_ASSETS.light;
   return (
     <section className="relative min-h-screen flex items-center justify-center ">
       <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-2 md:px-4 lg:px-8 py-12 sm:py-16 md:py-24 w-full min-h-screen flex flex-col items-center justify-start">
@@ -109,7 +115,6 @@ export function HeroSectionV3() {
                 height={900}
                 className="w-full h-full object-cover object-top"
                 priority
-                unoptimized
                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 90vw, 1400px"
               />
             ) : (
