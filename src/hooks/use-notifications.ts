@@ -22,11 +22,11 @@ export function useNotifications() {
       const response = await fetch("/api/notifications");
       if (!response.ok) throw new Error("Failed to fetch notifications");
 
-      const data = await response.json();
-      setNotifications(data.notifications);
+      const json = await response.json();
+      const items = json.data?.notifications ?? json.notifications ?? [];
+      setNotifications(items);
 
-      // Update unread count
-      const unread = data.notifications.filter((n: NotificationWithDetails) => !n.is_read).length;
+      const unread = items.filter((n: NotificationWithDetails) => !n.is_read).length;
       setUnreadCount(unread);
     } catch (err) {
       console.error("Error fetching notifications:", err);
@@ -42,8 +42,8 @@ export function useNotifications() {
       const response = await fetch("/api/notifications/count");
       if (!response.ok) throw new Error("Failed to fetch unread count");
 
-      const data = await response.json();
-      setUnreadCount(data.count);
+      const json = await response.json();
+      setUnreadCount(json.data?.count ?? json.count ?? 0);
     } catch (err) {
       console.error("Error fetching unread count:", err);
     }

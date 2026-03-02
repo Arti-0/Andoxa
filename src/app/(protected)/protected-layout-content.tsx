@@ -7,6 +7,7 @@ import { Header } from "../../components/layout/header";
 import { useWorkspace } from "../../lib/workspace";
 import { LoadingSpinner } from "../../components/ui/loading-spinner";
 import { DeletedOrganizationBanner } from "../../components/guards/DeletedOrganizationBanner";
+import { AnnouncementBanner } from "../../components/guards/AnnouncementBanner";
 
 /**
  * ProtectedLayoutContent - Client component that provides workspace context
@@ -32,6 +33,7 @@ function ProtectedLayoutContentInner({ children }: { children: ReactNode }) {
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
 
+        <AnnouncementBanner />
         <DeletedOrganizationBanner />
 
         <main className="flex-1 overflow-auto bg-background relative">

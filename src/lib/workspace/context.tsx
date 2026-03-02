@@ -177,21 +177,18 @@ export function WorkspaceProvider({
         if (!mountedRef.current) return null;
         setWorkspace(workspaceTransformed);
 
-        // Check LinkedIn invitation (join org if profile.linkedin_url matches an invitation)
-        const profileWithLinkedIn = profileData as { linkedin_url?: string | null };
-        if (profileWithLinkedIn?.linkedin_url) {
-          try {
-            const res = await fetch("/api/invitations/check-linkedin", {
-              method: "POST",
-              credentials: "include",
-            });
-            const data = await res.json();
-            if (data?.joined && data?.organizationId) {
-              await loadWorkspaceData(userId, true);
-            }
-          } catch {
-            // Non-blocking: continue without invitation check
+        // Check pending invitations (by email or LinkedIn URL)
+        try {
+          const res = await fetch("/api/invitations/check", {
+            method: "POST",
+            credentials: "include",
+          });
+          const data = await res.json();
+          if (data?.joined && data?.organizationId) {
+            await loadWorkspaceData(userId, true);
           }
+        } catch {
+          // Non-blocking
         }
 
         // Load subscription

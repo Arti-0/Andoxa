@@ -35,8 +35,10 @@ export function OrganizationModal({
   const [loadingOrgs, setLoadingOrgs] = useState(false);
   const [orgsError, setOrgsError] = useState<string | null>(null);
   const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -59,7 +61,9 @@ export function OrganizationModal({
     if (open) {
       loadOrgs();
       setLinkedinUrl("");
+      setInviteEmail("");
       setInviteError(null);
+      setInviteSuccess(null);
       setDeleteConfirm("");
       setShowDeleteConfirm(false);
     }
@@ -67,23 +71,29 @@ export function OrganizationModal({
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!workspaceId || !linkedinUrl.trim()) return;
+    if (!workspaceId || (!linkedinUrl.trim() && !inviteEmail.trim())) return;
     setInviteLoading(true);
     setInviteError(null);
+    setInviteSuccess(null);
     try {
+      const payload: Record<string, string> = {
+        organization_id: workspaceId,
+        role: "member",
+      };
+      if (linkedinUrl.trim()) payload.linkedin_url = linkedinUrl.trim();
+      if (inviteEmail.trim()) payload.email = inviteEmail.trim();
+
       const res = await fetch("/api/invitations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          organization_id: workspaceId,
-          linkedin_url: linkedinUrl.trim(),
-          role: "member",
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erreur");
       setLinkedinUrl("");
+      setInviteEmail("");
+      setInviteSuccess("Invitation envoyée");
     } catch (err) {
       setInviteError(err instanceof Error ? err.message : "Erreur lors de l'invitation");
     } finally {
@@ -181,20 +191,29 @@ export function OrganizationModal({
             <div className="space-y-2">
               <Label>Inviter un membre</Label>
               <p className="text-xs text-muted-foreground">
-                Saisissez le lien LinkedIn complet du profil à inviter.
+                Saisissez un email et/ou un lien LinkedIn pour inviter quelqu&apos;un.
               </p>
-              <form onSubmit={handleInvite} className="flex gap-2">
+              <form onSubmit={handleInvite} className="space-y-2">
+                <Input
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="email@exemple.com"
+                  type="email"
+                />
                 <Input
                   value={linkedinUrl}
                   onChange={(e) => setLinkedinUrl(e.target.value)}
                   placeholder="https://www.linkedin.com/in/..."
                 />
-                <Button type="submit" disabled={inviteLoading}>
-                  {inviteLoading ? "…" : "Inviter"}
+                <Button type="submit" disabled={inviteLoading || (!linkedinUrl.trim() && !inviteEmail.trim())} className="w-full">
+                  {inviteLoading ? "Envoi…" : "Inviter"}
                 </Button>
               </form>
               {inviteError && (
                 <p className="text-sm text-destructive">{inviteError}</p>
+              )}
+              {inviteSuccess && (
+                <p className="text-sm text-green-600 dark:text-green-400">{inviteSuccess}</p>
               )}
             </div>
           )}

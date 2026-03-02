@@ -40,6 +40,9 @@ export interface EnvironmentConfig {
   redisUrl: string;
   redisToken: string;
 
+  // Sentry
+  sentryDsn: string;
+
   // APIs externes
   openrouterApiKey: string;
   dropcontactApiKey: string;
@@ -102,6 +105,9 @@ function loadConfig(): EnvironmentConfig {
       // Redis
       redisUrl: process.env.UPSTASH_REDIS_REST_URL || "",
       redisToken: process.env.UPSTASH_REDIS_REST_TOKEN || "",
+
+      // Sentry
+      sentryDsn: process.env.NEXT_PUBLIC_SENTRY_DSN || "",
 
       // APIs externes
       openrouterApiKey: process.env.OPENROUTER_API_KEY || "",

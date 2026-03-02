@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useWorkspace } from "../../../lib/workspace";
-import { Sun, User, Lock, CreditCard, Building2, LogOut } from "lucide-react";
+import { Sun, User, Lock, CreditCard, Building2, LogOut, MessageSquare } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { ThemeModal } from "@/components/settings/ThemeModal";
 import { ProfileModal } from "@/components/settings/ProfileModal";
 import { PasswordModal } from "@/components/settings/PasswordModal";
@@ -22,6 +23,7 @@ import { AccountModal } from "@/components/settings/AccountModal";
  * - Compte (déconnexion, suppression)
  */
 export default function SettingsPage() {
+  const router = useRouter();
   const { workspace, profile, canManageBilling, refresh } = useWorkspace();
   const [themeModalOpen, setThemeModalOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -63,6 +65,13 @@ export default function SettingsPage() {
           },
         ]
       : []),
+    {
+      id: "messages",
+      title: "Mes messages",
+      description: "Modèles de messages pour campagnes et suivi",
+      icon: MessageSquare,
+      onClick: () => router.push("/settings/messages"),
+    },
     {
       id: "org",
       title: "Organisation",

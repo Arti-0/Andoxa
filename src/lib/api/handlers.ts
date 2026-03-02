@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import * as Sentry from "@sentry/nextjs";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../types/supabase";
 import type { Workspace, ApiResponse } from "../workspace/types";
+import { withRateLimit } from "../rate-limit";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -44,6 +46,8 @@ export interface HandlerOptions {
   requireAuth?: boolean;
   /** Require workspace (default: true for protected routes) */
   requireWorkspace?: boolean;
+  /** Rate limit config. Set to false to disable. Default: 100 req/min per user. */
+  rateLimit?: false | { requests?: number; window?: string; name?: string };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -227,9 +231,19 @@ export function createApiHandler<T>(
 ) {
   return async (request: NextRequest): Promise<NextResponse> => {
     try {
+      // Rate limiting (before auth to protect against brute force)
+      if (options.rateLimit !== false) {
+        const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+        const rlResponse = await withRateLimit(request, ip, {
+          name: options.rateLimit?.name ?? "api",
+          requests: options.rateLimit?.requests ?? 100,
+          window: options.rateLimit?.window ?? "1 m",
+        });
+        if (rlResponse) return rlResponse;
+      }
+
       const context = await buildApiContext(request, options);
 
-      // Execute handler
       const result = await handler(request, context);
 
       // Return success response
@@ -240,10 +254,9 @@ export function createApiHandler<T>(
         return createErrorResponse(error);
       }
 
-      // Log unexpected errors
       console.error("[API Error]", error);
+      Sentry.captureException(error);
 
-      // Return generic error
       return createErrorResponse(Errors.internal());
     }
   };

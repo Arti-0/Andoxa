@@ -14,14 +14,17 @@ function normalizeLinkedInUrl(url: string): string {
       const path = u.pathname.replace(/\/+$/, "");
       return `https://www.linkedin.com${path.startsWith("/") ? path : `/${path}`}`;
     }
-  } catch {
-    // Return as-is if URL parsing fails
-  }
+  } catch {}
   return trimmed;
 }
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 /**
- * Owner creates an invitation by LinkedIn URL.
+ * POST /api/invitations
+ * Create an invitation by LinkedIn URL and/or email
  */
 export async function POST(request: NextRequest) {
   try {
@@ -37,20 +40,13 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const linkedinUrl = body.linkedin_url as string | undefined;
+    const email = body.email as string | undefined;
     const organizationId = body.organization_id as string | undefined;
     const role = (body.role as string) || "member";
 
-    if (!linkedinUrl || typeof linkedinUrl !== "string") {
+    if (!linkedinUrl && !email) {
       return NextResponse.json(
-        { error: "linkedin_url is required" },
-        { status: 400 }
-      );
-    }
-
-    const normalizedUrl = normalizeLinkedInUrl(linkedinUrl);
-    if (!normalizedUrl || !normalizedUrl.includes("linkedin.com")) {
-      return NextResponse.json(
-        { error: "Invalid LinkedIn URL" },
+        { error: "linkedin_url ou email requis" },
         { status: 400 }
       );
     }
@@ -60,6 +56,28 @@ export async function POST(request: NextRequest) {
         { error: "organization_id is required" },
         { status: 400 }
       );
+    }
+
+    let normalizedUrl: string | null = null;
+    if (linkedinUrl) {
+      normalizedUrl = normalizeLinkedInUrl(linkedinUrl);
+      if (!normalizedUrl || !normalizedUrl.includes("linkedin.com")) {
+        return NextResponse.json(
+          { error: "Invalid LinkedIn URL" },
+          { status: 400 }
+        );
+      }
+    }
+
+    let normalizedEmail: string | null = null;
+    if (email) {
+      normalizedEmail = normalizeEmail(email);
+      if (!normalizedEmail.includes("@")) {
+        return NextResponse.json(
+          { error: "Invalid email" },
+          { status: 400 }
+        );
+      }
     }
 
     const { data: membership } = await supabase
@@ -86,17 +104,18 @@ export async function POST(request: NextRequest) {
       .from("invitations")
       .insert({
         organization_id: organizationId,
-        linkedin_url: normalizedUrl,
         role: ["owner", "admin", "member"].includes(role) ? role : "member",
         invited_by: user.id,
+        linkedin_url: normalizedUrl,
+        email: normalizedEmail,
       })
-      .select("id, linkedin_url, role")
+      .select("id, linkedin_url, email, role")
       .single();
 
     if (insertError) {
       if (insertError.code === "23505") {
         return NextResponse.json(
-          { error: "This LinkedIn profile is already invited" },
+          { error: "Cette personne est déjà invitée" },
           { status: 409 }
         );
       }

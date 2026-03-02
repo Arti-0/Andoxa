@@ -644,6 +644,144 @@ export interface Database {
         };
         Relationships: [];
       };
+      notifications: {
+        Row: {
+          id: string;
+          title: string;
+          message: string;
+          type: string;
+          category: string | null;
+          action_type: string | null;
+          actor_id: string | null;
+          organization_id: string | null;
+          target_url: string | null;
+          metadata: Json;
+          created_at: string;
+          expires_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          message: string;
+          type?: string;
+          category?: string | null;
+          action_type?: string | null;
+          actor_id?: string | null;
+          organization_id?: string | null;
+          target_url?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          expires_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          message?: string;
+          type?: string;
+          category?: string | null;
+          action_type?: string | null;
+          actor_id?: string | null;
+          organization_id?: string | null;
+          target_url?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          expires_at?: string | null;
+        };
+        Relationships: [];
+      };
+      notification_reads: {
+        Row: {
+          id: string;
+          notification_id: string;
+          user_id: string;
+          read_at: string;
+        };
+        Insert: {
+          id?: string;
+          notification_id: string;
+          user_id: string;
+          read_at?: string;
+        };
+        Update: {
+          id?: string;
+          notification_id?: string;
+          user_id?: string;
+          read_at?: string;
+        };
+        Relationships: [];
+      };
+      announcements: {
+        Row: {
+          id: string;
+          title: string;
+          message: string;
+          type: string;
+          active: boolean;
+          starts_at: string;
+          ends_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          message: string;
+          type?: string;
+          active?: boolean;
+          starts_at?: string;
+          ends_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          message?: string;
+          type?: string;
+          active?: boolean;
+          starts_at?: string;
+          ends_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      message_templates: {
+        Row: {
+          id: string;
+          organization_id: string;
+          created_by: string;
+          name: string;
+          channel: string;
+          content: string;
+          variables_used: string[];
+          is_default: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          created_by: string;
+          name: string;
+          channel: string;
+          content: string;
+          variables_used?: string[];
+          is_default?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          created_by?: string;
+          name?: string;
+          channel?: string;
+          content?: string;
+          variables_used?: string[];
+          is_default?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {

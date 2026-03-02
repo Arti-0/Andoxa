@@ -3,11 +3,6 @@ import { createClient } from '@/lib/supabase/server';
 import { handleLinkedInCallback } from '@/lib/auth/linkedin-auth-server';
 import { logger } from '@/lib/utils/logger';
 
-/**
- * Gets the canonical base URL for redirects.
- * In production: prefers NEXT_PUBLIC_APP_URL, then x-forwarded-* headers, then request URL.
- * Avoids redirecting to localhost when deployed behind a proxy (e.g. Vercel).
- */
 function getRedirectBase(request: NextRequest): string {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL;
   if (appUrl) return appUrl.replace(/\/$/, "");
@@ -28,7 +23,6 @@ export async function GET(request: NextRequest) {
     const error = searchParams.get('error');
     const errorDescription = searchParams.get('error_description');
 
-    // Handle OAuth errors
     if (error) {
       logger.error('OAuth callback error:', { error, errorDescription });
       return NextResponse.redirect(
@@ -36,7 +30,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check for authorization code
     if (!code) {
       logger.error('OAuth callback missing code');
       return NextResponse.redirect(`${baseUrl}/auth/login?error=no_code`);
@@ -44,7 +37,6 @@ export async function GET(request: NextRequest) {
 
     const supabase = await createClient();
 
-    // Exchange code for session
     const { data: { session }, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
     if (exchangeError || !session) {
@@ -52,26 +44,72 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${baseUrl}/auth/login?error=auth_failed`);
     }
 
-    // Handle LinkedIn callback to create/update profile
-    // Pass supabase client so it has the new session (cookies may not propagate to fresh client yet)
     try {
       await handleLinkedInCallback(session, supabase);
     } catch (profileError) {
       logger.error('Failed to handle LinkedIn callback:', profileError);
-      // Continue anyway - session is valid, profile can be updated later
     }
 
-    // Check profile status to determine redirect
     const { data: profile } = await supabase
       .from('profiles')
-      .select('id, full_name, active_organization_id')
+      .select('id, full_name, active_organization_id, linkedin_url')
       .eq('id', session.user.id)
       .maybeSingle();
 
-    // Check if user has an active plan
+    // Auto-detect pending invitations (Option 2)
+    // Check before determining redirect so invited users join immediately
+    if (!profile?.active_organization_id) {
+      let invitation: { id: string; organization_id: string; role: string } | null = null;
+
+      if (session.user.email) {
+        const { data } = await supabase
+          .from('invitations')
+          .select('id, organization_id, role')
+          .eq('email', session.user.email.toLowerCase())
+          .limit(1)
+          .maybeSingle();
+        if (data) invitation = data;
+      }
+
+      if (!invitation && profile?.linkedin_url) {
+        const { data } = await supabase
+          .from('invitations')
+          .select('id, organization_id, role')
+          .eq('linkedin_url', profile.linkedin_url)
+          .limit(1)
+          .maybeSingle();
+        if (data) invitation = data;
+      }
+
+      if (invitation) {
+        const { error: memberError } = await supabase
+          .from('organization_members')
+          .insert({
+            organization_id: invitation.organization_id,
+            user_id: session.user.id,
+            role: invitation.role || 'member',
+          });
+
+        if (!memberError || memberError.code === '23505') {
+          await supabase
+            .from('profiles')
+            .update({ active_organization_id: invitation.organization_id })
+            .eq('id', session.user.id);
+
+          await supabase.from('invitations').delete().eq('id', invitation.id);
+        }
+      }
+    }
+
+    // Re-fetch profile after potential invitation join
+    const { data: updatedProfile } = await supabase
+      .from('profiles')
+      .select('id, active_organization_id')
+      .eq('id', session.user.id)
+      .maybeSingle();
+
     let hasActivePlan = false;
 
-    // Check user subscription
     const { data: subscription } = await supabase
       .from('user_subscriptions')
       .select('plan_id, status')
@@ -83,12 +121,11 @@ export async function GET(request: NextRequest) {
       hasActivePlan = true;
     }
 
-    // Check organization plan if user has an organization
-    if (profile?.active_organization_id && !hasActivePlan) {
+    if (updatedProfile?.active_organization_id && !hasActivePlan) {
       const { data: organization } = await supabase
         .from('organizations')
         .select('plan, subscription_status')
-        .eq('id', profile.active_organization_id)
+        .eq('id', updatedProfile.active_organization_id)
         .maybeSingle();
 
       const validPlans = ['essential', 'pro', 'business'];
@@ -97,7 +134,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Determine redirect URL
     let next: string;
 
     const nextParam = searchParams.get('next');
@@ -118,4 +154,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-
