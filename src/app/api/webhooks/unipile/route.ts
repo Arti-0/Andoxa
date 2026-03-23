@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { createServiceClient } from "@/lib/supabase/service";
 import { unipileFetch } from "@/lib/unipile/client";
 import type { UnipileAccount } from "@/lib/unipile/types";
@@ -71,18 +72,22 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  async function storeUnipileAccount(userId: string, accountId: string) {
+  async function storeUnipileAccount(rawName: string, accountId: string) {
+    const isWhatsApp = rawName.endsWith("__whatsapp");
+    const userId = isWhatsApp ? rawName.replace(/__whatsapp$/, "") : rawName;
+    const accountType = isWhatsApp ? "WHATSAPP" : "LINKEDIN";
+
     const supabase = createServiceClient();
     const { error } = await supabase.from("user_unipile_accounts").upsert(
       [
         {
           user_id: userId,
           unipile_account_id: accountId,
-          account_type: "LINKEDIN",
+          account_type: accountType,
           updated_at: new Date().toISOString(),
         },
       ],
-      { onConflict: "user_id" }
+      { onConflict: "user_id,account_type" }
     );
     if (error) {
       console.error("[Unipile webhook] upsert user_unipile_accounts:", error);
@@ -99,6 +104,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ received: true }, { status: 200 });
       } catch (err) {
         console.error("[Unipile webhook] Hosted Auth store:", err);
+        Sentry.captureException(err);
         return NextResponse.json(
           { error: err instanceof Error ? err.message : "Internal error" },
           { status: 500 }
@@ -120,6 +126,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true }, { status: 200 });
     } catch (err) {
       console.error("[Unipile webhook] AccountStatus fetch/store:", err);
+      Sentry.captureException(err);
       return NextResponse.json({ received: true }, { status: 200 });
     }
   }
@@ -139,6 +146,21 @@ export async function POST(req: NextRequest) {
       // Message reçu (inbound) – chat_id peut être enrichi via unipile_chat_prospects
       // pour lier au prospect. Optionnel : écrire dans unread_messages pour badge.
     }
+  }
+
+  const HANDLED_EVENTS = new Set(["message_received"]);
+  if (
+    typeof event === "string" &&
+    event.length > 0 &&
+    !HANDLED_EVENTS.has(event) &&
+    !isHostedAuthCallback &&
+    !isAccountStatusCallback
+  ) {
+    console.info("[Unipile webhook] Unknown event type (no-op)", { event });
+    Sentry.captureMessage(`Unipile webhook unknown event: ${event}`, {
+      level: "info",
+      extra: { event },
+    });
   }
 
   return NextResponse.json({ received: true }, { status: 200 });

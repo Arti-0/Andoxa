@@ -1,7 +1,5 @@
+import { redirect } from "next/navigation";
 
-export default function ComponentName() {
-  return (
-  <div>
-  </div>
-);
-};
+export default function BookingIndexPage() {
+  redirect("/help");
+}

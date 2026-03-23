@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { NextRequest } from "next/server";
+import { createApiHandler, Errors, parseBody } from "@/lib/api";
 
 function normalizeLinkedInUrl(url: string): string {
   const trimmed = url.trim();
@@ -23,115 +23,100 @@ function normalizeEmail(email: string): string {
 }
 
 /**
+ * GET /api/invitations
+ * List pending invitations for the current organization
+ */
+export const GET = createApiHandler(async (_req, ctx) => {
+  if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
+
+  const { data: invitations, error } = await ctx.supabase
+    .from("invitations")
+    .select("id, email, linkedin_url, role, created_at")
+    .eq("organization_id", ctx.workspaceId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw Errors.internal("Failed to fetch invitations");
+
+  return { items: invitations ?? [] };
+});
+
+/**
  * POST /api/invitations
  * Create an invitation by LinkedIn URL and/or email
  */
-export async function POST(request: NextRequest) {
-  try {
-    const supabase = await createClient();
+export const POST = createApiHandler(async (req: NextRequest, ctx) => {
+  if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  const body = await parseBody<{
+    linkedin_url?: string;
+    email?: string;
+    organization_id?: string;
+    role?: string;
+  }>(req);
 
-    const body = await request.json();
-    const linkedinUrl = body.linkedin_url as string | undefined;
-    const email = body.email as string | undefined;
-    const organizationId = body.organization_id as string | undefined;
-    const role = (body.role as string) || "member";
+  const linkedinUrl = body.linkedin_url;
+  const email = body.email;
+  const organizationId = body.organization_id ?? ctx.workspaceId;
+  const role = body.role || "member";
 
-    if (!linkedinUrl && !email) {
-      return NextResponse.json(
-        { error: "linkedin_url ou email requis" },
-        { status: 400 }
-      );
-    }
-
-    if (!organizationId) {
-      return NextResponse.json(
-        { error: "organization_id is required" },
-        { status: 400 }
-      );
-    }
-
-    let normalizedUrl: string | null = null;
-    if (linkedinUrl) {
-      normalizedUrl = normalizeLinkedInUrl(linkedinUrl);
-      if (!normalizedUrl || !normalizedUrl.includes("linkedin.com")) {
-        return NextResponse.json(
-          { error: "Invalid LinkedIn URL" },
-          { status: 400 }
-        );
-      }
-    }
-
-    let normalizedEmail: string | null = null;
-    if (email) {
-      normalizedEmail = normalizeEmail(email);
-      if (!normalizedEmail.includes("@")) {
-        return NextResponse.json(
-          { error: "Invalid email" },
-          { status: 400 }
-        );
-      }
-    }
-
-    const { data: membership } = await supabase
-      .from("organization_members")
-      .select("role")
-      .eq("organization_id", organizationId)
-      .eq("user_id", user.id)
-      .single();
-
-    const isOwner =
-      membership?.role === "owner" ||
-      (await supabase
-        .from("organizations")
-        .select("owner_id")
-        .eq("id", organizationId)
-        .single()
-        .then(({ data }) => data?.owner_id === user.id));
-
-    if (!isOwner && membership?.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const { data: invitation, error: insertError } = await supabase
-      .from("invitations")
-      .insert({
-        organization_id: organizationId,
-        role: ["owner", "admin", "member"].includes(role) ? role : "member",
-        invited_by: user.id,
-        linkedin_url: normalizedUrl,
-        email: normalizedEmail,
-      })
-      .select("id, linkedin_url, email, role")
-      .single();
-
-    if (insertError) {
-      if (insertError.code === "23505") {
-        return NextResponse.json(
-          { error: "Cette personne est déjà invitée" },
-          { status: 409 }
-        );
-      }
-      console.error("Invitation insert error:", insertError);
-      return NextResponse.json(
-        { error: "Failed to create invitation" },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(invitation);
-  } catch (error) {
-    console.error("Create invitation error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+  if (!linkedinUrl && !email) {
+    throw Errors.badRequest("linkedin_url ou email requis");
   }
-}
+
+  let normalizedUrl: string | null = null;
+  if (linkedinUrl) {
+    normalizedUrl = normalizeLinkedInUrl(linkedinUrl);
+    if (!normalizedUrl || !normalizedUrl.includes("linkedin.com")) {
+      throw Errors.badRequest("Invalid LinkedIn URL");
+    }
+  }
+
+  let normalizedEmail: string | null = null;
+  if (email) {
+    normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail.includes("@")) {
+      throw Errors.badRequest("Invalid email");
+    }
+  }
+
+  const { data: membership } = await ctx.supabase
+    .from("organization_members")
+    .select("role")
+    .eq("organization_id", organizationId)
+    .eq("user_id", ctx.userId)
+    .single();
+
+  const isOwner =
+    membership?.role === "owner" ||
+    (await ctx.supabase
+      .from("organizations")
+      .select("owner_id")
+      .eq("id", organizationId)
+      .single()
+      .then(({ data }) => data?.owner_id === ctx.userId));
+
+  if (!isOwner && membership?.role !== "admin") {
+    throw Errors.forbidden();
+  }
+
+  const { data: invitation, error: insertError } = await ctx.supabase
+    .from("invitations")
+    .insert({
+      organization_id: organizationId,
+      role: ["owner", "admin", "member"].includes(role) ? role : "member",
+      invited_by: ctx.userId,
+      linkedin_url: normalizedUrl,
+      email: normalizedEmail,
+    })
+    .select("id, linkedin_url, email, role")
+    .single();
+
+  if (insertError) {
+    if (insertError.code === "23505") {
+      throw Errors.badRequest("Cette personne est déjà invitée");
+    }
+    throw Errors.internal("Failed to create invitation");
+  }
+
+  return invitation;
+});

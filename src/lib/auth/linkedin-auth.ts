@@ -9,7 +9,17 @@ import { logger } from '@/lib/utils/logger';
 export async function signInWithLinkedIn() {
   const supabase = createClient();
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+  const envAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+  const isProd = process.env.NODE_ENV === "production";
+
+  // In production, honor the explicit app URL (Vercel / custom domain).
+  // In development, always prefer the current origin (localhost),
+  // even if NEXT_PUBLIC_APP_URL points to a remote URL.
+  const baseUrl =
+    isProd && envAppUrl
+      ? envAppUrl.replace(/\/$/, "")
+      : window.location.origin;
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'linkedin_oidc',
     options: {

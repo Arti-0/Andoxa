@@ -32,7 +32,7 @@ export default function ProspectProfilePage() {
       if (!res.ok) return null;
       const json = await res.json();
       const data = json?.data ?? json;
-      return (data as { unipile_chat_id?: string })?.unipile_chat_id ?? null;
+      return (data as { unipile_chat_id?: string; chat_id?: string })?.unipile_chat_id ?? (data as { chat_id?: string })?.chat_id ?? null;
     },
     enabled: !!id,
   });

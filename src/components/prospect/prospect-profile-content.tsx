@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useState, useCallback } from "react";
+import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,10 +20,13 @@ import {
   Loader2,
   Sparkles,
   Link2,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { CampaignModal } from "@/components/crm/campaign-modal";
+import { CampaignModal } from "@/components/campaigns/campaign-modal";
 import type { Prospect } from "@/lib/types/prospects";
 
 const INVITE_DEFAULT_MESSAGE = `Bonjour {{firstName}},
@@ -45,6 +48,33 @@ function formatDate(ts: string | null | undefined) {
     : null;
 }
 
+interface EditableFieldProps {
+  value: string;
+  onSave: (value: string) => void;
+  editing: boolean;
+  placeholder?: string;
+  type?: string;
+}
+
+function EditableField({ value, onSave, editing, placeholder, type = "text" }: EditableFieldProps) {
+  const [local, setLocal] = useState(value);
+
+  if (!editing) return <span>{value || "—"}</span>;
+
+  return (
+    <input
+      type={type}
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={() => { if (local !== value) onSave(local); }}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
+      placeholder={placeholder}
+      className="w-full rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+      autoFocus
+    />
+  );
+}
+
 export function ProspectProfileContent({
   prospect,
   linkedChatId,
@@ -54,22 +84,44 @@ export function ProspectProfileContent({
   const [inviting, setInviting] = useState(false);
   const [linkingChat, setLinkingChat] = useState(false);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
-  const [campaignAction, setCampaignAction] = useState<
-    "invite" | "contact" | null
-  >(null);
+  const [campaignAction, setCampaignAction] = useState<"invite" | "contact" | null>(null);
+  const [editing, setEditing] = useState(false);
 
-  const hasContact =
-    prospect.email || prospect.phone || prospect.website || prospect.linkedin;
+  const hasContact = prospect.email || prospect.phone || prospect.website || prospect.linkedin;
   const hasLinkedin = !!prospect.linkedin?.trim();
   const profilePictureUrl =
     (prospect.enrichment_metadata as { profile_picture_url?: string } | null)
       ?.profile_picture_url ?? null;
 
-  const invalidateProspect = () => {
+  const invalidateProspect = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["prospect", prospect.id] });
     queryClient.invalidateQueries({ queryKey: ["prospect-linked-chat", prospect.id] });
     queryClient.invalidateQueries({ queryKey: ["prospects"] });
-  };
+  }, [queryClient, prospect.id]);
+
+  const updateMutation = useMutation({
+    mutationFn: async (fields: Record<string, string | null>) => {
+      const res = await fetch(`/api/prospects/${prospect.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(fields),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+    },
+    onSuccess: () => {
+      invalidateProspect();
+      toast.success("Prospect mis à jour");
+    },
+    onError: () => toast.error("Échec de la mise à jour"),
+  });
+
+  const saveField = useCallback(
+    (field: string, value: string) => {
+      updateMutation.mutate({ [field]: value || null });
+    },
+    [updateMutation]
+  );
 
   const handleEnrich = async () => {
     setEnriching(true);
@@ -169,34 +221,24 @@ export function ProspectProfileContent({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Barre d'actions */}
+      {/* Action bar */}
       <div className="flex flex-wrap gap-2">
+        <Button
+          variant={editing ? "default" : "outline"}
+          size="sm"
+          onClick={() => setEditing(!editing)}
+        >
+          {editing ? <Check className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+          <span className="ml-2">{editing ? "Terminer" : "Modifier"}</span>
+        </Button>
         {hasLinkedin && (
           <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleEnrich}
-              disabled={enriching}
-            >
-              {enriching ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4" />
-              )}
+            <Button variant="outline" size="sm" onClick={handleEnrich} disabled={enriching}>
+              {enriching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               <span className="ml-2">Enrichir</span>
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleInviteDefault}
-              disabled={inviting}
-            >
-              {inviting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <UserPlus className="h-4 w-4" />
-              )}
+            <Button variant="outline" size="sm" onClick={handleInviteDefault} disabled={inviting}>
+              {inviting ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
               <span className="ml-2">Inviter</span>
             </Button>
             <Button variant="outline" size="sm" onClick={openInviteModal}>
@@ -208,27 +250,15 @@ export function ProspectProfileContent({
               <span className="ml-2">Démarrer conversation</span>
             </Button>
             {!linkedChatId && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleLinkExistingChat}
-                disabled={linkingChat}
-              >
-                {linkingChat ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Link2 className="h-4 w-4" />
-                )}
+              <Button variant="outline" size="sm" onClick={handleLinkExistingChat} disabled={linkingChat}>
+                {linkingChat ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
                 <span className="ml-2">Associer la conversation existante</span>
               </Button>
             )}
           </>
         )}
         {linkedChatId && (
-          <Link
-            href={`/messagerie?chat=${encodeURIComponent(linkedChatId)}`}
-            className="inline-flex items-center gap-2"
-          >
+          <Link href={`/messagerie?chat=${encodeURIComponent(linkedChatId)}`} className="inline-flex items-center gap-2">
             <Button variant="outline" size="sm">
               <MessageSquare className="h-4 w-4" />
               <span className="ml-2">Ouvrir la conversation</span>
@@ -238,28 +268,24 @@ export function ProspectProfileContent({
         <Link href={`/call-sessions/new?prospects=${prospect.id}`}>
           <Button variant="outline" size="sm">
             <PhoneCall className="h-4 w-4" />
-            <span className="ml-2">Démarrer session d&apos;appels</span>
+            <span className="ml-2">Session d&apos;appels</span>
           </Button>
         </Link>
         <Link href="/campaigns">
           <Button variant="outline" size="sm">
             <Megaphone className="h-4 w-4" />
-            <span className="ml-2">Voir campagnes</span>
+            <span className="ml-2">Campagnes</span>
           </Button>
         </Link>
         {hasLinkedin && (
           <a
-            href={
-              prospect.linkedin!.startsWith("http")
-                ? prospect.linkedin!
-                : `https://${prospect.linkedin}`
-            }
+            href={prospect.linkedin!.startsWith("http") ? prospect.linkedin! : `https://${prospect.linkedin}`}
             target="_blank"
             rel="noopener noreferrer"
           >
             <Button variant="outline" size="sm">
               <Linkedin className="h-4 w-4" />
-              <span className="ml-2">Profil LinkedIn</span>
+              <span className="ml-2">LinkedIn</span>
               <ExternalLink className="ml-1.5 h-3 w-3" />
             </Button>
           </a>
@@ -290,138 +316,124 @@ export function ProspectProfileContent({
           <div className="flex items-start gap-4">
             <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
               {profilePictureUrl ? (
-                <img
-                  src={profilePictureUrl}
-                  alt=""
-                  className="h-16 w-16 object-cover"
-                />
+                <img src={profilePictureUrl} alt="" className="h-16 w-16 object-cover" />
               ) : (
                 <User className="h-8 w-8 text-muted-foreground" />
               )}
             </div>
-            <div>
+            <div className="flex-1 space-y-1">
               <CardTitle className="text-xl">
-                {prospect.full_name ?? "Sans nom"}
+                <EditableField value={prospect.full_name ?? ""} onSave={(v) => saveField("full_name", v)} editing={editing} placeholder="Nom complet" />
               </CardTitle>
-              {prospect.job_title && (
-                <p className="mt-1 text-muted-foreground">
-                  {prospect.job_title}
-                </p>
-              )}
-              {prospect.company && (
-                <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <Building2 className="h-4 w-4" />
-                  {prospect.company}
-                </p>
-              )}
+              <div className="text-muted-foreground">
+                <EditableField value={prospect.job_title ?? ""} onSave={(v) => saveField("job_title", v)} editing={editing} placeholder="Poste" />
+              </div>
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <Building2 className="h-4 w-4" />
+                <EditableField value={prospect.company ?? ""} onSave={(v) => saveField("company", v)} editing={editing} placeholder="Entreprise" />
+              </div>
             </div>
           </div>
         </CardHeader>
       </Card>
 
       {/* Contact */}
-      {hasContact && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Informations de contact</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {prospect.email && (
-              <div className="flex items-center gap-2">
-                <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <a
-                  href={`mailto:${prospect.email}`}
-                  className="text-primary hover:underline"
-                >
-                  {prospect.email}
-                </a>
-              </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Informations de contact</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+            {editing ? (
+              <EditableField value={prospect.email ?? ""} onSave={(v) => saveField("email", v)} editing={editing} placeholder="Email" type="email" />
+            ) : prospect.email ? (
+              <a href={`mailto:${prospect.email}`} className="text-primary hover:underline">{prospect.email}</a>
+            ) : (
+              <span className="text-muted-foreground">—</span>
             )}
-            {prospect.phone && (
-              <div className="flex items-center gap-2">
-                <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <a
-                  href={`tel:${prospect.phone}`}
-                  className="text-primary hover:underline"
-                >
-                  {prospect.phone}
-                </a>
-              </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
+            {editing ? (
+              <EditableField value={prospect.phone ?? ""} onSave={(v) => saveField("phone", v)} editing={editing} placeholder="Téléphone" type="tel" />
+            ) : prospect.phone ? (
+              <a href={`tel:${prospect.phone}`} className="text-primary hover:underline">{prospect.phone}</a>
+            ) : (
+              <span className="text-muted-foreground">—</span>
             )}
-            {prospect.website && (
-              <div className="flex items-center gap-2">
-                <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Linkedin className="h-4 w-4 shrink-0 text-muted-foreground" />
+            {editing ? (
+              <EditableField value={prospect.linkedin ?? ""} onSave={(v) => saveField("linkedin_url", v)} editing={editing} placeholder="URL LinkedIn" />
+            ) : prospect.linkedin ? (
+              <a
+                href={prospect.linkedin.startsWith("http") ? prospect.linkedin : `https://${prospect.linkedin}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                Profil LinkedIn
+              </a>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </div>
+          {(prospect.website || editing) && (
+            <div className="flex items-center gap-2">
+              <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
+              {editing ? (
+                <EditableField value={prospect.website ?? ""} onSave={(v) => saveField("website", v)} editing={editing} placeholder="Site web" />
+              ) : prospect.website ? (
                 <a
-                  href={
-                    prospect.website.startsWith("http")
-                      ? prospect.website
-                      : `https://${prospect.website}`
-                  }
+                  href={prospect.website.startsWith("http") ? prospect.website : `https://${prospect.website}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"
                 >
                   {prospect.website}
                 </a>
-              </div>
-            )}
-            {prospect.linkedin && (
-              <div className="flex items-center gap-2">
-                <Linkedin className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <a
-                  href={
-                    prospect.linkedin.startsWith("http")
-                      ? prospect.linkedin
-                      : `https://${prospect.linkedin}`
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  Profil LinkedIn
-                </a>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+              ) : null}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Context */}
-      {(prospect.industry ||
-        prospect.employees ||
-        prospect.location ||
-        prospect.budget) && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Contexte</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            {prospect.industry && (
-              <p>
-                <span className="font-medium">Industrie :</span>{" "}
-                {prospect.industry}
-              </p>
-            )}
-            {prospect.employees && (
-              <p>
-                <span className="font-medium">Taille :</span>{" "}
-                {prospect.employees}
-              </p>
-            )}
-            {prospect.location && (
-              <p>
-                <span className="font-medium">Localisation :</span>{" "}
-                {prospect.location}
-              </p>
-            )}
-            {prospect.budget && (
-              <p>
-                <span className="font-medium">Budget :</span> {prospect.budget}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Contexte</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <span className="text-xs font-medium text-muted-foreground">Industrie</span>
+              <div className="mt-0.5">
+                <EditableField value={prospect.industry ?? ""} onSave={(v) => saveField("industry", v)} editing={editing} placeholder="Industrie" />
+              </div>
+            </div>
+            <div>
+              <span className="text-xs font-medium text-muted-foreground">Taille</span>
+              <div className="mt-0.5">
+                <EditableField value={prospect.employees ?? ""} onSave={(v) => saveField("employees", v)} editing={editing} placeholder="Nb employés" />
+              </div>
+            </div>
+            <div>
+              <span className="text-xs font-medium text-muted-foreground">Localisation</span>
+              <div className="mt-0.5">
+                <EditableField value={prospect.location ?? ""} onSave={(v) => saveField("location", v)} editing={editing} placeholder="Localisation" />
+              </div>
+            </div>
+            <div>
+              <span className="text-xs font-medium text-muted-foreground">Budget</span>
+              <div className="mt-0.5">
+                <EditableField value={prospect.budget ?? ""} onSave={(v) => saveField("budget", v)} editing={editing} placeholder="Budget" />
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Pipeline & Notes */}
       <Card>
@@ -429,20 +441,45 @@ export function ProspectProfileContent({
           <CardTitle className="text-base">Pipeline et notes</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {prospect.status && (
-            <p>
-              <span className="font-medium">Statut :</span>{" "}
-              <span className="capitalize">{prospect.status}</span>
-            </p>
-          )}
-          {prospect.notes && (
-            <div>
-              <span className="font-medium">Notes :</span>
+          <div>
+            <span className="font-medium">Statut : </span>
+            {editing ? (
+              <select
+                defaultValue={prospect.status ?? "new"}
+                onChange={(e) => saveField("status", e.target.value)}
+                className="rounded-md border bg-background px-2 py-1 text-sm"
+              >
+                <option value="new">Nouveau</option>
+                <option value="contacted">Contacté</option>
+                <option value="qualified">Qualifié</option>
+                <option value="rdv">RDV</option>
+                <option value="proposal">Proposition</option>
+                <option value="won">Signé</option>
+                <option value="lost">Perdu</option>
+              </select>
+            ) : (
+              <span className="capitalize">{prospect.status ?? "—"}</span>
+            )}
+          </div>
+          <div>
+            <span className="font-medium">Notes :</span>
+            {editing ? (
+              <textarea
+                defaultValue={prospect.notes ?? ""}
+                onBlur={(e) => {
+                  if (e.target.value !== (prospect.notes ?? "")) saveField("notes", e.target.value);
+                }}
+                className="mt-1 w-full resize-y rounded-md border bg-background px-3 py-2 text-sm min-h-[80px]"
+                placeholder="Ajouter des notes..."
+              />
+            ) : prospect.notes ? (
               <p className="mt-1 whitespace-pre-wrap rounded-md border bg-muted/30 p-3 text-sm">
                 {prospect.notes}
               </p>
-            </div>
-          )}
+            ) : (
+              <p className="mt-1 text-sm text-muted-foreground">Aucune note</p>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -452,15 +489,93 @@ export function ProspectProfileContent({
           <CardTitle className="text-base">Métadonnées</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
-          {prospect.source && <p>Source : {prospect.source}</p>}
-          {prospect.created_at && (
-            <p>Créé le {formatDate(prospect.created_at)}</p>
-          )}
-          {prospect.enriched_at && (
-            <p>Enrichi le {formatDate(prospect.enriched_at)}</p>
-          )}
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-foreground">Source :</span>
+            <EditableField value={prospect.source ?? ""} onSave={(v) => saveField("source", v)} editing={editing} placeholder="Source" />
+          </div>
+          {prospect.created_at && <p>Créé le {formatDate(prospect.created_at)}</p>}
+          {prospect.enriched_at && <p>Enrichi le {formatDate(prospect.enriched_at)}</p>}
         </CardContent>
       </Card>
+
+      {/* Call session history */}
+      <ProspectCallHistory prospectId={prospect.id} />
     </div>
+  );
+}
+
+interface CallSessionEntry {
+  id: string;
+  call_session_id: string;
+  call_duration_s: number;
+  status: string;
+  outcome: string | null;
+  called_at: string | null;
+  session_title?: string;
+}
+
+function ProspectCallHistory({ prospectId }: { prospectId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["prospect-call-history", prospectId],
+    queryFn: async () => {
+      const res = await fetch(`/api/prospects/${prospectId}/call-history`, { credentials: "include" });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return (json.data ?? json) as CallSessionEntry[];
+    },
+    enabled: !!prospectId,
+  });
+
+  if (isLoading || !data || data.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <PhoneCall className="h-4 w-4" />
+          Historique d&apos;appels ({data.length})
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          {data.map((entry) => {
+            const dur = entry.call_duration_s;
+            const durStr = dur > 0
+              ? `${Math.floor(dur / 60)}m ${dur % 60}s`
+              : "—";
+            return (
+              <Link
+                key={entry.id}
+                href={`/call-sessions/${entry.call_session_id}`}
+                className="flex items-center justify-between rounded-lg border p-3 text-sm transition-colors hover:bg-accent/50"
+              >
+                <div>
+                  <p className="font-medium">{entry.session_title ?? "Session d'appels"}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {entry.called_at
+                      ? new Date(entry.called_at).toLocaleDateString("fr-FR", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "—"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span>{durStr}</span>
+                  {entry.outcome && (
+                    <span className="rounded-full bg-muted px-2 py-0.5 font-medium capitalize">
+                      {entry.outcome}
+                    </span>
+                  )}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import {
   getDefaultSlotsForDateRange,
   excludeBookedSlots,
+  type AvailabilityConfig,
 } from "@/lib/booking/slots";
 
 /**
@@ -26,7 +27,7 @@ export async function GET(
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("id, active_organization_id")
+      .select("id, active_organization_id, metadata")
       .eq("booking_slug", slug)
       .single();
 
@@ -65,7 +66,10 @@ export async function GET(
       );
     }
 
-    const allSlots = getDefaultSlotsForDateRange(from);
+    const meta = (profile as { metadata?: Record<string, unknown> | null }).metadata;
+    const availability = (meta?.availability ?? {}) as AvailabilityConfig;
+
+    const allSlots = getDefaultSlotsForDateRange(from, availability);
     const availableSlots = excludeBookedSlots(allSlots, events ?? []);
 
     const now = new Date();

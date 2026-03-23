@@ -83,7 +83,7 @@ export function RecentConversationsList() {
       }
     } catch {
       setError(
-        "Impossible de charger les conversations. Vérifiez la configuration Unipile."
+        "Impossible de charger les conversations. Vérifiez votre connexion LinkedIn/WhatsApp."
       );
       setChats([]);
     } finally {

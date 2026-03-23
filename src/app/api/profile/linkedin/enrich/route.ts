@@ -58,7 +58,7 @@ export const POST = createApiHandler(
       const msg =
         err instanceof UnipileApiError
           ? err.message
-          : "Impossible de récupérer le profil LinkedIn. Connectez votre compte LinkedIn via Unipile (page LinkedIn).";
+          : "Impossible de récupérer le profil LinkedIn. Connectez votre compte LinkedIn depuis la page Installation.";
       throw Errors.badRequest(msg);
     }
 

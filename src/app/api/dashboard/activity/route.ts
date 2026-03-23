@@ -1,41 +1,288 @@
 import { createApiHandler, Errors } from "../../../../lib/api";
 
+type ActivityType =
+  | "prospect_added"
+  | "prospect_imported"
+  | "campaign_started"
+  | "booking_created"
+  | "call_session_completed"
+  | "status_change"
+  | "enrichment_completed";
+
 interface Activity {
   id: string;
-  type: "prospect_added";
+  type: ActivityType;
   title: string;
   description: string;
   timestamp: string;
+  target_url?: string | null;
+  actor_name?: string | null;
+  actor_avatar?: string | null;
 }
+
+const STATUS_LABELS: Record<string, string> = {
+  new: "Nouveau",
+  contacted: "Contacté",
+  qualified: "Qualifié",
+  rdv: "RDV",
+  proposal: "Proposition",
+  won: "Signé",
+  lost: "Perdu",
+};
 
 /**
  * GET /api/dashboard/activity
- * Returns recent activity for the dashboard (prospect_added only for now)
+ * Returns recent activity for the dashboard (multiple types)
  */
 export const GET = createApiHandler(async (_req, ctx): Promise<Activity[]> => {
   if (!ctx.workspaceId) {
     throw Errors.badRequest("Workspace required");
   }
 
-  const { data, error } = await ctx.supabase
-    .from("prospects")
-    .select("id, full_name, source, created_at")
-    .eq("organization_id", ctx.workspaceId)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false })
-    .limit(10);
+  const [prospectsRes, campaignsRes, bookingsRes, sessionsRes, statusRes, bddRes, enrichedRes] =
+    await Promise.all([
+      ctx.supabase
+        .from("prospects")
+        .select("id, full_name, source, created_at")
+        .eq("organization_id", ctx.workspaceId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(5),
+      ctx.supabase
+        .from("campaign_jobs")
+        .select("id, type, total_count, created_by, created_at")
+        .eq("organization_id", ctx.workspaceId)
+        .order("created_at", { ascending: false })
+        .limit(5),
+      ctx.supabase
+        .from("quick_bookings")
+        .select("id, prospect_id, scheduled_for, created_at")
+        .eq("organization_id", ctx.workspaceId)
+        .order("created_at", { ascending: false })
+        .limit(5),
+      ctx.supabase
+        .from("call_sessions")
+        .select("id, title, status, total_duration_s, created_at")
+        .eq("organization_id", ctx.workspaceId)
+        .eq("status", "completed")
+        .order("created_at", { ascending: false })
+        .limit(5),
+      ctx.supabase
+        .from("prospect_activity" as never)
+        .select("id, prospect_id, actor_id, action, details, created_at")
+        .eq("organization_id", ctx.workspaceId)
+        .eq("action", "status_change")
+        .order("created_at", { ascending: false })
+        .limit(10) as unknown as Promise<{
+        data:
+          | {
+              id: string;
+              prospect_id: string | null;
+              actor_id: string;
+              action: string;
+              details: unknown;
+              created_at: string;
+            }[]
+          | null;
+        error: unknown;
+      }>,
+      // Recent imports (listes created)
+      ctx.supabase
+        .from("bdd")
+        .select("id, name, source, created_at")
+        .eq("organization_id", ctx.workspaceId)
+        .order("created_at", { ascending: false })
+        .limit(5) as unknown as Promise<{
+        data: { id: string; name: string; source: string | null; created_at: string | null }[] | null;
+        error: unknown;
+      }>,
+      // Recent enrichments
+      ctx.supabase
+        .from("prospects")
+        .select("id, full_name, enriched_at")
+        .eq("organization_id", ctx.workspaceId)
+        .is("deleted_at", null)
+        .not("enriched_at", "is", null)
+        .order("enriched_at", { ascending: false })
+        .limit(5),
+    ]);
 
-  if (error) {
-    throw Errors.internal("Failed to fetch activity");
+  const allActorIds = new Set<string>();
+  const allProspectIds = new Set<string>();
+
+  for (const c of campaignsRes.data ?? []) {
+    const by = (c as { created_by?: string }).created_by;
+    if (by) allActorIds.add(by);
+  }
+  for (const s of statusRes.data ?? []) {
+    if (s.actor_id) allActorIds.add(s.actor_id);
+    if (s.prospect_id) allProspectIds.add(s.prospect_id);
+  }
+  for (const b of bookingsRes.data ?? []) {
+    if (b.prospect_id) allProspectIds.add(b.prospect_id);
   }
 
-  const activities: Activity[] = (data ?? []).map((p) => ({
-    id: p.id,
-    type: "prospect_added" as const,
-    title: "Nouveau prospect",
-    description: `${p.full_name ?? "Sans nom"} ajouté depuis ${p.source ?? "manuel"}`,
-    timestamp: p.created_at ?? new Date().toISOString(),
-  }));
+  const profileMap = new Map<string, { name: string; avatar: string | null }>();
+  const prospectNameMap = new Map<string, string>();
 
-  return activities;
+  const profileIds = [...allActorIds];
+  if (profileIds.length > 0) {
+    const { data: profiles } = await ctx.supabase
+      .from("profiles")
+      .select("id, full_name, avatar_url")
+      .in("id", profileIds);
+    for (const p of profiles ?? []) {
+      profileMap.set(p.id, {
+        name: p.full_name ?? "Utilisateur",
+        avatar: p.avatar_url ?? null,
+      });
+    }
+  }
+
+  const pIds = [...allProspectIds];
+  if (pIds.length > 0) {
+    const { data: prospects } = await ctx.supabase
+      .from("prospects")
+      .select("id, full_name")
+      .in("id", pIds);
+    for (const p of prospects ?? []) {
+      prospectNameMap.set(p.id, p.full_name ?? "Prospect");
+    }
+  }
+
+  function formatTs(iso: string): string {
+    const d = new Date(iso);
+    return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) +
+      ", " +
+      d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  const SOURCE_LABELS: Record<string, string> = {
+    linkedin_extension: "LinkedIn",
+    linkedin: "LinkedIn",
+    csv: "CSV",
+    xlsx: "Excel",
+    manual: "Manuel",
+  };
+
+  const activities: Activity[] = [];
+
+  for (const p of prospectsRes.data ?? []) {
+    const src = SOURCE_LABELS[p.source ?? ""] ?? p.source ?? "manuel";
+    activities.push({
+      id: `prospect-${p.id}`,
+      type: "prospect_added",
+      title: "Nouveau prospect",
+      description: `${p.full_name ?? "Sans nom"} — ajouté via ${src} · ${formatTs(p.created_at ?? new Date().toISOString())}`,
+      target_url: `/prospect/${p.id}`,
+      timestamp: p.created_at ?? new Date().toISOString(),
+    });
+  }
+
+  for (const c of campaignsRes.data ?? []) {
+    const creatorId = (c as { created_by?: string }).created_by;
+    const actor = creatorId ? profileMap.get(creatorId) : null;
+    const typeLabel = c.type === "invite" ? "Invitation" : "Contact";
+    activities.push({
+      id: `campaign-${c.id}`,
+      type: "campaign_started",
+      title: "Campagne lancée",
+      description: `${typeLabel} · ${c.total_count} prospects${actor ? ` · par ${actor.name}` : ""} · ${formatTs(c.created_at)}`,
+      actor_name: actor?.name ?? null,
+      actor_avatar: actor?.avatar ?? null,
+      target_url: `/campaigns/${c.id}`,
+      timestamp: c.created_at,
+    });
+  }
+
+  for (const b of bookingsRes.data ?? []) {
+    const prospectName = prospectNameMap.get(b.prospect_id);
+    const when = b.scheduled_for
+      ? new Date(b.scheduled_for).toLocaleDateString("fr-FR", {
+          day: "numeric",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "";
+    activities.push({
+      id: `booking-${b.id}`,
+      type: "booking_created",
+      title: "RDV réservé",
+      description: prospectName
+        ? `${prospectName}${when ? ` · prévu le ${when}` : ""}`
+        : when
+          ? `Prévu le ${when}`
+          : "Nouveau rendez-vous",
+      target_url: "/calendar",
+      timestamp: b.created_at,
+    });
+  }
+
+  for (const s of sessionsRes.data ?? []) {
+    const dur =
+      s.total_duration_s > 0 ? `${Math.floor(s.total_duration_s / 60)} min` : "";
+    activities.push({
+      id: `session-${s.id}`,
+      type: "call_session_completed",
+      title: "Session d'appels terminée",
+      description: `${s.title ?? "Session"}${dur ? ` · ${dur}` : ""} · ${formatTs(s.created_at ?? new Date().toISOString())}`,
+      target_url: `/call-sessions/${s.id}`,
+      timestamp: s.created_at ?? new Date().toISOString(),
+    });
+  }
+
+  for (const sa of statusRes.data ?? []) {
+    const details = sa.details as { from?: string; to?: string } | null;
+    const fromLabel = STATUS_LABELS[details?.from ?? ""] ?? details?.from ?? "?";
+    const toLabel = STATUS_LABELS[details?.to ?? ""] ?? details?.to ?? "?";
+    const prospectName = sa.prospect_id
+      ? prospectNameMap.get(sa.prospect_id) ?? "Prospect"
+      : "Prospect";
+    const actor = sa.actor_id ? profileMap.get(sa.actor_id) : null;
+
+    activities.push({
+      id: `status-${sa.id}`,
+      type: "status_change",
+      title: "Statut modifié",
+      description: `${prospectName} · ${fromLabel} → ${toLabel}${actor ? ` · par ${actor.name}` : ""}`,
+      actor_name: actor?.name ?? null,
+      actor_avatar: actor?.avatar ?? null,
+      target_url: sa.prospect_id ? `/prospect/${sa.prospect_id}` : null,
+      timestamp: sa.created_at,
+    });
+  }
+
+  // Imports (listes)
+  for (const b of bddRes.data ?? []) {
+    if (!b.created_at) continue;
+    const src = SOURCE_LABELS[b.source ?? ""] ?? b.source ?? "";
+    activities.push({
+      id: `import-${b.id}`,
+      type: "prospect_imported",
+      title: "Prospects importés",
+      description: `Liste « ${b.name} »${src ? ` · ${src}` : ""} · ${formatTs(b.created_at)}`,
+      target_url: `/crm?bdd_id=${b.id}`,
+      timestamp: b.created_at,
+    });
+  }
+
+  // Enrichments
+  for (const e of enrichedRes.data ?? []) {
+    if (!e.enriched_at) continue;
+    activities.push({
+      id: `enrich-${e.id}`,
+      type: "enrichment_completed",
+      title: "Profil enrichi",
+      description: `${e.full_name ?? "Prospect"} · ${formatTs(e.enriched_at)}`,
+      target_url: `/prospect/${e.id}`,
+      timestamp: e.enriched_at,
+    });
+  }
+
+  activities.sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+
+  return activities.slice(0, 20);
 });

@@ -7,7 +7,6 @@ import {
   Upload,
   LayoutGrid,
   Table2,
-  Search,
   X,
   Filter,
   ChevronDown,
@@ -16,7 +15,9 @@ import {
   MessageSquare,
   Megaphone,
   Phone,
+  Trash2,
 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -34,11 +35,10 @@ import {
 } from "@/components/ui/command";
 import { ProspectCreateDialog } from "./prospect-create-dialog";
 import { ProspectImportDialog } from "./prospect-import-dialog";
-import { CampaignModal } from "./campaign-modal";
-import type { BddItem } from "./bdd-list";
-import type { FilterState } from "./prospect-filters";
+import { CampaignModal } from "@/components/campaigns/campaign-modal";
+import type { BddItem, FilterState } from "./crm-table";
 
-export type CrmView = "listes" | "prospects" | "kanban";
+export type CrmView = "listes" | "prospects" | "corbeille" | "kanban";
 
 const SOURCE_OPTIONS = [
   { value: "linkedin_extension", label: "LinkedIn" },
@@ -53,11 +53,11 @@ const STATUS_OPTIONS = [
   { value: "new", label: "Nouveau", color: "bg-blue-500" },
   { value: "contacted", label: "Contacté", color: "bg-yellow-500" },
   { value: "qualified", label: "Qualifié", color: "bg-green-500" },
-  { value: "lost", label: "Perdu", color: "bg-red-500" },
+  { value: "rdv", label: "RDV", color: "bg-purple-500" },
+  { value: "proposal", label: "Proposition", color: "bg-indigo-500" },
   { value: "won", label: "Signé", color: "bg-emerald-500" },
+  { value: "lost", label: "Perdu", color: "bg-red-500" },
 ];
-
-const DEBOUNCE_MS = 300;
 
 async function fetchBddForDropdown(): Promise<{ items: BddItem[] }> {
   const res = await fetch("/api/bdd?pageSize=100", { credentials: "include" });
@@ -91,8 +91,8 @@ function groupBddByRecency(items: BddItem[]): {
   return { recent, thisMonth, older };
 }
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import type { BddRow, ListesFilterState } from "./crm-table";
 import type { Prospect } from "@/lib/types/prospects";
 
@@ -129,6 +129,7 @@ export function CrmToolbar({
   const [campaignAction, setCampaignAction] = useState<"invite" | "contact" | null>(null);
 
   const prospectsWithLinkedin = selectedProspects.filter((p) => p.linkedin?.trim());
+  const prospectsWithPhone = selectedProspects.filter((p) => p.phone?.trim());
   const hasLinkedinSelection = prospectsWithLinkedin.length > 0;
   const hasListesSelection = selectedListes.length > 0;
   const hasAnySelection = selectedProspects.length > 0 || hasListesSelection;
@@ -144,28 +145,8 @@ export function CrmToolbar({
   };
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showFiltersOpen, setShowFiltersOpen] = useState(false);
-  const [searchInput, setSearchInput] = useState(filters.search);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
-
-  useEffect(() => {
-    setSearchInput(filters.search);
-  }, [filters.search]);
-
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      debounceRef.current = null;
-      const latest = filtersRef.current;
-      if (searchInput !== latest.search) {
-        onFiltersChange({ ...latest, search: searchInput });
-      }
-    }, DEBOUNCE_MS);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [searchInput, onFiltersChange]);
 
   const { data: bddData } = useQuery({
     queryKey: ["bdd-dropdown", workspaceId],
@@ -202,15 +183,13 @@ export function CrmToolbar({
     filters.source.length > 0 ||
     filters.tags.length > 0 ||
     filters.assignedTo ||
-    filters.bddId ||
-    searchInput;
+    filters.bddId;
 
   const hasListesFilters =
     listesFilters.source.length > 0 ||
     listesFilters.proprietaire ||
     listesFilters.dateFrom ||
-    listesFilters.dateTo ||
-    searchInput;
+    listesFilters.dateTo;
 
   const hasActiveFilters = view === "listes" ? hasListesFilters : hasProspectFilters;
 
@@ -235,102 +214,69 @@ export function CrmToolbar({
     onListesFiltersChange({ ...listesFilters, source: newSource });
   };
 
+  const selectionLabel = selectedProspects.length > 0
+    ? `${selectedProspects.length} prospect(s) sélectionné(s)`
+    : hasListesSelection
+      ? `${selectedListes.length} liste(s) sélectionnée(s)`
+      : null;
+
   return (
     <>
-      <div className="border-b px-6 py-4">
-        {/* Row 1: Search | Importer + Nouveau prospect */}
-        <div className="flex items-start gap-4">
-          <div className="relative min-w-0 flex-1 max-w-xl">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Rechercher par nom, email, entreprise..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              className="w-full rounded-lg border bg-background pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
+      <div className="border-b px-6 py-4 space-y-3">
+        {/* Row 1: View tabs (left) | Filters + always-visible actions (right) */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/20 p-1" role="group" aria-label="Vue CRM">
+            <button
+              type="button"
+              onClick={() => onViewChange("listes")}
+              className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                view === "listes"
+                  ? "bg-primary/10 text-primary border border-primary/20 shadow-none"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent"
+              }`}
+            >
+              <LayoutList className="h-4 w-4" />
+              Listes
+            </button>
+            <button
+              type="button"
+              onClick={() => onViewChange("prospects")}
+              className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                view === "prospects"
+                  ? "bg-primary/10 text-primary border border-primary/20 shadow-none"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent"
+              }`}
+            >
+              <Table2 className="h-4 w-4" />
+              Prospects
+            </button>
+            <button
+              type="button"
+              onClick={() => onViewChange("kanban")}
+              className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                view === "kanban"
+                  ? "bg-primary/10 text-primary border border-primary/20 shadow-none"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent"
+              }`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+              Kanban
+            </button>
+            <button
+              type="button"
+              onClick={() => onViewChange("corbeille")}
+              className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                view === "corbeille"
+                  ? "bg-primary/10 text-primary border border-primary/20 shadow-none"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent"
+              }`}
+            >
+              <Trash2 className="h-4 w-4" />
+              Corbeille
+            </button>
           </div>
-            <div className="flex flex-col items-end gap-2 shrink-0">
-            <div className="flex flex-wrap items-center gap-2">
-              {view === "prospects" && hasLinkedinSelection && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => openCampaignModal("invite")}
-                    className="flex items-center gap-2 rounded-lg border border-primary px-4 py-2 text-sm text-primary hover:bg-primary/10"
-                  >
-                    <UserPlus className="h-4 w-4" />
-                    Inviter ({prospectsWithLinkedin.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openCampaignModal("contact")}
-                    className="flex items-center gap-2 rounded-lg border border-primary px-4 py-2 text-sm text-primary hover:bg-primary/10"
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                    Contacter ({prospectsWithLinkedin.length})
-                  </button>
-                </>
-              )}
-              {hasAnySelection && (
-                <>
-                  <Link
-                    href="/campaigns"
-                    className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-accent"
-                  >
-                    <Megaphone className="h-4 w-4" />
-                    Voir campagnes
-                  </Link>
-                  {hasLinkedinSelection && (
-                    <Link
-                      href="/messagerie"
-                      className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-accent"
-                    >
-                      <MessageSquare className="h-4 w-4" />
-                      Démarrer conversation
-                    </Link>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      router.push(
-                        "/call-sessions/new?" +
-                          (view === "listes"
-                            ? `listes=${selectedListes.map((l) => l.id).join(",")}`
-                            : `prospects=${selectedProspects.map((p) => p.id).join(",")}`)
-                      )
-                    }
-                    className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-accent"
-                  >
-                    <Phone className="h-4 w-4" />
-                    Démarrer session d&apos;appels
-                  </button>
-                </>
-              )}
-              <button
-                type="button"
-                disabled
-                title="Bientôt disponible"
-                className="flex cursor-not-allowed items-center gap-2 rounded-lg border px-4 py-2 text-sm opacity-50"
-              >
-                <Upload className="h-4 w-4" />
-                Importer
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowCreateDialog(true)}
-                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
-              >
-                <Plus className="h-4 w-4" />
-                Nouveau prospect
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Row 2: Liste + Filtres (sous la searchbar) */}
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-            {view !== "listes" && (
+          <div className="flex flex-wrap items-center gap-2">
+            {view === "prospects" && (
             <Popover>
               <PopoverTrigger asChild>
                 <button
@@ -424,164 +370,119 @@ export function CrmToolbar({
                   {view === "listes" ? (
                     <>
                       <div>
-                        <label className="mb-2 block text-xs font-medium text-muted-foreground">
-                          Source
-                        </label>
+                        <label className="mb-2 block text-xs font-medium text-muted-foreground">Source</label>
                         <div className="flex flex-wrap gap-1">
                           {SOURCE_OPTIONS.map((source) => (
-                            <button
-                              key={source.value}
-                              type="button"
-                              onClick={() => toggleListesSource(source.value)}
-                              className={`rounded-md px-2 py-1 text-xs transition-colors ${
-                                listesFilters.source.includes(source.value)
-                                  ? "bg-primary text-primary-foreground"
-                                  : "bg-muted hover:bg-muted/80"
-                              }`}
-                            >
-                              {source.label}
-                            </button>
+                            <button key={source.value} type="button" onClick={() => toggleListesSource(source.value)}
+                              className={`rounded-md px-2 py-1 text-xs transition-colors ${listesFilters.source.includes(source.value) ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80"}`}>{source.label}</button>
                           ))}
                         </div>
                       </div>
                       <div>
-                        <label className="mb-2 block text-xs font-medium text-muted-foreground">
-                          Auteur
-                        </label>
+                        <label className="mb-2 block text-xs font-medium text-muted-foreground">Auteur</label>
                         <div className="flex flex-wrap gap-1">
                           {members.map((m) => (
-                            <button
-                              key={m.id}
-                              type="button"
-                              onClick={() =>
-                                onListesFiltersChange({
-                                  ...listesFilters,
-                                  proprietaire: listesFilters.proprietaire === m.id ? null : m.id,
-                                })
-                              }
-                              className={`rounded-md px-2 py-1 text-xs transition-colors ${
-                                listesFilters.proprietaire === m.id
-                                  ? "bg-primary text-primary-foreground"
-                                  : "bg-muted hover:bg-muted/80"
-                              }`}
-                            >
-                              {m.name}
-                            </button>
+                            <button key={m.id} type="button" onClick={() => onListesFiltersChange({ ...listesFilters, proprietaire: listesFilters.proprietaire === m.id ? null : m.id })}
+                              className={`rounded-md px-2 py-1 text-xs transition-colors ${listesFilters.proprietaire === m.id ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80"}`}>{m.name}</button>
                           ))}
-                          {members.length === 0 && (
-                            <p className="text-xs text-muted-foreground">Aucun membre</p>
-                          )}
+                          {members.length === 0 && <p className="text-xs text-muted-foreground">Aucun membre</p>}
                         </div>
                       </div>
                       <div>
-                        <label className="mb-2 block text-xs font-medium text-muted-foreground">
-                          Date de création
-                        </label>
+                        <label className="mb-2 block text-xs font-medium text-muted-foreground">Date de création</label>
                         <div className="flex gap-2">
-                          <input
-                            type="date"
-                            value={listesFilters.dateFrom ?? ""}
-                            onChange={(e) =>
-                              onListesFiltersChange({
-                                ...listesFilters,
-                                dateFrom: e.target.value || null,
-                              })
-                            }
-                            className="rounded border bg-background px-2 py-1 text-xs"
-                          />
+                          <input type="date" value={listesFilters.dateFrom ?? ""} onChange={(e) => onListesFiltersChange({ ...listesFilters, dateFrom: e.target.value || null })} className="rounded border bg-background px-2 py-1 text-xs" />
                           <span className="self-center text-muted-foreground">→</span>
-                          <input
-                            type="date"
-                            value={listesFilters.dateTo ?? ""}
-                            onChange={(e) =>
-                              onListesFiltersChange({
-                                ...listesFilters,
-                                dateTo: e.target.value || null,
-                              })
-                            }
-                            className="rounded border bg-background px-2 py-1 text-xs"
-                          />
+                          <input type="date" value={listesFilters.dateTo ?? ""} onChange={(e) => onListesFiltersChange({ ...listesFilters, dateTo: e.target.value || null })} className="rounded border bg-background px-2 py-1 text-xs" />
                         </div>
                       </div>
                     </>
                   ) : (
                     <>
-                  <div>
-                    <label className="mb-2 block text-xs font-medium text-muted-foreground">
-                      Statut
-                    </label>
-                    <div className="flex flex-wrap gap-1">
-                      {STATUS_OPTIONS.map((status) => (
-                        <button
-                          key={status.value}
-                          type="button"
-                          onClick={() => toggleStatus(status.value)}
-                          className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-                            filters.status.includes(status.value)
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-muted hover:bg-muted/80"
-                          }`}
-                        >
-                          <span className={`h-1.5 w-1.5 rounded-full ${status.color}`} />
-                          {status.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-xs font-medium text-muted-foreground">
-                      Source
-                    </label>
-                    <div className="flex flex-wrap gap-1">
-                      {SOURCE_OPTIONS.map((source) => (
-                        <button
-                          key={source.value}
-                          type="button"
-                          onClick={() => toggleSource(source.value)}
-                          className={`rounded-md px-2 py-1 text-xs transition-colors ${
-                            filters.source.includes(source.value)
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-muted hover:bg-muted/80"
-                          }`}
-                        >
-                          {source.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-xs font-medium text-muted-foreground">
-                      Tags
-                    </label>
-                    <p className="text-xs text-muted-foreground">TODO</p>
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-xs font-medium text-muted-foreground">
-                      Assigné à
-                    </label>
-                    <p className="text-xs text-muted-foreground">TODO</p>
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-xs font-medium text-muted-foreground">
-                      Date de création
-                    </label>
-                    <p className="text-xs text-muted-foreground">TODO</p>
-                  </div>
+                      <div>
+                        <label className="mb-2 block text-xs font-medium text-muted-foreground">Statut</label>
+                        <div className="flex flex-wrap gap-1">
+                          {STATUS_OPTIONS.map((status) => (
+                            <button key={status.value} type="button" onClick={() => toggleStatus(status.value)}
+                              className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${filters.status.includes(status.value) ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80"}`}>
+                              <span className={`h-1.5 w-1.5 rounded-full ${status.color}`} />{status.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-xs font-medium text-muted-foreground">Source</label>
+                        <div className="flex flex-wrap gap-1">
+                          {SOURCE_OPTIONS.map((source) => (
+                            <button key={source.value} type="button" onClick={() => toggleSource(source.value)}
+                              className={`rounded-md px-2 py-1 text-xs transition-colors ${filters.source.includes(source.value) ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80"}`}>{source.label}</button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-xs font-medium text-muted-foreground">Assigné à</label>
+                        <div className="flex flex-wrap gap-1">
+                          {members.map((m) => (
+                            <button key={m.id} type="button" onClick={() => onFiltersChange({ ...filters, assignedTo: filters.assignedTo === m.id ? null : m.id })}
+                              className={`rounded-md px-2 py-1 text-xs transition-colors ${filters.assignedTo === m.id ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80"}`}>{m.name}</button>
+                          ))}
+                          {members.length === 0 && <p className="text-xs text-muted-foreground">Aucun membre</p>}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-xs font-medium text-muted-foreground">Date de création</label>
+                        <div className="flex gap-2">
+                          <input type="date" value={filters.dateRange?.from ? filters.dateRange.from.toISOString().slice(0, 10) : ""} onChange={(e) => { const val = e.target.value; const from = val ? new Date(val) : null; const to = filters.dateRange?.to ?? null; onFiltersChange({ ...filters, dateRange: from ? { from, to: to ?? from } : null }); }} className="rounded border bg-background px-2 py-1 text-xs" />
+                          <span className="self-center text-muted-foreground">→</span>
+                          <input type="date" value={filters.dateRange?.to ? filters.dateRange.to.toISOString().slice(0, 10) : ""} onChange={(e) => { const val = e.target.value; const to = val ? new Date(val) : null; const from = filters.dateRange?.from ?? null; onFiltersChange({ ...filters, dateRange: to && from ? { from, to } : null }); }} className="rounded border bg-background px-2 py-1 text-xs" />
+                        </div>
+                      </div>
                     </>
                   )}
                 </div>
               </PopoverContent>
             </Popover>
             {hasActiveFilters && (
-              <button
-                onClick={view === "listes" ? onListesReset : onReset}
-                className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
-              >
+              <button onClick={view === "listes" ? onListesReset : onReset} className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
                 <X className="h-4 w-4" />
                 Réinitialiser
               </button>
             )}
+            <button type="button" onClick={() => setShowImportDialog(true)} className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm hover:bg-accent">
+              <Upload className="h-4 w-4" />
+              Importer
+            </button>
+            <button type="button" onClick={() => setShowCreateDialog(true)} className="flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90">
+              <Plus className="h-4 w-4" />
+              Nouveau prospect
+            </button>
+
           </div>
+        </div>
+
+        {/* Row 2: Selection-specific actions (Inviter / Conversation) – only in prospects view */}
+        {view === "prospects" && hasLinkedinSelection && (
+          <div className="flex flex-wrap items-center gap-2 pt-1 border-t">
+            <button
+              type="button"
+              onClick={() => openCampaignModal("invite")}
+              className="flex items-center gap-2 rounded-lg border border-primary px-3 py-1.5 text-sm text-primary hover:bg-primary/10"
+            >
+              <UserPlus className="h-4 w-4" />
+              Inviter ({prospectsWithLinkedin.length})
+            </button>
+            <Link
+              href="/messagerie"
+              className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm hover:bg-accent"
+            >
+              <MessageSquare className="h-4 w-4" />
+              Démarrer conversation
+            </Link>
+            {selectionLabel && (
+              <span className="text-xs text-muted-foreground ml-auto">{selectionLabel}</span>
+            )}
+          </div>
+        )}
       </div>
 
       <ProspectCreateDialog

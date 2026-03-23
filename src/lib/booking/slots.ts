@@ -7,10 +7,11 @@ import {
   parseISO,
 } from "date-fns";
 
-const SLOT_MINUTES = 30;
+const DEFAULT_SLOT_MINUTES = 30;
 const DEFAULT_START_HOUR = 9;
 const DEFAULT_END_HOUR = 18;
-const DAYS_AHEAD = 14;
+const DEFAULT_DAYS_AHEAD = 14;
+const DEFAULT_WORKING_DAYS = [1, 2, 3, 4, 5]; // Mon-Fri
 
 export interface Slot {
   start: string;
@@ -20,6 +21,14 @@ export interface Slot {
 export interface EventRow {
   start_time: string;
   end_time: string;
+}
+
+export interface AvailabilityConfig {
+  startHour?: number;
+  endHour?: number;
+  slotMinutes?: number;
+  workingDays?: number[];
+  daysAhead?: number;
 }
 
 /** Paris offset: UTC+1 winter, UTC+2 summer (approx Mar-Oct) */
@@ -33,20 +42,26 @@ function getParisOffsetHours(date: Date): number {
 }
 
 /**
- * Generate default availability slots for a date range.
- * Mon-Fri 9h-18h Europe/Paris, 30min slots.
+ * Generate availability slots for a date range.
+ * Configurable hours, days, slot duration. Defaults to Mon-Fri 9h-18h Europe/Paris, 30min slots.
  */
-export function getDefaultSlotsForDateRange(from: Date): Slot[] {
+export function getDefaultSlotsForDateRange(from: Date, config?: AvailabilityConfig): Slot[] {
+  const slotMinutes = config?.slotMinutes ?? DEFAULT_SLOT_MINUTES;
+  const startHour = config?.startHour ?? DEFAULT_START_HOUR;
+  const endHour = config?.endHour ?? DEFAULT_END_HOUR;
+  const workingDays = config?.workingDays ?? DEFAULT_WORKING_DAYS;
+  const daysAhead = config?.daysAhead ?? DEFAULT_DAYS_AHEAD;
+
   const slots: Slot[] = [];
 
-  for (let d = 0; d < DAYS_AHEAD; d++) {
+  for (let d = 0; d < daysAhead; d++) {
     const day = addDays(from, d);
     const dow = day.getUTCDay();
-    if (dow === 0 || dow === 6) continue;
+    if (!workingDays.includes(dow)) continue;
 
     const offset = getParisOffsetHours(day);
-    const utcStartHour = DEFAULT_START_HOUR - offset;
-    const utcEndHour = DEFAULT_END_HOUR - offset;
+    const utcStartHour = startHour - offset;
+    const utcEndHour = endHour - offset;
 
     const y = day.getUTCFullYear();
     const mon = day.getUTCMonth();
@@ -57,7 +72,7 @@ export function getDefaultSlotsForDateRange(from: Date): Slot[] {
 
     let slotStart = dayStart;
     while (isBefore(slotStart, dayEnd)) {
-      const slotEnd = addMinutes(slotStart, SLOT_MINUTES);
+      const slotEnd = addMinutes(slotStart, slotMinutes);
       slots.push({
         start: slotStart.toISOString(),
         end: slotEnd.toISOString(),

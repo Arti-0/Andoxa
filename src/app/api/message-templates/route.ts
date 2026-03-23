@@ -8,6 +8,7 @@ const ALLOWED_VARIABLES = [
   "jobTitle",
   "phone",
   "email",
+  "bookingLink",
 ] as const;
 
 const CreateTemplateSchema = z.object({

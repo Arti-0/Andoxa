@@ -150,7 +150,8 @@ export function WorkspaceProvider({
           owner_id,
           deleted_at,
           created_at,
-          updated_at
+          updated_at,
+          metadata
         `
         )
         .eq("id", profileData.active_organization_id)
@@ -172,6 +173,7 @@ export function WorkspaceProvider({
           credits: workspaceData.credits ?? 0,
           created_at: workspaceData.created_at ?? new Date().toISOString(),
           updated_at: workspaceData.updated_at ?? new Date().toISOString(),
+          metadata: workspaceData.metadata as Workspace["metadata"],
         };
 
         if (!mountedRef.current) return null;

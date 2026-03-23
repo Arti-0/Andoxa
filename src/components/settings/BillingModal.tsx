@@ -6,8 +6,11 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { CreditCard, Sparkles, Crown, Building2 } from "lucide-react";
 
 interface BillingModalProps {
   open: boolean;
@@ -15,6 +18,24 @@ interface BillingModalProps {
   plan: string | null;
   subscriptionStatus: string | null;
 }
+
+const PLAN_DISPLAY: Record<string, { label: string; icon: typeof CreditCard; accent: string }> = {
+  free: { label: "Gratuit", icon: CreditCard, accent: "border-muted text-muted-foreground" },
+  starter: { label: "Starter", icon: Sparkles, accent: "border-blue-500/40 text-blue-600 dark:text-blue-400" },
+  pro: { label: "Pro", icon: Crown, accent: "border-primary/40 text-primary" },
+  enterprise: { label: "Enterprise", icon: Building2, accent: "border-amber-500/40 text-amber-600 dark:text-amber-400" },
+};
+
+const STATUS_DISPLAY: Record<string, string> = {
+  active: "Actif",
+  trialing: "Essai gratuit",
+  past_due: "En retard",
+  canceled: "Annulé",
+  incomplete: "Incomplet",
+  incomplete_expired: "Expiré",
+  unpaid: "Impayé",
+  paused: "En pause",
+};
 
 export function BillingModal({
   open,
@@ -24,6 +45,11 @@ export function BillingModal({
 }: BillingModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const planKey = (plan ?? "free").toLowerCase();
+  const display = PLAN_DISPLAY[planKey] ?? PLAN_DISPLAY.free;
+  const PlanIcon = display.icon;
+  const statusLabel = STATUS_DISPLAY[subscriptionStatus ?? ""] ?? subscriptionStatus ?? "—";
 
   const handleManageBilling = async () => {
     setLoading(true);
@@ -48,32 +74,36 @@ export function BillingModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Abonnement</DialogTitle>
+          <DialogDescription>
+            Gérez votre plan et consultez vos factures via le portail de facturation.
+          </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Plan actuel</p>
-            <p className="font-medium">{plan === "free" ? "Gratuit" : plan || "Gratuit"}</p>
+
+        <div className="grid grid-cols-2 gap-3 py-2">
+          <div className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 ${display.accent}`}>
+            <PlanIcon className="h-6 w-6" />
+            <span className="text-lg font-bold">{display.label}</span>
+            <span className="text-xs text-muted-foreground">Plan actuel</span>
           </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Statut</p>
-            <p className="font-medium">{subscriptionStatus || "—"}</p>
+          <div className="flex flex-col items-center justify-center gap-2 rounded-xl border p-4">
+            <span className="text-lg font-bold">{statusLabel}</span>
+            <span className="text-xs text-muted-foreground">Statut</span>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Gérez votre abonnement, changez de plan et consultez vos factures via
-            le portail Stripe.
-          </p>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button
-            onClick={handleManageBilling}
-            disabled={loading}
-            className="w-full sm:w-auto"
-          >
-            {loading ? "Redirection…" : "Gérer ma facturation"}
-          </Button>
         </div>
+
+        {error && <p className="text-sm text-destructive">{error}</p>}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Fermer
+          </Button>
+          <Button onClick={handleManageBilling} disabled={loading}>
+            {loading ? "Redirection..." : "Gérer ma facturation"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -42,9 +42,11 @@ function NewCallSessionContent() {
 
         if (!res.ok) {
           const json = await res.json().catch(() => ({}));
+          const err = json?.error;
+          const details = err?.details as { errors?: Record<string, string> } | undefined;
           const msg =
-            json?.error?.details?.prospect_ids ??
-            json?.error?.message ??
+            details?.errors?.prospect_ids ??
+            err?.message ??
             "Impossible de créer la session";
           setError(msg);
           return;

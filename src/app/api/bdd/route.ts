@@ -11,7 +11,8 @@ import {
  * Filters: source, proprietaire, date_from, date_to, search
  */
 export const GET = createApiHandler(async (req, ctx) => {
-  if (!ctx.workspaceId) {
+  const workspaceId = ctx.workspaceId;
+  if (!workspaceId) {
     throw Errors.badRequest("Workspace required");
   }
 
@@ -21,7 +22,7 @@ export const GET = createApiHandler(async (req, ctx) => {
   let query = ctx.supabase
     .from("bdd")
     .select("*", { count: "exact" })
-    .eq("organization_id", ctx.workspaceId)
+    .eq("organization_id", workspaceId)
     .order("created_at", { ascending: false })
     .range(offset, offset + pageSize - 1);
 
@@ -48,8 +49,65 @@ export const GET = createApiHandler(async (req, ctx) => {
     throw Errors.internal("Failed to fetch listes d'import");
   }
 
+  const items = (data ?? []) as Array<{
+    id: string;
+    name: string;
+    proprietaire: string | null;
+    source: string;
+    created_at: string | null;
+    [k: string]: unknown;
+  }>;
+
+  // Fetch prospects count per list in parallel
+  const bddIds = items.map((r) => r.id);
+  const countPromises =
+    bddIds.length > 0
+      ? bddIds.map((bddId) =>
+          ctx.supabase
+            .from("prospects")
+            .select("id", { count: "exact", head: true })
+            .eq("organization_id", workspaceId)
+            .is("deleted_at", null)
+            .eq("bdd_id", bddId)
+        )
+      : [];
+
+  const countResults = await Promise.all(countPromises);
+  const prospectsCountByBddId = new Map<string, number>();
+  bddIds.forEach((id, i) => {
+    const res = countResults[i];
+    prospectsCountByBddId.set(id, res?.count ?? 0);
+  });
+
+  const phoneCountPromises =
+    bddIds.length > 0
+      ? bddIds.map((bddId) =>
+          ctx.supabase
+            .from("prospects")
+            .select("id", { count: "exact", head: true })
+            .eq("organization_id", workspaceId)
+            .is("deleted_at", null)
+            .eq("bdd_id", bddId)
+            .not("phone", "is", null)
+            .neq("phone", "")
+        )
+      : [];
+
+  const phoneCountResults = await Promise.all(phoneCountPromises);
+  const phonesCountByBddId = new Map<string, number>();
+  bddIds.forEach((id, i) => {
+    const res = phoneCountResults[i];
+    phonesCountByBddId.set(id, res?.count ?? 0);
+  });
+
+  const itemsWithCount = items.map((row) => ({
+    ...row,
+    prospects_count: prospectsCountByBddId.get(row.id) ?? 0,
+    phones_count: phonesCountByBddId.get(row.id) ?? 0,
+  }));
+
   return {
-    items: data ?? [],
+    items: itemsWithCount,
     total: count ?? 0,
     page,
     pageSize,

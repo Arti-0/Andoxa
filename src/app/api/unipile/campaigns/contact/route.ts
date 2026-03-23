@@ -1,4 +1,5 @@
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
+import { env } from "@/lib/config/environment";
 import { getAccountIdForUser } from "@/lib/unipile/account";
 import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";
 import { applyMessageVariables, extractLinkedInSlug } from "@/lib/unipile/campaign";
@@ -9,6 +10,8 @@ interface ProspectRow {
   full_name: string | null;
   company: string | null;
   job_title: string | null;
+  phone: string | null;
+  email: string | null;
   linkedin: string | null;
 }
 
@@ -31,10 +34,21 @@ export const POST = createApiHandler(async (req, ctx) => {
 
   const { data: prospects } = await ctx.supabase
     .from("prospects")
-    .select("id, full_name, company, job_title, linkedin")
+    .select("id, full_name, company, job_title, phone, email, linkedin")
     .eq("organization_id", ctx.workspaceId)
     .in("id", body.prospect_ids)
     .not("linkedin", "is", null);
+
+  let bookingLink: string | null = null;
+  const { data: profile } = await ctx.supabase
+    .from("profiles")
+    .select("booking_slug")
+    .eq("id", ctx.userId)
+    .single();
+  if (profile?.booking_slug) {
+    const appUrl = env.getConfig().appUrl.replace(/\/$/, "");
+    bookingLink = `${appUrl}/booking/${profile.booking_slug}`;
+  }
 
   if (!prospects?.length) {
     throw Errors.badRequest(
@@ -65,7 +79,7 @@ export const POST = createApiHandler(async (req, ctx) => {
         continue;
       }
 
-      const text = applyMessageVariables(messageTemplate, p);
+      const text = applyMessageVariables(messageTemplate, p, { bookingLink });
       const chatRes = await unipileFetch<UnipileChat & { id: string }>("/chats", {
         method: "POST",
         body: JSON.stringify({
@@ -103,4 +117,4 @@ export const POST = createApiHandler(async (req, ctx) => {
     chat_id: lastChatId,
     errors: errors.slice(0, 10),
   };
-});
+}, { rateLimit: { name: "campaigns", requests: 5, window: "1 m" } });

@@ -47,6 +47,8 @@ export interface DataTableLayoutProps<TData> {
   rowClassName?: (row: Row<TData>) => string | undefined;
   onRowClick?: RowEventHandler<TData>;
   disabledRowClick?: (row: Row<TData>) => boolean;
+  /** "design2" applies rounded-xl border bg-card shadow-xs, thead bg-muted/40, row hover/selected styles */
+  variant?: "default" | "design2";
 }
 
 const DEFAULT_ESTIMATE_SIZE = 68;
@@ -68,9 +70,21 @@ function DataTableComponent<TData>(
     rowClassName,
     onRowClick,
     disabledRowClick,
+    variant = "default",
   }: DataTableLayoutProps<TData>,
   ref: ForwardedRef<HTMLDivElement>
 ) {
+  const isDesign2 = variant === "design2";
+  const effectiveRowClassName = useMemo(() => {
+    if (isDesign2) {
+      return (row: Row<TData>) =>
+        cn(
+          row.getIsSelected() ? "bg-primary/5" : "hover:bg-muted/30",
+          rowClassName?.(row)
+        );
+    }
+    return rowClassName;
+  }, [isDesign2, rowClassName]);
   const rows = table.getRowModel().rows;
   const visibleColumns = useMemo(
     () => table.getVisibleLeafColumns(),
@@ -104,7 +118,7 @@ function DataTableComponent<TData>(
         <TableRow
           key={row.id}
           data-state={row.getIsSelected() && "selected"}
-          className={cn(rowClassName?.(row))}
+          className={cn(effectiveRowClassName?.(row))}
           onClick={
             disabledClick
               ? undefined
@@ -143,7 +157,7 @@ function DataTableComponent<TData>(
               key={row.id}
               data-index={virtualRow.index}
               data-state={row.getIsSelected() && "selected"}
-              className={cn(rowClassName?.(row))}
+              className={cn(effectiveRowClassName?.(row))}
               style={{ height: `${virtualRow.size}px` }}
               onClick={(event) => {
                 const disabledClick = disabledRowClick?.(row) ?? false;
@@ -185,7 +199,12 @@ function DataTableComponent<TData>(
       >
         {toolbar}
 
-        <div className="relative min-w-0 overflow-hidden rounded-md border">
+        <div
+          className={cn(
+            "relative min-w-0 overflow-hidden",
+            isDesign2 ? "rounded-xl border bg-card shadow-xs" : "rounded-md border"
+          )}
+        >
           <div
             ref={scrollRef}
             className={cn(
@@ -194,21 +213,27 @@ function DataTableComponent<TData>(
               tableContainerClassName
             )}
           >
-            <Table className="min-w-full">
-              <TableHeader className="sticky top-0 z-30 bg-background">
+            <Table
+              className={cn(
+                "min-w-full",
+                isDesign2 && "[&_td]:px-4 [&_td]:py-3"
+              )}
+            >
+              <TableHeader
+                className={cn(
+                  "sticky top-0 z-30",
+                  isDesign2 ? "bg-muted/40 border-b-2 border-border" : "bg-background border-b border-border"
+                )}
+              >
                 {table.getHeaderGroups().map((headerGroup) => (
-                  <TableRow key={headerGroup.id}>
+                  <TableRow key={headerGroup.id} className="border-b-0">
                     {headerGroup.headers.map((header) => {
-                      const headerMeta =
-                        (header.column.columnDef.meta as
-                          | { headerClassName?: string }
-                          | undefined) ?? {};
                       return (
                         <TableHead
                           key={header.id}
                           className={cn(
-                            "bg-background sticky top-0 z-30",
-                            headerMeta.headerClassName
+                            "sticky top-0 z-30 px-4 py-3",
+                            isDesign2 ? "bg-muted/40" : "bg-background"
                           )}
                         >
                           {header.isPlaceholder

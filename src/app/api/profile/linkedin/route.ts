@@ -68,6 +68,16 @@ export const GET = createApiHandler(
             .eq("id", ctx.userId);
         }
       }
+
+      // Cache LinkedIn avatar in profiles so sidebar can display it without API calls
+      const pictureUrl = enriched?.profile_picture_url ?? null;
+      const currentAvatar = (profile as { avatar_url?: string | null }).avatar_url ?? null;
+      if (pictureUrl && pictureUrl !== currentAvatar) {
+        await ctx.supabase
+          .from("profiles")
+          .update({ avatar_url: pictureUrl, updated_at: new Date().toISOString() })
+          .eq("id", ctx.userId);
+      }
     } catch {
       // Unipile not connected or fetch failed – enriched stays null
     }

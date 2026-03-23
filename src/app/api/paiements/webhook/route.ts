@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as Sentry from "@sentry/nextjs";
 import { createServiceClient } from '@/lib/supabase/service';
 import Stripe from 'stripe';
 
@@ -191,6 +192,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true });
   } catch (error) {
     console.error("Error processing webhook:", error);
+    Sentry.captureException(error);
     return NextResponse.json(
       { error: "Webhook processing failed" },
       { status: 500 }

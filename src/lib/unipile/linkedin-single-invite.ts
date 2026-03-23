@@ -1,0 +1,64 @@
+import { env } from "@/lib/config/environment";
+import type { ApiContext } from "@/lib/api";
+import { applyMessageVariables, extractLinkedInSlug } from "@/lib/unipile/campaign";
+import { unipileFetch } from "@/lib/unipile/client";
+
+export type InviteProspectRow = {
+  id: string;
+  full_name: string | null;
+  company: string | null;
+  job_title: string | null;
+  phone: string | null;
+  email: string | null;
+  linkedin: string | null;
+};
+
+/**
+ * Resolves provider_id and sends one LinkedIn connection invite via Unipile.
+ */
+export async function sendLinkedInInviteForProspect(
+  ctx: ApiContext,
+  prospect: InviteProspectRow,
+  accountId: string,
+  messageTemplate?: string
+): Promise<void> {
+  const slug = extractLinkedInSlug(prospect.linkedin);
+  if (!slug) {
+    throw new Error("URL LinkedIn invalide");
+  }
+
+  let bookingLink: string | null = null;
+  const { data: profile } = await ctx.supabase
+    .from("profiles")
+    .select("booking_slug")
+    .eq("id", ctx.userId)
+    .single();
+  if (profile?.booking_slug) {
+    const appUrl = env.getConfig().appUrl.replace(/\/$/, "");
+    bookingLink = `${appUrl}/booking/${profile.booking_slug}`;
+  }
+
+  const message =
+    (messageTemplate ?? "").trim() ||
+    "Bonjour, j'aimerais vous ajouter à mon réseau.";
+  const personalizedMessage = applyMessageVariables(message, prospect, {
+    bookingLink,
+  });
+
+  const profileRes = await unipileFetch<{ provider_id?: string }>(
+    `/users/${encodeURIComponent(slug)}?account_id=${accountId}`
+  );
+  const providerId = profileRes?.provider_id;
+  if (!providerId) {
+    throw new Error("Impossible de résoudre le profil LinkedIn");
+  }
+
+  await unipileFetch("/users/invite", {
+    method: "POST",
+    body: JSON.stringify({
+      account_id: accountId,
+      provider_id: providerId,
+      message: personalizedMessage,
+    }),
+  });
+}

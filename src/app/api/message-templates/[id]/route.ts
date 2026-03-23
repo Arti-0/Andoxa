@@ -16,7 +16,7 @@ const UpdateTemplateSchema = z.object({
 });
 
 function extractVariables(content: string): string[] {
-  const ALLOWED = ["firstName", "lastName", "company", "jobTitle", "phone", "email"];
+  const ALLOWED = ["firstName", "lastName", "company", "jobTitle", "phone", "email", "bookingLink"];
   const matches = content.match(/\{\{(\w+)\}\}/g) || [];
   return [
     ...new Set(

@@ -6,6 +6,13 @@ export interface ProspectForVariables {
   full_name: string | null;
   company: string | null;
   job_title: string | null;
+  phone?: string | null;
+  email?: string | null;
+}
+
+export interface MessageVariablesContext {
+  /** Full URL for the sender's booking page (lien de prise de RDV) */
+  bookingLink?: string | null;
 }
 
 function deriveNameParts(fullName: string | null): { firstName: string; lastName: string } {
@@ -20,14 +27,19 @@ function deriveNameParts(fullName: string | null): { firstName: string; lastName
 
 export function applyMessageVariables(
   template: string,
-  prospect: ProspectForVariables
+  prospect: ProspectForVariables,
+  context?: MessageVariablesContext
 ): string {
   const { firstName, lastName } = deriveNameParts(prospect.full_name);
-  return template
+  let result = template
     .replace(/\{\{firstName\}\}/g, firstName)
     .replace(/\{\{lastName\}\}/g, lastName)
     .replace(/\{\{company\}\}/g, prospect.company ?? "")
-    .replace(/\{\{jobTitle\}\}/g, prospect.job_title ?? "");
+    .replace(/\{\{jobTitle\}\}/g, prospect.job_title ?? "")
+    .replace(/\{\{phone\}\}/g, prospect.phone ?? "")
+    .replace(/\{\{email\}\}/g, prospect.email ?? "")
+    .replace(/\{\{bookingLink\}\}/g, context?.bookingLink ?? "");
+  return result;
 }
 
 const LINKEDIN_SLUG_RE = /linkedin\.com\/in\/([^/?]+)/i;

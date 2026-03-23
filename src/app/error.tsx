@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { Button } from "@/components/ui/button";
 import { siteConfig } from "./siteConfig";
 import { errorLogger } from "@/lib/error-handling/error-logger";
@@ -15,7 +16,7 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Log l'erreur avec le contexte
+    Sentry.captureException(error);
     errorLogger.error("Application error boundary caught an error", error, {
       component: "ErrorBoundary",
       action: "error_display",

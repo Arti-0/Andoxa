@@ -6,6 +6,8 @@
  * - Team: workspace équipe (multiple users)
  */
 
+import type { Json } from "@/lib/types/supabase";
+
 export type WorkspaceType = 'freelance' | 'team';
 
 export type WorkspacePlan = 'free' | 'essential' | 'pro' | 'business' | 'demo';
@@ -67,6 +69,8 @@ export interface Workspace {
   owner_id: string;
   created_at: string;
   updated_at: string;
+  /** Org settings JSON (e.g. auto_enrich_on_import) */
+  metadata?: Json | null;
 
   // Soft delete (30-day retention for export)
   status?: string | null;

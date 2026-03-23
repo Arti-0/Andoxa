@@ -277,7 +277,7 @@ export default function CalendarPage() {
         <div>
           <h1 className="text-2xl font-bold">Calendrier</h1>
           <p className="text-muted-foreground">
-            Gérez vos rendez-vous et événements
+            Vue semaine : créez, déplacez et redimensionnez vos RDV ; les réservations publiques apparaissent ici.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">

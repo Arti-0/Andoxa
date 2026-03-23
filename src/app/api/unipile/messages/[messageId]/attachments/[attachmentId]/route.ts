@@ -44,7 +44,7 @@ export async function GET(
 
   if (!account?.unipile_account_id) {
     return NextResponse.json(
-      { error: "Connectez votre compte LinkedIn via Unipile" },
+      { error: "Connectez votre compte LinkedIn depuis la page Installation" },
       { status: 403 }
     );
   }
@@ -61,7 +61,7 @@ export async function GET(
 
     if (!res.ok) {
       const text = await res.text();
-      let detail = "Erreur Unipile";
+      let detail = "Erreur de téléchargement";
       try {
         const parsed = JSON.parse(text) as { detail?: string; title?: string };
         detail = parsed.detail ?? parsed.title ?? detail;

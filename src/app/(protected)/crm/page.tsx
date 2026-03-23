@@ -2,15 +2,15 @@
 
 import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutGrid, LayoutList, Table2 } from "lucide-react";
 import { useWorkspace } from "../../../lib/workspace";
 import {
   CrmTable,
   type BddRow,
   type ListesFilterState,
 } from "../../../components/crm/crm-table";
+import { CrmKanban } from "../../../components/crm/crm-kanban";
 import type { Prospect } from "../../../lib/types/prospects";
-import { type FilterState } from "../../../components/crm/prospect-filters";
+import { type FilterState } from "../../../components/crm/crm-table";
 import { CrmToolbar } from "../../../components/crm/crm-toolbar";
 
 /**
@@ -38,7 +38,7 @@ export default function CrmPage() {
   const { workspaceId } = useWorkspace();
   const [prospectFilters, setProspectFilters] = useState<FilterState>(defaultProspectFilters);
   const [listesFilters, setListesFilters] = useState<ListesFilterState>(defaultListesFilters);
-  const [view, setView] = useState<"listes" | "prospects" | "kanban">("listes");
+  const [view, setView] = useState<"listes" | "prospects" | "corbeille" | "kanban">("listes");
   const [selectedProspects, setSelectedProspects] = useState<Prospect[]>([]);
   const [selectedListes, setSelectedListes] = useState<BddRow[]>([]);
   const onSelectionChange = useCallback((prospects: Prospect[]) => {
@@ -54,19 +54,26 @@ export default function CrmPage() {
       const res = await fetch("/api/organization/members", { credentials: "include" });
       if (!res.ok) throw new Error(String(res.status));
       const json = await res.json();
-      return (json.data ?? json) as { items: { id: string; name: string }[] };
+      return (json.data ?? json) as {
+        items: { id: string; name: string; avatar_url: string | null }[];
+      };
     },
     enabled: !!workspaceId,
   });
   const memberNames = new Map((membersData?.items ?? []).map((m) => [m.id, m.name]));
+  const memberAvatars = new Map(
+    (membersData?.items ?? []).map((m) => [m.id, m.avatar_url ?? null])
+  );
 
   const handleSelectList = (bddId: string | null) => {
     setProspectFilters((prev) => ({ ...prev, bddId }));
     setView("prospects");
   };
 
-  const handleViewChange = (newView: "listes" | "prospects" | "kanban") => {
+  const handleViewChange = (newView: "listes" | "prospects" | "corbeille" | "kanban") => {
     setView(newView);
+    setSelectedProspects([]);
+    setSelectedListes([]);
     if (newView === "listes") {
       setProspectFilters((prev) => ({ ...prev, bddId: null }));
     }
@@ -88,110 +95,61 @@ export default function CrmPage() {
         selectedListes={selectedListes}
       />
 
-      {(view === "listes" || view === "prospects") && (
+      {(view === "listes" || view === "prospects" || view === "corbeille") && (
         <div className="flex-1 flex flex-col overflow-hidden p-6">
-          {(view === "listes" || view === "prospects") && (
-            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">
-                  {view === "listes" ? "Vos listes" : "Vos prospects"}
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  {view === "listes"
-                    ? "Cliquez sur une liste pour afficher ses prospects dans la vue Prospects."
-                    : "Gérez vos prospects et suivez l'avancement de vos campagnes avec les filtres."}
-                </p>
-              </div>
-              <div className="flex rounded-lg border p-1 shrink-0" role="group" aria-label="Vue CRM">
-                <button
-                  type="button"
-                  onClick={() => handleViewChange("listes")}
-                  className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
-                    view === "listes" ? "bg-primary text-primary-foreground" : "hover:bg-accent"
-                  }`}
-                >
-                  <LayoutList className="h-4 w-4" />
-                  Listes
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleViewChange("prospects")}
-                  className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
-                    view === "prospects" ? "bg-primary text-primary-foreground" : "hover:bg-accent"
-                  }`}
-                >
-                  <Table2 className="h-4 w-4" />
-                  Prospects
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleViewChange("kanban")}
-                  className="flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
-                >
-                  <LayoutGrid className="h-4 w-4" />
-                  Kanban
-                </button>
-              </div>
-            </div>
-          )}
-          {(view === "listes" || view === "prospects") && (
-            <div className="flex-1 min-h-0">
-              <CrmTable
-                mode={view}
-                workspaceId={workspaceId}
-                prospectFilters={prospectFilters}
-                listesFilters={listesFilters}
-                onSelectList={handleSelectList}
-                memberNames={memberNames}
-                onSelectionChange={onSelectionChange}
-                onListesSelectionChange={onListesSelectionChange}
-              />
-            </div>
-          )}
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold">
+              {view === "listes" ? "Vos listes" : view === "corbeille" ? "Corbeille" : "Vos prospects"}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {view === "listes" ? (
+                <>
+                  Cliquez sur une liste pour afficher ses prospects.
+                  {selectedListes.length > 0 && (
+                    <span className="ml-2 text-primary font-medium">
+                      — {selectedListes.length} liste(s) sélectionnée(s)
+                    </span>
+                  )}
+                </>
+              ) : view === "corbeille" ? (
+                "Prospects supprimés. Restaurez-les pour les réintégrer."
+              ) : (
+                <>
+                  Gérez vos prospects.
+                  {selectedProspects.length > 0 && (
+                    <span className="ml-2 text-primary font-medium">
+                      — {selectedProspects.length} prospect(s) sélectionné(s)
+                    </span>
+                  )}
+                </>
+              )}
+            </p>
+          </div>
+          <div className="flex-1 min-h-0">
+            <CrmTable
+              mode={view === "corbeille" ? "corbeille" : view}
+              workspaceId={workspaceId}
+              prospectFilters={prospectFilters}
+              listesFilters={listesFilters}
+              onSelectList={handleSelectList}
+              memberNames={memberNames}
+              memberAvatars={memberAvatars}
+              onSelectionChange={onSelectionChange}
+              onListesSelectionChange={onListesSelectionChange}
+            />
+          </div>
         </div>
       )}
 
       {view === "kanban" && (
         <div className="flex-1 flex flex-col overflow-hidden p-6">
-          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">Vue Kanban</h2>
-              <p className="text-sm text-muted-foreground">
-                Visualisez vos prospects par statut. Bientôt disponible.
-              </p>
-            </div>
-            <div className="flex rounded-lg border p-1 shrink-0" role="group" aria-label="Vue CRM">
-              <button
-                type="button"
-                onClick={() => handleViewChange("listes")}
-                className="flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
-              >
-                <LayoutList className="h-4 w-4" />
-                Listes
-              </button>
-              <button
-                type="button"
-                onClick={() => handleViewChange("prospects")}
-                className="flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
-              >
-                <Table2 className="h-4 w-4" />
-                Prospects
-              </button>
-              <button
-                type="button"
-                className="flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium bg-primary text-primary-foreground"
-              >
-                <LayoutGrid className="h-4 w-4" />
-                Kanban
-              </button>
-            </div>
-          </div>
-          <div className="flex flex-1 min-h-[400px] flex-col items-center justify-center rounded-lg border bg-card p-12">
-            <LayoutGrid className="h-12 w-12 text-muted-foreground/50" />
-            <p className="mt-4 text-sm text-muted-foreground">
-              Bientôt disponible – Vue Kanban par statut.
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold">Vue Kanban</h2>
+            <p className="text-sm text-muted-foreground">
+              Visualisez vos prospects par statut.
             </p>
           </div>
+          <CrmKanban workspaceId={workspaceId} prospectFilters={prospectFilters} />
         </div>
       )}
     </div>

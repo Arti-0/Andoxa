@@ -115,14 +115,14 @@ function generateChartData(
   const periods = ["Il y a 5 mois", "Il y a 4 mois", "Il y a 3 mois", "Il y a 2 mois", "Il y a 1 mois", "Mois actuel"];
 
   if (kpiId === "performance-campagnes") {
-    // Courbe réaliste avec vos valeurs exactes
+    // Courbe réaliste : messages envoyés par période
     const data = [
-      { name: "Il y a 5 mois", value: 65, "Taux d'ouverture": 65, "Taux de clic": 8.2 },
-      { name: "Il y a 4 mois", value: 48, "Taux d'ouverture": 48, "Taux de clic": 6.1 },
-      { name: "Il y a 3 mois", value: 72, "Taux d'ouverture": 72, "Taux de clic": 9.8 },
-      { name: "Il y a 2 mois", value: 58, "Taux d'ouverture": 58, "Taux de clic": 7.5 },
-      { name: "Il y a 1 mois", value: 85, "Taux d'ouverture": 85, "Taux de clic": 12.2 },
-      { name: "Mois actuel", value: 94, "Taux d'ouverture": 94, "Taux de clic": 14.8 },
+      { name: "Il y a 5 mois", value: 42 },
+      { name: "Il y a 4 mois", value: 38 },
+      { name: "Il y a 3 mois", value: 55 },
+      { name: "Il y a 2 mois", value: 48 },
+      { name: "Il y a 1 mois", value: 72 },
+      { name: "Mois actuel", value: 89 },
     ];
 
     return {

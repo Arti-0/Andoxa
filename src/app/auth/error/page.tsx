@@ -3,7 +3,7 @@ import { AuthLayout } from "@/lib/auth/components/auth-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-// import { ResendConfirmationForm } from "@/lib/auth/components/resend-confirmation-form";
+import { ResendConfirmationForm } from "@/lib/auth/components/resend-confirmation-form";
 
 interface AuthErrorPageProps {
   searchParams: Promise<{
@@ -83,13 +83,7 @@ export default async function AuthErrorPage({
                 </AlertDescription>
               </Alert>
 
-              {/* Formulaire de renvoi d'email intégré */}
-              {/* TODO: Re-implement ResendConfirmationForm component */}
-              <div className="mb-6">
-                <p className="text-sm text-muted-foreground text-center">
-                  Pour recevoir un nouvel email de confirmation, veuillez contacter le support.
-                </p>
-              </div>
+              <ResendConfirmationForm email={email} />
             </>
           )}
 

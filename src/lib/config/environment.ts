@@ -88,7 +88,7 @@ function loadConfig(): EnvironmentConfig {
       // Supabase
       supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || "",
       supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "",
-      supabaseServiceRoleKey: process.env.SUPABASE_SECRET_KEY || "",
+      supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || "",
 
       // Stripe
       stripeSecretKey: process.env.STRIPE_SECRET_KEY || "",

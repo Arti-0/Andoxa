@@ -13,6 +13,78 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      campaign_jobs: {
+        Row: {
+          id: string;
+          organization_id: string;
+          created_by: string;
+          type: "invite" | "contact";
+          status: "pending" | "running" | "paused" | "completed" | "failed";
+          total_count: number;
+          processed_count: number;
+          success_count: number;
+          error_count: number;
+          batch_size: number;
+          delay_ms: number;
+          message_template: string | null;
+          metadata: Json | null;
+          started_at: string | null;
+          completed_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          created_by: string;
+          type: "invite" | "contact";
+          status?: string;
+          total_count?: number;
+          processed_count?: number;
+          success_count?: number;
+          error_count?: number;
+          batch_size?: number;
+          delay_ms?: number;
+          message_template?: string | null;
+          metadata?: Json | null;
+          started_at?: string | null;
+          completed_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          status?: string;
+          processed_count?: number;
+          success_count?: number;
+          error_count?: number;
+          started_at?: string | null;
+          completed_at?: string | null;
+          metadata?: Json | null;
+        };
+        Relationships: [];
+      };
+      campaign_job_prospects: {
+        Row: {
+          id: string;
+          job_id: string;
+          prospect_id: string;
+          status: "pending" | "processing" | "success" | "error" | "skipped";
+          error: string | null;
+          processed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          job_id: string;
+          prospect_id: string;
+          status?: string;
+          error?: string | null;
+          processed_at?: string | null;
+        };
+        Update: {
+          status?: string;
+          error?: string | null;
+          processed_at?: string | null;
+        };
+        Relationships: [];
+      };
       bdd: {
         Row: {
           id: string;
@@ -117,6 +189,7 @@ export interface Database {
           current_period_start: string | null;
           current_period_end: string | null;
           max_users: number | null;
+          metadata: Json | null;
         };
         Insert: {
           id?: string;
@@ -137,6 +210,7 @@ export interface Database {
           current_period_start?: string | null;
           current_period_end?: string | null;
           max_users?: number | null;
+          metadata?: Json | null;
         };
         Update: {
           id?: string;
@@ -157,6 +231,7 @@ export interface Database {
           current_period_start?: string | null;
           current_period_end?: string | null;
           max_users?: number | null;
+          metadata?: Json | null;
         };
         Relationships: [];
       };
@@ -388,6 +463,72 @@ export interface Database {
         };
         Relationships: [];
       };
+      enrichment_jobs: {
+        Row: {
+          id: string;
+          organization_id: string;
+          prospect_id: string;
+          requested_by_user_id: string;
+          bdd_id: string | null;
+          status: string;
+          attempts: number;
+          max_attempts: number;
+          run_after: string;
+          last_error: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          prospect_id: string;
+          requested_by_user_id: string;
+          bdd_id?: string | null;
+          status?: string;
+          attempts?: number;
+          max_attempts?: number;
+          run_after?: string;
+          last_error?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          prospect_id?: string;
+          requested_by_user_id?: string;
+          bdd_id?: string | null;
+          status?: string;
+          attempts?: number;
+          max_attempts?: number;
+          run_after?: string;
+          last_error?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      linkedin_invite_usage: {
+        Row: {
+          id: string;
+          user_id: string;
+          period_start: string;
+          count: number;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          period_start: string;
+          count?: number;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          period_start?: string;
+          count?: number;
+        };
+        Relationships: [];
+      };
       enrichment_credits: {
         Row: {
           user_id: string;
@@ -459,6 +600,10 @@ export interface Database {
           prospect_id: string | null;
           location: string | null;
           is_all_day: boolean;
+          source: string | null;
+          guest_name: string | null;
+          guest_email: string | null;
+          guest_linkedin: string | null;
           created_by: string | null;
           created_at: string | null;
           updated_at: string | null;
@@ -473,6 +618,10 @@ export interface Database {
           prospect_id?: string | null;
           location?: string | null;
           is_all_day?: boolean;
+          source?: string | null;
+          guest_name?: string | null;
+          guest_email?: string | null;
+          guest_linkedin?: string | null;
           created_by?: string | null;
           created_at?: string | null;
           updated_at?: string | null;
@@ -487,6 +636,10 @@ export interface Database {
           prospect_id?: string | null;
           location?: string | null;
           is_all_day?: boolean;
+          source?: string | null;
+          guest_name?: string | null;
+          guest_email?: string | null;
+          guest_linkedin?: string | null;
           created_by?: string | null;
           created_at?: string | null;
           updated_at?: string | null;
@@ -577,6 +730,8 @@ export interface Database {
           created_at: string | null;
           ended_at: string | null;
           title: string | null;
+          total_duration_s: number;
+          status: string;
         };
         Insert: {
           id?: string;
@@ -585,6 +740,8 @@ export interface Database {
           created_at?: string | null;
           ended_at?: string | null;
           title?: string | null;
+          total_duration_s?: number;
+          status?: string;
         };
         Update: {
           id?: string;
@@ -593,6 +750,8 @@ export interface Database {
           created_at?: string | null;
           ended_at?: string | null;
           title?: string | null;
+          total_duration_s?: number;
+          status?: string;
         };
         Relationships: [];
       };
@@ -601,16 +760,64 @@ export interface Database {
           id: string;
           call_session_id: string;
           prospect_id: string;
+          call_duration_s: number;
+          status: string;
+          called_at: string | null;
+          outcome: string | null;
         };
         Insert: {
           id?: string;
           call_session_id: string;
           prospect_id: string;
+          call_duration_s?: number;
+          status?: string;
+          called_at?: string | null;
+          outcome?: string | null;
         };
         Update: {
           id?: string;
           call_session_id?: string;
           prospect_id?: string;
+          call_duration_s?: number;
+          status?: string;
+          called_at?: string | null;
+          outcome?: string | null;
+        };
+        Relationships: [];
+      };
+      quick_bookings: {
+        Row: {
+          id: string;
+          organization_id: string;
+          prospect_id: string;
+          call_session_id: string | null;
+          booked_by: string;
+          booked_at: string;
+          scheduled_for: string | null;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          prospect_id: string;
+          call_session_id?: string | null;
+          booked_by: string;
+          booked_at?: string;
+          scheduled_for?: string | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          prospect_id?: string;
+          call_session_id?: string | null;
+          booked_by?: string;
+          booked_at?: string;
+          scheduled_for?: string | null;
+          notes?: string | null;
+          created_at?: string;
         };
         Relationships: [];
       };

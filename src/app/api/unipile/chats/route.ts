@@ -1,5 +1,5 @@
 import { createApiHandler, Errors } from "@/lib/api";
-import { getAccountIdForUser } from "@/lib/unipile/account";
+import { getAccountIdForUser, getAllAccountIdsForUser } from "@/lib/unipile/account";
 import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";
 import type { UnipileChat, UnipileListResponse } from "@/lib/unipile/types";
 
@@ -59,42 +59,64 @@ export const GET = createApiHandler(async (req, ctx) => {
     throw Errors.badRequest("Workspace required");
   }
 
-  const accountId = await getAccountIdForUser(ctx);
-
   const { searchParams } = new URL(req.url);
-  const accountType = searchParams.get("account_type");
+  const channelFilter = searchParams.get("channel"); // "all", "LINKEDIN", "WHATSAPP"
   const limit = searchParams.get("limit");
   const cursor = searchParams.get("cursor");
   const unread = searchParams.get("unread");
   const before = searchParams.get("before");
   const after = searchParams.get("after");
 
-  const q = new URLSearchParams();
-  q.set("account_id", accountId);
-  if (accountType) q.set("account_type", accountType);
-  else q.set("account_type", "LINKEDIN");
-  if (limit) q.set("limit", limit);
-  if (cursor) q.set("cursor", cursor);
-  if (unread !== null && unread !== undefined) q.set("unread", unread);
-  if (before) q.set("before", before);
-  if (after) q.set("after", after);
-  const query = q.toString();
-  const path = query ? `/chats?${query}` : "/chats";
+  async function fetchChatsForAccount(accountId: string, accountType: string) {
+    const q = new URLSearchParams();
+    q.set("account_id", accountId);
+    q.set("account_type", accountType);
+    if (limit) q.set("limit", limit);
+    if (cursor) q.set("cursor", cursor);
+    if (unread !== null && unread !== undefined) q.set("unread", unread);
+    if (before) q.set("before", before);
+    if (after) q.set("after", after);
+
+    const data = await unipileFetch<UnipileListResponse<UnipileChat>>(`/chats?${q.toString()}`);
+    return (data?.items ?? []).map((c) => ({ ...c, _channel: accountType }));
+  }
 
   try {
-    const data = await unipileFetch<UnipileListResponse<UnipileChat>>(path);
-    const items = data?.items ?? [];
-    const enriched = await enrichChatsWithInterlocutorNames(items);
-    return { ...data, items: enriched };
+    let allItems: (UnipileChat & { _channel?: string })[] = [];
+
+    if (channelFilter === "all" || !channelFilter) {
+      const accounts = await getAllAccountIdsForUser(ctx);
+      if (accounts.length === 0) {
+        const defaultId = await getAccountIdForUser(ctx);
+        allItems = await fetchChatsForAccount(defaultId, "LINKEDIN");
+      } else {
+        const results = await Promise.allSettled(
+          accounts.map((a) => fetchChatsForAccount(a.accountId, a.accountType))
+        );
+        for (const r of results) {
+          if (r.status === "fulfilled") allItems.push(...r.value);
+        }
+        allItems.sort((a, b) => {
+          const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+          const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+          return tb - ta;
+        });
+      }
+    } else {
+      const acType = channelFilter as "LINKEDIN" | "WHATSAPP";
+      const accountId = await getAccountIdForUser(ctx, acType);
+      allItems = await fetchChatsForAccount(accountId, acType);
+    }
+
+    const enriched = await enrichChatsWithInterlocutorNames(allItems);
+    return { items: enriched };
   } catch (err) {
     if (err instanceof UnipileApiError) {
       throw Errors.internal(err.message);
     }
-    const message = err instanceof Error ? err.message : "Unipile API error";
+    const message = err instanceof Error ? err.message : "Erreur de messagerie";
     if (message.includes("UNIPILE_API_KEY")) {
-      throw Errors.internal(
-        "Unipile n'est pas configuré. Définissez UNIPILE_API_KEY."
-      );
+      throw Errors.internal("La messagerie n'est pas configurée. Contactez l'administrateur.");
     }
     throw Errors.internal(message);
   }

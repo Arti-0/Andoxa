@@ -66,17 +66,17 @@ export const POST = createApiHandler(async (req, ctx) => {
     );
     const url = (data as HostedAuthLinkResponse)?.url;
     if (!url) {
-      throw Errors.internal("Unipile n'a pas renvoyé d'URL d'authentification");
+      throw Errors.internal("Impossible d'obtenir le lien de connexion");
     }
     return { url };
   } catch (err) {
     if (err instanceof UnipileApiError) {
       throw Errors.internal(err.message);
     }
-    const message = err instanceof Error ? err.message : "Unipile API error";
+    const message = err instanceof Error ? err.message : "Erreur de connexion";
     if (message.includes("UNIPILE_API_KEY")) {
       throw Errors.internal(
-        "Unipile n'est pas configuré. Définissez UNIPILE_API_KEY."
+        "La messagerie n'est pas configurée. Contactez l'administrateur."
       );
     }
     throw Errors.internal(message);

@@ -79,8 +79,8 @@ export const KanbanBoard = ({ id, children, className }: KanbanBoardProps) => {
   return (
     <div
       className={cn(
-        'flex size-full min-h-40 flex-col divide-y overflow-hidden rounded-md border bg-secondary text-xs shadow-sm ring-2 transition-all',
-        isOver ? 'ring-primary' : 'ring-transparent',
+        'flex min-h-40 flex-col overflow-hidden rounded-xl border bg-muted/30 text-xs transition-all',
+        isOver ? 'ring-2 ring-primary/50' : 'ring-2 ring-transparent',
         className
       )}
       ref={setNodeRef}
@@ -123,7 +123,7 @@ export const KanbanCard = <T extends KanbanItemProps = KanbanItemProps>({
       <div style={style} {...listeners} {...attributes} ref={setNodeRef}>
         <Card
           className={cn(
-            'cursor-grab gap-4 rounded-md p-3 shadow-sm',
+            'cursor-grab active:cursor-grabbing rounded-lg border bg-card p-3 shadow-xs transition-shadow hover:shadow-sm',
             isDragging && 'pointer-events-none cursor-grabbing opacity-30',
             className
           )}
@@ -135,8 +135,7 @@ export const KanbanCard = <T extends KanbanItemProps = KanbanItemProps>({
         <t.In>
           <Card
             className={cn(
-              'cursor-grab gap-4 rounded-md p-3 shadow-sm ring-2 ring-primary',
-              isDragging && 'cursor-grabbing',
+              'cursor-grabbing rounded-lg border bg-card p-3 shadow-sm ring-2 ring-primary/50',
               className
             )}
           >
@@ -221,8 +220,7 @@ export const KanbanCards = <T extends KanbanItemProps = KanbanItemProps>({
     <div
       ref={scrollRef}
       className={cn(
-        "overflow-y-auto overflow-x-hidden",
-        // Ultra-thin scrollbar styling
+        "flex-1 overflow-y-auto overflow-x-hidden min-h-[120px]",
         "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20",
         "hover:scrollbar-thumb-muted-foreground/40",
         "[&::-webkit-scrollbar]:w-1",
@@ -235,13 +233,18 @@ export const KanbanCards = <T extends KanbanItemProps = KanbanItemProps>({
     >
       <SortableContext items={items}>
         <div
-          className={cn('flex flex-grow flex-col gap-2 p-2', className)}
+          className={cn('flex grow flex-col space-y-2 p-3', className)}
           {...props}
         >
-          {visibleData.map(children)}
+          {visibleData.length === 0 ? (
+            <div className="flex h-20 items-center justify-center rounded-lg border border-dashed">
+              <p className="text-xs text-muted-foreground">Aucun prospect</p>
+            </div>
+          ) : (
+            visibleData.map(children)
+          )}
 
-          {/* Loader sentinel for infinite scroll */}
-          {hasMore && (
+          {hasMore && visibleData.length > 0 && (
             <div
               ref={loaderRef}
               className="flex items-center justify-center py-2 text-xs text-muted-foreground"
@@ -260,7 +263,7 @@ export const KanbanCards = <T extends KanbanItemProps = KanbanItemProps>({
 export type KanbanHeaderProps = HTMLAttributes<HTMLDivElement>;
 
 export const KanbanHeader = ({ className, ...props }: KanbanHeaderProps) => (
-  <div className={cn('m-0 p-2 font-semibold text-sm', className)} {...props} />
+  <div className={cn('m-0 flex items-center gap-2 border-b px-4 py-3 font-semibold text-sm', className)} {...props} />
 );
 
 export type KanbanProviderProps<
@@ -272,6 +275,8 @@ export type KanbanProviderProps<
   columns: C[];
   data: T[];
   onDataChange?: (data: T[]) => void;
+  /** Called only on drop (dragEnd) — use for persisting changes (API calls). */
+  onDragComplete?: (data: T[]) => void;
   onDragStart?: (event: DragStartEvent) => void;
   onDragEnd?: (event: DragEndEvent) => void;
   onDragOver?: (event: DragOverEvent) => void;
@@ -289,6 +294,7 @@ export const KanbanProvider = <
   columns,
   data,
   onDataChange,
+  onDragComplete,
   ...props
 }: KanbanProviderProps<T, C>) => {
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
@@ -332,7 +338,7 @@ export const KanbanProvider = <
       const activeIndex = newData.findIndex((item) => item.id === active.id);
       const overIndex = newData.findIndex((item) => item.id === over.id);
 
-      newData[activeIndex].column = overColumn;
+      newData[activeIndex] = { ...newData[activeIndex], column: overColumn };
       newData = arrayMove(newData, activeIndex, overIndex);
 
       onDataChange?.(newData);
@@ -349,17 +355,29 @@ export const KanbanProvider = <
     const { active, over } = event;
 
     if (!over || active.id === over.id) {
+      onDragComplete?.(data);
       return;
     }
 
+    const activeItem = data.find((item) => item.id === active.id);
+    const overItem = data.find((item) => item.id === over.id);
+    const overColumn =
+      overItem?.column ||
+      columns.find(col => col.id === over.id)?.id ||
+      columns[0]?.id;
+
     let newData = [...data];
-
     const oldIndex = newData.findIndex((item) => item.id === active.id);
-    const newIndex = newData.findIndex((item) => item.id === over.id);
 
+    if (activeItem && activeItem.column !== overColumn) {
+      newData[oldIndex] = { ...newData[oldIndex], column: overColumn };
+    }
+
+    const newIndex = newData.findIndex((item) => item.id === over.id);
     newData = arrayMove(newData, oldIndex, newIndex);
 
     onDataChange?.(newData);
+    onDragComplete?.(newData);
   };
 
   const announcements: Announcements = {

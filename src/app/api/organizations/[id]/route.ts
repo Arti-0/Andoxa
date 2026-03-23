@@ -2,6 +2,84 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 /**
+ * PATCH /api/organizations/[id] - Update organization (owner only, e.g. name)
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: organizationId } = await params;
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("id, owner_id, status")
+      .eq("id", organizationId)
+      .single();
+
+    if (!org) {
+      return NextResponse.json(
+        { error: "Organization not found" },
+        { status: 404 }
+      );
+    }
+
+    if (org.owner_id !== user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    if (org.status === "deleted") {
+      return NextResponse.json(
+        { error: "Cannot update deleted organization" },
+        { status: 400 }
+      );
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const updates: { name?: string; updated_at: string } = {
+      updated_at: new Date().toISOString(),
+    };
+    if (typeof body.name === "string" && body.name.trim()) {
+      updates.name = body.name.trim();
+    }
+
+    if (Object.keys(updates).length <= 1) {
+      return NextResponse.json({ error: "No valid updates" }, { status: 400 });
+    }
+
+    const { error } = await supabase
+      .from("organizations")
+      .update(updates)
+      .eq("id", organizationId);
+
+    if (error) {
+      console.error("Organization PATCH error:", error);
+      return NextResponse.json(
+        { error: "Failed to update organization" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Organization PATCH error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * DELETE /api/organizations/[id] - Soft delete organization (owner only)
  */
 export async function DELETE(

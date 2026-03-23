@@ -40,6 +40,10 @@ export const GET = createApiHandler(async (req, ctx) => {
  * POST /api/call-sessions
  * Create a new call session with prospect_ids or bdd_ids (listes)
  * Body: { prospect_ids?: string[], bdd_ids?: string[], title?: string }
+ *
+ * Rules:
+ * - Only one active (non-completed) session per list (bdd_id set).
+ * - Only prospects with a phone number are included.
  */
 export const POST = createApiHandler(async (req, ctx) => {
   if (!ctx.workspaceId || !ctx.userId) {
@@ -52,29 +56,75 @@ export const POST = createApiHandler(async (req, ctx) => {
     title?: string;
   }>(req);
 
-  let prospectIds: string[] = [];
+  let prospectRows: { id: string; phone: string | null; bdd_id: string | null }[] = [];
 
   if (body.prospect_ids?.length) {
-    prospectIds = body.prospect_ids;
-  } else if (body.bdd_ids?.length) {
-    const { data: prospects, error } = await ctx.supabase
+    const { data, error } = await ctx.supabase
       .from("prospects")
-      .select("id")
+      .select("id, phone, bdd_id")
+      .eq("organization_id", ctx.workspaceId)
+      .in("id", body.prospect_ids)
+      .is("deleted_at", null);
+
+    if (error) throw Errors.internal("Failed to resolve prospects");
+    prospectRows = data ?? [];
+  } else if (body.bdd_ids?.length) {
+    const { data, error } = await ctx.supabase
+      .from("prospects")
+      .select("id, phone, bdd_id")
       .eq("organization_id", ctx.workspaceId)
       .in("bdd_id", body.bdd_ids)
       .is("deleted_at", null);
 
-    if (error) {
-      throw Errors.internal("Failed to resolve prospects from listes");
-    }
-    prospectIds = (prospects ?? []).map((p) => p.id);
+    if (error) throw Errors.internal("Failed to resolve prospects from listes");
+    prospectRows = data ?? [];
   }
 
-  if (prospectIds.length === 0) {
+  // Filter to prospects with a phone number
+  const withPhone = prospectRows.filter((p) => p.phone?.trim());
+
+  if (withPhone.length === 0) {
     throw Errors.validation({
-      prospect_ids: "Aucun prospect sélectionné. Choisissez des prospects ou des listes.",
+      prospect_ids:
+        "Aucun prospect avec numéro de téléphone. Une session d'appels n'est possible que pour des prospects ayant un numéro.",
     });
   }
+
+  // Check: only one active session per list (bdd_id set)
+  const bddIds = [...new Set(withPhone.map((p) => p.bdd_id).filter(Boolean))] as string[];
+
+  if (bddIds.length > 0) {
+    const { data: activeSessions } = await ctx.supabase
+      .from("call_sessions")
+      .select("id, status")
+      .eq("organization_id", ctx.workspaceId)
+      .neq("status", "completed");
+
+    if (activeSessions && activeSessions.length > 0) {
+      const activeIds = activeSessions.map((s) => s.id);
+      const { data: linkedProspects } = await ctx.supabase
+        .from("call_session_prospects")
+        .select("prospect_id")
+        .in("call_session_id", activeIds);
+
+      if (linkedProspects && linkedProspects.length > 0) {
+        const linkedPids = linkedProspects.map((lp) => lp.prospect_id);
+        const { data: linkedWithBdd } = await ctx.supabase
+          .from("prospects")
+          .select("bdd_id")
+          .in("id", linkedPids)
+          .in("bdd_id", bddIds);
+
+        if (linkedWithBdd && linkedWithBdd.length > 0) {
+          throw Errors.badRequest(
+            "Une session d'appels est déjà en cours pour une de ces listes. Terminez-la avant d'en créer une nouvelle."
+          );
+        }
+      }
+    }
+  }
+
+  const prospectIds = withPhone.map((p) => p.id);
 
   const { data: session, error: sessionError } = await ctx.supabase
     .from("call_sessions")

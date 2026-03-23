@@ -41,15 +41,17 @@ const VARIABLES = [
   { key: "jobTitle", label: "Poste" },
   { key: "phone", label: "Téléphone" },
   { key: "email", label: "Email" },
+  { key: "bookingLink", label: "Lien de prise de RDV" },
 ];
 
-const PREVIEW_PROSPECT = {
+const PREVIEW_PROSPECT: Record<string, string> = {
   firstName: "Marie",
   lastName: "Dupont",
   company: "TechCorp",
   jobTitle: "Directrice Marketing",
   phone: "+33 6 12 34 56 78",
   email: "marie@techcorp.fr",
+  bookingLink: "https://andoxa.fr/booking/mon-lien",
 };
 
 function applyPreview(content: string): string {

@@ -56,16 +56,41 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
     company?: string;
     job_title?: string;
     linkedin_url?: string;
+    linkedin?: string;
+    website?: string;
     status?: string;
     notes?: string;
+    industry?: string;
+    employees?: string;
+    location?: string;
+    budget?: string;
+    source?: string;
   }>(req);
+
+  // Fetch current prospect to detect status changes
+  let previousStatus: string | null = null;
+  if (body.status) {
+    const { data: current } = await ctx.supabase
+      .from("prospects")
+      .select("status")
+      .eq("id", id)
+      .eq("organization_id", ctx.workspaceId)
+      .single();
+    previousStatus = (current as { status?: string } | null)?.status ?? null;
+  }
+
+  const { linkedin_url, ...rest } = body;
+  const updateData: Record<string, unknown> = {
+    ...rest,
+    updated_at: new Date().toISOString(),
+  };
+  if (linkedin_url !== undefined) {
+    updateData.linkedin = linkedin_url;
+  }
 
   const { data, error } = await ctx.supabase
     .from("prospects")
-    .update({
-      ...body,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updateData)
     .eq("id", id)
     .eq("organization_id", ctx.workspaceId)
     .select()
@@ -75,12 +100,24 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
     throw Errors.notFound("Prospect");
   }
 
+  if (body.status && previousStatus && body.status !== previousStatus) {
+    await (ctx.supabase as unknown as { from: (t: string) => { insert: (r: Record<string, unknown>) => Promise<unknown> } })
+      .from("prospect_activity")
+      .insert({
+        organization_id: ctx.workspaceId,
+        prospect_id: id,
+        actor_id: ctx.userId,
+        action: "status_change",
+        details: { from: previousStatus, to: body.status },
+      });
+  }
+
   return data;
 });
 
 /**
  * DELETE /api/prospects/[id]
- * Delete a prospect
+ * Soft-delete a prospect (sets deleted_at instead of removing the row)
  */
 export const DELETE = createApiHandler(async (req: NextRequest, ctx) => {
   const url = new URL(req.url);
@@ -95,7 +132,7 @@ export const DELETE = createApiHandler(async (req: NextRequest, ctx) => {
 
   const { error } = await ctx.supabase
     .from("prospects")
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq("id", id)
     .eq("organization_id", ctx.workspaceId);
 

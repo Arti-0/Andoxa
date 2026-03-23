@@ -21,7 +21,16 @@
       "maxDuration": 60
     }
   },
-  "crons": [],
+  "crons": [
+    {
+      "path": "/api/booking/reminders",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/enrichment-jobs",
+      "schedule": "* * * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

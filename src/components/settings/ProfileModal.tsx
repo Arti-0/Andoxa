@@ -232,12 +232,12 @@ export function ProfileModal({
                     ) : (
                       <Sparkles className="h-4 w-4" />
                     )}
-                    Actualiser depuis Unipile
+                    Actualiser le profil
                   </Button>
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Connectez votre compte LinkedIn via Unipile (page LinkedIn ou
+                  Connectez votre compte LinkedIn (page Installation ou
                   Campagnes) pour afficher votre profil ici.
                 </p>
               )}

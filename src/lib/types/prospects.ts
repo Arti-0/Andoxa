@@ -29,6 +29,7 @@ export interface Prospect {
     skills?: unknown;
     summary?: string | null;
   } | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface ProspectScore {
@@ -69,14 +70,51 @@ export interface ScoreProspectInput {
   phone: string | null;
 }
 
-// Types pour le pipeline
-export type PipelineStatusType =
-  | "nouveau"
-  | "rdv"
-  | "proposition"
-  | "signe"
-  | "perdu"
-  | "supprime";
+// Canonical prospect statuses (DB keys)
+export const PROSPECT_STATUSES = [
+  "new",
+  "contacted",
+  "qualified",
+  "rdv",
+  "proposal",
+  "won",
+  "lost",
+] as const;
+
+export type ProspectStatus = (typeof PROSPECT_STATUSES)[number];
+
+export const PROSPECT_STATUS_LABELS: Record<ProspectStatus, string> = {
+  new: "Nouveau",
+  contacted: "Contacté",
+  qualified: "Qualifié",
+  rdv: "RDV",
+  proposal: "Proposition",
+  won: "Signé",
+  lost: "Perdu",
+};
+
+export const PROSPECT_STATUS_COLORS: Record<ProspectStatus, string> = {
+  new: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  contacted: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
+  qualified: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  rdv: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+  proposal: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300",
+  won: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
+  lost: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+};
+
+export const PROSPECT_STATUS_DOT_COLORS: Record<ProspectStatus, string> = {
+  new: "bg-blue-500",
+  contacted: "bg-yellow-500",
+  qualified: "bg-green-500",
+  rdv: "bg-purple-500",
+  proposal: "bg-indigo-500",
+  won: "bg-emerald-500",
+  lost: "bg-red-500",
+};
+
+// Legacy alias
+export type PipelineStatusType = ProspectStatus;
 
 export interface ExtendedProspect extends Prospect {
   // Champs pipeline (override parent status with narrower type)

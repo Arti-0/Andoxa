@@ -1,8 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useWorkspace } from "../../../lib/workspace";
-import { Sun, User, Lock, CreditCard, Building2, LogOut, MessageSquare } from "lucide-react";
+import { Sun, User, Lock, CreditCard, Building2, LogOut, MessageSquare, ChevronRight, Sparkles, Briefcase } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
+import { readAutoEnrichOptIn } from "@/lib/enrichment/queue-helpers";
 import { useRouter } from "next/navigation";
 import { ThemeModal } from "@/components/settings/ThemeModal";
 import { ProfileModal } from "@/components/settings/ProfileModal";
@@ -14,13 +18,8 @@ import { AccountModal } from "@/components/settings/AccountModal";
 /**
  * Settings Page
  *
- * Paramètres du compte et de l'organisation
- * - Apparence (thème)
- * - Profil
- * - Sécurité (mot de passe)
- * - Abonnement (Stripe Portal)
- * - Organisation (invitations, sélecteur, suppression)
- * - Compte (déconnexion, suppression)
+ * Paramètres du compte et de l'organisation.
+ * List of rows (design-3 pattern): icon + title + description + chevron; same modals.
  */
 export default function SettingsPage() {
   const router = useRouter();
@@ -31,8 +30,77 @@ export default function SettingsPage() {
   const [billingModalOpen, setBillingModalOpen] = useState(false);
   const [orgModalOpen, setOrgModalOpen] = useState(false);
   const [accountModalOpen, setAccountModalOpen] = useState(false);
+  const [autoEnrich, setAutoEnrich] = useState(false);
+  const [savingEnrich, setSavingEnrich] = useState(false);
+  const [recruiterLoading, setRecruiterLoading] = useState(false);
 
-  const cards = [
+  const showAutoEnrich = workspace?.plan === "pro" || workspace?.plan === "business";
+
+  useEffect(() => {
+    if (workspace?.metadata) {
+      setAutoEnrich(readAutoEnrichOptIn(workspace.metadata));
+    } else {
+      setAutoEnrich(false);
+    }
+  }, [workspace?.metadata]);
+
+  const onAutoEnrichChange = async (checked: boolean) => {
+    setSavingEnrich(true);
+    try {
+      const res = await fetch("/api/workspace", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ settings: { auto_enrich_on_import: checked } }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.error?.message ?? "Erreur");
+      }
+      setAutoEnrich(checked);
+      toast.success(checked ? "Enrichissement auto activé" : "Enrichissement auto désactivé");
+      await refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erreur");
+    } finally {
+      setSavingEnrich(false);
+    }
+  };
+
+  const testRecruiterProjects = async () => {
+    setRecruiterLoading(true);
+    try {
+      const res = await fetch("/api/unipile/linkedin/recruiter/projects", {
+        credentials: "include",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error?.message ?? "Erreur");
+      }
+      const payload = json?.data ?? json;
+      const raw = payload?.projects ?? payload;
+      const len = Array.isArray(raw)
+        ? raw.length
+        : raw && typeof raw === "object" && "items" in raw && Array.isArray((raw as { items: unknown[] }).items)
+          ? (raw as { items: unknown[] }).items.length
+          : raw
+            ? 1
+            : 0;
+      toast.success(len ? `${len} projet(s) Recruiter renvoyé(s) par Unipile` : "Réponse OK (liste vide ou format inattendu)");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erreur");
+    } finally {
+      setRecruiterLoading(false);
+    }
+  };
+
+  const rows: {
+    id: string;
+    title: string;
+    description: string;
+    icon: React.ComponentType<{ className?: string }>;
+    onClick: () => void;
+  }[] = [
     {
       id: "theme",
       title: "Apparence",
@@ -59,7 +127,7 @@ export default function SettingsPage() {
           {
             id: "billing",
             title: "Abonnement",
-            description: "Plan et facturation Stripe",
+            description: "Plan et facturation",
             icon: CreditCard,
             onClick: () => setBillingModalOpen(true),
           },
@@ -89,7 +157,7 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-6 p-6 lg:p-8">
+    <div className="flex flex-col gap-6 p-6 lg:p-8 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold">Paramètres</h1>
         <p className="text-muted-foreground">
@@ -97,25 +165,80 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {cards.map((card) => {
-          const Icon = card.icon;
-          return (
-            <button
-              key={card.id}
-              type="button"
-              onClick={card.onClick}
-              className="flex flex-col items-start gap-2 rounded-lg border p-6 text-left transition-colors hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <Icon className="h-6 w-6 text-muted-foreground" />
-              <h2 className="font-semibold">{card.title}</h2>
-              <p className="text-sm text-muted-foreground">
-                {card.description}
-              </p>
-            </button>
-          );
-        })}
+      <div className="rounded-xl border bg-card shadow-xs overflow-hidden">
+        <div className="divide-y">
+          {rows.map((row) => {
+            const Icon = row.icon;
+            return (
+              <button
+                key={row.id}
+                type="button"
+                onClick={row.onClick}
+                className="flex w-full items-center gap-4 rounded-none px-4 py-3 text-left transition-colors hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring focus:ring-inset"
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                  <Icon className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{row.title}</p>
+                  <p className="truncate text-xs text-muted-foreground">{row.description}</p>
+                </div>
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40" />
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      {showAutoEnrich && (
+        <div className="rounded-xl border bg-card shadow-xs p-4 flex items-start gap-4">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+            <Sparkles className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div className="flex-1 min-w-0 space-y-1">
+            <p className="text-sm font-medium">Enrichissement LinkedIn à l&apos;import</p>
+            <p className="text-xs text-muted-foreground">
+              Après chaque import CSV, enrichir automatiquement les fiches.
+            </p>
+            <div className="rounded-lg border border-secondary/60 bg-secondary/10 px-3 py-2 text-xs text-secondary-foreground">
+              Pro+ uniquement : enrichissement via file d&apos;attente (throttlée) et consommation
+              de crédits.
+            </div>
+          </div>
+          <Switch
+            checked={autoEnrich}
+            disabled={savingEnrich}
+            onCheckedChange={onAutoEnrichChange}
+            aria-label="Enrichissement automatique à l'import"
+          />
+        </div>
+      )}
+
+      {showAutoEnrich && (
+        <div className="rounded-xl border bg-card shadow-xs p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-start gap-3 flex-1">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+              <Briefcase className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium">LinkedIn Recruiter (Unipile)</p>
+              <p className="text-xs text-muted-foreground">
+                Testez si votre compte connecté expose les projets d&apos;embauche via l&apos;API Unipile (LSN / Recruiter).
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={recruiterLoading}
+            onClick={testRecruiterProjects}
+            className="shrink-0"
+          >
+            {recruiterLoading ? "Vérification…" : "Tester l&apos;accès"}
+          </Button>
+        </div>
+      )}
 
       <ThemeModal open={themeModalOpen} onOpenChange={setThemeModalOpen} />
       <ProfileModal

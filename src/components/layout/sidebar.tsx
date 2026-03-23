@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  Linkedin,
   Megaphone,
   MessageSquare,
   Users,
@@ -12,18 +11,26 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  Wrench,
+  Palette,
+  Check,
+  Building2,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { cn } from "../../lib/utils";
 import { LogoDisplay } from "../ui/logo-display";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { useWorkspace } from "../../lib/workspace";
-
-/**
- * Sidebar - Navigation simplifiée (Point 8)
- * 
- * 4-5 items principaux seulement
- * Features avancées via recherche/settings
- */
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../ui/popover";
+import {
+  getUserOrganizations,
+  type Organization,
+} from "../../lib/organizations/utils-client";
 
 interface NavItem {
   href: string;
@@ -31,48 +38,70 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  {
-    href: "/dashboard",
-    label: "Tableau de bord",
-    icon: LayoutDashboard,
-  },
-  {
-    href: "/linkedin",
-    label: "LinkedIn",
-    icon: Linkedin,
-  },
-  {
-    href: "/crm",
-    label: "CRM",
-    icon: Users,
-  },
-  {
-    href: "/messagerie",
-    label: "Messagerie",
-    icon: MessageSquare,
-  },
-  {
-    href: "/campaigns",
-    label: "Campagnes",
-    icon: Megaphone,
-  },
-  {
-    href: "/calendar",
-    label: "Calendrier",
-    icon: Calendar,
-  },
-  {
-    href: "/settings",
-    label: "Paramètres",
-    icon: Settings,
-  },
+const MAIN_NAV_ITEMS: NavItem[] = [
+  { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
+  { href: "/crm", label: "CRM", icon: Users },
+  { href: "/campaigns", label: "Campagnes & Appels", icon: Megaphone },
+  { href: "/messagerie", label: "Messagerie", icon: MessageSquare },
+  { href: "/calendar", label: "Calendrier", icon: Calendar },
 ];
+
+const DESIGN_NAV_ITEMS: NavItem[] = [
+  { href: "/design-1", label: "Design 1", icon: Palette },
+  { href: "/design-2", label: "Design 2", icon: Palette },
+  { href: "/design-3", label: "Design 3", icon: Palette },
+];
+
+const FOOTER_NAV_ITEMS: NavItem[] = [
+  { href: "/linkedin", label: "Installation", icon: Wrench },
+  { href: "/settings", label: "Paramètres", icon: Settings },
+];
+
+function cleanOrgName(name: string | undefined | null): string {
+  if (!name) return "Mon organisation";
+  const cleaned = name.replace(/'s Organization$/i, "").trim();
+  if (!cleaned) return "Mon organisation";
+  return cleaned;
+}
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { workspace, profile } = useWorkspace();
+  const { workspace, profile, user, switchWorkspace, refresh } = useWorkspace();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [orgOpen, setOrgOpen] = useState(false);
+  const [orgs, setOrgs] = useState<Organization[]>([]);
+  const [orgsLoaded, setOrgsLoaded] = useState(false);
+
+  const loadOrgs = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const list = await getUserOrganizations(user.id);
+      setOrgs(list);
+    } catch {
+      setOrgs([]);
+    } finally {
+      setOrgsLoaded(true);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (orgOpen && !orgsLoaded) {
+      loadOrgs();
+    }
+  }, [orgOpen, orgsLoaded, loadOrgs]);
+
+  const handleSwitch = async (orgId: string) => {
+    try {
+      await switchWorkspace(orgId);
+      refresh?.();
+      setOrgOpen(false);
+      setOrgsLoaded(false);
+    } catch {
+      // silent
+    }
+  };
+
+  const displayName = cleanOrgName(workspace?.name);
 
   return (
     <aside
@@ -81,7 +110,6 @@ export function Sidebar() {
         isCollapsed ? "w-16" : "w-64"
       )}
     >
-      {/* Logo Andoxa */}
       <div className="flex h-16 shrink-0 items-center justify-between border-b px-4">
         <Link
           href="/"
@@ -108,33 +136,61 @@ export function Sidebar() {
         </button>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 overflow-auto p-2">
         <ul className="space-y-1">
-          {/* Organization name - first entry */}
           <li>
-            <div
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-foreground",
-                isCollapsed && "justify-center px-2"
-              )}
-              title={isCollapsed ? workspace?.name || "Andoxa" : undefined}
-            >
-              {!isCollapsed ? (
-                <span className="truncate">
-                  {workspace?.name || "Andoxa"}
-                </span>
-              ) : (
-                <span className="text-lg font-bold">
-                  {workspace?.name?.charAt(0) || "A"}
-                </span>
-              )}
-            </div>
+            <Popover open={orgOpen} onOpenChange={setOrgOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-accent",
+                    isCollapsed && "justify-center px-2"
+                  )}
+                  title={isCollapsed ? displayName : undefined}
+                >
+                  <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  {!isCollapsed && (
+                    <>
+                      <span className="truncate flex-1 text-left">{displayName}</span>
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    </>
+                  )}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-1" align="start" side="bottom">
+                <p className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Organisations
+                </p>
+                {orgs.length === 0 && orgsLoaded && (
+                  <p className="px-2 py-2 text-xs text-muted-foreground">Aucune organisation</p>
+                )}
+                {orgs.map((org) => {
+                  const isActive = org.id === workspace?.id;
+                  return (
+                    <button
+                      key={org.id}
+                      type="button"
+                      onClick={() => !isActive && handleSwitch(org.id)}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                        isActive
+                          ? "bg-accent font-medium"
+                          : "hover:bg-accent text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <span className="flex-1 truncate text-left">{cleanOrgName(org.name)}</span>
+                      {isActive && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
+                    </button>
+                  );
+                })}
+              </PopoverContent>
+            </Popover>
           </li>
           <li aria-hidden="true">
             <div className="my-1 border-t" />
           </li>
-          {NAV_ITEMS.map((item) => {
+          {MAIN_NAV_ITEMS.map((item) => {
             const isActive = pathname?.startsWith(item.href);
             const Icon = item.icon;
 
@@ -160,7 +216,64 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      {/* User section */}
+      <div className="border-t p-2">
+        <p className={cn("px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60", isCollapsed && "sr-only")}>
+          Design
+        </p>
+        <ul className="space-y-0.5">
+          {DESIGN_NAV_ITEMS.map((item) => {
+            const isActive = pathname?.startsWith(item.href);
+            const Icon = item.icon;
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                    isCollapsed && "justify-center px-2"
+                  )}
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {!isCollapsed && <span>{item.label}</span>}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      <div className="border-t p-2">
+        <ul className="space-y-1">
+          {FOOTER_NAV_ITEMS.map((item) => {
+            const isActive = pathname?.startsWith(item.href);
+            const Icon = item.icon;
+
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                    isCollapsed && "justify-center px-2"
+                  )}
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {!isCollapsed && <span>{item.label}</span>}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
       <div className="border-t p-4">
         <div
           className={cn(
@@ -168,11 +281,14 @@ export function Sidebar() {
             isCollapsed && "justify-center"
           )}
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-medium">
-            {profile?.full_name?.charAt(0) || "U"}
-          </div>
+          <Avatar className="h-8 w-8 shrink-0">
+            <AvatarImage src={profile?.avatar_url ?? undefined} alt="" />
+            <AvatarFallback className="bg-muted text-sm font-medium">
+              {profile?.full_name?.charAt(0) || "U"}
+            </AvatarFallback>
+          </Avatar>
           {!isCollapsed && (
-            <div className="overflow-hidden">
+            <div className="min-w-0 flex-1 overflow-hidden">
               <p className="truncate text-sm font-medium">
                 {profile?.full_name || "Utilisateur"}
               </p>

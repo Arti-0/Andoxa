@@ -52,10 +52,10 @@ export const GET = createApiHandler(async (req: NextRequest, ctx) => {
     if (err instanceof UnipileApiError) {
       throw Errors.internal(err.message);
     }
-    const message = err instanceof Error ? err.message : "Unipile API error";
+    const message = err instanceof Error ? err.message : "Erreur de messagerie";
     if (message.includes("UNIPILE_API_KEY")) {
       throw Errors.internal(
-        "Unipile n'est pas configuré. Définissez UNIPILE_API_KEY."
+        "La messagerie n'est pas configurée. Contactez l'administrateur."
       );
     }
     throw Errors.internal(message);
@@ -97,10 +97,10 @@ export const POST = createApiHandler(async (req: NextRequest, ctx) => {
     if (err instanceof UnipileApiError) {
       throw Errors.internal(err.message);
     }
-    const message = err instanceof Error ? err.message : "Unipile API error";
+    const message = err instanceof Error ? err.message : "Erreur de messagerie";
     if (message.includes("UNIPILE_API_KEY")) {
       throw Errors.internal(
-        "Unipile n'est pas configuré. Définissez UNIPILE_API_KEY."
+        "La messagerie n'est pas configurée. Contactez l'administrateur."
       );
     }
     throw Errors.internal(message);

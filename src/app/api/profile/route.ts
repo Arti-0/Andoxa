@@ -1,53 +1,31 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { NextRequest } from "next/server";
+import { createApiHandler, Errors, parseBody } from "@/lib/api";
 
 /**
- * PATCH /api/profile - Update user profile (full_name)
+ * PATCH /api/profile - Update user profile
  */
-export async function PATCH(request: NextRequest) {
-  try {
-    const supabase = await createClient();
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const fullName = body.full_name as string | undefined;
+export const PATCH = createApiHandler(
+  async (req: NextRequest, ctx) => {
+    const body = await parseBody<{ full_name?: string }>(req);
+    const fullName = body.full_name;
 
     if (typeof fullName !== "string") {
-      return NextResponse.json(
-        { error: "full_name is required" },
-        { status: 400 }
-      );
+      throw Errors.badRequest("full_name is required");
     }
 
-    const { error } = await supabase
+    const { error } = await ctx.supabase
       .from("profiles")
       .update({
         full_name: fullName.trim() || null,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", user.id);
+      .eq("id", ctx.userId);
 
     if (error) {
-      console.error("Profile update error:", error);
-      return NextResponse.json(
-        { error: "Failed to update profile" },
-        { status: 500 }
-      );
+      throw Errors.internal("Failed to update profile");
     }
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Profile PATCH error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
-}
+    return { updated: true };
+  },
+  { requireWorkspace: false }
+);

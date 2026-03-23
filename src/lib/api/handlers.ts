@@ -25,6 +25,7 @@ interface ProfileWithOrg {
     owner_id: string | null;
     created_at: string;
     updated_at: string;
+    metadata?: unknown;
   } | null;
 }
 
@@ -157,7 +158,8 @@ async function buildApiContext(
           credits,
           owner_id,
           created_at,
-          updated_at
+          updated_at,
+          metadata
         )
       `
       )
@@ -181,6 +183,7 @@ async function buildApiContext(
         created_at: org.created_at,
         updated_at: org.updated_at,
         type: "team",
+        metadata: (org.metadata ?? null) as Workspace["metadata"],
       };
     }
 
@@ -231,18 +234,21 @@ export function createApiHandler<T>(
 ) {
   return async (request: NextRequest): Promise<NextResponse> => {
     try {
-      // Rate limiting (before auth to protect against brute force)
+      const context = await buildApiContext(request, options);
+
+      if (context.userId) {
+        Sentry.setUser({ id: context.userId, email: context.email });
+      }
+
       if (options.rateLimit !== false) {
-        const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-        const rlResponse = await withRateLimit(request, ip, {
+        const identifier = context.userId || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+        const rlResponse = await withRateLimit(request, identifier, {
           name: options.rateLimit?.name ?? "api",
           requests: options.rateLimit?.requests ?? 100,
           window: options.rateLimit?.window ?? "1 m",
         });
         if (rlResponse) return rlResponse;
       }
-
-      const context = await buildApiContext(request, options);
 
       const result = await handler(request, context);
 
