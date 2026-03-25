@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
@@ -31,11 +31,11 @@ import type { Prospect } from "@/lib/types/prospects";
 import { toast } from "sonner";
 import { applyMessageVariables } from "@/lib/unipile/campaign";
 import {
-  CAMPAIGN_VARIABLE_KEYS,
   CAMPAIGN_VARIABLE_META,
   extractUsedCampaignVariables,
   missingVariablesForProspect,
 } from "@/lib/campaigns/variable-gaps";
+import { MessageComposeForm } from "@/components/campaigns/message-compose-form";
 
 const INVITE_PLACEHOLDER = `Bonjour {{firstName}},
 
@@ -48,12 +48,6 @@ J'ai vu votre profil chez {{company}} et souhaiterais vous contacter au sujet de
 Pouvez-vous me recontacter ?
 
 Cordialement`;
-
-const VARIABLE_BUTTONS = CAMPAIGN_VARIABLE_KEYS.map((key) => ({
-  key,
-  label: CAMPAIGN_VARIABLE_META[key].label,
-  crmColumn: CAMPAIGN_VARIABLE_META[key].crmColumn,
-}));
 
 function applyPreviewVariables(
   template: string,
@@ -70,13 +64,6 @@ export interface CampaignModalProps {
   prospects: Prospect[];
   listName?: string | null;
   onSuccess?: () => void;
-}
-
-interface MessageTemplate {
-  id: string;
-  name: string;
-  channel: "linkedin" | "whatsapp" | "email";
-  content: string;
 }
 
 async function trySaveAsTemplate(name: string, content: string): Promise<boolean> {
@@ -108,7 +95,6 @@ export function CampaignModal({
 }: CampaignModalProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [step, setStep] = useState<"compose" | "gaps" | "preview">("compose");
@@ -138,21 +124,6 @@ export function CampaignModal({
       ? `${window.location.origin}/booking/${bookingSlug}`
       : "";
 
-  const { data: templatesData, isLoading: templatesLoading } = useQuery({
-    queryKey: ["message-templates", "linkedin", open],
-    queryFn: async () => {
-      const res = await fetch("/api/message-templates?channel=linkedin", {
-        credentials: "include",
-      });
-      if (!res.ok) return [] as MessageTemplate[];
-      const json = await res.json();
-      const items = (json?.data?.items ?? []) as MessageTemplate[];
-      return items;
-    },
-    enabled: open,
-    staleTime: 60_000,
-  });
-
   useEffect(() => {
     if (!open) return;
     setSaveAsTemplate(false);
@@ -164,8 +135,6 @@ export function CampaignModal({
   const count = prospects.length;
   const placeholder = isInvite ? INVITE_PLACEHOLDER : CONTACT_PLACEHOLDER;
   const text = message.trim() || placeholder;
-  const templates = templatesData ?? [];
-
   const BATCH_SIZE = 10;
   const DELAY_MS = 120000;
   const batchCount = Math.ceil(count / BATCH_SIZE);
@@ -190,24 +159,6 @@ export function CampaignModal({
       return dr.trim() !== def;
     }).length;
   }, [gapDefaults, gapDrafts]);
-
-  const insertVariable = (varKey: string) => {
-    const token = `{{${varKey}}}`;
-    const el = textareaRef.current;
-    if (!el) {
-      setMessage((prev) => prev + token);
-      return;
-    }
-    const start = el.selectionStart ?? message.length;
-    const end = el.selectionEnd ?? message.length;
-    const next = message.slice(0, start) + token + message.slice(end);
-    setMessage(next);
-    requestAnimationFrame(() => {
-      el.focus();
-      const pos = start + token.length;
-      el.setSelectionRange(pos, pos);
-    });
-  };
 
   const handleComposeNext = () => {
     if (saveAsTemplate && !templateName.trim()) {
@@ -376,9 +327,7 @@ export function CampaignModal({
         {step === "compose" && (
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-2">
             <div className="flex items-center justify-between gap-4">
-              <Label htmlFor="message" className="text-sm font-medium">
-                Message
-              </Label>
+              <Label className="text-sm font-medium">Message</Label>
               <div className="flex shrink-0 items-center gap-2">
                 <Label htmlFor="save-template" className="cursor-pointer text-sm font-normal">
                   Enregistrer comme template
@@ -387,31 +336,25 @@ export function CampaignModal({
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-1">
-              {VARIABLE_BUTTONS.map((v) => (
-                <button
-                  key={v.key}
-                  type="button"
-                  title={`CRM : ${v.crmColumn}`}
-                  onClick={() => insertVariable(v.key)}
-                  className="rounded bg-muted px-2 py-0.5 font-mono text-xs hover:bg-accent"
-                >
-                  {`{{${v.key}}}`}
-                </button>
-              ))}
-            </div>
-
-            <Textarea
-              ref={textareaRef}
-              id="message"
-              placeholder={placeholder}
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              rows={6}
-              className="font-mono text-sm"
-              maxLength={2000}
+            <MessageComposeForm
+              message={message}
+              onMessageChange={setMessage}
+              channel="linkedin"
+              linkedinMode={isInvite ? "invite" : "contact"}
+              footerExtra={
+                count > BATCH_SIZE ? (
+                  <label className="flex cursor-pointer items-center gap-3 rounded-md border p-3 hover:bg-accent/50">
+                    <input
+                      type="checkbox"
+                      checked={useBatch}
+                      onChange={(e) => setUseBatch(e.target.checked)}
+                      className="shrink-0"
+                    />
+                    <span className="text-sm font-medium">Mode batch (recommandé)</span>
+                  </label>
+                ) : null
+              }
             />
-            <p className="-mt-2 text-right text-xs tabular-nums text-muted-foreground">{message.length}/2000</p>
 
             {saveAsTemplate && (
               <div>
@@ -426,45 +369,6 @@ export function CampaignModal({
                   maxLength={100}
                 />
               </div>
-            )}
-
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Templates</Label>
-              <div className="max-h-40 overflow-y-auto rounded-md border bg-muted/20 p-2">
-                {templatesLoading ? (
-                  <div className="flex min-h-9 items-center justify-center py-2">
-                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  </div>
-                ) : templates.length === 0 ? (
-                  <div className="min-h-9" aria-hidden />
-                ) : (
-                  <div className="flex flex-col gap-1.5">
-                    {templates.map((tpl) => (
-                      <button
-                        key={tpl.id}
-                        type="button"
-                        className="rounded-md border border-transparent bg-background px-3 py-2 text-left text-sm transition-colors hover:border-border hover:bg-accent/50"
-                        onClick={() => setMessage(tpl.content)}
-                      >
-                        <span className="font-medium">{tpl.name}</span>
-                        <span className="mt-0.5 line-clamp-2 block text-xs text-muted-foreground">{tpl.content}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {count > BATCH_SIZE && (
-              <label className="flex cursor-pointer items-center gap-3 rounded-md border p-3 hover:bg-accent/50">
-                <input
-                  type="checkbox"
-                  checked={useBatch}
-                  onChange={(e) => setUseBatch(e.target.checked)}
-                  className="shrink-0"
-                />
-                <span className="text-sm font-medium">Mode batch (recommandé)</span>
-              </label>
             )}
           </div>
         )}

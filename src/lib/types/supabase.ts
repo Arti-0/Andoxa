@@ -364,6 +364,32 @@ export interface Database {
         };
         Relationships: [];
       };
+      prospect_activity: {
+        Row: {
+          id: string;
+          organization_id: string;
+          prospect_id: string | null;
+          workflow_id: string | null;
+          actor_id: string | null;
+          action: string;
+          details: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          prospect_id?: string | null;
+          workflow_id?: string | null;
+          actor_id?: string | null;
+          action: string;
+          details?: Json;
+          created_at?: string;
+        };
+        Update: {
+          details?: Json;
+        };
+        Relationships: [];
+      };
       campaigns: {
         Row: {
           id: string;
@@ -725,6 +751,124 @@ export interface Database {
           account_type?: string;
           created_at?: string | null;
           updated_at?: string | null;
+        };
+        Relationships: [];
+      };
+      workflow_runs: {
+        Row: {
+          id: string;
+          workflow_id: string;
+          organization_id: string;
+          prospect_id: string;
+          started_by: string;
+          status: "pending" | "running" | "paused" | "completed" | "failed" | "cancelled";
+          current_step_index: number;
+          context: Json;
+          definition_snapshot: Json;
+          last_error: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workflow_id: string;
+          organization_id: string;
+          prospect_id: string;
+          started_by: string;
+          status?: string;
+          current_step_index?: number;
+          context?: Json;
+          definition_snapshot: Json;
+          last_error?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          status?: string;
+          current_step_index?: number;
+          context?: Json;
+          last_error?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      workflow_step_executions: {
+        Row: {
+          id: string;
+          run_id: string;
+          step_index: number;
+          step_id: string;
+          step_type: string;
+          config_snapshot: Json;
+          status: "pending" | "processing" | "completed" | "failed" | "cancelled";
+          run_after: string;
+          attempts: number;
+          max_attempts: number;
+          last_error: string | null;
+          idempotency_key: string;
+          processed_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          run_id: string;
+          step_index: number;
+          step_id: string;
+          step_type: string;
+          config_snapshot?: Json;
+          status?: string;
+          run_after?: string;
+          attempts?: number;
+          max_attempts?: number;
+          last_error?: string | null;
+          idempotency_key: string;
+          processed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          status?: string;
+          run_after?: string;
+          attempts?: number;
+          last_error?: string | null;
+          processed_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      workflows: {
+        Row: {
+          id: string;
+          organization_id: string;
+          name: string;
+          is_active: boolean;
+          created_by: string;
+          draft_definition: Json;
+          published_definition: Json | null;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          name: string;
+          is_active?: boolean;
+          created_by: string;
+          draft_definition?: Json;
+          published_definition?: Json | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          is_active?: boolean;
+          draft_definition?: Json;
+          published_definition?: Json | null;
+          metadata?: Json;
+          updated_at?: string;
         };
         Relationships: [];
       };

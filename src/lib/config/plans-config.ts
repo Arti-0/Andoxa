@@ -103,7 +103,7 @@ const CORE_APP_ROUTES: string[] = [
   "/design-3",
 ];
 
-const PRO_PLUS_EXTRA = ["/messagerie"];
+const PRO_PLUS_EXTRA = ["/messagerie", "/workflows"];
 
 export const PLAN_ROUTES: Record<PlanId, string[]> = {
   trial: [...CORE_APP_ROUTES],

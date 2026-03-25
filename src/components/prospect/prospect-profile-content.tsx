@@ -23,11 +23,19 @@ import {
   Pencil,
   Check,
   X,
+  Workflow,
+  Activity,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { CampaignModal } from "@/components/campaigns/campaign-modal";
+import { WorkflowEnrollModal } from "@/components/workflows/workflow-enroll-modal";
+import { ActivityFeed } from "@/components/design";
+import type { ActivityFeedItem } from "@/components/design";
 import type { Prospect } from "@/lib/types/prospects";
+import { useWorkspace } from "@/lib/workspace";
+import { normalizePlanIdForRoutes } from "@/lib/billing/effective-plan";
+import { canAccessRoute, type PlanId } from "@/lib/config/plans-config";
 
 const INVITE_DEFAULT_MESSAGE = `Bonjour {{firstName}},
 Je souhaite échanger avec vous sur {{company}}.
@@ -79,11 +87,19 @@ export function ProspectProfileContent({
   prospect,
   linkedChatId,
 }: ProspectProfileContentProps) {
+  const { workspace } = useWorkspace();
+  const routePlan = normalizePlanIdForRoutes(
+    workspace?.plan,
+    workspace?.subscription_status
+  ) as PlanId;
+  const canUseWorkflows = canAccessRoute(routePlan, "/workflows");
+
   const queryClient = useQueryClient();
   const [enriching, setEnriching] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [linkingChat, setLinkingChat] = useState(false);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
+  const [showWorkflowModal, setShowWorkflowModal] = useState(false);
   const [campaignAction, setCampaignAction] = useState<"invite" | "contact" | null>(null);
   const [editing, setEditing] = useState(false);
 
@@ -96,6 +112,7 @@ export function ProspectProfileContent({
   const invalidateProspect = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["prospect", prospect.id] });
     queryClient.invalidateQueries({ queryKey: ["prospect-linked-chat", prospect.id] });
+    queryClient.invalidateQueries({ queryKey: ["prospect-activity", prospect.id] });
     queryClient.invalidateQueries({ queryKey: ["prospects"] });
   }, [queryClient, prospect.id]);
 
@@ -277,6 +294,12 @@ export function ProspectProfileContent({
             <span className="ml-2">Campagnes</span>
           </Button>
         </Link>
+        {canUseWorkflows && (
+          <Button variant="outline" size="sm" onClick={() => setShowWorkflowModal(true)}>
+            <Workflow className="h-4 w-4" />
+            <span className="ml-2">Workflow</span>
+          </Button>
+        )}
         {hasLinkedin && (
           <a
             href={prospect.linkedin!.startsWith("http") ? prospect.linkedin! : `https://${prospect.linkedin}`}
@@ -306,6 +329,16 @@ export function ProspectProfileContent({
         onSuccess={() => {
           setShowCampaignModal(false);
           setCampaignAction(null);
+          invalidateProspect();
+        }}
+      />
+
+      <WorkflowEnrollModal
+        open={showWorkflowModal}
+        onOpenChange={setShowWorkflowModal}
+        prospects={[prospect]}
+        onSuccess={() => {
+          setShowWorkflowModal(false);
           invalidateProspect();
         }}
       />
@@ -483,6 +516,8 @@ export function ProspectProfileContent({
         </CardContent>
       </Card>
 
+      <ProspectOrganizationActivity prospectId={prospect.id} />
+
       {/* Metadata */}
       <Card>
         <CardHeader>
@@ -512,6 +547,82 @@ interface CallSessionEntry {
   outcome: string | null;
   called_at: string | null;
   session_title?: string;
+}
+
+type ProspectActivityRow = {
+  id: string;
+  action: string;
+  created_at: string;
+  actor_name: string | null;
+  title: string;
+  description: string;
+  target_url?: string;
+};
+
+function activityItemStatus(action: string): ActivityFeedItem["status"] {
+  if (action === "workflow_step_failed") return "warning";
+  if (
+    action === "workflow_run_completed" ||
+    action === "workflow_enrolled" ||
+    action === "workflow_step_completed"
+  ) {
+    return "success";
+  }
+  return "default";
+}
+
+function ProspectOrganizationActivity({ prospectId }: { prospectId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["prospect-activity", prospectId],
+    queryFn: async () => {
+      const res = await fetch(`/api/prospects/${prospectId}/activity?limit=50`, {
+        credentials: "include",
+      });
+      if (!res.ok) return { items: [] as ProspectActivityRow[] };
+      const json = await res.json();
+      const payload = json.data ?? json;
+      return payload as { items: ProspectActivityRow[] };
+    },
+    enabled: !!prospectId,
+    refetchOnWindowFocus: true,
+  });
+
+  const items: ActivityFeedItem[] = (data?.items ?? []).map((row) => ({
+    id: row.id,
+    name: row.title,
+    action: row.description,
+    time: new Date(row.created_at).toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    status: activityItemStatus(row.action),
+    href: row.target_url,
+    actorName: row.actor_name ?? undefined,
+  }));
+
+  if (isLoading) {
+    return (
+      <div className="rounded-xl border bg-card p-5 shadow-xs">
+        <div className="mb-3 h-4 w-40 animate-pulse rounded bg-muted" />
+        <div className="space-y-3">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-14 animate-pulse rounded bg-muted" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <ActivityFeed
+      title="Activité de l’organisation"
+      icon={Activity}
+      items={items}
+      emptyMessage="Aucune action enregistrée pour ce prospect (workflows, changements de statut, etc.)."
+    />
+  );
 }
 
 function ProspectCallHistory({ prospectId }: { prospectId: string }) {

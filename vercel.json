@@ -22,6 +22,9 @@
     },
     "src/app/api/cron/campaign-jobs/route.ts": {
       "maxDuration": 120
+    },
+    "src/app/api/cron/workflow-steps/route.ts": {
+      "maxDuration": 120
     }
   },
   "crons": [
@@ -35,6 +38,10 @@
     },
     {
       "path": "/api/cron/campaign-jobs",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/workflow-steps",
       "schedule": "* * * * *"
     }
   ],

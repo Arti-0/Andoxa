@@ -1,5 +1,9 @@
 import { createApiHandler, Errors } from "@/lib/api";
-import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";
+import {
+  getUnipileApiRoot,
+  UnipileApiError,
+  unipileFetch,
+} from "@/lib/unipile/client";
 
 interface HostedAuthLinkResponse {
   object?: string;
@@ -23,8 +27,15 @@ export const POST = createApiHandler(async (req, ctx) => {
   const baseUrl =
     process.env.NEXT_PUBLIC_APP_URL ||
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
-  let unipileBase = process.env.UNIPILE_API_URL || "https://api1.unipile.com:13111";
-  if (!unipileBase.startsWith("http")) unipileBase = `https://${unipileBase}`;
+
+  let unipileBase: string;
+  try {
+    unipileBase = getUnipileApiRoot();
+  } catch {
+    throw Errors.badRequest(
+      "Configuration Unipile incomplète : définissez UNIPILE_API_URL (DSN du tableau de bord) et UNIPILE_API_KEY sur le serveur."
+    );
+  }
 
   const notifyUrl = `${baseUrl.replace(/\/$/, "")}/api/webhooks/unipile`;
   const successUrl = `${baseUrl.replace(/\/$/, "")}/installation?whatsapp_connected=1`;

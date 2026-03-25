@@ -7,7 +7,11 @@ type ActivityType =
   | "booking_created"
   | "call_session_completed"
   | "status_change"
-  | "enrichment_completed";
+  | "enrichment_completed"
+  | "workflow_enrolled"
+  | "workflow_step_completed"
+  | "workflow_step_failed"
+  | "workflow_run_completed";
 
 interface Activity {
   id: string;
@@ -39,7 +43,15 @@ export const GET = createApiHandler(async (_req, ctx): Promise<Activity[]> => {
     throw Errors.badRequest("Workspace required");
   }
 
-  const [prospectsRes, campaignsRes, bookingsRes, sessionsRes, statusRes, bddRes, enrichedRes] =
+  const PROSPECT_FEED_ACTIONS = [
+    "status_change",
+    "workflow_enrolled",
+    "workflow_step_completed",
+    "workflow_step_failed",
+    "workflow_run_completed",
+  ] as const;
+
+  const [prospectsRes, campaignsRes, bookingsRes, sessionsRes, prospectFeedRes, bddRes, enrichedRes] =
     await Promise.all([
       ctx.supabase
         .from("prospects")
@@ -68,24 +80,14 @@ export const GET = createApiHandler(async (_req, ctx): Promise<Activity[]> => {
         .order("created_at", { ascending: false })
         .limit(5),
       ctx.supabase
-        .from("prospect_activity" as never)
-        .select("id, prospect_id, actor_id, action, details, created_at")
+        .from("prospect_activity")
+        .select(
+          "id, prospect_id, workflow_id, actor_id, action, details, created_at"
+        )
         .eq("organization_id", ctx.workspaceId)
-        .eq("action", "status_change")
+        .in("action", [...PROSPECT_FEED_ACTIONS])
         .order("created_at", { ascending: false })
-        .limit(10) as unknown as Promise<{
-        data:
-          | {
-              id: string;
-              prospect_id: string | null;
-              actor_id: string;
-              action: string;
-              details: unknown;
-              created_at: string;
-            }[]
-          | null;
-        error: unknown;
-      }>,
+        .limit(18),
       // Recent imports (listes created)
       ctx.supabase
         .from("bdd")
@@ -114,7 +116,7 @@ export const GET = createApiHandler(async (_req, ctx): Promise<Activity[]> => {
     const by = (c as { created_by?: string }).created_by;
     if (by) allActorIds.add(by);
   }
-  for (const s of statusRes.data ?? []) {
+  for (const s of prospectFeedRes.data ?? []) {
     if (s.actor_id) allActorIds.add(s.actor_id);
     if (s.prospect_id) allProspectIds.add(s.prospect_id);
   }
@@ -232,25 +234,87 @@ export const GET = createApiHandler(async (_req, ctx): Promise<Activity[]> => {
     });
   }
 
-  for (const sa of statusRes.data ?? []) {
-    const details = sa.details as { from?: string; to?: string } | null;
-    const fromLabel = STATUS_LABELS[details?.from ?? ""] ?? details?.from ?? "?";
-    const toLabel = STATUS_LABELS[details?.to ?? ""] ?? details?.to ?? "?";
+  for (const sa of prospectFeedRes.data ?? []) {
     const prospectName = sa.prospect_id
       ? prospectNameMap.get(sa.prospect_id) ?? "Prospect"
       : "Prospect";
     const actor = sa.actor_id ? profileMap.get(sa.actor_id) : null;
 
-    activities.push({
-      id: `status-${sa.id}`,
-      type: "status_change",
-      title: "Statut modifié",
-      description: `${prospectName} · ${fromLabel} → ${toLabel}${actor ? ` · par ${actor.name}` : ""}`,
-      actor_name: actor?.name ?? null,
-      actor_avatar: actor?.avatar ?? null,
-      target_url: sa.prospect_id ? `/prospect/${sa.prospect_id}` : null,
-      timestamp: sa.created_at,
-    });
+    if (sa.action === "status_change") {
+      const details = sa.details as { from?: string; to?: string } | null;
+      const fromLabel = STATUS_LABELS[details?.from ?? ""] ?? details?.from ?? "?";
+      const toLabel = STATUS_LABELS[details?.to ?? ""] ?? details?.to ?? "?";
+      activities.push({
+        id: `status-${sa.id}`,
+        type: "status_change",
+        title: "Statut modifié",
+        description: `${prospectName} · ${fromLabel} → ${toLabel}${actor ? ` · par ${actor.name}` : ""}`,
+        actor_name: actor?.name ?? null,
+        actor_avatar: actor?.avatar ?? null,
+        target_url: sa.prospect_id ? `/prospect/${sa.prospect_id}` : null,
+        timestamp: sa.created_at,
+      });
+      continue;
+    }
+
+    const d = (sa.details ?? {}) as Record<string, unknown>;
+    const wname = typeof d.workflow_name === "string" ? d.workflow_name : "Workflow";
+    const wfUrl = sa.workflow_id ? `/workflows/${sa.workflow_id}` : null;
+
+    if (sa.action === "workflow_enrolled") {
+      activities.push({
+        id: `wfe-${sa.id}`,
+        type: "workflow_enrolled",
+        title: "Workflow",
+        description: `${prospectName} · Inscrit à « ${wname} »${actor ? ` · par ${actor.name}` : ""}`,
+        actor_name: actor?.name ?? null,
+        actor_avatar: actor?.avatar ?? null,
+        target_url: wfUrl ?? (sa.prospect_id ? `/prospect/${sa.prospect_id}` : null),
+        timestamp: sa.created_at,
+      });
+    } else if (sa.action === "workflow_step_completed") {
+      const st = typeof d.step_type === "string" ? d.step_type : "";
+      const labels: Record<string, string> = {
+        wait: "Attente terminée",
+        linkedin_invite: "Invitation LinkedIn",
+        linkedin_message: "Message LinkedIn",
+        whatsapp_message: "Message WhatsApp",
+      };
+      const stepLabel = labels[st] ?? `Étape (${st || "?"})`;
+      activities.push({
+        id: `wfsc-${sa.id}`,
+        type: "workflow_step_completed",
+        title: "Workflow",
+        description: `${prospectName} · ${stepLabel} · « ${wname} »`,
+        actor_name: actor?.name ?? null,
+        actor_avatar: actor?.avatar ?? null,
+        target_url: wfUrl ?? (sa.prospect_id ? `/prospect/${sa.prospect_id}` : null),
+        timestamp: sa.created_at,
+      });
+    } else if (sa.action === "workflow_step_failed") {
+      const err = typeof d.error === "string" ? d.error.slice(0, 80) : "Erreur";
+      activities.push({
+        id: `wff-${sa.id}`,
+        type: "workflow_step_failed",
+        title: "Workflow",
+        description: `${prospectName} · Échec · « ${wname} » — ${err}`,
+        actor_name: actor?.name ?? null,
+        actor_avatar: actor?.avatar ?? null,
+        target_url: wfUrl ?? (sa.prospect_id ? `/prospect/${sa.prospect_id}` : null),
+        timestamp: sa.created_at,
+      });
+    } else if (sa.action === "workflow_run_completed") {
+      activities.push({
+        id: `wfrc-${sa.id}`,
+        type: "workflow_run_completed",
+        title: "Workflow",
+        description: `${prospectName} · Parcours terminé · « ${wname} »`,
+        actor_name: actor?.name ?? null,
+        actor_avatar: actor?.avatar ?? null,
+        target_url: wfUrl ?? (sa.prospect_id ? `/prospect/${sa.prospect_id}` : null),
+        timestamp: sa.created_at,
+      });
+    }
   }
 
   // Imports (listes)

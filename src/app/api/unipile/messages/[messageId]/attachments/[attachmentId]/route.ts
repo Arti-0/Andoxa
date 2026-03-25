@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUnipileHeaders } from "@/lib/unipile/client";
-
-const UNIPILE_BASE =
-  process.env.UNIPILE_API_URL || "https://api1.unipile.com:13111";
-const UNIPILE_API_PATH = "/api/v1";
+import { getUnipileHeaders, getUnipileV1BaseUrl } from "@/lib/unipile/client";
 
 /**
  * GET /api/unipile/messages/[messageId]/attachments/[attachmentId]
@@ -49,9 +45,16 @@ export async function GET(
     );
   }
 
-  const base = UNIPILE_BASE.replace(/\/$/, "");
   const accountId = account.unipile_account_id;
-  const url = `${base}${UNIPILE_API_PATH}/messages/${messageId}/attachments/${attachmentId}?account_id=${encodeURIComponent(accountId)}`;
+  let url: string;
+  try {
+    url = `${getUnipileV1BaseUrl()}/messages/${messageId}/attachments/${attachmentId}?account_id=${encodeURIComponent(accountId)}`;
+  } catch {
+    return NextResponse.json(
+      { error: "Messagerie non configurée (UNIPILE_API_URL)" },
+      { status: 503 }
+    );
+  }
 
   try {
     const headers = getUnipileHeaders();

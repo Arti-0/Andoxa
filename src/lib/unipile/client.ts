@@ -1,8 +1,8 @@
 /**
  * Unipile API client – proxy for messaging (LinkedIn, etc.)
  *
- * Env:
- * - UNIPILE_API_URL: base URL (e.g. https://api1.unipile.com:13111) – DSN from dashboard
+ * Env (required in production):
+ * - UNIPILE_API_URL: base URL from Unipile dashboard DSN (e.g. https://api2.unipile.com:13219)
  * - UNIPILE_API_KEY: access token
  *
  * Auth: X-API-KEY header
@@ -13,15 +13,35 @@ import {
   type UnipileError,
 } from "./types";
 
-const rawBase = process.env.UNIPILE_API_URL || "https://api1.unipile.com:13111";
-const UNIPILE_BASE = rawBase.startsWith("http")
-  ? rawBase
-  : `https://${rawBase.replace(/^\/+/, "")}`;
 const UNIPILE_API_PATH = "/api/v1";
 
-function getBaseUrl(): string {
-  const base = UNIPILE_BASE.replace(/\/$/, "");
-  return `${base}${UNIPILE_API_PATH}`;
+let cachedApiRoot: string | null = null;
+
+/**
+ * Unipile host root without path (no trailing slash), e.g. https://api2.unipile.com:13219
+ */
+export function getUnipileApiRoot(): string {
+  if (cachedApiRoot) return cachedApiRoot;
+  const raw = process.env.UNIPILE_API_URL?.trim();
+  if (!raw) {
+    throw new Error(
+      "UNIPILE_API_URL is not configured. Set it to your Unipile DSN from the dashboard (e.g. https://api2.unipile.com:13219)."
+    );
+  }
+  const withScheme = raw.startsWith("http")
+    ? raw
+    : `https://${raw.replace(/^\/+/, "")}`;
+  cachedApiRoot = withScheme.replace(/\/$/, "");
+  return cachedApiRoot;
+}
+
+/** Base URL including `/api/v1` (no trailing slash). */
+export function getUnipileV1BaseUrl(): string {
+  return `${getUnipileApiRoot()}${UNIPILE_API_PATH}`;
+}
+
+function getV1BaseUrl(): string {
+  return getUnipileV1BaseUrl();
 }
 
 export class UnipileApiError extends Error {
@@ -36,7 +56,7 @@ export class UnipileApiError extends Error {
 }
 
 export function getUnipileHeaders(): Record<string, string> {
-  const key = process.env.UNIPILE_API_KEY;
+  const key = process.env.UNIPILE_API_KEY?.trim();
   if (!key) {
     throw new Error("UNIPILE_API_KEY is not configured");
   }
@@ -68,7 +88,7 @@ export async function unipileFetch<T>(
   path: string,
   options?: RequestInit
 ): Promise<T> {
-  const baseUrl = getBaseUrl();
+  const baseUrl = getV1BaseUrl();
   const url = path.startsWith("http") ? path : `${baseUrl}${path}`;
   const headers = getUnipileHeaders();
 

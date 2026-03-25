@@ -51,6 +51,24 @@ export async function getLinkedInAccountIdForUserId(
 }
 
 /**
+ * WhatsApp Unipile account_id for a given user (service or user-scoped client).
+ */
+export async function getWhatsAppAccountIdForUserId(
+  supabase: SupabaseClient<Database>,
+  userId: string
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("user_unipile_accounts")
+    .select("unipile_account_id")
+    .eq("user_id", userId)
+    .eq("account_type", "WHATSAPP")
+    .maybeSingle();
+
+  if (error || !data?.unipile_account_id) return null;
+  return data.unipile_account_id;
+}
+
+/**
  * Returns all Unipile account IDs for the current user (LinkedIn + WhatsApp).
  */
 export async function getAllAccountIdsForUser(

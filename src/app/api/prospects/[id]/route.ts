@@ -101,15 +101,14 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
   }
 
   if (body.status && previousStatus && body.status !== previousStatus) {
-    await (ctx.supabase as unknown as { from: (t: string) => { insert: (r: Record<string, unknown>) => Promise<unknown> } })
-      .from("prospect_activity")
-      .insert({
-        organization_id: ctx.workspaceId,
-        prospect_id: id,
-        actor_id: ctx.userId,
-        action: "status_change",
-        details: { from: previousStatus, to: body.status },
-      });
+    await ctx.supabase.from("prospect_activity").insert({
+      organization_id: ctx.workspaceId,
+      prospect_id: id,
+      workflow_id: null,
+      actor_id: ctx.userId ?? null,
+      action: "status_change",
+      details: { from: previousStatus, to: body.status },
+    });
   }
 
   return data;

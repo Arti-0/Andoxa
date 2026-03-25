@@ -17,6 +17,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/messagerie": "Messagerie",
   "/campaigns": "Campagnes & Appels",
   "/call-sessions": "Campagnes & Appels",
+  "/workflows": "Workflows",
 };
 
 export function Header() {

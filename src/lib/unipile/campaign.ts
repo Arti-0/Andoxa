@@ -8,6 +8,47 @@ export interface ProspectForVariables {
   job_title: string | null;
   phone?: string | null;
   email?: string | null;
+  /**
+   * Champs supplémentaires d’import (CSV/XLSX) sur la fiche contact.
+   * Remplacements `{{NomExactColonne}}` appliqués après les variables standard (limite ci-dessous).
+   */
+  metadata?: unknown;
+}
+
+const MAX_IMPORT_METADATA_KEYS = 40;
+const MAX_IMPORT_METADATA_KEY_LEN = 80;
+const MAX_IMPORT_METADATA_VALUE_LEN = 500;
+
+/**
+ * Remplace les placeholders dont le nom correspond à une clé du metadata import (ordre alphabétique, max 40 clés).
+ */
+export function applyImportMetadataVariables(template: string, metadata: unknown): string {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return template;
+  }
+  const obj = metadata as Record<string, unknown>;
+  const entries = Object.entries(obj)
+    .filter(
+      ([k]) =>
+        typeof k === "string" &&
+        k.length > 0 &&
+        k.length <= MAX_IMPORT_METADATA_KEY_LEN
+    )
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(0, MAX_IMPORT_METADATA_KEYS);
+
+  let result = template;
+  for (const [key, raw] of entries) {
+    const val = String(raw ?? "").slice(0, MAX_IMPORT_METADATA_VALUE_LEN);
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    try {
+      const re = new RegExp(`\\{\\{${escaped}\\}\\}`, "g");
+      result = result.replace(re, val);
+    } catch {
+      /* clé produisant une regexp invalide — ignorée */
+    }
+  }
+  return result;
 }
 
 export interface MessageVariablesContext {
@@ -39,7 +80,7 @@ export function applyMessageVariables(
     .replace(/\{\{phone\}\}/g, prospect.phone ?? "")
     .replace(/\{\{email\}\}/g, prospect.email ?? "")
     .replace(/\{\{bookingLink\}\}/g, context?.bookingLink ?? "");
-  return result;
+  return applyImportMetadataVariables(result, prospect.metadata);
 }
 
 const LINKEDIN_SLUG_RE = /linkedin\.com\/in\/([^/?]+)/i;

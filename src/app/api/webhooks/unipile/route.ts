@@ -35,8 +35,10 @@ interface UnipileWebhookPayload {
  * Configuration: Document the URL in Unipile dashboard:
  *   https://{your-domain}/api/webhooks/unipile
  *
- * Authentication: Add header "Unipile-Auth" with secret when creating webhook.
- * Set UNIPILE_WEBHOOK_SECRET in env to verify incoming requests.
+ * Optional auth: if your Unipile project can send a custom header on webhooks, set
+ * UNIPILE_WEBHOOK_SECRET and configure the same value as header "Unipile-Auth" (or
+ * X-Unipile-Auth) in Unipile. If Unipile does not send this header, leave
+ * UNIPILE_WEBHOOK_SECRET unset — otherwise non-Hosted-Auth payloads will return 401.
  *
  * On "message_received": identifies chat_id. unipile_chat_prospects links
  * prospects to chats. Optional: write to unread_messages table for badge.
@@ -59,10 +61,9 @@ export async function POST(req: NextRequest) {
     accountStatus?.message &&
     ["CREATION_SUCCESS", "RECONNECTED"].includes(accountStatus.message);
 
-  // Auth: required for dashboard webhooks (message_received, etc.)
-  // Hosted Auth callback may not send Unipile-Auth header – skip auth check for it
+  // Optional shared secret (only if Unipile sends Unipile-Auth). Hosted Auth skips this.
   if (!isHostedAuthCallback && !isAccountStatusCallback) {
-    const secret = process.env.UNIPILE_WEBHOOK_SECRET;
+    const secret = process.env.UNIPILE_WEBHOOK_SECRET?.trim();
     if (secret) {
       const authHeader =
         req.headers.get("Unipile-Auth") ?? req.headers.get("X-Unipile-Auth");

@@ -26,7 +26,11 @@ type ActivityType =
   | "booking_created"
   | "call_session_completed"
   | "status_change"
-  | "enrichment_completed";
+  | "enrichment_completed"
+  | "workflow_enrolled"
+  | "workflow_step_completed"
+  | "workflow_step_failed"
+  | "workflow_run_completed";
 
 interface ActivityRow {
   id: string;
@@ -51,8 +55,12 @@ function mapStatus(type: ActivityType): ActivityFeedItem["status"] {
     case "booking_created":
     case "prospect_added":
     case "enrichment_completed":
+    case "workflow_run_completed":
+    case "workflow_step_completed":
+    case "workflow_enrolled":
       return "success";
     case "call_session_completed":
+    case "workflow_step_failed":
       return "warning";
     default:
       return "default";

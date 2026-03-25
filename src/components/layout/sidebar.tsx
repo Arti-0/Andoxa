@@ -15,6 +15,7 @@ import {
   Wrench,
   Check,
   Building2,
+  Workflow,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "../../lib/utils";
@@ -43,6 +44,7 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
   { href: "/crm", label: "CRM", icon: Users },
   { href: "/campaigns", label: "Campagnes & Appels", icon: Megaphone },
+  { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/messagerie", label: "Messagerie", icon: MessageSquare },
   { href: "/calendar", label: "Calendrier", icon: Calendar },
 ];
