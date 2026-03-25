@@ -149,7 +149,7 @@ export const STRIPE_CONFIG = {
 
   // URLs de redirection
   urls: {
-    success: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+    success: `${process.env.NEXT_PUBLIC_APP_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel: `${process.env.NEXT_PUBLIC_APP_URL}/pricing?canceled=true`,
     billing: `${process.env.NEXT_PUBLIC_APP_URL}/settings`,
   },

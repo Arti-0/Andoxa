@@ -1,4 +1,5 @@
 import { createApiHandler, Errors, parseBody, getPagination } from "@/lib/api";
+import { assertMessagerieAndTemplatesPlan } from "@/lib/billing/plan-gates";
 import { z } from "zod";
 
 const ALLOWED_VARIABLES = [
@@ -41,6 +42,8 @@ function extractVariables(content: string): string[] {
 export const GET = createApiHandler(async (req, ctx) => {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
 
+  assertMessagerieAndTemplatesPlan(ctx);
+
   const { page, pageSize, offset } = getPagination(req);
   const url = new URL(req.url);
   const channel = url.searchParams.get("channel");
@@ -75,6 +78,8 @@ export const GET = createApiHandler(async (req, ctx) => {
  */
 export const POST = createApiHandler(async (req, ctx) => {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
+
+  assertMessagerieAndTemplatesPlan(ctx);
 
   const body = await parseBody<z.infer<typeof CreateTemplateSchema>>(req);
   const parsed = CreateTemplateSchema.safeParse(body);

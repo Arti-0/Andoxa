@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { ReactNode } from "react";
+import { hasActiveBilling } from "@/lib/billing/workspace-billing";
+import type { SubscriptionStatus } from "@/lib/workspace/types";
 
 /**
  * Onboarding Layout - For users without a valid organization
@@ -39,7 +41,7 @@ export default async function OnboardingLayout({
   if (orgId) {
     const { data: orgData } = await supabase
       .from("organizations")
-      .select("id, status, subscription_status, deleted_at")
+      .select("id, status, subscription_status, deleted_at, trial_ends_at")
       .eq("id", orgId)
       .single();
 
@@ -48,15 +50,18 @@ export default async function OnboardingLayout({
       status: string;
       subscription_status: string | null;
       deleted_at: string | null;
+      trial_ends_at: string | null;
     } | null;
 
     if (org) {
-      const isSubscriptionActive =
-        org.subscription_status === "active" || org.subscription_status === "trialing";
+      const billingOk = hasActiveBilling({
+        subscription_status: org.subscription_status as SubscriptionStatus | null,
+        trial_ends_at: org.trial_ends_at,
+      });
 
       const canAccessDashboard =
         org.status === "pending" ||
-        (org.status === "active" && (isSubscriptionActive || org.subscription_status === null)) ||
+        (org.status === "active" && (billingOk || org.subscription_status === null)) ||
         (org.status === "deleted" &&
           org.deleted_at != null &&
           new Date(org.deleted_at) >= new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));

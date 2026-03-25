@@ -1,3 +1,8 @@
+/**
+ * Helpers de quota « crédits enrichissement » (comptage jobs / limites plan).
+ * La logique est conservée pour une réactivation future ; le produit ne l’applique plus
+ * pour l’instant (pas de blocage import / pas d’affichage dashboard).
+ */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PlanId } from "@/lib/config/plans-config";
 import { checkPlanLimit, getPlanLimits } from "@/lib/config/plans-config";

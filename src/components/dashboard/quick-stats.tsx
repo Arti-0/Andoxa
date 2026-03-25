@@ -3,22 +3,26 @@
 import { useQuery } from "@tanstack/react-query";
 import { Users, Calendar, TrendingUp, Megaphone } from "lucide-react";
 
-interface QuickStatsProps {
-  workspaceId: string | null | undefined;
-}
-
-interface Stats {
+export interface DashboardStats {
   prospects: number;
   rdvEffectues: number;
   conversionRate: number;
   campaignsThisMonth: number;
+  charts?: {
+    prospectsOverTime: { date: string; count: number }[];
+    activityVolume: { week: string; calls: number; messages: number; bookings: number }[];
+  };
 }
 
-async function fetchStats(): Promise<Stats> {
+interface QuickStatsProps {
+  workspaceId: string | null | undefined;
+}
+
+export async function fetchDashboardStats(): Promise<DashboardStats> {
   const res = await fetch("/api/dashboard/stats", { credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch stats");
   const json = await res.json();
-  const data = (json.data ?? json) as Stats;
+  const data = (json.data ?? json) as DashboardStats;
   return data;
 }
 
@@ -52,7 +56,7 @@ function StatCard({
 export function QuickStats({ workspaceId }: QuickStatsProps) {
   const { data: stats, isLoading } = useQuery({
     queryKey: ["dashboard-stats", workspaceId],
-    queryFn: fetchStats,
+    queryFn: fetchDashboardStats,
     enabled: !!workspaceId,
   });
 

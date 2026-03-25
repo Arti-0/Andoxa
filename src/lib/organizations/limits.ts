@@ -1,6 +1,7 @@
 import { PlanId } from '@/lib/config/stripe-config';
 import { createClient } from '@/lib/supabase/server';
 import { getPlanLimits as getPlanLimitsFromConfig, type PlanLimits as PlanLimitsFromConfig } from '@/lib/config/plans-config';
+import { effectivePlanIdForLimits } from '@/lib/billing/effective-plan';
 
 // Re-export PlanLimits interface for backward compatibility
 export interface PlanLimits {
@@ -44,7 +45,7 @@ export async function canAddMember(organizationId: string): Promise<boolean> {
   // Récupérer l'organisation et compter les membres
   const { data: org, error: orgError } = await supabase
     .from("organizations")
-    .select("plan")
+    .select("plan, subscription_status")
     .eq("id", organizationId)
     .single();
 
@@ -64,13 +65,15 @@ export async function canAddMember(organizationId: string): Promise<boolean> {
     return false;
   }
 
-  // Si le plan n'est pas dans PLAN_LIMITS, utiliser "trial" par défaut
-  const plan = (org.plan as PlanId) || "trial";
-  const limits = getPlanLimits(plan);
+  const effective = effectivePlanIdForLimits(
+    org.plan as string,
+    org.subscription_status as string | null
+  );
+  const limits = getPlanLimits(effective as PlanId);
 
   console.log(
-    "[canAddMember] Organization plan:",
-    plan,
+    "[canAddMember] Organization plan (effective):",
+    effective,
     "Limit:",
     limits.users
   );
@@ -132,13 +135,17 @@ export async function canAddProspects(organizationId: string, count: number = 1)
   
   const { data: org } = await supabase
     .from('organizations')
-    .select('plan')
+    .select('plan, subscription_status')
     .eq('id', organizationId)
     .single();
   
   if (!org) return false;
   
-  const limits = getPlanLimits(org.plan as PlanId);
+  const effective = effectivePlanIdForLimits(
+    org.plan as string,
+    org.subscription_status as string | null
+  );
+  const limits = getPlanLimits(effective as PlanId);
   if (limits.prospects === Infinity) return true;
   
   const { count: currentCount } = await supabase

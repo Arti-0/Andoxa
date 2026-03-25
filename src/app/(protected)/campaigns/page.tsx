@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Megaphone, Loader2, Phone, Plus, MessageSquare } from "lucide-react";
+import { Megaphone, Loader2, Phone, MessageSquare } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspace } from "@/lib/workspace";
 import { EmptyState } from "@/components/design";
@@ -33,6 +33,9 @@ interface CampaignJob {
   success_count: number;
   error_count: number;
   created_at: string;
+  message_template?: string | null;
+  batch_size?: number | null;
+  delay_ms?: number | null;
 }
 
 interface CallSession {
@@ -54,6 +57,8 @@ interface UnifiedRow {
   prospectCount: number;
   label: string;
   href: string;
+  messageSnippet?: string | null;
+  sendMode?: string | null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -64,6 +69,25 @@ const STATUS_LABELS: Record<string, string> = {
   failed: "Échouée",
   active: "En cours",
 };
+
+function formatMessageSnippet(s: string | null | undefined, max = 72): string {
+  if (!s?.trim()) return "—";
+  const t = s.trim().replace(/\s+/g, " ");
+  return t.length > max ? `${t.slice(0, max)}…` : t;
+}
+
+function formatCampaignSendMode(job: {
+  total_count: number;
+  batch_size?: number | null;
+  delay_ms?: number | null;
+}): string {
+  const batch = job.batch_size ?? 10;
+  const delayMin = Math.round((job.delay_ms ?? 120000) / 60000);
+  if (job.total_count > batch) {
+    return `Lots de ${batch} · ${delayMin} min entre lots`;
+  }
+  return "Envoi direct";
+}
 
 export default function CampaignsPage() {
   const { workspaceId } = useWorkspace();
@@ -93,6 +117,7 @@ export default function CampaignsPage() {
   const [campaignAction, setCampaignAction] = useState<"invite" | "contact" | null>(null);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
   const [campaignProspects, setCampaignProspects] = useState<Prospect[]>([]);
+  const [campaignListName, setCampaignListName] = useState<string | null>(null);
   const [preparingCampaign, setPreparingCampaign] = useState(false);
   const [preparingCallSession, setPreparingCallSession] = useState(false);
 
@@ -133,8 +158,10 @@ export default function CampaignsPage() {
         date: j.created_at,
         status: j.status,
         prospectCount: j.total_count,
-        label: j.type === "invite" ? "Invitation LinkedIn" : "Contact LinkedIn",
+        label: j.type === "invite" ? "Invitation LinkedIn" : "Message LinkedIn",
         href: `/campaigns/${j.id}`,
+        messageSnippet: formatMessageSnippet(j.message_template ?? null),
+        sendMode: formatCampaignSendMode(j),
       });
     }
     for (const s of sessions) {
@@ -220,6 +247,7 @@ export default function CampaignsPage() {
           return;
         }
         setCampaignProspects(prospects);
+        setCampaignListName(selectedListes[0]?.name ?? null);
         setCampaignAction(action);
         setShowCampaignModal(true);
         setListPickerOpen(false);
@@ -289,45 +317,8 @@ export default function CampaignsPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6 lg:p-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Campagnes & Appels</h1>
-          <p className="text-muted-foreground">
-            Suivez l&apos;état d&apos;avancement des campagnes LinkedIn et des sessions d&apos;appels.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="inline-flex items-center gap-2 rounded-lg border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10"
-            onClick={() => {
-              setListPickerMode("campaign");
-              setListPickerOpen(true);
-            }}
-          >
-            <Megaphone className="h-4 w-4" />
-            Démarrer une campagne
-          </Button>
-
-          <Button
-            type="button"
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-            onClick={() => {
-              setListPickerMode("call_session");
-              setListPickerOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            Nouvelle session
-          </Button>
-        </div>
-      </div>
-
-      {/* Filter: Tous | Campagnes | Sessions */}
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-muted-foreground">Afficher :</span>
-        <div className="flex rounded-lg border p-1 bg-muted/30">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap rounded-lg border bg-muted/30 p-1">
           <button
             type="button"
             onClick={() => setFilter("all")}
@@ -357,6 +348,33 @@ export default function CampaignsPage() {
             <Phone className="h-3.5 w-3.5" />
             Sessions d&apos;appels
           </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="inline-flex items-center gap-2 rounded-lg border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10"
+            onClick={() => {
+              setListPickerMode("campaign");
+              setListPickerOpen(true);
+            }}
+          >
+            <Megaphone className="h-4 w-4" />
+            Démarrer une campagne
+          </Button>
+
+          <Button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            onClick={() => {
+              setListPickerMode("call_session");
+              setListPickerOpen(true);
+            }}
+          >
+            <Phone className="h-4 w-4" />
+            Session d&apos;appels
+          </Button>
         </div>
       </div>
 
@@ -392,10 +410,12 @@ export default function CampaignsPage() {
             <thead className="bg-muted/40 border-b-2 border-border">
               <tr>
                 <th className="px-4 py-3 text-left font-medium">Type</th>
-                <th className="px-4 py-3 text-left font-medium">Nom</th>
+                <th className="px-4 py-3 text-left font-medium">Action</th>
+                <th className="px-4 py-3 text-left font-medium min-w-[140px]">Message (extrait)</th>
+                <th className="px-4 py-3 text-left font-medium">Canal / envoi</th>
                 <th className="px-4 py-3 text-left font-medium">Date</th>
                 <th className="px-4 py-3 text-left font-medium">Statut</th>
-                <th className="px-4 py-3 text-left font-medium">Prospects</th>
+                <th className="px-4 py-3 text-left font-medium">Cibles</th>
               </tr>
             </thead>
             <tbody>
@@ -422,6 +442,22 @@ export default function CampaignsPage() {
                     <span className="font-medium">
                       {row.label}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 max-w-[220px] text-muted-foreground">
+                    <span className="line-clamp-2 text-xs" title={row.type === "campaign" ? row.messageSnippet ?? "" : ""}>
+                      {row.type === "campaign" ? row.messageSnippet : "—"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground">
+                    {row.type === "campaign" ? (
+                      <>
+                        <span className="font-medium text-foreground">LinkedIn</span>
+                        <span className="mx-1">·</span>
+                        {row.sendMode}
+                      </>
+                    ) : (
+                      <span className="font-medium text-foreground">Téléphone</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {formatDate(row.date)}
@@ -527,14 +563,17 @@ export default function CampaignsPage() {
             setShowCampaignModal(false);
             setCampaignAction(null);
             setCampaignProspects([]);
+            setCampaignListName(null);
           }
         }}
         action={campaignAction}
         prospects={campaignProspects}
+        listName={campaignListName}
         onSuccess={() => {
           setShowCampaignModal(false);
           setCampaignAction(null);
           setCampaignProspects([]);
+          setCampaignListName(null);
         }}
       />
     </div>

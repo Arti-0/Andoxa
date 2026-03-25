@@ -1,6 +1,7 @@
 "use client";
 
 import type { Workspace } from "../../lib/workspace/types";
+import { displayOrganizationName } from "@/lib/organizations/default-org-name";
 import { Building2 } from "lucide-react";
 
 interface DashboardHeaderProps {
@@ -8,6 +9,9 @@ interface DashboardHeaderProps {
 }
 
 export function DashboardHeader({ workspace }: DashboardHeaderProps) {
+  const title =
+    (workspace?.name && displayOrganizationName(workspace.name)) || "Dashboard";
+
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-4">
@@ -16,7 +20,7 @@ export function DashboardHeader({ workspace }: DashboardHeaderProps) {
           {workspace?.logo_url ? (
             <img
               src={workspace.logo_url}
-              alt={workspace.name}
+              alt={title}
               className="h-10 w-10 rounded-lg object-cover"
             />
           ) : (
@@ -26,7 +30,7 @@ export function DashboardHeader({ workspace }: DashboardHeaderProps) {
 
         {/* Workspace info */}
         <div>
-          <h1 className="text-2xl font-bold">{workspace?.name || "Dashboard"}</h1>
+          <h1 className="text-2xl font-bold">{title}</h1>
           <p className="text-sm text-muted-foreground">
             {workspace?.plan === "demo"
               ? "Plan Démo"
@@ -36,14 +40,6 @@ export function DashboardHeader({ workspace }: DashboardHeaderProps) {
           </p>
         </div>
       </div>
-
-      {/* Credits badge */}
-      {workspace?.credits !== undefined && (
-        <div className="rounded-lg bg-muted px-4 py-2 text-center">
-          <p className="text-2xl font-bold">{workspace.credits}</p>
-          <p className="text-xs text-muted-foreground">Crédits</p>
-        </div>
-      )}
     </div>
   );
 }

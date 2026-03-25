@@ -18,7 +18,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
-import { useEffect, useRef } from "react";
 
 interface JobProspect {
   id: string;
@@ -65,7 +64,6 @@ const PROSPECT_STATUS: Record<string, { label: string; color: string }> = {
 export default function CampaignDetailPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { data: job, isLoading } = useQuery({
     queryKey: ["campaign-job", id],
@@ -118,21 +116,6 @@ export default function CampaignDetailPage() {
     },
     onError: () => toast.error("Erreur lors du traitement"),
   });
-
-  useEffect(() => {
-    if (job?.status === "running" && !pollingRef.current) {
-      pollingRef.current = setInterval(() => {
-        processMutation.mutate();
-      }, (job.delay_ms ?? 120000) + 5000);
-    }
-    if (job?.status !== "running" && pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
-  }, [job?.status, job?.delay_ms]);
 
   if (isLoading) {
     return (
@@ -187,7 +170,7 @@ export default function CampaignDetailPage() {
         </Link>
         <div className="flex-1">
           <h1 className="text-xl font-bold">
-            Campagne {job.type === "invite" ? "Invitation" : "Contact"}
+            Campagne {job.type === "invite" ? "Invitation" : "Contact"} LinkedIn
           </h1>
           <p className="text-sm text-muted-foreground">
             Créée le{" "}
@@ -205,6 +188,50 @@ export default function CampaignDetailPage() {
           {cfg.label}
         </div>
       </div>
+
+      <Card>
+        <CardContent className="space-y-3 pt-4 text-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ce qui est envoyé</p>
+          <ul className="grid gap-2 sm:grid-cols-2">
+            <li>
+              <span className="text-muted-foreground">À qui : </span>
+              <span className="font-medium">{job.total_count} prospect(s) ciblé(s)</span>
+            </li>
+            <li>
+              <span className="text-muted-foreground">Type d’action : </span>
+              <span className="font-medium">
+                {job.type === "invite"
+                  ? "Demande de connexion LinkedIn (note d’invitation)"
+                  : "Premier message dans une conversation LinkedIn"}
+              </span>
+            </li>
+            <li>
+              <span className="text-muted-foreground">Canal : </span>
+              <span className="font-medium">LinkedIn (compte relié à Andoxa)</span>
+            </li>
+            <li>
+              <span className="text-muted-foreground">Rythme : </span>
+              <span className="font-medium">
+                {job.total_count > batchSize
+                  ? `Lots de ${batchSize} prospects, pause d’environ ${Math.round((job.delay_ms ?? 120000) / 60000)} min entre chaque lot`
+                  : "Traitement sans file d’attente par lots (tous dans le même volume)"}
+              </span>
+            </li>
+          </ul>
+          {job.message_template?.trim() ? (
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Texte (avec variables)
+              </p>
+              <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-3 font-mono text-xs">
+                {job.message_template}
+              </pre>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Aucun modèle de texte enregistré pour ce job.</p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

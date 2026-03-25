@@ -1,4 +1,5 @@
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
+import { assertMessagerieAndTemplatesPlan } from "@/lib/billing/plan-gates";
 import { getAccountIdForUser } from "@/lib/unipile/account";
 import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";
 import type {
@@ -23,6 +24,8 @@ export const GET = createApiHandler(async (req: NextRequest, ctx) => {
   if (!ctx.workspaceId) {
     throw Errors.badRequest("Workspace required");
   }
+
+  assertMessagerieAndTemplatesPlan(ctx);
 
   await getAccountIdForUser(ctx);
 
@@ -71,6 +74,8 @@ export const POST = createApiHandler(async (req: NextRequest, ctx) => {
   if (!ctx.workspaceId) {
     throw Errors.badRequest("Workspace required");
   }
+
+  assertMessagerieAndTemplatesPlan(ctx);
 
   await getAccountIdForUser(ctx);
 

@@ -27,8 +27,8 @@ export const POST = createApiHandler(async (req, ctx) => {
   if (!unipileBase.startsWith("http")) unipileBase = `https://${unipileBase}`;
 
   const notifyUrl = `${baseUrl.replace(/\/$/, "")}/api/webhooks/unipile`;
-  const successUrl = `${baseUrl.replace(/\/$/, "")}/linkedin?whatsapp_connected=1`;
-  const failureUrl = `${baseUrl.replace(/\/$/, "")}/linkedin?whatsapp_connected=0`;
+  const successUrl = `${baseUrl.replace(/\/$/, "")}/installation?whatsapp_connected=1`;
+  const failureUrl = `${baseUrl.replace(/\/$/, "")}/installation?whatsapp_connected=0`;
   const expiresOn = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
   const body: Record<string, unknown> = {
@@ -55,7 +55,19 @@ export const POST = createApiHandler(async (req, ctx) => {
     if (!url) throw Errors.internal("Impossible d'obtenir le lien de connexion");
     return { url };
   } catch (err) {
-    if (err instanceof UnipileApiError) throw Errors.internal(err.message);
+    if (err instanceof UnipileApiError) {
+      const type = err.unipileType ?? "";
+      if (type === "errors/missing_credentials" || err.message === "Compte non connecté") {
+        throw Errors.badRequest(
+          "Unipile n'arrive pas à valider vos identifiants d'API (UNIPILE_API_KEY). " +
+            "Vérifiez `UNIPILE_API_KEY` (token d'accès Unipile), assurez-vous qu'elle n'est pas expirée " +
+            "et redémarrez l'application après modification, puis réessayez « Connecter WhatsApp ».",
+          { unipileType: type }
+        );
+      }
+
+      throw Errors.badRequest(err.message, { unipileType: type });
+    }
     const message = err instanceof Error ? err.message : "Erreur de connexion";
     throw Errors.internal(message);
   }

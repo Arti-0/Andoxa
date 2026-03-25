@@ -85,54 +85,32 @@ export const PLAN_LIMITS: Record<PlanId, PlanLimits> = {
 };
 
 /**
- * Routes disponibles par plan (pour contrôler l'accès dans la sidebar)
- * Ajoutez simplement la route ici pour qu'elle apparaisse dans la sidebar du plan
+ * Routes de l’app (protected) accessibles selon le plan.
+ * Pro / Business : messagerie Unipile + modèles (onglet Templates dans /messagerie).
  */
+const CORE_APP_ROUTES: string[] = [
+  "/dashboard",
+  "/crm",
+  "/prospect",
+  "/campaigns",
+  "/call-sessions",
+  "/calendar",
+  "/settings",
+  "/installation",
+  "/linkedin",
+  "/design-1",
+  "/design-2",
+  "/design-3",
+];
+
+const PRO_PLUS_EXTRA = ["/messagerie"];
+
 export const PLAN_ROUTES: Record<PlanId, string[]> = {
-  trial: [
-    "/dashboard",
-    "/prospects",
-    "/bdd",
-    "/campagnes",
-    "/todos",
-  ],
-  essential: [
-    "/dashboard",
-    "/prospects",
-    "/bdd",
-    "/campagnes",
-    "/todos",
-  ],
-  pro: [
-    "/dashboard",
-    "/prospects",
-    "/bdd",
-    "/pipeline",
-    "/campagnes",
-    "/calendrier",
-    "/todos",
-  ],
-  business: [
-    "/dashboard",
-    "/prospects",
-    "/bdd",
-    "/pipeline",
-    "/campagnes",
-    "/calendrier",
-    "/todos",
-    "/kpi",
-    // "/scoring", // À ajouter quand disponible
-  ],
-  demo: [
-    "/dashboard",
-    "/prospects",
-    "/bdd",
-    "/pipeline",
-    "/campagnes",
-    "/calendrier",
-    "/todos",
-    "/kpi",
-  ],
+  trial: [...CORE_APP_ROUTES],
+  essential: [...CORE_APP_ROUTES],
+  pro: [...CORE_APP_ROUTES, ...PRO_PLUS_EXTRA],
+  business: [...CORE_APP_ROUTES, ...PRO_PLUS_EXTRA],
+  demo: [...CORE_APP_ROUTES, ...PRO_PLUS_EXTRA],
 };
 
 /**
@@ -140,40 +118,38 @@ export const PLAN_ROUTES: Record<PlanId, string[]> = {
  */
 export const PLAN_FEATURES_TEXT: Record<PlanId, string[]> = {
   trial: [
-    "14 jours d'essai gratuit",
-    "Dashboard",
-    "Base de données intelligentes",
-    "Campagnes email basiques",
-    "Todo",
-    "Support email",
+    "14 jours d'essai Stripe sur le plan Essential",
+    "CRM, import et listes",
+    "Campagnes et sessions d'appels",
+    "Calendrier",
+    "Jusqu'à 1 000 prospects",
+    "2 utilisateurs",
   ],
   essential: [
-    "Dashboard",
-    "Base de données intelligentes",
-    "Campagnes email",
-    "Todo",
-    "Support email",
+    "CRM, import et listes",
+    "Campagnes (LinkedIn / multicanal)",
+    "Sessions d'appels",
+    "Calendrier",
+    "Prospects illimités (hors période d'essai)",
+    "2 utilisateurs · 1 organisation",
   ],
   pro: [
-    "Tout du plan Essential",
-    "Campagnes email avancées",
-    "Pipeline commerciale",
-    "Enrichissement de prospects",
-    "Calendrier intégré",
-    "Support prioritaire",
+    "Tout Essential",
+    "Messagerie Unipile centralisée (LinkedIn, etc.)",
+    "500 crédits d'enrichissement / mois",
+    "Enrichissement automatique à l'import (opt-in)",
+    "Modèles de messages pour campagnes",
+    "Jusqu'à 10 utilisateurs · 3 organisations",
   ],
   business: [
-    "Tout du plan Pro",
-    "Prospects illimités",
-    "Scoring de prospects",
-    "Analytics détaillés",
-    "KPI de campagnes",
-    "Notifications intelligentes",
+    "Tout Pro",
+    "1 000 crédits d'enrichissement / mois",
+    "Limites étendues : 30 utilisateurs · 5 organisations",
     "Support prioritaire",
   ],
   demo: [
-    "Toutes les fonctionnalités",
-    "Période d'essai limitée",
+    "Accès démo aux fonctionnalités Pro / Business",
+    "Durée limitée",
   ],
 };
 
@@ -184,7 +160,7 @@ export const PLANS_CONFIG: Record<PlanId, PlanConfig> = {
   trial: {
     id: "trial",
     name: "Essai Gratuit",
-    description: "Testez Andoxa gratuitement pendant 14 jours",
+    description: "14 jours sur le périmètre Essential (limites d'essai)",
     limits: PLAN_LIMITS.trial,
     features: {
       routes: PLAN_ROUTES.trial,
@@ -194,7 +170,7 @@ export const PLANS_CONFIG: Record<PlanId, PlanConfig> = {
   essential: {
     id: "essential",
     name: "Essential",
-    description: "Pipeline commerciale pour débuter avec les fonctionnalités essentielles.",
+    description: "CRM, campagnes et appels — sans messagerie Unipile centralisée.",
     limits: PLAN_LIMITS.essential,
     features: {
       routes: PLAN_ROUTES.essential,
@@ -204,7 +180,7 @@ export const PLANS_CONFIG: Record<PlanId, PlanConfig> = {
   pro: {
     id: "pro",
     name: "Pro",
-    description: "Pour les JE qui veulent automatiser et optimiser leur prospection commerciale.",
+    description: "Messagerie Unipile, enrichissement et modèles — pour équipes qui scalent.",
     limits: PLAN_LIMITS.pro,
     features: {
       routes: PLAN_ROUTES.pro,
@@ -215,7 +191,7 @@ export const PLANS_CONFIG: Record<PlanId, PlanConfig> = {
   business: {
     id: "business",
     name: "Business",
-    description: "Pour les JE en croissance qui veulent automatiser et optimiser leur prospection.",
+    description: "Tout Pro, plus de crédits et de sièges pour les grandes équipes.",
     limits: PLAN_LIMITS.business,
     features: {
       routes: PLAN_ROUTES.business,
@@ -256,8 +232,11 @@ export function getPlanRoutes(planId: PlanId): string[] {
  * Vérifier si une route est accessible pour un plan
  */
 export function canAccessRoute(planId: PlanId, route: string): boolean {
+  const normalized = (route.split("?")[0] || "").replace(/\/$/, "") || "/";
   const routes = getPlanRoutes(planId);
-  return routes.some(r => route.startsWith(r));
+  return routes.some(
+    (r) => normalized === r || normalized.startsWith(`${r}/`)
+  );
 }
 
 /**

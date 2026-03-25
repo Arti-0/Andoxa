@@ -20,6 +20,9 @@ import {
   CommandGroup,
   CommandItem,
 } from "@/components/ui/command";
+import { useWorkspace } from "@/lib/workspace";
+import { normalizePlanIdForRoutes } from "@/lib/billing/effective-plan";
+import { canAccessRoute, type PlanId } from "@/lib/config/plans-config";
 
 const PAGES = [
   { label: "Tableau de bord", href: "/dashboard", icon: LayoutDashboard },
@@ -27,7 +30,7 @@ const PAGES = [
   { label: "Campagnes & Appels", href: "/campaigns", icon: Megaphone },
   { label: "Messagerie", href: "/messagerie", icon: MessageSquare },
   { label: "Calendrier", href: "/calendar", icon: Calendar },
-  { label: "Installation", href: "/linkedin", icon: Wrench },
+  { label: "Installation", href: "/installation", icon: Wrench },
   { label: "Paramètres", href: "/settings", icon: Settings },
 ];
 
@@ -44,6 +47,12 @@ export function CommandPalette() {
   const [prospects, setProspects] = useState<ProspectResult[]>([]);
   const [searching, setSearching] = useState(false);
   const router = useRouter();
+  const { workspace } = useWorkspace();
+  const routePlan = normalizePlanIdForRoutes(
+    workspace?.plan,
+    workspace?.subscription_status
+  ) as PlanId;
+  const visiblePages = PAGES.filter((p) => canAccessRoute(routePlan, p.href));
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -132,7 +141,7 @@ export function CommandPalette() {
         )}
         {!hasQuery && (
           <CommandGroup heading="Pages">
-            {PAGES.map((page) => {
+            {visiblePages.map((page) => {
               const Icon = page.icon;
               return (
                 <CommandItem

@@ -7,13 +7,8 @@ import {
 } from "../../../../lib/config/plans-config";
 import { deduplicateProspects, mapProspectRow } from "../../../../lib/utils/deduplicateProspects";
 import { extractLinkedInSlug } from "@/lib/unipile/campaign";
-import {
-  planAllowsAutoEnrichOnImport,
-  readAutoEnrichOptIn,
-  countCompletedEnrichmentsThisMonth,
-  countActiveEnrichmentJobs,
-  getEnrichmentCreditLimit,
-} from "@/lib/enrichment/queue-helpers";
+import { planAllowsAutoEnrichOnImport, readAutoEnrichOptIn } from "@/lib/enrichment/queue-helpers";
+import { effectivePlanIdForLimits } from "@/lib/billing/effective-plan";
 
 const SOURCE_LINKEDIN_EXTENSION = "linkedin_extension";
 const SUPPORTED_SOURCES = [SOURCE_LINKEDIN_EXTENSION, "csv", "xlsx"] as const;
@@ -116,10 +111,11 @@ export const POST = createApiHandler(async (req, ctx) => {
     });
   }
 
-  const planId =
-    ctx.workspace?.plan && VALID_PLANS.includes(ctx.workspace.plan as PlanId)
-      ? (ctx.workspace.plan as PlanId)
-      : "trial";
+  const planIdRaw = effectivePlanIdForLimits(
+    ctx.workspace?.plan ?? null,
+    ctx.workspace?.subscription_status ?? null
+  );
+  const planId = VALID_PLANS.includes(planIdRaw) ? planIdRaw : "trial";
   const maxImportRows = getImportMaxRows(planId);
   if (!canImportRows(planId, normalizedRows.length)) {
     throw Errors.validation({
@@ -204,16 +200,6 @@ export const POST = createApiHandler(async (req, ctx) => {
   const autoEnrichEligible =
     planAllowsAutoEnrichOnImport(planId) && readAutoEnrichOptIn(orgRow?.metadata);
 
-  let enrichUsedSlots = 0;
-  if (autoEnrichEligible) {
-    const [completed, active] = await Promise.all([
-      countCompletedEnrichmentsThisMonth(ctx.supabase, ctx.workspaceId),
-      countActiveEnrichmentJobs(ctx.supabase, ctx.workspaceId),
-    ]);
-    enrichUsedSlots = completed + active;
-  }
-  const enrichLimit = getEnrichmentCreditLimit(planId);
-
   for (const prospect of deduplicatedRows) {
     const { data: created, error: prospectError } = await ctx.supabase
       .from("prospects")
@@ -251,20 +237,14 @@ export const POST = createApiHandler(async (req, ctx) => {
       prospect.linkedin?.trim() &&
       extractLinkedInSlug(prospect.linkedin)
     ) {
-      const underCap = enrichLimit === -1 || enrichUsedSlots < enrichLimit;
-      if (underCap) {
-        const { error: jobErr } = await ctx.supabase.from("enrichment_jobs").insert({
-          organization_id: ctx.workspaceId,
-          prospect_id: created.id,
-          requested_by_user_id: ctx.userId,
-          bdd_id: bddId,
-          status: "pending",
-        });
-        if (!jobErr) {
-          enrichmentQueued += 1;
-          enrichUsedSlots += 1;
-        }
-      }
+      const { error: jobErr } = await ctx.supabase.from("enrichment_jobs").insert({
+        organization_id: ctx.workspaceId,
+        prospect_id: created.id,
+        requested_by_user_id: ctx.userId,
+        bdd_id: bddId,
+        status: "pending",
+      });
+      if (!jobErr) enrichmentQueued += 1;
     }
   }
 

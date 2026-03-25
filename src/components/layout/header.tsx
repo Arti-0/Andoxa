@@ -2,14 +2,15 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
-import { Bell, Search, LogOut, Check, CheckCheck } from "lucide-react";
+import { Bell, CheckCheck } from "lucide-react";
 import { useWorkspace } from "../../lib/workspace";
-import { ThemeSwitcher } from "../ui/theme-switcher";
 import { useNotifications } from "../../hooks/use-notifications";
+import { HeaderProspectSearch } from "./header-prospect-search";
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Tableau de bord",
   "/crm": "CRM",
+  "/installation": "Installation",
   "/linkedin": "Installation",
   "/calendar": "Calendrier",
   "/settings": "Paramètres",
@@ -21,7 +22,7 @@ const PAGE_TITLES: Record<string, string> = {
 export function Header() {
   const pathname = usePathname();
   const router = useRouter();
-  const { signOut, isTrialing, daysUntilTrialEnd } = useWorkspace();
+  const { isTrialing, daysUntilTrialEnd } = useWorkspace();
   const { notifications, unreadCount, loading, markAsRead, markAllAsRead } =
     useNotifications();
   const [showDropdown, setShowDropdown] = useState(false);
@@ -46,12 +47,12 @@ export function Header() {
   }, []);
 
   return (
-    <header className="flex h-16 items-center justify-between border-b bg-card px-6">
-      <div className="flex items-center gap-4">
-        <h1 className="text-lg font-semibold">{pageTitle}</h1>
+    <header className="flex h-16 min-w-0 items-center justify-between gap-3 border-b bg-card px-4 sm:gap-4 sm:px-6">
+      <div className="flex min-w-0 shrink-0 items-center gap-3 sm:gap-4">
+        <h1 className="truncate text-lg font-semibold">{pageTitle}</h1>
 
         {isTrialing && daysUntilTrialEnd !== null && (
-          <div className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+          <div className="hidden shrink-0 rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800 sm:block dark:bg-amber-900 dark:text-amber-200">
             {daysUntilTrialEnd > 0
               ? `${daysUntilTrialEnd} jours restants`
               : "Essai expiré"}
@@ -59,23 +60,12 @@ export function Header() {
         )}
       </div>
 
-      <div className="flex items-center gap-2">
-        <button
-          className="flex items-center gap-2 rounded-lg border bg-background px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent"
-          onClick={() => {
-            document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
-          }}
-        >
-          <Search className="h-4 w-4" />
-          <span className="hidden sm:inline">Rechercher un prospect...</span>
-          <kbd className="hidden rounded bg-muted px-1.5 py-0.5 text-xs sm:inline">
-            ⌘K
-          </kbd>
-        </button>
+      <div className="ml-auto flex min-w-0 items-center justify-end gap-2 sm:gap-3">
+        <HeaderProspectSearch />
 
-        {/* Notifications */}
-        <div className="relative" ref={dropdownRef}>
+        <div className="relative shrink-0" ref={dropdownRef}>
           <button
+            type="button"
             className="relative rounded-lg p-2 hover:bg-accent"
             aria-label="Notifications"
             onClick={() => setShowDropdown((prev) => !prev)}
@@ -94,6 +84,7 @@ export function Header() {
                 <span className="text-sm font-semibold">Notifications</span>
                 {unreadCount > 0 && (
                   <button
+                    type="button"
                     onClick={() => markAllAsRead()}
                     className="flex items-center gap-1 text-xs text-primary hover:underline"
                   >
@@ -120,6 +111,7 @@ export function Header() {
                   notifications.slice(0, 20).map((n) => (
                     <button
                       key={n.id}
+                      type="button"
                       className={`flex w-full items-start gap-3 border-b px-4 py-3 text-left hover:bg-accent/50 last:border-b-0 ${
                         !n.is_read ? "bg-primary/5" : ""
                       }`}
@@ -150,17 +142,6 @@ export function Header() {
             </div>
           )}
         </div>
-
-        <ThemeSwitcher />
-
-        <button
-          onClick={() => signOut()}
-          className="rounded-lg p-2 hover:bg-accent"
-          aria-label="Se déconnecter"
-          title="Se déconnecter"
-        >
-          <LogOut className="h-5 w-5" />
-        </button>
       </div>
     </header>
   );

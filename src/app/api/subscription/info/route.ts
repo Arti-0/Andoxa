@@ -5,6 +5,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { effectivePlanIdForLimits } from "@/lib/billing/effective-plan";
 
 export async function GET() {
   try {
@@ -70,8 +71,24 @@ export async function GET() {
     // Determine if plan is active (not trial)
     const hasActivePlan = currentPlan !== "trial" && currentPlan !== "demo";
 
+    let limitsPlanId = currentPlan;
+    if (profile?.active_organization_id) {
+      const { data: orgForLimits } = await supabase
+        .from("organizations")
+        .select("plan, subscription_status")
+        .eq("id", profile.active_organization_id)
+        .maybeSingle();
+      if (orgForLimits) {
+        limitsPlanId = effectivePlanIdForLimits(
+          orgForLimits.plan as string,
+          orgForLimits.subscription_status as string | null
+        );
+      }
+    }
+
     return NextResponse.json({
       currentPlan,
+      limitsPlanId,
       status,
       hasActivePlan,
     });

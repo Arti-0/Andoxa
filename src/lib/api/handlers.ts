@@ -5,6 +5,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../types/supabase";
 import type { Workspace, ApiResponse } from "../workspace/types";
 import { withRateLimit } from "../rate-limit";
+import {
+  assertWorkspaceHasActiveBilling,
+  BillingInactiveError,
+} from "../billing/workspace-billing";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -69,7 +73,8 @@ export class ApiError extends Error {
 
 export const Errors = {
   unauthorized: () => new ApiError("UNAUTHORIZED", "Authentication required", 401),
-  forbidden: () => new ApiError("FORBIDDEN", "Access denied", 403),
+  forbidden: (message = "Access denied") =>
+    new ApiError("FORBIDDEN", message, 403),
   notFound: (resource = "Resource") =>
     new ApiError("NOT_FOUND", `${resource} not found`, 404),
   badRequest: (message: string, details?: Record<string, unknown>) =>
@@ -78,8 +83,8 @@ export const Errors = {
     new ApiError("VALIDATION_ERROR", "Validation failed", 400, { errors }),
   internal: (message = "Internal server error") =>
     new ApiError("INTERNAL_ERROR", message, 500),
-  planRequired: () =>
-    new ApiError("PLAN_REQUIRED", "Active plan required", 402),
+  planRequired: (message = "Active plan required") =>
+    new ApiError("PLAN_REQUIRED", message, 402),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -190,6 +195,17 @@ async function buildApiContext(
     // Check workspace requirement
     if (options.requireWorkspace !== false && !workspace) {
       throw Errors.badRequest("Workspace required");
+    }
+
+    if (options.requireWorkspace !== false && workspace) {
+      try {
+        assertWorkspaceHasActiveBilling(workspace);
+      } catch (e) {
+        if (e instanceof BillingInactiveError) {
+          throw Errors.planRequired(e.message);
+        }
+        throw e;
+      }
     }
   }
 

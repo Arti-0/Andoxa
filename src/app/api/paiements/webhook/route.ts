@@ -88,17 +88,35 @@ export async function POST(request: NextRequest) {
           break;
         }
 
+        let stripeSubscriptionStatus: Stripe.Subscription.Status = "active";
+        let trialEndsAtIso: string | null = null;
+        try {
+          const sub = await stripe.subscriptions.retrieve(subscriptionId);
+          stripeSubscriptionStatus = sub.status;
+          trialEndsAtIso =
+            sub.trial_end != null
+              ? new Date(sub.trial_end * 1000).toISOString()
+              : null;
+        } catch (subErr) {
+          console.error("[Webhook] Failed to retrieve subscription after checkout", {
+            subscriptionId,
+            organizationId,
+            error: subErr,
+          });
+        }
+
         // Update organization: pending → active
         // status: métier (active = organisation fonctionnelle)
-        // subscription_status: Stripe (active = abonnement Stripe actif)
+        // subscription_status: état Stripe (trialing | active | …)
         // IMPORTANT: Utiliser supabaseAdmin (service role) pour contourner RLS
         const { error: updateError, data: updatedOrg } = await supabase
           .from("organizations")
           .update({
             status: "active", // Statut métier: organisation activée
-            subscription_status: "active", // Statut Stripe: abonnement actif
+            subscription_status: stripeSubscriptionStatus,
             stripe_subscription_id: subscriptionId,
             stripe_customer_id: customerId, // Important pour gestion future
+            trial_ends_at: trialEndsAtIso,
             updated_at: new Date().toISOString(),
           })
           .eq("id", organizationId)
@@ -147,11 +165,17 @@ export async function POST(request: NextRequest) {
             organizationStatus = "active"; // Organisation active
           }
 
+          const trialEndsAtIso =
+            subscription.trial_end != null
+              ? new Date(subscription.trial_end * 1000).toISOString()
+              : null;
+
           await supabase
             .from("organizations")
             .update({
               status: organizationStatus, // Statut métier
               subscription_status: stripeSubscriptionStatus, // Statut Stripe exact
+              trial_ends_at: trialEndsAtIso,
               updated_at: new Date().toISOString(),
             })
             .eq("id", org.id);

@@ -18,22 +18,7 @@ import {
   ChartLegendContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-
-interface ChartData {
-  prospectsOverTime: { date: string; count: number }[];
-  activityVolume: { week: string; calls: number; messages: number; bookings: number }[];
-}
-
-interface DashboardStats {
-  charts?: ChartData;
-}
-
-async function fetchStats(): Promise<DashboardStats> {
-  const res = await fetch("/api/dashboard/stats", { credentials: "include" });
-  if (!res.ok) throw new Error("Failed to fetch stats");
-  const json = await res.json();
-  return (json.data ?? json) as DashboardStats;
-}
+import { fetchDashboardStats } from "@/components/dashboard/quick-stats";
 
 const prospectsChartConfig: ChartConfig = {
   count: {
@@ -64,7 +49,7 @@ interface DashboardGridProps {
 export function DashboardGrid({ workspaceId }: DashboardGridProps) {
   const { data: stats, isLoading } = useQuery({
     queryKey: ["dashboard-stats", workspaceId],
-    queryFn: fetchStats,
+    queryFn: fetchDashboardStats,
     enabled: !!workspaceId,
   });
 

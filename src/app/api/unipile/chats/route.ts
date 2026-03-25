@@ -1,4 +1,5 @@
 import { createApiHandler, Errors } from "@/lib/api";
+import { assertMessagerieAndTemplatesPlan } from "@/lib/billing/plan-gates";
 import { getAccountIdForUser, getAllAccountIdsForUser } from "@/lib/unipile/account";
 import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";
 import type { UnipileChat, UnipileListResponse } from "@/lib/unipile/types";
@@ -58,6 +59,8 @@ export const GET = createApiHandler(async (req, ctx) => {
   if (!ctx.workspaceId) {
     throw Errors.badRequest("Workspace required");
   }
+
+  assertMessagerieAndTemplatesPlan(ctx);
 
   const { searchParams } = new URL(req.url);
   const channelFilter = searchParams.get("channel"); // "all", "LINKEDIN", "WHATSAPP"

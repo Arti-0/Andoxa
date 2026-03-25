@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { stripeService } from "@/lib/services/stripe-service";
 import { STRIPE_CONFIG } from "@/lib/config/stripe-config";
 import { BILLING_CONFIG } from "@/lib/config/billing-config";
+import { formatDefaultOrganizationName } from "@/lib/organizations/default-org-name";
 
 type Frequency = "monthly" | "yearly";
 
@@ -119,7 +120,9 @@ export async function POST(request: NextRequest) {
       } else {
         // No pending organization found, create new one
         // Generate a default organization name
-        const orgName = `${profile.full_name || profile.email}'s Organization`;
+        const orgName = formatDefaultOrganizationName(
+          profile.full_name || profile.email || ""
+        );
 
         // Create organization with status "pending" (will become "active" after payment)
         // subscription_status is null because no Stripe subscription exists yet
@@ -325,14 +328,18 @@ export async function POST(request: NextRequest) {
       metadata.organization_status = orgStatus?.status || "pending";
     }
 
+    const subscriptionTrialData =
+      planId === "essential"
+        ? { trial_period_days: STRIPE_CONFIG.trial.durationDays }
+        : undefined;
+
     const checkoutSession = await stripeService.createCheckoutSession(
       priceId,
       customer.id,
       successUrl,
       STRIPE_CONFIG.urls.cancel,
       metadata,
-      // Don't add Stripe trial period - we handle trials in our database
-      undefined,
+      subscriptionTrialData,
       quantity
     );
 

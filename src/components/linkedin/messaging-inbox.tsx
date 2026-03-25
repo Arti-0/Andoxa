@@ -14,7 +14,7 @@ import {
 import { toast } from 'sonner';
 import type { UnipileChat, UnipileMessage } from '@/lib/unipile/types';
 
-type ChannelView = 'all' | 'LINKEDIN' | 'WHATSAPP' | 'hors_crm';
+export type InboxChannelFilter = 'all' | 'LINKEDIN' | 'WHATSAPP';
 
 interface ChatsApiResponse {
     items?: UnipileChat[];
@@ -28,7 +28,10 @@ interface MessagesApiResponse {
 
 interface MessagingInboxProps {
     focusChatId?: string | null;
-    channelView?: ChannelView;
+    /** Filtre API Unipile (canal) */
+    channelFilter?: InboxChannelFilter;
+    /** Ne garder que les conversations non liées à un prospect CRM */
+    onlyHorsCrm?: boolean;
 }
 
 interface AndoxaIdsResponse {
@@ -36,7 +39,11 @@ interface AndoxaIdsResponse {
     chatToProspect?: Record<string, string>;
 }
 
-export function MessagingInbox({ focusChatId, channelView = 'all' }: MessagingInboxProps) {
+export function MessagingInbox({
+    focusChatId,
+    channelFilter = 'all',
+    onlyHorsCrm = false,
+}: MessagingInboxProps) {
     const router = useRouter();
     const [chats, setChats] = useState<UnipileChat[]>([]);
     const [chatToProspect, setChatToProspect] = useState<
@@ -52,14 +59,12 @@ export function MessagingInbox({ focusChatId, channelView = 'all' }: MessagingIn
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const apiChannel = channelView === 'hors_crm' ? 'all' : channelView;
-
     const fetchChats = useCallback(async () => {
         setLoadingChats(true);
         setError(null);
         try {
             const [chatsRes, idsRes] = await Promise.all([
-                fetch(`/api/unipile/chats?channel=${apiChannel}`, {
+                fetch(`/api/unipile/chats?channel=${channelFilter}`, {
                     credentials: 'include',
                 }),
                 fetch('/api/unipile/chats/andoxa-ids', {
@@ -95,7 +100,7 @@ export function MessagingInbox({ focusChatId, channelView = 'all' }: MessagingIn
         } finally {
             setLoadingChats(false);
         }
-    }, [apiChannel]);
+    }, [channelFilter]);
 
     const fetchMessages = useCallback(async (chatId: string) => {
         setLoadingMessages(true);
@@ -173,7 +178,7 @@ export function MessagingInbox({ focusChatId, channelView = 'all' }: MessagingIn
 
     const isChatInCrm = (chatId: string) => !!chatToProspect[chatId];
 
-    const displayedChats = channelView === 'hors_crm'
+    const displayedChats = onlyHorsCrm
         ? chats.filter((c) => !isChatInCrm(c.id))
         : chats;
 

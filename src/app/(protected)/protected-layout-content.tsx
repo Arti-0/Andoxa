@@ -10,6 +10,7 @@ import { DeletedOrganizationBanner } from "../../components/guards/DeletedOrgani
 import { AnnouncementBanner } from "../../components/guards/AnnouncementBanner";
 import { ErrorButton } from "../../components/debug/ErrorButton";
 import { CommandPalette } from "../../components/layout/command-palette";
+import { PlanRouteGuard } from "../../components/guards/PlanRouteGuard";
 
 /**
  * ProtectedLayoutContent - Client component that provides workspace context
@@ -45,7 +46,7 @@ function ProtectedLayoutContentInner({ children }: { children: ReactNode }) {
               <div className="h-full w-full bg-primary transition-all duration-500 ease-out animate-progress-flow" />
             </div>
           )}
-          {children}
+          <PlanRouteGuard>{children}</PlanRouteGuard>
         </main>
       </div>
       <CommandPalette />

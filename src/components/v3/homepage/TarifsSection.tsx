@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getPlanConfig, getPlanLimits } from "@/lib/config/plans-config";
 import { cn } from "@/lib/utils";
 import Balancer from "react-wrap-balancer";
+import { toast } from "sonner";
 
 type BillingFrequency = "mensuel" | "annuel";
 type Frequency = "monthly" | "yearly";
@@ -64,7 +65,7 @@ export function TarifsSection() {
 
       // 1. Check if user is authenticated
       if (!session?.user) {
-        router.push(`/auth/sign-up?plan=${planId}&frequency=${frequency}`);
+        router.push(`/auth/login?plan=${planId}&frequency=${frequency}`);
         setLoadingPlan(null);
         return;
       }
@@ -102,6 +103,8 @@ export function TarifsSection() {
         const data = await response.json();
         if (data.url) {
           window.location.href = data.url;
+        } else {
+          throw new Error("Le portail de facturation n'a pas renvoyé d'URL.");
         }
       } else {
         // New subscription → Checkout
@@ -121,11 +124,17 @@ export function TarifsSection() {
           window.location.href = data.url;
         } else if (data.redirect_url) {
           router.push(data.redirect_url);
+        } else {
+          throw new Error("Le checkout n'a pas renvoyé d'URL de redirection.");
         }
       }
     } catch (error) {
       console.error("Error:", error);
-      // Error will be handled by toast system
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Impossible de sélectionner ce plan pour le moment."
+      );
     } finally {
       setLoadingPlan(null);
     }

@@ -1,4 +1,5 @@
 import { createApiHandler, Errors } from "@/lib/api";
+import { assertMessagerieAndTemplatesPlan } from "@/lib/billing/plan-gates";
 
 /**
  * GET /api/unipile/chats/andoxa-ids
@@ -9,6 +10,8 @@ export const GET = createApiHandler(async (req, ctx) => {
   if (!ctx.workspaceId) {
     throw Errors.badRequest("Workspace required");
   }
+
+  assertMessagerieAndTemplatesPlan(ctx);
 
   const { data, error } = await ctx.supabase
     .from("unipile_chat_prospects")

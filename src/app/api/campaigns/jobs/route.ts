@@ -14,6 +14,7 @@ export const POST = createApiHandler(
       message_template?: string;
       batch_size?: number;
       delay_ms?: number;
+      message_overrides?: Record<string, string>;
     }>(req);
 
     if (!body.type || !["invite", "contact"].includes(body.type)) {
@@ -22,6 +23,12 @@ export const POST = createApiHandler(
     if (!body.prospect_ids?.length) {
       throw Errors.validation({ prospect_ids: "At least one prospect required" });
     }
+
+    const overrides = body.message_overrides ?? {};
+    const metadata =
+      overrides && typeof overrides === "object" && Object.keys(overrides).length > 0
+        ? { message_overrides: overrides }
+        : null;
 
     const { data: job, error: jobError } = await ctx.supabase
       .from("campaign_jobs")
@@ -33,6 +40,7 @@ export const POST = createApiHandler(
         batch_size: body.batch_size ?? 10,
         delay_ms: body.delay_ms ?? 120000,
         message_template: body.message_template ?? null,
+        metadata,
       })
       .select()
       .single();

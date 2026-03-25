@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/client";
 import {
   ExternalLink,
   Copy,
@@ -35,8 +36,31 @@ export default function InstallationPage() {
 
   const searchParams = useSearchParams();
   const toastShownRef = useRef(false);
+  const [fallbackUserId, setFallbackUserId] = useState<string>("");
 
-  const userId = user?.id ?? profile?.id ?? "";
+  const userId = user?.id ?? profile?.id ?? fallbackUserId;
+
+  useEffect(() => {
+    let mounted = true;
+    const loadAuthUser = async () => {
+      if (user?.id || profile?.id) return;
+      try {
+        const supabase = createClient();
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
+        if (mounted && authUser?.id) {
+          setFallbackUserId(authUser.id);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    loadAuthUser();
+    return () => {
+      mounted = false;
+    };
+  }, [profile?.id, user?.id]);
 
   useEffect(() => {
     if (toastShownRef.current) return;
@@ -115,12 +139,11 @@ export default function InstallationPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6 lg:p-8 max-w-3xl">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Installation</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+      <div className="space-y-2">
+        <p className="text-sm text-muted-foreground">
           Configurez vos intégrations en 3 étapes pour profiter pleinement d&apos;Andoxa.
         </p>
-        <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <div className="h-1.5 w-32 rounded-full bg-muted overflow-hidden">
             <div
               className="h-full rounded-full bg-primary transition-all"
@@ -242,43 +265,22 @@ export default function InstallationPage() {
           {extensionExpanded && (
             <div className="space-y-4 rounded-lg border bg-muted/20 p-4">
               <div className="flex flex-wrap gap-2">
-                <div className="flex flex-col gap-2">
-                  <Link
-                    href="https://chromewebstore.google.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-sm hover:bg-accent"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" /> Chrome / Edge
-                  </Link>
-                  <Link
-                    href="https://www.linkedin.com/feed/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-md border border-secondary/40 bg-secondary/10 px-3 py-1.5 text-sm text-secondary-foreground hover:bg-secondary/20"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" /> Ouvrir LinkedIn (feed)
-                  </Link>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <Link
-                    href="https://addons.mozilla.org"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-sm hover:bg-accent"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" /> Firefox
-                  </Link>
-                  <Link
-                    href="https://www.linkedin.com/feed/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-md border border-secondary/40 bg-secondary/10 px-3 py-1.5 text-sm text-secondary-foreground hover:bg-secondary/20"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" /> Ouvrir LinkedIn (feed)
-                  </Link>
-                </div>
+                <Link
+                  href="https://chromewebstore.google.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-sm hover:bg-accent"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> Chrome / Edge
+                </Link>
+                <Link
+                  href="https://addons.mozilla.org"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-sm hover:bg-accent"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> Firefox
+                </Link>
               </div>
               <ol className="space-y-2 text-sm text-muted-foreground list-decimal pl-5">
                 <li>Installez l&apos;extension depuis le store de votre navigateur (ou chargez-la en mode développeur).</li>

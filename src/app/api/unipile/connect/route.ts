@@ -36,8 +36,8 @@ export const POST = createApiHandler(async (req, ctx) => {
     unipileBase = `https://${unipileBase}`;
   }
   const notifyUrl = `${baseUrl.replace(/\/$/, "")}/api/webhooks/unipile`;
-  const successUrl = `${baseUrl.replace(/\/$/, "")}/linkedin?connected=1`;
-  const failureUrl = `${baseUrl.replace(/\/$/, "")}/linkedin?connected=0`;
+  const successUrl = `${baseUrl.replace(/\/$/, "")}/installation?connected=1`;
+  const failureUrl = `${baseUrl.replace(/\/$/, "")}/installation?connected=0`;
 
   const expiresOn = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
@@ -71,7 +71,27 @@ export const POST = createApiHandler(async (req, ctx) => {
     return { url };
   } catch (err) {
     if (err instanceof UnipileApiError) {
-      throw Errors.internal(err.message);
+      const type = err.unipileType ?? "";
+      if (type === "errors/missing_credentials" || err.message === "Compte non connecté") {
+        throw Errors.badRequest(
+          "Unipile n'arrive pas à valider vos identifiants d'API (UNIPILE_API_KEY). " +
+            "Vérifiez que `UNIPILE_API_KEY` est bien la bonne valeur (token d'accès Unipile), " +
+            "qu'elle n'est pas expirée et que vous avez redémarré l'application après modification. " +
+            "Ensuite, réessayez « Connecter LinkedIn ».",
+          { unipileType: type }
+        );
+      }
+
+      if (type === "errors/disconnected_account") {
+        throw Errors.badRequest(
+          "Votre compte Unipile pour LinkedIn est déconnecté. " +
+            "Reconnectez LinkedIn via « Connecter LinkedIn » puis vérifiez que le redirect complet s'est bien fait.",
+          { unipileType: type }
+        );
+      }
+
+      // Default: preserve Unipile's user-friendly message.
+      throw Errors.badRequest(err.message, { unipileType: type });
     }
     const message = err instanceof Error ? err.message : "Erreur de connexion";
     if (message.includes("UNIPILE_API_KEY")) {

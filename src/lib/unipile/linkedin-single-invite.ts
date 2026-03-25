@@ -20,7 +20,9 @@ export async function sendLinkedInInviteForProspect(
   ctx: ApiContext,
   prospect: InviteProspectRow,
   accountId: string,
-  messageTemplate?: string
+  messageTemplate?: string,
+  /** Message final (déjà rédigé), prioritaire sur le modèle + variables */
+  messageOverride?: string | null
 ): Promise<void> {
   const slug = extractLinkedInSlug(prospect.linkedin);
   if (!slug) {
@@ -38,12 +40,15 @@ export async function sendLinkedInInviteForProspect(
     bookingLink = `${appUrl}/booking/${profile.booking_slug}`;
   }
 
-  const message =
+  const template =
     (messageTemplate ?? "").trim() ||
     "Bonjour, j'aimerais vous ajouter à mon réseau.";
-  const personalizedMessage = applyMessageVariables(message, prospect, {
-    bookingLink,
-  });
+  const personalizedMessage =
+    messageOverride != null && String(messageOverride).trim() !== ""
+      ? String(messageOverride).trim()
+      : applyMessageVariables(template, prospect, {
+          bookingLink,
+        });
 
   const profileRes = await unipileFetch<{ provider_id?: string }>(
     `/users/${encodeURIComponent(slug)}?account_id=${accountId}`

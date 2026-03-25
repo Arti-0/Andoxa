@@ -1,4 +1,5 @@
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
+import { assertMessagerieAndTemplatesPlan } from "@/lib/billing/plan-gates";
 import { z } from "zod";
 
 const UpdateTemplateSchema = z.object({
@@ -39,6 +40,8 @@ function getIdFromUrl(req: Request): string {
 export const GET = createApiHandler(async (req, ctx) => {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
 
+  assertMessagerieAndTemplatesPlan(ctx);
+
   const id = getIdFromUrl(req);
   const { data, error } = await ctx.supabase
     .from("message_templates")
@@ -57,6 +60,8 @@ export const GET = createApiHandler(async (req, ctx) => {
  */
 export const PATCH = createApiHandler(async (req, ctx) => {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
+
+  assertMessagerieAndTemplatesPlan(ctx);
 
   const id = getIdFromUrl(req);
   const body = await parseBody<z.infer<typeof UpdateTemplateSchema>>(req);
@@ -94,6 +99,8 @@ export const PATCH = createApiHandler(async (req, ctx) => {
  */
 export const DELETE = createApiHandler(async (req, ctx) => {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
+
+  assertMessagerieAndTemplatesPlan(ctx);
 
   const id = getIdFromUrl(req);
   const { error } = await ctx.supabase

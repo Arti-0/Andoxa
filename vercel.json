@@ -19,6 +19,9 @@
     },
     "src/app/api/cron/**/*.ts": {
       "maxDuration": 60
+    },
+    "src/app/api/cron/campaign-jobs/route.ts": {
+      "maxDuration": 120
     }
   },
   "crons": [
@@ -28,6 +31,10 @@
     },
     {
       "path": "/api/cron/enrichment-jobs",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/campaign-jobs",
       "schedule": "* * * * *"
     }
   ],

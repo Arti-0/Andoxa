@@ -274,8 +274,7 @@ export default function CalendarPage() {
   return (
     <div className="flex flex-col gap-6 p-6 lg:p-8 h-full">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Calendrier</h1>
+        <div className="flex-1">
           <p className="text-muted-foreground">
             Vue semaine : créez, déplacez et redimensionnez vos RDV ; les réservations publiques apparaissent ici.
           </p>

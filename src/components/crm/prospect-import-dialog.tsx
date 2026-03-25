@@ -108,16 +108,20 @@ export function ProspectImportDialog({
     queryFn: async () => {
       const res = await fetch("/api/subscription/info", { credentials: "include" });
       if (!res.ok) throw new Error(String(res.status));
-      return (await res.json()) as { currentPlan?: string };
+      return (await res.json()) as {
+        currentPlan?: string;
+        limitsPlanId?: string;
+      };
     },
     enabled: open,
     staleTime: 60_000,
   });
 
   const planId: PlanId = useMemo(() => {
-    const raw = subscriptionInfo?.currentPlan;
+    const raw =
+      subscriptionInfo?.limitsPlanId ?? subscriptionInfo?.currentPlan;
     return raw && VALID_PLANS.includes(raw as PlanId) ? (raw as PlanId) : "trial";
-  }, [subscriptionInfo?.currentPlan]);
+  }, [subscriptionInfo?.limitsPlanId, subscriptionInfo?.currentPlan]);
 
   const maxRows = getImportMaxRows(planId);
   const isOverPlanRowLimit = maxRows !== -1 && parsedRows.length > maxRows;

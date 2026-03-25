@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import { PendingState } from "@/components/guards/PendingState";
 import { ExpiredSubscriptionState } from "@/components/guards/ExpiredSubscriptionState";
 import { ProtectedLayoutContent } from "./protected-layout-content";
+import { hasActiveBilling } from "@/lib/billing/workspace-billing";
+import type { SubscriptionStatus } from "@/lib/workspace/types";
 
 /**
  * Protected Layout - Guard Layout with organization and subscription checks
@@ -50,7 +52,7 @@ export default async function ProtectedLayout({
   // Fetch organization with status, subscription and deleted_at
   const { data: orgData, error: orgError } = await supabase
     .from("organizations")
-    .select("id, status, subscription_status, deleted_at")
+    .select("id, status, subscription_status, deleted_at, trial_ends_at")
     .eq("id", profile.active_organization_id)
     .single();
 
@@ -59,6 +61,7 @@ export default async function ProtectedLayout({
     status: string;
     subscription_status: string | null;
     deleted_at: string | null;
+    trial_ends_at: string | null;
   } | null;
   if (orgError || !organization) {
     redirect("/onboarding/plan");
@@ -80,17 +83,24 @@ export default async function ProtectedLayout({
     return <ProtectedLayoutContent>{children}</ProtectedLayoutContent>;
   }
 
-  // Guard 3: Check subscription status
-  const isSubscriptionActive =
-    organization.subscription_status === "active" ||
-    organization.subscription_status === "trialing";
+  // Guard 3: Abonnement payant ou essai Stripe encore valide (trial_ends_at)
+  const billingOk = hasActiveBilling({
+    subscription_status: organization.subscription_status as SubscriptionStatus | null,
+    trial_ends_at: organization.trial_ends_at,
+  });
 
   if (
     organization.status === "active" &&
-    !isSubscriptionActive &&
+    !billingOk &&
     organization.subscription_status !== null
   ) {
-    return <ExpiredSubscriptionState />;
+    const trialEnded =
+      organization.subscription_status === "trialing" &&
+      organization.trial_ends_at &&
+      new Date(organization.trial_ends_at).getTime() <= Date.now();
+    return (
+      <ExpiredSubscriptionState variant={trialEnded ? "trial_ended" : "default"} />
+    );
   }
 
   // Guard 4: Organization is active with valid subscription

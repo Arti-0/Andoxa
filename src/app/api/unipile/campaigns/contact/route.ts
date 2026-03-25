@@ -24,7 +24,11 @@ export const POST = createApiHandler(async (req, ctx) => {
     throw Errors.badRequest("Workspace required");
   }
 
-  const body = await parseBody<{ prospect_ids: string[]; message: string }>(req);
+  const body = await parseBody<{
+    prospect_ids: string[];
+    message: string;
+    message_by_prospect?: Record<string, string>;
+  }>(req);
   if (!body?.prospect_ids?.length) {
     throw Errors.validation({ prospect_ids: "Au moins un prospect est requis" });
   }
@@ -57,6 +61,7 @@ export const POST = createApiHandler(async (req, ctx) => {
   }
 
   const accountId = await getAccountIdForUser(ctx);
+  const byProspect = body.message_by_prospect ?? {};
 
   let lastChatId: string | null = null;
   let successCount = 0;
@@ -79,7 +84,11 @@ export const POST = createApiHandler(async (req, ctx) => {
         continue;
       }
 
-      const text = applyMessageVariables(messageTemplate, p, { bookingLink });
+      const custom = byProspect[p.id]?.trim();
+      const text =
+        custom && custom.length > 0
+          ? custom
+          : applyMessageVariables(messageTemplate, p, { bookingLink });
       const chatRes = await unipileFetch<UnipileChat & { id: string }>("/chats", {
         method: "POST",
         body: JSON.stringify({

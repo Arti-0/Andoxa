@@ -31,6 +31,8 @@ export interface Database {
           started_at: string | null;
           completed_at: string | null;
           created_at: string;
+          last_batch_at: string | null;
+          batch_lock_at: string | null;
         };
         Insert: {
           id?: string;
@@ -49,6 +51,8 @@ export interface Database {
           started_at?: string | null;
           completed_at?: string | null;
           created_at?: string;
+          last_batch_at?: string | null;
+          batch_lock_at?: string | null;
         };
         Update: {
           status?: string;
@@ -58,6 +62,8 @@ export interface Database {
           started_at?: string | null;
           completed_at?: string | null;
           metadata?: Json | null;
+          last_batch_at?: string | null;
+          batch_lock_at?: string | null;
         };
         Relationships: [];
       };
@@ -992,9 +998,29 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
+      campaign_try_acquire_batch_lock: {
+        Args: { p_job_id: string; p_stale_seconds?: number };
+        Returns: boolean;
+      };
+      campaign_release_batch_lock: {
+        Args: { p_job_id: string };
+        Returns: undefined;
+      };
       get_or_create_credits: {
         Args: { p_organization_id: string };
         Returns: number | { credits_available: number } | Array<{ credits_available: number }>;
+      };
+      rpc_prospects_list_with_search: {
+        Args: {
+          p_organization_id: string;
+          p_search: string;
+          p_limit: number;
+          p_offset: number;
+          p_bdd_id: string | null;
+          p_statuses: string[] | null;
+          p_sources: string[] | null;
+        };
+        Returns: Json;
       };
     };
     Enums: Record<string, never>;

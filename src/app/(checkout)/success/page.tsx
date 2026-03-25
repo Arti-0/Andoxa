@@ -3,8 +3,8 @@
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { LoadingSpinner } from "@/components/loading-spinner";
 import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 
 function CheckoutSuccessContent() {
   const router = useRouter();
@@ -17,30 +17,27 @@ function CheckoutSuccessContent() {
     const organizationId = searchParams.get("organization_id");
 
     if (!organizationId) {
-      setError("Paramètres de session manquants");
+      setError("Lien incomplet");
       setLoading(false);
       return;
     }
 
     const supabase = createClient();
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
 
-    // Verify user is authenticated
     supabase.auth.getUser().then(({ data: { user }, error: authError }) => {
       if (authError || !user) {
         router.push("/auth/login");
         return;
       }
 
-      // Set up timeout (30 seconds)
-      const timeoutId = setTimeout(() => {
+      timeoutId = setTimeout(() => {
         setTimeoutReached(true);
         setLoading(false);
-        setError(
-          "L'activation prend plus de temps que prévu. Veuillez réessayer dans quelques instants."
-        );
+        setError("L'activation prend trop de temps.");
       }, 30000);
 
-      // Check initial status
       supabase
         .from("organizations")
         .select("status, subscription_status")
@@ -48,23 +45,21 @@ function CheckoutSuccessContent() {
         .single()
         .then(({ data: org, error: orgError }) => {
           if (orgError) {
-            clearTimeout(timeoutId);
-            setError("Erreur lors de la vérification de l'organisation");
+            if (timeoutId) clearTimeout(timeoutId);
+            setError("Organisation introuvable");
             setLoading(false);
             return;
           }
 
-          const orgData = org as { status?: string; subscription_status?: string | null } | null;
-          // If already active, redirect immediately
+          const orgData = org as { status?: string } | null;
           if (orgData?.status === "active") {
-            clearTimeout(timeoutId);
+            if (timeoutId) clearTimeout(timeoutId);
             router.refresh();
             router.push("/dashboard");
             return;
           }
 
-          // Set up Realtime subscription to listen for organization status changes
-          const channel = supabase
+          channel = supabase
             .channel(`org-status-${organizationId}`)
             .on(
               "postgres_changes",
@@ -75,85 +70,64 @@ function CheckoutSuccessContent() {
                 filter: `id=eq.${organizationId}`,
               },
               (payload) => {
-                const updatedOrg = payload.new as {
-                  status: string;
-                  subscription_status: string | null;
-                };
-
-                console.log(
-                  "[CheckoutSuccess] Organization status updated:",
-                  updatedOrg
-                );
-
-                // If organization is now active, redirect
+                const updatedOrg = payload.new as { status: string };
                 if (updatedOrg.status === "active") {
-                  clearTimeout(timeoutId);
-                  channel.unsubscribe();
+                  if (timeoutId) clearTimeout(timeoutId);
+                  channel?.unsubscribe();
                   router.refresh();
-                  // Small delay to let refresh complete
-                  setTimeout(() => {
-                    router.push("/dashboard");
-                  }, 500);
+                  setTimeout(() => router.push("/dashboard"), 400);
                 }
               }
             )
-            .subscribe((status) => {
-              if (status === "SUBSCRIBED") {
-                console.log(
-                  "[CheckoutSuccess] Subscribed to organization status changes"
-                );
-              }
-            });
-
-          // Cleanup function
-          return () => {
-            clearTimeout(timeoutId);
-            channel.unsubscribe();
-          };
+            .subscribe();
         });
     });
 
-    // Cleanup on unmount
     return () => {
-      // Cleanup is handled in the nested promise chain
+      if (timeoutId) clearTimeout(timeoutId);
+      channel?.unsubscribe();
     };
   }, [searchParams, router]);
 
+  const shell = "min-h-screen flex flex-col items-center justify-center bg-slate-950 px-6";
+
   if (loading && !timeoutReached) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
-        <div className="text-center max-w-md mx-auto p-6">
-          <LoadingSpinner text="Activation en cours..." />
-          <p className="mt-4 text-sm text-muted-foreground">
-            Votre paiement a été confirmé. Nous activons votre organisation.
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Cette opération peut prendre quelques instants. Vous serez automatiquement redirigé.
-          </p>
-        </div>
+      <div className={shell}>
+        <Loader2 className="h-9 w-9 animate-spin text-white/75" aria-hidden />
+        <p className="mt-6 text-center text-base font-medium text-white/90">
+          Finalisation du paiement
+        </p>
+        <p className="mt-2 max-w-sm text-center text-sm text-white/70">
+          Redirection automatique vers le tableau de bord.
+        </p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
-        <div className="text-center max-w-md mx-auto p-6">
-          <h1 className="text-2xl font-bold text-red-600 dark:text-red-400 mb-4">
-            {timeoutReached ? "Temps d'attente dépassé" : "Erreur"}
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">{error}</p>
-          <div className="flex gap-2 justify-center">
-            <Button
-              onClick={() => router.push("/onboarding/plan")}
-              variant="outline"
-            >
-              Retour aux plans
-            </Button>
-            <Button onClick={() => router.push("/dashboard")}>
-              Aller au dashboard
-            </Button>
-          </div>
+      <div className={shell}>
+        <p className="text-center text-lg font-semibold text-white/90">
+          {timeoutReached ? "Délai dépassé" : "Impossible de continuer"}
+        </p>
+        <p className="mt-3 max-w-sm text-center text-sm text-white/70">
+          {error}
+        </p>
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <Button
+            variant="outline"
+            className="border-white/25 bg-white/5 text-white/90 hover:bg-white/10 hover:text-white"
+            onClick={() => router.push("/onboarding/plan")}
+          >
+            Plans
+          </Button>
+          <Button
+            className="bg-white/90 text-slate-950 hover:bg-white"
+            onClick={() => router.push("/dashboard")}
+          >
+            Tableau de bord
+          </Button>
         </div>
       </div>
     );
@@ -166,8 +140,9 @@ export default function CheckoutSuccessPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
-          <LoadingSpinner text="Chargement..." />
+        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 px-6">
+          <Loader2 className="h-9 w-9 animate-spin text-white/75" />
+          <p className="mt-6 text-sm text-white/70">Chargement…</p>
         </div>
       }
     >

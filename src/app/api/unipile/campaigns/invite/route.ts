@@ -22,7 +22,11 @@ export const POST = createApiHandler(async (req, ctx) => {
     throw Errors.badRequest("Workspace required");
   }
 
-  const body = await parseBody<{ prospect_ids: string[]; message: string }>(req);
+  const body = await parseBody<{
+    prospect_ids: string[];
+    message: string;
+    message_by_prospect?: Record<string, string>;
+  }>(req);
   if (!body?.prospect_ids?.length) {
     throw Errors.validation({ prospect_ids: "Au moins un prospect est requis" });
   }
@@ -46,9 +50,12 @@ export const POST = createApiHandler(async (req, ctx) => {
   let successCount = 0;
   const errors: string[] = [];
 
+  const byProspect = body.message_by_prospect ?? {};
+
   for (const p of prospects as ProspectRow[]) {
     try {
-      await sendLinkedInInviteForProspect(ctx, p, accountId, message);
+      const override = byProspect[p.id]?.trim() || null;
+      await sendLinkedInInviteForProspect(ctx, p, accountId, message, override);
       successCount++;
       await new Promise((r) => setTimeout(r, 300 + Math.random() * 500));
     } catch (err) {

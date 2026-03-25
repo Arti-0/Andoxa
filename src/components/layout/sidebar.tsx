@@ -13,7 +13,6 @@ import {
   ChevronRight,
   ChevronDown,
   Wrench,
-  Palette,
   Check,
   Building2,
 } from "lucide-react";
@@ -31,6 +30,8 @@ import {
   getUserOrganizations,
   type Organization,
 } from "../../lib/organizations/utils-client";
+import { normalizePlanIdForRoutes } from "@/lib/billing/effective-plan";
+import { canAccessRoute, type PlanId } from "@/lib/config/plans-config";
 
 interface NavItem {
   href: string;
@@ -46,20 +47,15 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { href: "/calendar", label: "Calendrier", icon: Calendar },
 ];
 
-const DESIGN_NAV_ITEMS: NavItem[] = [
-  { href: "/design-1", label: "Design 1", icon: Palette },
-  { href: "/design-2", label: "Design 2", icon: Palette },
-  { href: "/design-3", label: "Design 3", icon: Palette },
-];
-
 const FOOTER_NAV_ITEMS: NavItem[] = [
-  { href: "/linkedin", label: "Installation", icon: Wrench },
+  { href: "/installation", label: "Installation", icon: Wrench },
   { href: "/settings", label: "Paramètres", icon: Settings },
 ];
 
 function cleanOrgName(name: string | undefined | null): string {
   if (!name) return "Mon organisation";
-  const cleaned = name.replace(/'s Organization$/i, "").trim();
+  let cleaned = name.replace(/'s Organization$/i, "").trim();
+  cleaned = cleaned.replace(/^Organisation de\s+/i, "").trim();
   if (!cleaned) return "Mon organisation";
   return cleaned;
 }
@@ -102,6 +98,20 @@ export function Sidebar() {
   };
 
   const displayName = cleanOrgName(workspace?.name);
+
+  const routePlan = normalizePlanIdForRoutes(
+    workspace?.plan,
+    workspace?.subscription_status
+  ) as PlanId;
+  const mainNavItems = MAIN_NAV_ITEMS.filter((item) =>
+    canAccessRoute(routePlan, item.href)
+  );
+
+  const displayUserName =
+    profile?.full_name ||
+    user?.email?.split("@")[0] ||
+    "Utilisateur";
+  const displayUserEmail = profile?.email || user?.email || "";
 
   return (
     <aside
@@ -190,7 +200,7 @@ export function Sidebar() {
           <li aria-hidden="true">
             <div className="my-1 border-t" />
           </li>
-          {MAIN_NAV_ITEMS.map((item) => {
+          {mainNavItems.map((item) => {
             const isActive = pathname?.startsWith(item.href);
             const Icon = item.icon;
 
@@ -215,36 +225,6 @@ export function Sidebar() {
           })}
         </ul>
       </nav>
-
-      <div className="border-t p-2">
-        <p className={cn("px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60", isCollapsed && "sr-only")}>
-          Design
-        </p>
-        <ul className="space-y-0.5">
-          {DESIGN_NAV_ITEMS.map((item) => {
-            const isActive = pathname?.startsWith(item.href);
-            const Icon = item.icon;
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                    isCollapsed && "justify-center px-2"
-                  )}
-                  title={isCollapsed ? item.label : undefined}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {!isCollapsed && <span>{item.label}</span>}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
 
       <div className="border-t p-2">
         <ul className="space-y-1">
@@ -290,10 +270,10 @@ export function Sidebar() {
           {!isCollapsed && (
             <div className="min-w-0 flex-1 overflow-hidden">
               <p className="truncate text-sm font-medium">
-                {profile?.full_name || "Utilisateur"}
+                {displayUserName}
               </p>
               <p className="truncate text-xs text-muted-foreground">
-                {profile?.email}
+                {displayUserEmail}
               </p>
             </div>
           )}
