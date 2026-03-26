@@ -57,6 +57,15 @@ export const POST = createApiHandler(
       };
     }
 
+    if (result.alreadyMember && result.organizationId) {
+      return {
+        linkedin_url: normalized,
+        joined: false,
+        alreadyMember: true,
+        organizationId: result.organizationId,
+      };
+    }
+
     return {
       linkedin_url: normalized,
       joined: false,

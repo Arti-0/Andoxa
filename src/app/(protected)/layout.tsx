@@ -118,11 +118,10 @@ export default async function ProtectedLayout({
     ({ organization, orgError } = await fetchOrganization());
   }
 
+  // Do not clear active_organization_id here. A failed fetch is often RLS (invited
+  // members may not SELECT organizations yet), not a bad pointer — wiping the column
+  // made manual fixes and successful invites revert to null on next /dashboard load.
   if (orgError || !organization) {
-    await supabase
-      .from("profiles")
-      .update({ active_organization_id: null })
-      .eq("id", user.id);
     redirect("/onboarding/plan");
   }
 

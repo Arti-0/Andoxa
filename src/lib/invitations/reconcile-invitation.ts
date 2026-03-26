@@ -4,7 +4,13 @@ import { logger } from "@/lib/utils/logger";
 
 export type ReconcileInvitationResult =
   | { joined: true; organizationId: string }
-  | { joined: false; alreadyMember?: boolean; error?: boolean };
+  | {
+      joined: false;
+      alreadyMember?: boolean;
+      /** Present when RPC succeeded with already_member (same as joined org). */
+      organizationId?: string;
+      error?: boolean;
+    };
 
 type RpcPayload = {
   success?: boolean;
@@ -79,7 +85,7 @@ export async function reconcilePendingInvitationForUser(
   }
 
   if (row.already_member) {
-    return { joined: false, alreadyMember: true };
+    return { joined: false, alreadyMember: true, organizationId: orgId };
   }
 
   return { joined: true, organizationId: orgId };

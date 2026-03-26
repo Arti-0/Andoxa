@@ -165,7 +165,11 @@ export default function PlanPage() {
         });
         const json: {
           success?: boolean;
-          data?: { joined?: boolean; organizationId?: string };
+          data?: {
+            joined?: boolean;
+            alreadyMember?: boolean;
+            organizationId?: string;
+          };
           error?: { message?: string };
         } = await res.json();
 
@@ -178,7 +182,10 @@ export default function PlanPage() {
         }
 
         const data = json.data;
-        if (data?.joined) {
+        const invitationOk =
+          data?.joined ||
+          (data?.alreadyMember && Boolean(data?.organizationId));
+        if (invitationOk) {
           router.refresh();
           router.push("/dashboard");
           return;
