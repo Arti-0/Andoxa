@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { handleLinkedInCallback } from '@/lib/auth/linkedin-auth-server';
 import { logger } from '@/lib/utils/logger';
 import { reconcilePendingInvitationForUser } from '@/lib/invitations/reconcile-invitation';
+import { canUserAccessDashboardForOrg } from '@/lib/onboarding/dashboard-access';
 
 function getRedirectBase(request: NextRequest): string {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL;
@@ -97,15 +98,25 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    let next: string;
+    const canDashboard =
+      !!updatedProfile?.active_organization_id &&
+      (await canUserAccessDashboardForOrg(
+        supabase,
+        session.user.id,
+        updatedProfile.active_organization_id
+      ));
 
     const nextParam = searchParams.get('next');
-    if (nextParam && nextParam.startsWith('/')) {
-      next = nextParam;
-    } else if (!hasActivePlan) {
-      next = '/onboarding/plan';
-    } else {
+    let next: string;
+    if (nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')) {
+      const dashboardish =
+        nextParam === '/dashboard' || nextParam.startsWith('/dashboard/');
+      next =
+        dashboardish && !canDashboard ? '/onboarding/plan' : nextParam;
+    } else if (canDashboard || hasActivePlan) {
       next = '/dashboard';
+    } else {
+      next = '/onboarding/plan';
     }
 
     return NextResponse.redirect(`${baseUrl}${next}`);

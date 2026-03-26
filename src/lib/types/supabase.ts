@@ -1166,6 +1166,10 @@ export interface Database {
         };
         Returns: Json;
       };
+      accept_pending_organization_invitation: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
     };
     Enums: Record<string, never>;
   };

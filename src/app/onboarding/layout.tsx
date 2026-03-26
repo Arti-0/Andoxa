@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { ReactNode } from "react";
-import { hasActiveBilling } from "@/lib/billing/workspace-billing";
-import type { SubscriptionStatus } from "@/lib/workspace/types";
+import { organizationAllowsDashboardAccess } from "@/lib/onboarding/dashboard-access";
 
 /**
  * Onboarding Layout - For users without a valid organization
@@ -53,22 +52,8 @@ export default async function OnboardingLayout({
       trial_ends_at: string | null;
     } | null;
 
-    if (org) {
-      const billingOk = hasActiveBilling({
-        subscription_status: org.subscription_status as SubscriptionStatus | null,
-        trial_ends_at: org.trial_ends_at,
-      });
-
-      const canAccessDashboard =
-        org.status === "pending" ||
-        (org.status === "active" && (billingOk || org.subscription_status === null)) ||
-        (org.status === "deleted" &&
-          org.deleted_at != null &&
-          new Date(org.deleted_at) >= new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
-
-      if (canAccessDashboard) {
-        redirect("/dashboard");
-      }
+    if (org && organizationAllowsDashboardAccess(org)) {
+      redirect("/dashboard");
     }
   }
   return (
