@@ -7,7 +7,7 @@ import {
 } from '@/lib/auth/linkedin-metadata';
 import { logger } from '@/lib/utils/logger';
 import { reconcilePendingInvitationForUser } from '@/lib/invitations/reconcile-invitation';
-import { canUserAccessDashboardForOrg } from '@/lib/onboarding/dashboard-access';
+import { isUserMemberOfOrganization } from '@/lib/onboarding/dashboard-access';
 
 function getRedirectBase(request: NextRequest): string {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL;
@@ -106,13 +106,19 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const canDashboard =
+    // Send members to /dashboard whenever they have a valid org pointer + membership.
+    // Billing / pending / expired trial are handled by (protected)/layout (ExpiredSubscriptionState,
+    // PendingState), not by bouncing to /onboarding/plan — which used to disagree with
+    // organizationAllowsDashboardAccess and the hasActivePlan shortcut.
+    const memberOfActiveOrg =
       !!updatedProfile?.active_organization_id &&
-      (await canUserAccessDashboardForOrg(
+      (await isUserMemberOfOrganization(
         supabase,
         session.user.id,
         updatedProfile.active_organization_id
       ));
+
+    const landOnDashboard = hasActivePlan || memberOfActiveOrg;
 
     const nextParam = searchParams.get('next');
     let next: string;
@@ -120,8 +126,8 @@ export async function GET(request: NextRequest) {
       const dashboardish =
         nextParam === '/dashboard' || nextParam.startsWith('/dashboard/');
       next =
-        dashboardish && !canDashboard ? '/onboarding/plan' : nextParam;
-    } else if (canDashboard || hasActivePlan) {
+        dashboardish && !landOnDashboard ? '/onboarding/plan' : nextParam;
+    } else if (landOnDashboard) {
       next = '/dashboard';
     } else {
       next = '/onboarding/plan';

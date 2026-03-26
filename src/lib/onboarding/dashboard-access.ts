@@ -26,7 +26,34 @@ export function organizationAllowsDashboardAccess(org: OrgDashboardGateRow): boo
 }
 
 /**
- * Requires org membership + org gate (for auth callback / deep links).
+ * User belongs to the workspace; org row is readable. Does not encode billing — use for
+ * routing only when (protected) layout will apply PendingState / ExpiredSubscriptionState.
+ */
+export async function isUserMemberOfOrganization(
+  supabase: SupabaseClient,
+  userId: string,
+  organizationId: string
+): Promise<boolean> {
+  const { data: member } = await supabase
+    .from("organization_members")
+    .select("user_id")
+    .eq("organization_id", organizationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!member) return false;
+
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("id")
+    .eq("id", organizationId)
+    .maybeSingle();
+
+  return org != null;
+}
+
+/**
+ * Requires org membership + org gate (billing / lifecycle same as onboarding layout).
  */
 export async function canUserAccessDashboardForOrg(
   supabase: SupabaseClient,
