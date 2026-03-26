@@ -48,7 +48,7 @@ export default function AndoxaHero() {
               size="lg"
               className="h-12 px-8 text-base font-semibold dark:bg-blue-600 dark:text-white dark:hover:bg-blue-700"
             >
-              <Link href="/auth/sign-up" className="flex items-center gap-2">
+              <Link href="/auth/login" className="flex items-center gap-2">
                 Essai de 14 jours
                 <ArrowRight className="h-5 w-5" />
               </Link>

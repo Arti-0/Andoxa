@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { reconcilePendingInvitationForUser } from "@/lib/invitations/reconcile-invitation";
 
 /**
  * POST /api/invitations/check
@@ -29,67 +30,31 @@ export async function POST() {
       return NextResponse.json({ joined: false });
     }
 
-    // Try matching by email first, then by LinkedIn URL
-    let invitation: { id: string; organization_id: string; role: string } | null = null;
+    const result = await reconcilePendingInvitationForUser(supabase, user.id, {
+      userEmail: user.email,
+      profileLinkedInUrl: profile.linkedin_url,
+    });
 
-    if (user.email) {
-      const { data } = await supabase
-        .from("invitations")
-        .select("id, organization_id, role")
-        .eq("email", user.email.toLowerCase())
-        .limit(1)
-        .maybeSingle();
-      if (data) invitation = data;
-    }
-
-    if (!invitation && profile.linkedin_url) {
-      const { data } = await supabase
-        .from("invitations")
-        .select("id, organization_id, role")
-        .eq("linkedin_url", profile.linkedin_url)
-        .limit(1)
-        .maybeSingle();
-      if (data) invitation = data;
-    }
-
-    if (!invitation) {
-      return NextResponse.json({ joined: false });
-    }
-
-    const { error: insertError } = await supabase
-      .from("organization_members")
-      .insert({
-        organization_id: invitation.organization_id,
-        user_id: user.id,
-        role: invitation.role || "member",
-      });
-
-    if (insertError) {
-      if (insertError.code === "23505") {
-        // Already a member, just delete the invitation
-        await supabase.from("invitations").delete().eq("id", invitation.id);
-        return NextResponse.json({ joined: false, alreadyMember: true });
-      }
-      console.error("Error adding member from invitation:", insertError);
+    if ("error" in result && result.error) {
+      console.error("Error adding member from invitation");
       return NextResponse.json(
         { error: "Failed to join organization" },
         { status: 500 }
       );
     }
 
-    if (!profile.active_organization_id) {
-      await supabase
-        .from("profiles")
-        .update({ active_organization_id: invitation.organization_id })
-        .eq("id", user.id);
+    if (result.joined) {
+      return NextResponse.json({
+        joined: true,
+        organizationId: result.organizationId,
+      });
     }
 
-    await supabase.from("invitations").delete().eq("id", invitation.id);
+    if (result.alreadyMember) {
+      return NextResponse.json({ joined: false, alreadyMember: true });
+    }
 
-    return NextResponse.json({
-      joined: true,
-      organizationId: invitation.organization_id,
-    });
+    return NextResponse.json({ joined: false });
   } catch (error) {
     console.error("Check invitation error:", error);
     return NextResponse.json(

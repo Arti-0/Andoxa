@@ -9,7 +9,7 @@ export const siteConfig = {
     changelog: "/changelog",
     pricing: "/pricing",
     login: "/auth/login",
-    register: "/auth/sign-up",
+    register: "/auth/login",
   },
 };
 

@@ -75,7 +75,7 @@ export function HeroSectionV3() {
             className="h-12 sm:h-14 px-6 sm:px-8 text-base font-semibold text-slate-800 dark:text-slate-100 btn-neumorphism glassmorphism w-full sm:w-auto rounded-full border-0"
           >
             <Link
-              href="/auth/sign-up"
+              href="/auth/login"
               className="flex items-center justify-center gap-2 relative z-10"
             >
               Essai gratuit 14 jours

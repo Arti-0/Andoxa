@@ -12,8 +12,8 @@ test.describe("Stripe Checkout Flow", () => {
     await expect(essentialButton).toBeVisible();
     await essentialButton.click();
     
-    // 3. Should redirect to sign-up with plan params
-    await expect(page).toHaveURL(/\/auth\/sign-up\?plan=essential&frequency=monthly/);
+    // 3. Should redirect to login with plan params
+    await expect(page).toHaveURL(/\/auth\/login\?plan=essential&frequency=monthly/);
     
     // 4. Verify params are in URL
     const url = new URL(page.url());

@@ -144,7 +144,7 @@ export default function About() {
               size="lg"
               className="h-12 px-8 text-base font-semibold dark:bg-blue-600 dark:text-white dark:hover:bg-blue-700"
             >
-              <a href="/auth/sign-up" className="flex items-center gap-2">
+              <a href="/auth/login" className="flex items-center gap-2">
                 Essai de 14 jours
                 <RiArrowRightLine className="h-5 w-5" />
               </a>

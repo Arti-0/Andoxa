@@ -6,6 +6,13 @@ import { ExpiredSubscriptionState } from "@/components/guards/ExpiredSubscriptio
 import { ProtectedLayoutContent } from "./protected-layout-content";
 import { hasActiveBilling } from "@/lib/billing/workspace-billing";
 import type { SubscriptionStatus } from "@/lib/workspace/types";
+import { reconcilePendingInvitationForUser } from "@/lib/invitations/reconcile-invitation";
+
+type ProfileRow = {
+  id: string;
+  active_organization_id: string | null;
+  linkedin_url: string | null;
+};
 
 /**
  * Protected Layout - Guard Layout with organization and subscription checks
@@ -33,37 +40,72 @@ export default async function ProtectedLayout({
     redirect("/auth/login");
   }
 
-  // Fetch profile with active organization
   const { data: profileData, error: profileError } = await supabase
     .from("profiles")
-    .select("id, active_organization_id")
+    .select("id, active_organization_id, linkedin_url")
     .eq("id", user.id)
     .single();
 
-  const profile = profileData as { id: string; active_organization_id: string | null } | null;
+  let profile = profileData as ProfileRow | null;
   if (profileError || !profile) {
     redirect("/onboarding/plan");
+  }
+
+  const reloadProfile = async () => {
+    const { data: p, error: err } = await supabase
+      .from("profiles")
+      .select("id, active_organization_id, linkedin_url")
+      .eq("id", user.id)
+      .single();
+    if (!err && p) profile = p as ProfileRow;
+  };
+
+  const tryReconcileInvitation = async () => {
+    await reconcilePendingInvitationForUser(supabase, user.id, {
+      userEmail: user.email,
+      profileLinkedInUrl: profile?.linkedin_url,
+    });
+    await reloadProfile();
+  };
+
+  if (!profile.active_organization_id) {
+    await tryReconcileInvitation();
   }
 
   if (!profile.active_organization_id) {
     redirect("/onboarding/plan");
   }
 
-  // Fetch organization with status, subscription and deleted_at
-  const { data: orgData, error: orgError } = await supabase
-    .from("organizations")
-    .select("id, status, subscription_status, deleted_at, trial_ends_at")
-    .eq("id", profile.active_organization_id)
-    .single();
+  const fetchOrganization = async () => {
+    const { data: orgData, error: orgError } = await supabase
+      .from("organizations")
+      .select("id, status, subscription_status, deleted_at, trial_ends_at")
+      .eq("id", profile!.active_organization_id!)
+      .single();
+    return {
+      organization: orgData as {
+        id: string;
+        status: string;
+        subscription_status: string | null;
+        deleted_at: string | null;
+        trial_ends_at: string | null;
+      } | null,
+      orgError,
+    };
+  };
 
-  const organization = orgData as {
-    id: string;
-    status: string;
-    subscription_status: string | null;
-    deleted_at: string | null;
-    trial_ends_at: string | null;
-  } | null;
+  let { organization, orgError } = await fetchOrganization();
+
   if (orgError || !organization) {
+    await tryReconcileInvitation();
+    ({ organization, orgError } = await fetchOrganization());
+  }
+
+  if (orgError || !organization) {
+    await supabase
+      .from("profiles")
+      .update({ active_organization_id: null })
+      .eq("id", user.id);
     redirect("/onboarding/plan");
   }
 

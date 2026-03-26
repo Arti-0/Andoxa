@@ -99,7 +99,7 @@ const plans: Plan[] = [
     isStarter: false,
       isRecommended: config.isRecommended || false,
     buttonText: "✨ 14 jours gratuits",
-    buttonLink: "/auth/sign-up",
+    buttonLink: "/auth/login",
     badge: undefined,
     };
   })(),
@@ -124,7 +124,7 @@ const plans: Plan[] = [
     isStarter: false,
       isRecommended: config.isRecommended || false,
     buttonText: "Commencez maintenant",
-    buttonLink: "/auth/sign-up",
+    buttonLink: "/auth/login",
     badge: "",
     };
   })(),
@@ -149,7 +149,7 @@ const plans: Plan[] = [
     isStarter: false,
       isRecommended: config.isRecommended || false,
     buttonText: "Commencez maintenant",
-    buttonLink: "/auth/sign-up",
+    buttonLink: "/auth/login",
     };
   })(),
 ];
@@ -339,9 +339,9 @@ export default function Pricing() {
 
     const frequency = getFrequency(billingFrequency);
 
-    // Redirect to sign-up if not authenticated
+    // Redirect to login if not authenticated
     if (!isAuthenticated) {
-      router.push(`/auth/sign-up?plan=${planId}&frequency=${frequency}`);
+      router.push(`/auth/login?plan=${planId}&frequency=${frequency}`);
       return;
     }
 
@@ -1294,7 +1294,7 @@ export default function Pricing() {
                 variant="secondary"
                 className="h-12 px-8 text-base font-semibold bg-white text-blue-600 hover:bg-blue-50 dark:bg-white dark:text-blue-600 dark:hover:bg-blue-50"
               >
-                <Link href="/auth/sign-up" className="flex items-center gap-2">
+                <Link href="/auth/login" className="flex items-center gap-2">
                   Essai de 14 jours
                   <ArrowRight className="h-5 w-5" />
                 </Link>

@@ -102,7 +102,7 @@ export default async function AuthErrorPage({
             )}
             {!isInvalidLink && (
               <Button asChild className="w-full">
-                <Link href="/auth/sign-up">Retour à l&apos;inscription</Link>
+                <Link href="/auth/login">Retour à la connexion</Link>
               </Button>
             )}
             {!isInvalidLink && (

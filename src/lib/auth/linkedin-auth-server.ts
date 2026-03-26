@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { normalizeInvitationLinkedInUrl } from '@/lib/invitations/normalize';
 import { logger } from '@/lib/utils/logger';
 import type { Session } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -50,7 +51,11 @@ export async function handleLinkedInCallback(
   // Supabase automatically populates user_metadata with provider data
   const linkedinData = user.user_metadata;
   const linkedinId = linkedinData?.sub || linkedinData?.linkedin_id;
-  const linkedinUrl = linkedinData?.profile_url || linkedinData?.linkedin_url;
+  const rawLinkedinUrl =
+    linkedinData?.profile_url || linkedinData?.linkedin_url;
+  const linkedinUrl = rawLinkedinUrl
+    ? normalizeInvitationLinkedInUrl(String(rawLinkedinUrl))
+    : null;
   
   // Get provider token if available (for future use with LinkedIn API)
   const providerToken = userSession.provider_token;

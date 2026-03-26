@@ -1,26 +1,9 @@
 import { NextRequest } from "next/server";
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
-
-function normalizeLinkedInUrl(url: string): string {
-  const trimmed = url.trim();
-  if (!trimmed) return trimmed;
-  try {
-    const u = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
-    if (
-      u.hostname === "linkedin.com" ||
-      u.hostname === "www.linkedin.com" ||
-      u.hostname.endsWith(".linkedin.com")
-    ) {
-      const path = u.pathname.replace(/\/+$/, "");
-      return `https://www.linkedin.com${path.startsWith("/") ? path : `/${path}`}`;
-    }
-  } catch {}
-  return trimmed;
-}
-
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
+import {
+  normalizeInvitationEmail,
+  normalizeInvitationLinkedInUrl,
+} from "@/lib/invitations/normalize";
 
 /**
  * GET /api/invitations
@@ -65,7 +48,7 @@ export const POST = createApiHandler(async (req: NextRequest, ctx) => {
 
   let normalizedUrl: string | null = null;
   if (linkedinUrl) {
-    normalizedUrl = normalizeLinkedInUrl(linkedinUrl);
+    normalizedUrl = normalizeInvitationLinkedInUrl(linkedinUrl);
     if (!normalizedUrl || !normalizedUrl.includes("linkedin.com")) {
       throw Errors.badRequest("Invalid LinkedIn URL");
     }
@@ -73,7 +56,7 @@ export const POST = createApiHandler(async (req: NextRequest, ctx) => {
 
   let normalizedEmail: string | null = null;
   if (email) {
-    normalizedEmail = normalizeEmail(email);
+    normalizedEmail = normalizeInvitationEmail(email);
     if (!normalizedEmail.includes("@")) {
       throw Errors.badRequest("Invalid email");
     }

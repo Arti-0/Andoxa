@@ -52,8 +52,8 @@ test.describe("Stripe Subscription Flow", () => {
       .locator("button")
       .click();
 
-    // Should redirect to sign-up or checkout
-    await expect(page).toHaveURL(/sign-up|checkout/);
+    // Should redirect to login or checkout
+    await expect(page).toHaveURL(/\/auth\/login|checkout/);
   });
 
   test("should update tenant.plan after successful payment", async ({

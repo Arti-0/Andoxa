@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { handleLinkedInCallback } from '@/lib/auth/linkedin-auth-server';
 import { logger } from '@/lib/utils/logger';
+import { reconcilePendingInvitationForUser } from '@/lib/invitations/reconcile-invitation';
 
 function getRedirectBase(request: NextRequest): string {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL;
@@ -56,50 +57,12 @@ export async function GET(request: NextRequest) {
       .eq('id', session.user.id)
       .maybeSingle();
 
-    // Auto-detect pending invitations (Option 2)
-    // Check before determining redirect so invited users join immediately
-    if (!profile?.active_organization_id) {
-      let invitation: { id: string; organization_id: string; role: string } | null = null;
-
-      if (session.user.email) {
-        const { data } = await supabase
-          .from('invitations')
-          .select('id, organization_id, role')
-          .eq('email', session.user.email.toLowerCase())
-          .limit(1)
-          .maybeSingle();
-        if (data) invitation = data;
-      }
-
-      if (!invitation && profile?.linkedin_url) {
-        const { data } = await supabase
-          .from('invitations')
-          .select('id, organization_id, role')
-          .eq('linkedin_url', profile.linkedin_url)
-          .limit(1)
-          .maybeSingle();
-        if (data) invitation = data;
-      }
-
-      if (invitation) {
-        const { error: memberError } = await supabase
-          .from('organization_members')
-          .insert({
-            organization_id: invitation.organization_id,
-            user_id: session.user.id,
-            role: invitation.role || 'member',
-          });
-
-        if (!memberError || memberError.code === '23505') {
-          await supabase
-            .from('profiles')
-            .update({ active_organization_id: invitation.organization_id })
-            .eq('id', session.user.id);
-
-          await supabase.from('invitations').delete().eq('id', invitation.id);
-        }
-      }
-    }
+    // Pending invitations: always reconcile (normalized email/LinkedIn).
+    // Fixes users who already have a personal pending org — they still join the invited org.
+    await reconcilePendingInvitationForUser(supabase, session.user.id, {
+      userEmail: session.user.email,
+      profileLinkedInUrl: profile?.linkedin_url,
+    });
 
     // Re-fetch profile after potential invitation join
     const { data: updatedProfile } = await supabase
