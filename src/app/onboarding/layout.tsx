@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { ReactNode } from "react";
-import { extractLinkedInProfileUrlFromMetadata } from "@/lib/auth/linkedin-metadata";
+import {
+  extractLinkedInProfileUrlFromMetadata,
+  mergeLinkedInAuthMetadata,
+} from "@/lib/auth/linkedin-metadata";
 import { reconcilePendingInvitationForUser } from "@/lib/invitations/reconcile-invitation";
 import { organizationAllowsDashboardAccess } from "@/lib/onboarding/dashboard-access";
 
@@ -41,8 +44,9 @@ export default async function OnboardingLayout({
     linkedin_url?: string | null;
   } | null;
 
-  const meta = user.user_metadata as Record<string, unknown> | undefined;
-  const linkedinUrlHint = extractLinkedInProfileUrlFromMetadata(meta);
+  const linkedinUrlHint = extractLinkedInProfileUrlFromMetadata(
+    mergeLinkedInAuthMetadata(user)
+  );
 
   if (!profile?.active_organization_id) {
     await reconcilePendingInvitationForUser(supabase, user.id, {

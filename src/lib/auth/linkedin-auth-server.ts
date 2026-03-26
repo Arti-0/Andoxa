@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   extractLinkedInProfileUrlFromMetadata,
   extractLinkedInSubFromMetadata,
+  mergeLinkedInAuthMetadata,
 } from "@/lib/auth/linkedin-metadata";
 import { normalizeInvitationLinkedInUrl } from "@/lib/invitations/normalize";
 import { logger } from "@/lib/utils/logger";
@@ -53,10 +54,11 @@ export async function handleLinkedInCallback(
   }
 
   const user = userSession.user;
-  const linkedinData = user.user_metadata as Record<string, unknown> | undefined;
+  const merged = mergeLinkedInAuthMetadata(user);
+  const linkedinData = merged;
 
-  const rawUrlFromMeta = extractLinkedInProfileUrlFromMetadata(linkedinData);
-  const linkedinIdFromMeta = extractLinkedInSubFromMetadata(linkedinData);
+  const rawUrlFromMeta = extractLinkedInProfileUrlFromMetadata(merged);
+  const linkedinIdFromMeta = extractLinkedInSubFromMetadata(merged);
 
   const normalizedFromMeta = rawUrlFromMeta
     ? normalizeInvitationLinkedInUrl(rawUrlFromMeta)

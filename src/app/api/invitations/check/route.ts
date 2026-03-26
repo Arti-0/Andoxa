@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { extractLinkedInProfileUrlFromMetadata } from "@/lib/auth/linkedin-metadata";
+import {
+  extractLinkedInProfileUrlFromMetadata,
+  mergeLinkedInAuthMetadata,
+} from "@/lib/auth/linkedin-metadata";
 import { reconcilePendingInvitationForUser } from "@/lib/invitations/reconcile-invitation";
 
 /**
@@ -27,8 +30,9 @@ export async function POST() {
       .eq("id", user.id)
       .maybeSingle();
 
-    const meta = user.user_metadata as Record<string, unknown> | undefined;
-    const linkedinUrlHint = extractLinkedInProfileUrlFromMetadata(meta);
+    const linkedinUrlHint = extractLinkedInProfileUrlFromMetadata(
+      mergeLinkedInAuthMetadata(user)
+    );
 
     const result = await reconcilePendingInvitationForUser(supabase, user.id, {
       profileLinkedInUrl: profile?.linkedin_url ?? null,

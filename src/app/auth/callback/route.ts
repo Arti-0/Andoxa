@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { handleLinkedInCallback } from '@/lib/auth/linkedin-auth-server';
-import { extractLinkedInProfileUrlFromMetadata } from '@/lib/auth/linkedin-metadata';
+import {
+  extractLinkedInProfileUrlFromMetadata,
+  mergeLinkedInAuthMetadata,
+} from '@/lib/auth/linkedin-metadata';
 import { logger } from '@/lib/utils/logger';
 import { reconcilePendingInvitationForUser } from '@/lib/invitations/reconcile-invitation';
 import { canUserAccessDashboardForOrg } from '@/lib/onboarding/dashboard-access';
@@ -59,8 +62,9 @@ export async function GET(request: NextRequest) {
       .eq('id', session.user.id)
       .maybeSingle();
 
-    const meta = session.user.user_metadata as Record<string, unknown> | undefined;
-    const linkedinUrlHint = extractLinkedInProfileUrlFromMetadata(meta);
+    const mergedMeta = mergeLinkedInAuthMetadata(session.user);
+    const linkedinUrlHint =
+      extractLinkedInProfileUrlFromMetadata(mergedMeta);
 
     // Pending invitations: reconcile via LinkedIn URL (RPC).
     // Fixes users who already have a personal pending org — they still join the invited org.
