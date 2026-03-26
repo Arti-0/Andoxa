@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { ReactNode } from "react";
+import { extractLinkedInProfileUrlFromMetadata } from "@/lib/auth/linkedin-metadata";
+import { reconcilePendingInvitationForUser } from "@/lib/invitations/reconcile-invitation";
 import { organizationAllowsDashboardAccess } from "@/lib/onboarding/dashboard-access";
 
 /**
@@ -28,13 +30,33 @@ export default async function OnboardingLayout({
     redirect("/auth/login");
   }
 
-  const { data: profileData } = await supabase
+  let { data: profileData } = await supabase
     .from("profiles")
-    .select("active_organization_id")
+    .select("active_organization_id, linkedin_url")
     .eq("id", user.id)
-    .single();
+    .maybeSingle();
 
-  const profile = profileData as { active_organization_id?: string | null } | null;
+  let profile = profileData as {
+    active_organization_id?: string | null;
+    linkedin_url?: string | null;
+  } | null;
+
+  const meta = user.user_metadata as Record<string, unknown> | undefined;
+  const linkedinUrlHint = extractLinkedInProfileUrlFromMetadata(meta);
+
+  if (!profile?.active_organization_id) {
+    await reconcilePendingInvitationForUser(supabase, user.id, {
+      profileLinkedInUrl: profile?.linkedin_url ?? null,
+      linkedinUrlHint,
+    });
+    const { data: after } = await supabase
+      .from("profiles")
+      .select("active_organization_id, linkedin_url")
+      .eq("id", user.id)
+      .maybeSingle();
+    profile = after as typeof profile;
+  }
+
   const orgId = profile?.active_organization_id;
 
   if (orgId) {

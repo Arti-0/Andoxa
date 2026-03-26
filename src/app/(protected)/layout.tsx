@@ -6,6 +6,7 @@ import { ExpiredSubscriptionState } from "@/components/guards/ExpiredSubscriptio
 import { ProtectedLayoutContent } from "./protected-layout-content";
 import { hasActiveBilling } from "@/lib/billing/workspace-billing";
 import type { SubscriptionStatus } from "@/lib/workspace/types";
+import { extractLinkedInProfileUrlFromMetadata } from "@/lib/auth/linkedin-metadata";
 import { reconcilePendingInvitationForUser } from "@/lib/invitations/reconcile-invitation";
 
 type ProfileRow = {
@@ -53,9 +54,7 @@ export default async function ProtectedLayout({
   let profile = profileData as ProfileRow | null;
 
   const meta = user.user_metadata as Record<string, unknown> | undefined;
-  const linkedinHintRaw = meta?.profile_url ?? meta?.linkedin_url;
-  const linkedinUrlHint =
-    typeof linkedinHintRaw === "string" ? linkedinHintRaw : null;
+  const linkedinUrlHint = extractLinkedInProfileUrlFromMetadata(meta);
 
   const reloadProfile = async () => {
     const { data: p } = await supabase
