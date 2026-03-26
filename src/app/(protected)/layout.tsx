@@ -44,29 +44,43 @@ export default async function ProtectedLayout({
     .from("profiles")
     .select("id, active_organization_id, linkedin_url")
     .eq("id", user.id)
-    .single();
+    .maybeSingle();
 
-  let profile = profileData as ProfileRow | null;
-  if (profileError || !profile) {
+  if (profileError) {
     redirect("/onboarding/plan");
   }
 
+  let profile = profileData as ProfileRow | null;
+
+  const meta = user.user_metadata as Record<string, unknown> | undefined;
+  const linkedinHintRaw = meta?.profile_url ?? meta?.linkedin_url;
+  const linkedinUrlHint =
+    typeof linkedinHintRaw === "string" ? linkedinHintRaw : null;
+
   const reloadProfile = async () => {
-    const { data: p, error: err } = await supabase
+    const { data: p } = await supabase
       .from("profiles")
       .select("id, active_organization_id, linkedin_url")
       .eq("id", user.id)
-      .single();
-    if (!err && p) profile = p as ProfileRow;
+      .maybeSingle();
+    if (p) profile = p as ProfileRow;
   };
 
   const tryReconcileInvitation = async () => {
     await reconcilePendingInvitationForUser(supabase, user.id, {
-      userEmail: user.email,
-      profileLinkedInUrl: profile?.linkedin_url,
+      profileLinkedInUrl: profile?.linkedin_url ?? null,
+      linkedinUrlHint,
     });
     await reloadProfile();
   };
+
+  if (!profile) {
+    await tryReconcileInvitation();
+  }
+
+  if (!profile) {
+    redirect("/onboarding/plan");
+  }
 
   if (!profile.active_organization_id) {
     await tryReconcileInvitation();

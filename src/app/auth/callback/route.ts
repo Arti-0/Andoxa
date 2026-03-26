@@ -58,11 +58,16 @@ export async function GET(request: NextRequest) {
       .eq('id', session.user.id)
       .maybeSingle();
 
-    // Pending invitations: always reconcile (normalized email/LinkedIn).
+    const meta = session.user.user_metadata as Record<string, unknown> | undefined;
+    const linkedinHintRaw = meta?.profile_url ?? meta?.linkedin_url;
+    const linkedinUrlHint =
+      typeof linkedinHintRaw === "string" ? linkedinHintRaw : null;
+
+    // Pending invitations: reconcile via LinkedIn URL (RPC).
     // Fixes users who already have a personal pending org — they still join the invited org.
     await reconcilePendingInvitationForUser(supabase, session.user.id, {
-      userEmail: session.user.email,
       profileLinkedInUrl: profile?.linkedin_url,
+      linkedinUrlHint,
     });
 
     // Re-fetch profile after potential invitation join

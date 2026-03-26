@@ -26,6 +26,7 @@ import {
   Crown,
   XCircle,
   Mail,
+  Link2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -83,7 +84,6 @@ export function OrganizationModal({
   const [loadingOrgs, setLoadingOrgs] = useState(false);
   const [orgsError, setOrgsError] = useState<string | null>(null);
   const [linkedinUrl, setLinkedinUrl] = useState("");
-  const [inviteEmail, setInviteEmail] = useState("");
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
@@ -148,7 +148,6 @@ export function OrganizationModal({
       loadMembers();
       loadInvitations();
       setLinkedinUrl("");
-      setInviteEmail("");
       setInviteError(null);
       setInviteSuccess(null);
       setDeleteConfirm("");
@@ -159,7 +158,7 @@ export function OrganizationModal({
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!workspaceId || (!linkedinUrl.trim() && !inviteEmail.trim())) return;
+    if (!workspaceId || !linkedinUrl.trim()) return;
     setInviteLoading(true);
     setInviteError(null);
     setInviteSuccess(null);
@@ -168,8 +167,7 @@ export function OrganizationModal({
         organization_id: workspaceId,
         role: "member",
       };
-      if (linkedinUrl.trim()) payload.linkedin_url = linkedinUrl.trim();
-      if (inviteEmail.trim()) payload.email = inviteEmail.trim();
+      payload.linkedin_url = linkedinUrl.trim();
 
       const res = await fetch("/api/invitations", {
         method: "POST",
@@ -180,7 +178,6 @@ export function OrganizationModal({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erreur");
       setLinkedinUrl("");
-      setInviteEmail("");
       setInviteSuccess("Invitation envoyée");
       loadInvitations();
     } catch (err) {
@@ -446,9 +443,9 @@ export function OrganizationModal({
                 <div className="space-y-1">
                   {invitations.map((inv) => (
                     <div key={inv.id} className="flex items-center gap-3 rounded-md border p-2">
-                      <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
                       <div className="flex-1 min-w-0">
-                        <p className="truncate text-sm">{inv.email ?? inv.linkedin_url ?? "—"}</p>
+                        <p className="truncate text-sm">{inv.linkedin_url ?? inv.email ?? "—"}</p>
                         <p className="text-xs text-muted-foreground">
                           {ROLE_LABELS[inv.role] ?? inv.role} ·{" "}
                           {new Date(inv.created_at).toLocaleDateString("fr-FR")}
@@ -474,21 +471,15 @@ export function OrganizationModal({
             <div className="space-y-2">
               <Label>Inviter un membre</Label>
               <p className="text-xs text-muted-foreground">
-                Saisissez un email et/ou un lien LinkedIn pour inviter quelqu&apos;un.
+                Saisissez le lien du profil LinkedIn de la personne à inviter.
               </p>
               <form onSubmit={handleInvite} className="space-y-2">
-                <Input
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="email@exemple.com"
-                  type="email"
-                />
                 <Input
                   value={linkedinUrl}
                   onChange={(e) => setLinkedinUrl(e.target.value)}
                   placeholder="https://www.linkedin.com/in/..."
                 />
-                <Button type="submit" disabled={inviteLoading || (!linkedinUrl.trim() && !inviteEmail.trim())} className="w-full">
+                <Button type="submit" disabled={inviteLoading || !linkedinUrl.trim()} className="w-full">
                   {inviteLoading ? "Envoi…" : "Inviter"}
                 </Button>
               </form>

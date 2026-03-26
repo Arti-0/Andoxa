@@ -1,9 +1,6 @@
 import { NextRequest } from "next/server";
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
-import {
-  normalizeInvitationEmail,
-  normalizeInvitationLinkedInUrl,
-} from "@/lib/invitations/normalize";
+import { normalizeInvitationLinkedInUrl } from "@/lib/invitations/normalize";
 
 /**
  * GET /api/invitations
@@ -25,41 +22,28 @@ export const GET = createApiHandler(async (_req, ctx) => {
 
 /**
  * POST /api/invitations
- * Create an invitation by LinkedIn URL and/or email
+ * Create an invitation by LinkedIn profile URL only
  */
 export const POST = createApiHandler(async (req: NextRequest, ctx) => {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
 
   const body = await parseBody<{
     linkedin_url?: string;
-    email?: string;
     organization_id?: string;
     role?: string;
   }>(req);
 
   const linkedinUrl = body.linkedin_url;
-  const email = body.email;
   const organizationId = body.organization_id ?? ctx.workspaceId;
   const role = body.role || "member";
 
-  if (!linkedinUrl && !email) {
-    throw Errors.badRequest("linkedin_url ou email requis");
+  if (!linkedinUrl?.trim()) {
+    throw Errors.badRequest("URL LinkedIn requise");
   }
 
-  let normalizedUrl: string | null = null;
-  if (linkedinUrl) {
-    normalizedUrl = normalizeInvitationLinkedInUrl(linkedinUrl);
-    if (!normalizedUrl || !normalizedUrl.includes("linkedin.com")) {
-      throw Errors.badRequest("Invalid LinkedIn URL");
-    }
-  }
-
-  let normalizedEmail: string | null = null;
-  if (email) {
-    normalizedEmail = normalizeInvitationEmail(email);
-    if (!normalizedEmail.includes("@")) {
-      throw Errors.badRequest("Invalid email");
-    }
+  const normalizedUrl = normalizeInvitationLinkedInUrl(linkedinUrl);
+  if (!normalizedUrl || !normalizedUrl.includes("linkedin.com")) {
+    throw Errors.badRequest("URL LinkedIn invalide");
   }
 
   const { data: membership } = await ctx.supabase
@@ -89,7 +73,7 @@ export const POST = createApiHandler(async (req: NextRequest, ctx) => {
       role: ["owner", "admin", "member"].includes(role) ? role : "member",
       invited_by: ctx.userId,
       linkedin_url: normalizedUrl,
-      email: normalizedEmail,
+      email: null,
     })
     .select("id, linkedin_url, email, role")
     .single();

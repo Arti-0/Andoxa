@@ -179,7 +179,7 @@ export function WorkspaceProvider({
         if (!mountedRef.current) return null;
         setWorkspace(workspaceTransformed);
 
-        // Check pending invitations (by email or LinkedIn URL)
+        // Check pending invitations (LinkedIn URL via RPC)
         try {
           const res = await fetch("/api/invitations/check", {
             method: "POST",

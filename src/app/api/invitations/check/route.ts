@@ -4,7 +4,7 @@ import { reconcilePendingInvitationForUser } from "@/lib/invitations/reconcile-i
 
 /**
  * POST /api/invitations/check
- * Check if the current user has pending invitations (by email or LinkedIn URL).
+ * Check if the current user has a pending invitation (LinkedIn profile URL only).
  * If found: add to organization, set active_organization_id, delete invitation.
  * Replaces the old check-linkedin endpoint.
  */
@@ -24,15 +24,16 @@ export async function POST() {
       .from("profiles")
       .select("id, linkedin_url, active_organization_id")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
 
-    if (!profile) {
-      return NextResponse.json({ joined: false });
-    }
+    const meta = user.user_metadata as Record<string, unknown> | undefined;
+    const linkedinHintRaw = meta?.profile_url ?? meta?.linkedin_url;
+    const linkedinUrlHint =
+      typeof linkedinHintRaw === "string" ? linkedinHintRaw : null;
 
     const result = await reconcilePendingInvitationForUser(supabase, user.id, {
-      userEmail: user.email,
-      profileLinkedInUrl: profile.linkedin_url,
+      profileLinkedInUrl: profile?.linkedin_url ?? null,
+      linkedinUrlHint,
     });
 
     if ("error" in result && result.error) {
