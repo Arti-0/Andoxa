@@ -9,6 +9,13 @@ export type OrgDashboardGateRow = {
   trial_ends_at: string | null;
 };
 
+export function personalSubscriptionAllowsDashboard(
+  sub: { status?: string | null } | null | undefined
+): boolean {
+  const s = sub?.status;
+  return s === "active" || s === "trialing";
+}
+
 /** Same rules as onboarding layout: when the org row alone allows redirecting to /dashboard */
 export function organizationAllowsDashboardAccess(org: OrgDashboardGateRow): boolean {
   const billingOk = hasActiveBilling({
@@ -23,6 +30,23 @@ export function organizationAllowsDashboardAccess(org: OrgDashboardGateRow): boo
       org.deleted_at != null &&
       new Date(org.deleted_at) >= new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
   );
+}
+
+/**
+ * Single rule for auto-redirect to /dashboard from plan page and OAuth callback.
+ * Org side matches (protected) billing + onboarding layout; personal sub is an alternate path.
+ */
+export function userDashboardEntitlement(params: {
+  org: OrgDashboardGateRow | null;
+  personalSub: { status?: string | null } | null | undefined;
+}): { allowed: boolean } {
+  if (personalSubscriptionAllowsDashboard(params.personalSub)) {
+    return { allowed: true };
+  }
+  if (params.org != null && organizationAllowsDashboardAccess(params.org)) {
+    return { allowed: true };
+  }
+  return { allowed: false };
 }
 
 /**

@@ -11,6 +11,8 @@ import {
   mergeLinkedInAuthMetadata,
 } from "@/lib/auth/linkedin-metadata";
 import { reconcilePendingInvitationForUser } from "@/lib/invitations/reconcile-invitation";
+import { redirectToOnboardingPlan } from "@/lib/onboarding/onboarding-redirect";
+import { logger } from "@/lib/utils/logger";
 
 type ProfileRow = {
   id: string;
@@ -51,7 +53,12 @@ export default async function ProtectedLayout({
     .maybeSingle();
 
   if (profileError) {
-    redirect("/onboarding/plan");
+    logger.warn("protected layout: profile fetch failed", {
+      userId: user.id,
+      message: profileError.message,
+      code: profileError.code,
+    });
+    redirectToOnboardingPlan("profile_error");
   }
 
   let profile = profileData as ProfileRow | null;
@@ -82,7 +89,7 @@ export default async function ProtectedLayout({
   }
 
   if (!profile) {
-    redirect("/onboarding/plan");
+    redirectToOnboardingPlan("no_profile");
   }
 
   if (!profile.active_organization_id) {
@@ -90,7 +97,34 @@ export default async function ProtectedLayout({
   }
 
   if (!profile.active_organization_id) {
-    redirect("/onboarding/plan");
+    redirectToOnboardingPlan("no_workspace");
+  }
+
+  const isMemberOfActiveOrg = async (organizationId: string) => {
+    const { data: member } = await supabase
+      .from("organization_members")
+      .select("user_id")
+      .eq("organization_id", organizationId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    return Boolean(member);
+  };
+
+  let memberOk = await isMemberOfActiveOrg(profile.active_organization_id);
+  if (!memberOk) {
+    await tryReconcileInvitation();
+    await reloadProfile();
+    if (!profile?.active_organization_id) {
+      redirectToOnboardingPlan("no_workspace");
+    }
+    memberOk = await isMemberOfActiveOrg(profile.active_organization_id);
+  }
+  if (!memberOk) {
+    logger.warn("protected layout: active_organization_id set but user not in organization_members", {
+      userId: user.id,
+      organizationId: profile.active_organization_id,
+    });
+    redirectToOnboardingPlan("not_member");
   }
 
   const fetchOrganization = async () => {
@@ -122,7 +156,13 @@ export default async function ProtectedLayout({
   // members may not SELECT organizations yet), not a bad pointer — wiping the column
   // made manual fixes and successful invites revert to null on next /dashboard load.
   if (orgError || !organization) {
-    redirect("/onboarding/plan");
+    logger.warn("protected layout: organization not readable after reconcile", {
+      userId: user.id,
+      organizationId: profile.active_organization_id,
+      message: orgError?.message,
+      code: orgError?.code,
+    });
+    redirectToOnboardingPlan("workspace_inaccessible");
   }
 
   // Guard 2: Organization is pending (waiting for activation)
@@ -136,7 +176,7 @@ export default async function ProtectedLayout({
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     if (!deletedAt || deletedAt < thirtyDaysAgo) {
-      redirect("/onboarding/plan");
+      redirectToOnboardingPlan("workspace_inaccessible");
     }
     return <ProtectedLayoutContent>{children}</ProtectedLayoutContent>;
   }

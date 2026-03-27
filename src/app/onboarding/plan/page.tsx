@@ -1,17 +1,49 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { LoadingSpinner } from "@/components/loading-spinner";
 import { UnifiedHeader } from "@/components/v3/homepage/UnifiedHeader";
 import { TarifsSection } from "@/components/v3/homepage/TarifsSection";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  type OrgDashboardGateRow,
+  userDashboardEntitlement,
+} from "@/lib/onboarding/dashboard-access";
+import type { OnboardingRedirectReason } from "@/lib/onboarding/onboarding-redirect";
+
+const REASON_BANNER: Partial<Record<OnboardingRedirectReason, string>> = {
+  profile_error:
+    "Impossible de charger votre profil pour le moment. Réessayez dans un instant ou contactez le support si le problème persiste.",
+  no_profile:
+    "Votre profil n’est pas encore disponible. Complétez une invitation ou choisissez un plan ci-dessous.",
+  no_workspace:
+    "Aucun espace de travail actif n’est associé à votre compte. Rejoignez une organisation ou souscrivez un plan.",
+  not_member:
+    "Votre compte n’est pas reconnu comme membre de l’organisation sélectionnée. Vérifiez votre invitation ou choisissez un plan.",
+  workspace_inaccessible:
+    "L’organisation active n’a pas pu être chargée (droits ou synchronisation). Réessayez ou contactez le support.",
+};
 
 export default function PlanPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const reasonParam = searchParams.get("reason");
+  const reasonBanner = useMemo(() => {
+    if (
+      reasonParam === "profile_error" ||
+      reasonParam === "no_profile" ||
+      reasonParam === "no_workspace" ||
+      reasonParam === "not_member" ||
+      reasonParam === "workspace_inaccessible"
+    ) {
+      return REASON_BANNER[reasonParam] ?? null;
+    }
+    return null;
+  }, [reasonParam]);
   const [loading, setLoading] = useState(true);
   const [hasPlan, setHasPlan] = useState(false);
   const [needsLinkedInUrl, setNeedsLinkedInUrl] = useState(false);
@@ -23,7 +55,6 @@ export default function PlanPage() {
   } | null>(null);
 
   useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null;
     let isMounted = true;
 
     async function checkPlan() {
@@ -58,24 +89,20 @@ export default function PlanPage() {
           active_organization_id?: string | null;
           linkedin_url?: string | null;
         } | null;
-        let organizationStatus: string | null = null;
-        let organizationPlan: string | null = null;
-        let subscriptionStatus: string | null = null;
+
+        let orgGate: OrgDashboardGateRow | null = null;
 
         if (profile?.active_organization_id) {
           const { data: orgData, error: orgError } = await supabase
             .from("organizations")
-            .select("plan, subscription_status, status")
+            .select("status, subscription_status, deleted_at, trial_ends_at")
             .eq("id", profile.active_organization_id)
             .maybeSingle();
 
-          const organization = orgData as { plan?: string | null; subscription_status?: string | null; status?: string | null } | null;
           if (orgError) {
             console.error("Error fetching organization:", orgError);
-          } else if (organization) {
-            organizationStatus = organization.status || null;
-            organizationPlan = organization.plan || null;
-            subscriptionStatus = organization.subscription_status || null;
+          } else if (orgData) {
+            orgGate = orgData as OrgDashboardGateRow;
           }
         }
 
@@ -95,15 +122,12 @@ export default function PlanPage() {
           // Continue
         }
 
-        const validPlans = ["essential", "pro", "business"];
-        const hasActiveSubscription = subscription && (subscription.status === "active" || subscription.status === "trialing");
-        const hasActiveOrgPlan =
-          organizationPlan &&
-          validPlans.includes(organizationPlan) &&
-          organizationStatus === "active" &&
-          subscriptionStatus !== "canceled";
+        const { allowed: entitledToDashboard } = userDashboardEntitlement({
+          org: orgGate,
+          personalSub: subscription,
+        });
 
-        if (hasActiveSubscription || hasActiveOrgPlan) {
+        if (entitledToDashboard) {
           if (isMounted) {
             setHasPlan(true);
             router.push("/dashboard");
@@ -111,19 +135,9 @@ export default function PlanPage() {
           return;
         }
 
-        if (organizationStatus === "pending") {
-          if (!intervalId && isMounted) {
-            intervalId = setInterval(() => {
-              if (isMounted) {
-                checkPlan();
-              }
-            }, 2000);
-          }
-        } else {
-          if (isMounted) {
-            setNeedsLinkedInUrl(!profile?.active_organization_id);
-            setLoading(false);
-          }
+        if (isMounted) {
+          setNeedsLinkedInUrl(!profile?.active_organization_id);
+          setLoading(false);
         }
       } catch (error) {
         console.error("Error in checkPlan:", error);
@@ -137,9 +151,6 @@ export default function PlanPage() {
 
     return () => {
       isMounted = false;
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
     };
   }, [router]);
 
@@ -225,6 +236,14 @@ export default function PlanPage() {
 
       <div className="flex items-center justify-center min-h-[calc(100vh-80px)] py-8 sm:py-12 md:py-16">
         <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+          {reasonBanner ? (
+            <div
+              role="status"
+              className="mx-auto max-w-3xl rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100"
+            >
+              {reasonBanner}
+            </div>
+          ) : null}
           {needsLinkedInUrl ? (
             <div className="mx-auto max-w-lg rounded-2xl border border-slate-200 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/80">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">

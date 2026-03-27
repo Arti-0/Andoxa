@@ -7,7 +7,10 @@ import {
 } from '@/lib/auth/linkedin-metadata';
 import { logger } from '@/lib/utils/logger';
 import { reconcilePendingInvitationForUser } from '@/lib/invitations/reconcile-invitation';
-import { isUserMemberOfOrganization } from '@/lib/onboarding/dashboard-access';
+import {
+  type OrgDashboardGateRow,
+  userDashboardEntitlement,
+} from '@/lib/onboarding/dashboard-access';
 
 function getRedirectBase(request: NextRequest): string {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL;
@@ -80,8 +83,6 @@ export async function GET(request: NextRequest) {
       .eq('id', session.user.id)
       .maybeSingle();
 
-    let hasActivePlan = false;
-
     const { data: subscription } = await supabase
       .from('user_subscriptions')
       .select('plan_id, status')
@@ -89,36 +90,23 @@ export async function GET(request: NextRequest) {
       .in('status', ['active', 'trialing'])
       .maybeSingle();
 
-    if (subscription && (subscription.status === 'active' || subscription.status === 'trialing')) {
-      hasActivePlan = true;
-    }
+    let orgForEntitlement: OrgDashboardGateRow | null = null;
 
-    if (updatedProfile?.active_organization_id && !hasActivePlan) {
+    if (updatedProfile?.active_organization_id) {
       const { data: organization } = await supabase
         .from('organizations')
-        .select('plan, subscription_status')
+        .select('status, subscription_status, deleted_at, trial_ends_at')
         .eq('id', updatedProfile.active_organization_id)
         .maybeSingle();
-
-      const validPlans = ['essential', 'pro', 'business'];
-      if (organization?.plan && validPlans.includes(organization.plan) && organization.subscription_status !== 'canceled') {
-        hasActivePlan = true;
+      if (organization) {
+        orgForEntitlement = organization as OrgDashboardGateRow;
       }
     }
 
-    // Send members to /dashboard whenever they have a valid org pointer + membership.
-    // Billing / pending / expired trial are handled by (protected)/layout (ExpiredSubscriptionState,
-    // PendingState), not by bouncing to /onboarding/plan — which used to disagree with
-    // organizationAllowsDashboardAccess and the hasActivePlan shortcut.
-    const memberOfActiveOrg =
-      !!updatedProfile?.active_organization_id &&
-      (await isUserMemberOfOrganization(
-        supabase,
-        session.user.id,
-        updatedProfile.active_organization_id
-      ));
-
-    const landOnDashboard = hasActivePlan || memberOfActiveOrg;
+    const { allowed: landOnDashboard } = userDashboardEntitlement({
+      org: orgForEntitlement,
+      personalSub: subscription,
+    });
 
     const nextParam = searchParams.get('next');
     let next: string;
