@@ -90,9 +90,11 @@ export async function GET(request: NextRequest) {
     const nextParam = searchParams.get("next");
     let next: string;
     if (nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")) {
+      const normalizedNext =
+        nextParam === "/onboarding/plan" ? "/onboarding" : nextParam;
       const dashboardish =
-        nextParam === "/dashboard" || nextParam.startsWith("/dashboard/");
-      next = dashboardish && !landOnDashboard ? "/onboarding" : nextParam;
+        normalizedNext === "/dashboard" || normalizedNext.startsWith("/dashboard/");
+      next = dashboardish && !landOnDashboard ? "/onboarding" : normalizedNext;
     } else if (landOnDashboard) {
       next = "/dashboard";
     } else {

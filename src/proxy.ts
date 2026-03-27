@@ -1,6 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+type ResponseCookieOptions = Parameters<
+  ReturnType<typeof NextResponse.next>["cookies"]["set"]
+>[2];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Route Configuration
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,7 +124,11 @@ export async function proxy(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(
-          cookiesToSet: Array<{ name: string; value: string; options?: any }>
+          cookiesToSet: Array<{
+            name: string;
+            value: string;
+            options?: ResponseCookieOptions;
+          }>
         ) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
@@ -222,6 +230,9 @@ export async function proxy(request: NextRequest) {
   if (isOnboardingPath(pathname)) {
     if (!isAllowedOnboardingRoute(pathname)) {
       return NextResponse.redirect(createRedirectUrl("/onboarding/new", request));
+    }
+    if (pathname === "/onboarding/plan" && !activeOrganizationId) {
+      return NextResponse.redirect(createRedirectUrl("/onboarding", request));
     }
     // Active users don't need onboarding anymore.
     if (hasActiveOrg) {
