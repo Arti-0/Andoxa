@@ -33,6 +33,72 @@ export default function JoinWaitClient() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!userId) return;
+
+    const supabase = createClient();
+    let cancelled = false;
+
+    const checkMembershipAndRedirect = async () => {
+      let query = supabase
+        .from("organization_members")
+        .select("organization_id, role, joined_at")
+        .eq("user_id", userId)
+        .order("joined_at", { ascending: false })
+        .limit(1);
+
+      if (pendingOrgId) {
+        query = query.eq("organization_id", pendingOrgId);
+      }
+
+      const { data: rows } = await query;
+      const membership = rows?.[0] as
+        | { organization_id?: string; role?: string | null }
+        | undefined;
+
+      const orgId = membership?.organization_id ?? null;
+      if (!orgId || cancelled) return;
+
+      await supabase
+        .from("profiles")
+        .update({
+          active_organization_id: orgId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const currentMeta = (user?.user_metadata ?? {}) as Record<string, unknown>;
+      const role = membership?.role ?? "member";
+      const { error: metaErr } = await supabase.auth.updateUser({
+        data: {
+          ...currentMeta,
+          active_organization_id: orgId,
+          active_organization_role: role,
+        },
+      });
+      if (metaErr) {
+        console.error("[Onboarding Join] Poll metadata sync failed:", metaErr);
+      }
+
+      if (!cancelled) {
+        window.location.assign("/dashboard");
+      }
+    };
+
+    void checkMembershipAndRedirect();
+    const timer = window.setInterval(() => {
+      void checkMembershipAndRedirect();
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [pendingOrgId, userId]);
+
   return (
     <div className="flex flex-1 items-center justify-center px-4 py-10 sm:py-12">
       <div className="w-full max-w-[620px] rounded-[10px] border border-border/80 bg-card p-6 text-center shadow-sm sm:p-8 dark:border-white/8 dark:bg-[#151516] dark:shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]">

@@ -73,6 +73,8 @@ const ROLE_ICONS: Record<string, typeof Crown> = {
   member: Shield,
 };
 
+const ENABLE_LEGACY_LINKEDIN_INVITES = false;
+
 export function OrganizationModal({
   open,
   onOpenChange,
@@ -148,7 +150,9 @@ export function OrganizationModal({
     if (open) {
       loadOrgs();
       loadMembers();
-      loadInvitations();
+      if (ENABLE_LEGACY_LINKEDIN_INVITES) {
+        loadInvitations();
+      }
       setLinkedinUrl("");
       setInviteError(null);
       setInviteSuccess(null);
@@ -463,7 +467,7 @@ export function OrganizationModal({
           )}
 
           {/* Pending invitations */}
-          {callerIsAdmin && workspaceId && (
+          {ENABLE_LEGACY_LINKEDIN_INVITES && callerIsAdmin && workspaceId && (
             <div className="space-y-2">
               <Label>Invitations en attente ({invitations.length})</Label>
               {loadingInvitations ? (
@@ -527,7 +531,7 @@ export function OrganizationModal({
           )}
 
           {/* Invite form (owner/admin) */}
-          {callerIsAdmin && workspaceId && (
+          {ENABLE_LEGACY_LINKEDIN_INVITES && callerIsAdmin && workspaceId && (
             <div className="space-y-2">
               <Label>Inviter un membre (LinkedIn)</Label>
               <p className="text-xs text-muted-foreground">

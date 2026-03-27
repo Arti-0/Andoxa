@@ -52,7 +52,6 @@ export function useOrganizationMemberInsertedRedirect(userId: string | null | un
             });
             if (metaErr) {
               console.error("[Onboarding Join] Failed to sync JWT metadata:", metaErr);
-              return;
             }
           }
           router.refresh();
