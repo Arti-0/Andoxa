@@ -59,8 +59,8 @@ export function UnifiedHeader({
 
   // Routes où le bouton "Vue d'ensemble" ne doit pas être affiché
   const hideOverviewButton =
-    pathname === "/onboarding/plan" ||
-    pathname?.startsWith("/onboarding/plan/");
+    pathname === "/onboarding" ||
+    pathname?.startsWith("/onboarding/");
 
   // Animate header on scroll (seulement si activé)
   useMotionValueEvent(scrollY, "change", (latest) => {

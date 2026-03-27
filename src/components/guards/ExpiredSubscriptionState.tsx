@@ -44,7 +44,7 @@ export function ExpiredSubscriptionState({
             </Link>
           </Button>
           <Button variant="outline" asChild className="w-full">
-            <Link href="/onboarding/plan">
+            <Link href="/onboarding">
               Voir les plans
             </Link>
           </Button>

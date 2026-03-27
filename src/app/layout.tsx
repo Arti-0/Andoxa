@@ -28,7 +28,7 @@ export const metadata: Metadata = {
  * - Theme provider (dark/light mode)
  * - Global styles
  * 
- * Note: Auth and workspace logic is in (protected)/layout.tsx
+ * Note: Auth gates live in src/proxy.ts (middleware); workspace context is in (protected)/protected-layout-content.
  */
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

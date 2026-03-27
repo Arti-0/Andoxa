@@ -16,7 +16,10 @@ export function personalSubscriptionAllowsDashboard(
   return s === "active" || s === "trialing";
 }
 
-/** Same rules as onboarding layout: when the org row alone allows redirecting to /dashboard */
+/**
+ * When the org row alone allows redirecting to /dashboard from the plan page.
+ * Pending orgs are excluded (they must finish onboarding/plan + billing; protected layout blocks dashboard).
+ */
 export function organizationAllowsDashboardAccess(org: OrgDashboardGateRow): boolean {
   const billingOk = hasActiveBilling({
     subscription_status: org.subscription_status as SubscriptionStatus | null,
@@ -24,7 +27,6 @@ export function organizationAllowsDashboardAccess(org: OrgDashboardGateRow): boo
   });
 
   return (
-    org.status === "pending" ||
     (org.status === "active" && (billingOk || org.subscription_status === null)) ||
     (org.status === "deleted" &&
       org.deleted_at != null &&
@@ -51,7 +53,7 @@ export function userDashboardEntitlement(params: {
 
 /**
  * User belongs to the workspace; org row is readable. Does not encode billing — use for
- * routing only when (protected) layout will apply PendingState / ExpiredSubscriptionState.
+ * routing only when ProtectedLayoutContent will apply ExpiredSubscriptionState (billing gate).
  */
 export async function isUserMemberOfOrganization(
   supabase: SupabaseClient,

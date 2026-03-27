@@ -38,7 +38,7 @@ export async function GET() {
     if (profile?.active_organization_id) {
       const { data: organization } = await supabase
         .from("organizations")
-        .select("plan, subscription_status, trial_ends_at")
+        .select("plan, status, subscription_status, trial_ends_at")
         .eq("id", profile.active_organization_id)
         .single();
 
@@ -47,7 +47,7 @@ export async function GET() {
         organization.subscription_status !== "canceled"
       ) {
         currentPlan = organization.plan;
-        status = organization.subscription_status || "active";
+        status = organization.subscription_status || organization.status || "pending";
       }
     }
 
@@ -68,8 +68,11 @@ export async function GET() {
       }
     }
 
-    // Determine if plan is active (not trial)
-    const hasActivePlan = currentPlan !== "trial" && currentPlan !== "demo";
+    // Determine if plan has an active Stripe lifecycle (portal-worthy)
+    const hasActivePlan =
+      currentPlan !== "trial" &&
+      currentPlan !== "demo" &&
+      ["active", "trialing", "past_due"].includes(status);
 
     let limitsPlanId = currentPlan;
     if (profile?.active_organization_id) {

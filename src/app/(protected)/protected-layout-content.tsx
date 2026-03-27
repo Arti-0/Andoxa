@@ -11,12 +11,41 @@ import { AnnouncementBanner } from "../../components/guards/AnnouncementBanner";
 import { ErrorButton } from "../../components/debug/ErrorButton";
 import { CommandPalette } from "../../components/layout/command-palette";
 import { PlanRouteGuard } from "../../components/guards/PlanRouteGuard";
+import { ExpiredSubscriptionState } from "@/components/guards/ExpiredSubscriptionState";
+import { hasActiveBilling } from "@/lib/billing/workspace-billing";
+import type { SubscriptionStatus } from "@/lib/workspace/types";
+
+function BillingExpiredGate({ children }: { children: ReactNode }) {
+  const { workspace, isInitialized } = useWorkspace();
+
+  if (!isInitialized || !workspace) {
+    return <>{children}</>;
+  }
+
+  const billingOk = hasActiveBilling({
+    subscription_status: workspace.subscription_status as SubscriptionStatus | null,
+    trial_ends_at: workspace.trial_ends_at,
+  });
+
+  if (
+    !billingOk &&
+    workspace.subscription_status !== null &&
+    workspace.subscription_status !== undefined
+  ) {
+    const trialEnded =
+      workspace.subscription_status === "trialing" &&
+      workspace.trial_ends_at &&
+      new Date(workspace.trial_ends_at).getTime() <= Date.now();
+    return (
+      <ExpiredSubscriptionState variant={trialEnded ? "trial_ended" : "default"} />
+    );
+  }
+
+  return <>{children}</>;
+}
 
 /**
- * ProtectedLayoutContent - Client component that provides workspace context
- *
- * This component is only rendered after all guards pass in the Server Component layout.
- * It provides the WorkspaceProvider and renders the sidebar/header structure.
+ * ProtectedLayoutContent — workspace context + app chrome. Entitlement redirects are in src/proxy.ts.
  */
 function ProtectedLayoutContentInner({ children }: { children: ReactNode }) {
   const { isInitialized, isSyncing } = useWorkspace();
@@ -46,7 +75,9 @@ function ProtectedLayoutContentInner({ children }: { children: ReactNode }) {
               <div className="h-full w-full bg-primary transition-all duration-500 ease-out animate-progress-flow" />
             </div>
           )}
-          <PlanRouteGuard>{children}</PlanRouteGuard>
+          <PlanRouteGuard>
+            <BillingExpiredGate>{children}</BillingExpiredGate>
+          </PlanRouteGuard>
         </main>
       </div>
       <CommandPalette />

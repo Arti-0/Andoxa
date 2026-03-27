@@ -85,9 +85,7 @@ export function TarifsSection() {
       }
 
       // 3. Check if user has a plan
-      const hasActivePlan =
-        subData?.currentPlan &&
-        subData.currentPlan !== "trial";
+      const hasActivePlan = Boolean(subData?.hasActivePlan);
 
       if (hasActivePlan) {
         // Upgrade/downgrade → Billing portal

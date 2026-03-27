@@ -1166,10 +1166,6 @@ export interface Database {
         };
         Returns: Json;
       };
-      accept_pending_organization_invitation: {
-        Args: { p_linkedin_url_hint?: string | null };
-        Returns: Json;
-      };
     };
     Enums: Record<string, never>;
   };

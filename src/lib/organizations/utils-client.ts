@@ -125,8 +125,24 @@ export async function setActiveOrganization(
     .from('profiles')
     .update({ active_organization_id: organizationId })
     .eq('id', userId);
-  
-  return !error;
+  if (error) return false;
+
+  const role = await getOrganizationRole(userId, organizationId);
+  if (!role) return false;
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const currentMeta = (user?.user_metadata ?? {}) as Record<string, unknown>;
+  const { error: metaErr } = await supabase.auth.updateUser({
+    data: {
+      ...currentMeta,
+      active_organization_id: organizationId,
+      active_organization_role: role,
+    },
+  });
+
+  return !metaErr;
 }
 
 /**

@@ -1,11 +1,10 @@
 import { NextRequest } from "next/server";
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
 import { normalizeInvitationLinkedInUrl } from "@/lib/invitations/normalize";
-import { reconcilePendingInvitationForUser } from "@/lib/invitations/reconcile-invitation";
 
 /**
  * POST /api/profile/linkedin-url
- * Persist public LinkedIn profile URL (OIDC does not provide it) and retry invitation reconcile.
+ * Persist public LinkedIn profile URL (OIDC does not provide it).
  */
 export const POST = createApiHandler(
   async (req: NextRequest, ctx) => {
@@ -36,40 +35,8 @@ export const POST = createApiHandler(
       throw Errors.internal("Impossible d’enregistrer le profil LinkedIn");
     }
 
-    const result = await reconcilePendingInvitationForUser(
-      ctx.supabase,
-      ctx.userId,
-      {
-        profileLinkedInUrl: normalized,
-        linkedinUrlHint: normalized,
-      }
-    );
-
-    if ("error" in result && result.error) {
-      throw Errors.internal("Échec de l’activation de l’invitation");
-    }
-
-    if (result.joined) {
-      return {
-        linkedin_url: normalized,
-        joined: true,
-        organizationId: result.organizationId,
-      };
-    }
-
-    if (result.alreadyMember && result.organizationId) {
-      return {
-        linkedin_url: normalized,
-        joined: false,
-        alreadyMember: true,
-        organizationId: result.organizationId,
-      };
-    }
-
     return {
       linkedin_url: normalized,
-      joined: false,
-      alreadyMember: "alreadyMember" in result ? result.alreadyMember : undefined,
     };
   },
   { requireWorkspace: false }

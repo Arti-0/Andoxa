@@ -118,7 +118,7 @@ function CheckoutSuccessContent() {
           <Button
             variant="outline"
             className="border-white/25 bg-white/5 text-white/90 hover:bg-white/10 hover:text-white"
-            onClick={() => router.push("/onboarding/plan")}
+            onClick={() => router.push("/onboarding")}
           >
             Plans
           </Button>

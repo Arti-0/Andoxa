@@ -179,20 +179,6 @@ export function WorkspaceProvider({
         if (!mountedRef.current) return null;
         setWorkspace(workspaceTransformed);
 
-        // Check pending invitations (LinkedIn URL via RPC)
-        try {
-          const res = await fetch("/api/invitations/check", {
-            method: "POST",
-            credentials: "include",
-          });
-          const data = await res.json();
-          if (data?.joined && data?.organizationId) {
-            await loadWorkspaceData(userId, true);
-          }
-        } catch {
-          // Non-blocking
-        }
-
         // Load subscription
         const { data: subscriptionData } = await supabase
           .from("user_subscriptions")
@@ -366,6 +352,36 @@ export function WorkspaceProvider({
       if (error) {
         console.error("[Workspace] Switch error:", error);
         throw error;
+      }
+
+      const { data: memberRow, error: memberErr } = await supabase
+        .from("organization_members")
+        .select("role")
+        .eq("organization_id", workspaceId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (memberErr) {
+        console.error("[Workspace] Role lookup error during switch:", memberErr);
+        throw memberErr;
+      }
+
+      const role = memberRow?.role ?? "member";
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+      const currentMeta = (authUser?.user_metadata ?? {}) as Record<string, unknown>;
+      const { error: metaErr } = await supabase.auth.updateUser({
+        data: {
+          ...currentMeta,
+          active_organization_id: workspaceId,
+          active_organization_role: role,
+        },
+      });
+
+      if (metaErr) {
+        console.error("[Workspace] JWT metadata sync error during switch:", metaErr);
+        throw metaErr;
       }
 
       // Reload workspace data

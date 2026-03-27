@@ -290,13 +290,56 @@ export async function POST(request: NextRequest) {
     // Check organization status
     const { data: orgStatus } = await supabase
       .from("organizations")
-      .select("status, subscription_status")
+      .select("status, subscription_status, trial_ends_at, stripe_subscription_id")
       .eq("id", organizationId)
       .single();
 
     // Organization is pending if status is "pending" (no Stripe subscription yet)
     // subscription_status is null when no subscription exists
     const isPending = orgStatus?.status === "pending";
+    void isPending;
+
+    // Essential onboarding trial: no card required for first 14-day trial per organization.
+    // If the organization already consumed a trial (trial_ends_at set), fall back to Stripe checkout.
+    if (planId === "essential") {
+      const trialAlreadyUsed = Boolean(orgStatus?.trial_ends_at);
+      const hasExistingStripeSub = Boolean(orgStatus?.stripe_subscription_id);
+      const canStartTrialNow = !trialAlreadyUsed && !hasExistingStripeSub;
+
+      if (canStartTrialNow) {
+        const trialEndsAt = new Date(
+          Date.now() + STRIPE_CONFIG.trial.durationDays * 24 * 60 * 60 * 1000
+        ).toISOString();
+
+        const { error: trialErr } = await supabase
+          .from("organizations")
+          .update({
+            plan: "essential",
+            status: "active",
+            subscription_status: "trialing",
+            trial_ends_at: trialEndsAt,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", organizationId);
+
+        if (trialErr) {
+          console.error("Error starting organization trial:", trialErr, {
+            organizationId,
+            userId: user.id,
+          });
+          return NextResponse.json(
+            { error: "Failed to start trial" },
+            { status: 500 }
+          );
+        }
+
+        return NextResponse.json({
+          redirect_url: "/dashboard?trial=started",
+          trial_started: true,
+          trial_ends_at: trialEndsAt,
+        });
+      }
+    }
 
     // Create checkout session
     // Success URL includes organization_id for webhook processing

@@ -99,6 +99,8 @@ export function OrganizationModal({
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loadingInvitations, setLoadingInvitations] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<{ id: string; name: string } | null>(null);
+  const [inviteUserId, setInviteUserId] = useState("");
+  const [inviteUserIdLoading, setInviteUserIdLoading] = useState(false);
 
   const loadOrgs = useCallback(async () => {
     if (!user?.id) return;
@@ -184,6 +186,37 @@ export function OrganizationModal({
       setInviteError(err instanceof Error ? err.message : "Erreur lors de l'invitation");
     } finally {
       setInviteLoading(false);
+    }
+  };
+
+  const handleInviteByUserId = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const uid = inviteUserId.trim();
+    if (!uid || !workspaceId) return;
+    setInviteUserIdLoading(true);
+    setInviteError(null);
+    setInviteSuccess(null);
+    try {
+      const res = await fetch("/api/organization/invite-by-user-id", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ user_id: uid }),
+      });
+      const json = (await res.json()) as {
+        success?: boolean;
+        error?: { message?: string };
+      };
+      if (!res.ok || !json.success) {
+        throw new Error(json.error?.message ?? "Impossible d’ajouter le membre");
+      }
+      toast.success("Membre ajouté à l’organisation");
+      setInviteUserId("");
+      loadMembers();
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : "Erreur");
+    } finally {
+      setInviteUserIdLoading(false);
     }
   };
 
@@ -466,10 +499,37 @@ export function OrganizationModal({
             </div>
           )}
 
+          {/* Invite by Supabase user UUID (owner/admin) */}
+          {callerIsAdmin && workspaceId && (
+            <div className="space-y-2">
+              <Label>Ajouter un membre (UUID utilisateur)</Label>
+              <p className="text-xs text-muted-foreground">
+                La personne doit créer un compte et vous communiquer son identifiant (page{" "}
+                <span className="font-mono">/onboarding/join</span>). Elle sera ajoutée
+                immédiatement comme membre.
+              </p>
+              <form onSubmit={handleInviteByUserId} className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  value={inviteUserId}
+                  onChange={(e) => setInviteUserId(e.target.value)}
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  className="font-mono text-sm"
+                />
+                <Button
+                  type="submit"
+                  disabled={inviteUserIdLoading || !inviteUserId.trim()}
+                  className="shrink-0"
+                >
+                  {inviteUserIdLoading ? "Ajout…" : "Ajouter"}
+                </Button>
+              </form>
+            </div>
+          )}
+
           {/* Invite form (owner/admin) */}
           {callerIsAdmin && workspaceId && (
             <div className="space-y-2">
-              <Label>Inviter un membre</Label>
+              <Label>Inviter un membre (LinkedIn)</Label>
               <p className="text-xs text-muted-foreground">
                 Saisissez le lien du profil LinkedIn de la personne à inviter.
               </p>
