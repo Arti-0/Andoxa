@@ -13,7 +13,10 @@ import {
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { readAutoEnrichOptIn } from '@/lib/enrichment/queue-helpers';
+import {
+    planAllowsAutoEnrichOnImport,
+    readAutoEnrichOptIn,
+} from '@/lib/enrichment/queue-helpers';
 import { ThemeModal } from '@/components/settings/ThemeModal';
 import { ProfileModal } from '@/components/settings/ProfileModal';
 import { BillingModal } from '@/components/settings/BillingModal';
@@ -36,8 +39,10 @@ export default function SettingsPage() {
     const [autoEnrich, setAutoEnrich] = useState(false);
     const [savingEnrich, setSavingEnrich] = useState(false);
 
-    const showAutoEnrich =
-        workspace?.plan === 'pro' || workspace?.plan === 'business';
+    const showAutoEnrich = planAllowsAutoEnrichOnImport(
+        workspace?.plan,
+        workspace?.subscription_status
+    );
 
     useEffect(() => {
         if (workspace?.metadata) {

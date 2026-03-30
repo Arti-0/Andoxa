@@ -108,6 +108,11 @@ export default function CampaignDetailPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["campaign-job", id] });
+      if (data.rateLimited) {
+        toast.warning(
+          "Limite LinkedIn atteinte (429). Les prospects restants restent en attente — réessayez plus tard ou laissez le traitement automatique reprendre."
+        );
+      }
       if (data.remaining) {
         toast.info(`Batch traité: ${data.success} succès, ${data.errors} erreurs. Batches restantes.`);
       } else {

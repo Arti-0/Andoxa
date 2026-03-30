@@ -258,7 +258,16 @@ export function CampaignModal({
           toast.error(json?.error?.message ?? "Erreur lors de l’envoi");
           return;
         }
-        const chatId = json?.data?.chat_id ?? json?.chat_id ?? null;
+        const payload = json?.data ?? json;
+        const warnings = payload?.warnings as
+          | { prospect_id: string; code: string }[]
+          | undefined;
+        if (warnings?.length) {
+          toast.info(
+            `${warnings.length} prospect(s) ont déjà une réponse LinkedIn enregistrée — l’envoi a quand même été effectué.`
+          );
+        }
+        const chatId = payload?.chat_id ?? json?.chat_id ?? null;
         if (saveAsTemplate && templateName.trim()) {
           const ok = await trySaveAsTemplate(templateName, text);
           if (ok) {

@@ -24,9 +24,7 @@ import {
   Shield,
   ShieldCheck,
   Crown,
-  XCircle,
   Mail,
-  Link2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -37,15 +35,6 @@ interface Member {
   role: string;
   avatar_url: string | null;
   email: string | null;
-}
-
-interface Invitation {
-  id: string;
-  email: string | null;
-  linkedin_url: string | null;
-  role: string;
-  status: string | null;
-  created_at: string;
 }
 
 interface OrganizationModalProps {
@@ -73,8 +62,6 @@ const ROLE_ICONS: Record<string, typeof Crown> = {
   member: Shield,
 };
 
-const ENABLE_LEGACY_LINKEDIN_INVITES = false;
-
 export function OrganizationModal({
   open,
   onOpenChange,
@@ -85,8 +72,9 @@ export function OrganizationModal({
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [loadingOrgs, setLoadingOrgs] = useState(false);
   const [orgsError, setOrgsError] = useState<string | null>(null);
-  const [linkedinUrl, setLinkedinUrl] = useState("");
-  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"member" | "admin">("member");
+  const [inviteEmailLoading, setInviteEmailLoading] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState("");
@@ -98,11 +86,7 @@ export function OrganizationModal({
 
   const [members, setMembers] = useState<Member[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
-  const [invitations, setInvitations] = useState<Invitation[]>([]);
-  const [loadingInvitations, setLoadingInvitations] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<{ id: string; name: string } | null>(null);
-  const [inviteUserId, setInviteUserId] = useState("");
-  const [inviteUserIdLoading, setInviteUserIdLoading] = useState(false);
 
   const loadOrgs = useCallback(async () => {
     if (!user?.id) return;
@@ -132,95 +116,58 @@ export function OrganizationModal({
     }
   }, [workspaceId]);
 
-  const loadInvitations = useCallback(async () => {
-    if (!workspaceId) return;
-    setLoadingInvitations(true);
-    try {
-      const res = await fetch("/api/invitations", { credentials: "include" });
-      const json = await res.json();
-      setInvitations((json.data?.items ?? json.items ?? []) as Invitation[]);
-    } catch {
-      setInvitations([]);
-    } finally {
-      setLoadingInvitations(false);
-    }
-  }, [workspaceId]);
-
   useEffect(() => {
     if (open) {
       loadOrgs();
       loadMembers();
-      if (ENABLE_LEGACY_LINKEDIN_INVITES) {
-        loadInvitations();
-      }
-      setLinkedinUrl("");
+      setInviteEmail("");
+      setInviteRole("member");
       setInviteError(null);
       setInviteSuccess(null);
       setDeleteConfirm("");
       setShowDeleteModal(false);
       setOrgNameInput(workspace?.name ?? "");
     }
-  }, [open, loadOrgs, loadMembers, loadInvitations, workspace?.name]);
+  }, [open, loadOrgs, loadMembers, workspace?.name]);
 
-  const handleInvite = async (e: React.FormEvent) => {
+  const handleInviteByEmail = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!workspaceId || !linkedinUrl.trim()) return;
-    setInviteLoading(true);
+    if (!workspaceId || !inviteEmail.trim()) return;
+    setInviteEmailLoading(true);
     setInviteError(null);
     setInviteSuccess(null);
     try {
-      const payload: Record<string, string> = {
-        organization_id: workspaceId,
-        role: "member",
-      };
-      payload.linkedin_url = linkedinUrl.trim();
-
-      const res = await fetch("/api/invitations", {
+      const res = await fetch("/api/invitations/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erreur");
-      setLinkedinUrl("");
-      setInviteSuccess("Invitation envoyée");
-      loadInvitations();
-    } catch (err) {
-      setInviteError(err instanceof Error ? err.message : "Erreur lors de l'invitation");
-    } finally {
-      setInviteLoading(false);
-    }
-  };
-
-  const handleInviteByUserId = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const uid = inviteUserId.trim();
-    if (!uid || !workspaceId) return;
-    setInviteUserIdLoading(true);
-    setInviteError(null);
-    setInviteSuccess(null);
-    try {
-      const res = await fetch("/api/organization/invite-by-user-id", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ user_id: uid }),
+        body: JSON.stringify({
+          email: inviteEmail.trim(),
+          organization_id: workspaceId,
+          role: inviteRole,
+        }),
       });
       const json = (await res.json()) as {
         success?: boolean;
         error?: { message?: string };
       };
       if (!res.ok || !json.success) {
-        throw new Error(json.error?.message ?? "Impossible d’ajouter le membre");
+        throw new Error(
+          json.error?.message ?? "Impossible d’envoyer l’invitation"
+        );
       }
-      toast.success("Membre ajouté à l’organisation");
-      setInviteUserId("");
+      toast.success("Invitation envoyée par e-mail");
+      setInviteEmail("");
+      setInviteSuccess(
+        "Un e-mail d’invitation a été envoyé. La personne pourra définir son mot de passe après acceptation."
+      );
       loadMembers();
     } catch (err) {
-      setInviteError(err instanceof Error ? err.message : "Erreur");
+      setInviteError(
+        err instanceof Error ? err.message : "Erreur lors de l’invitation"
+      );
     } finally {
-      setInviteUserIdLoading(false);
+      setInviteEmailLoading(false);
     }
   };
 
@@ -268,20 +215,6 @@ export function OrganizationModal({
       loadMembers();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur");
-    }
-  };
-
-  const handleCancelInvitation = async (invitationId: string) => {
-    try {
-      const res = await fetch(`/api/invitations/${invitationId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Erreur");
-      toast.success("Invitation annulée");
-      loadInvitations();
-    } catch {
-      toast.error("Erreur lors de l'annulation");
     }
   };
 
@@ -466,89 +399,54 @@ export function OrganizationModal({
             </div>
           )}
 
-          {/* Pending invitations */}
-          {ENABLE_LEGACY_LINKEDIN_INVITES && callerIsAdmin && workspaceId && (
-            <div className="space-y-2">
-              <Label>Invitations en attente ({invitations.length})</Label>
-              {loadingInvitations ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Chargement...
-                </div>
-              ) : invitations.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Aucune invitation en attente</p>
-              ) : (
-                <div className="space-y-1">
-                  {invitations.map((inv) => (
-                    <div key={inv.id} className="flex items-center gap-3 rounded-md border p-2">
-                      <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <div className="flex-1 min-w-0">
-                        <p className="truncate text-sm">{inv.linkedin_url ?? inv.email ?? "—"}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {ROLE_LABELS[inv.role] ?? inv.role} ·{" "}
-                          {new Date(inv.created_at).toLocaleDateString("fr-FR")}
-                          {inv.status && <span className="ml-1">· {inv.status}</span>}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => handleCancelInvitation(inv.id)}
-                        className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                        title="Annuler l'invitation"
-                      >
-                        <XCircle className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Invite by Supabase user UUID (owner/admin) */}
+          {/* Invite by e-mail (owner/admin) */}
           {callerIsAdmin && workspaceId && (
             <div className="space-y-2">
-              <Label>Ajouter un membre (UUID utilisateur)</Label>
+              <Label className="flex items-center gap-2">
+                <Mail className="h-4 w-4" />
+                Inviter par e-mail
+              </Label>
               <p className="text-xs text-muted-foreground">
-                La personne doit créer un compte et vous communiquer son identifiant (page{" "}
-                <span className="font-mono">/onboarding/join</span>). Elle sera ajoutée
-                immédiatement comme membre.
+                Un e-mail Supabase est envoyé à la personne : elle pourra accepter l’invitation et
+                définir son mot de passe.
               </p>
-              <form onSubmit={handleInviteByUserId} className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  value={inviteUserId}
-                  onChange={(e) => setInviteUserId(e.target.value)}
-                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                  className="font-mono text-sm"
-                />
-                <Button
-                  type="submit"
-                  disabled={inviteUserIdLoading || !inviteUserId.trim()}
-                  className="shrink-0"
-                >
-                  {inviteUserIdLoading ? "Ajout…" : "Ajouter"}
-                </Button>
+              <form onSubmit={handleInviteByEmail} className="space-y-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <Input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="collegue@entreprise.com"
+                    className="flex-1"
+                    autoComplete="off"
+                  />
+                  <select
+                    value={inviteRole}
+                    onChange={(e) =>
+                      setInviteRole(e.target.value as "member" | "admin")
+                    }
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="member">Membre</option>
+                    <option value="admin">Administrateur</option>
+                  </select>
+                  <Button
+                    type="submit"
+                    disabled={inviteEmailLoading || !inviteEmail.trim()}
+                    className="shrink-0"
+                  >
+                    {inviteEmailLoading ? "Envoi…" : "Inviter"}
+                  </Button>
+                </div>
+                {inviteError ? (
+                  <p className="text-sm text-destructive">{inviteError}</p>
+                ) : null}
+                {inviteSuccess ? (
+                  <p className="text-sm text-green-600 dark:text-green-400">
+                    {inviteSuccess}
+                  </p>
+                ) : null}
               </form>
-            </div>
-          )}
-
-          {/* Invite form (owner/admin) */}
-          {ENABLE_LEGACY_LINKEDIN_INVITES && callerIsAdmin && workspaceId && (
-            <div className="space-y-2">
-              <Label>Inviter un membre (LinkedIn)</Label>
-              <p className="text-xs text-muted-foreground">
-                Saisissez le lien du profil LinkedIn de la personne à inviter.
-              </p>
-              <form onSubmit={handleInvite} className="space-y-2">
-                <Input
-                  value={linkedinUrl}
-                  onChange={(e) => setLinkedinUrl(e.target.value)}
-                  placeholder="https://www.linkedin.com/in/..."
-                />
-                <Button type="submit" disabled={inviteLoading || !linkedinUrl.trim()} className="w-full">
-                  {inviteLoading ? "Envoi…" : "Inviter"}
-                </Button>
-              </form>
-              {inviteError && <p className="text-sm text-destructive">{inviteError}</p>}
-              {inviteSuccess && <p className="text-sm text-green-600 dark:text-green-400">{inviteSuccess}</p>}
             </div>
           )}
 

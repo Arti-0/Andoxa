@@ -43,7 +43,7 @@ export function AccountModal({ open, onOpenChange }: AccountModalProps) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erreur");
-      window.location.href = "/";
+      window.location.href = "/auth/inactive?reason=account";
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : "Erreur lors de la suppression");
     } finally {

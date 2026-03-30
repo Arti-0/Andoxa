@@ -144,8 +144,17 @@ export async function POST(req: NextRequest) {
       accountInfo.user_id === sender.attendee_provider_id;
 
     if (!isOutbound) {
-      // Message reçu (inbound) – chat_id peut être enrichi via unipile_chat_prospects
-      // pour lier au prospect. Optionnel : écrire dans unread_messages pour badge.
+      const supabase = createServiceClient();
+      const { error: inboundErr } = await supabase
+        .from("unipile_chat_prospects")
+        .update({
+          last_inbound_at: new Date().toISOString(),
+        })
+        .eq("unipile_chat_id", chatId);
+      if (inboundErr) {
+        console.error("[Unipile webhook] inbound last_inbound_at:", inboundErr);
+        Sentry.captureException(inboundErr);
+      }
     }
   }
 

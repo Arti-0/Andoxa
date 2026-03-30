@@ -1,5 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  evaluateDashboardEntitlement,
+  shouldRedirectToOrgInactivePage,
+  type OrgDashboardGateRow,
+} from "@/lib/auth/dashboard-entitlement";
 
 type ResponseCookieOptions = Parameters<
   ReturnType<typeof NextResponse.next>["cookies"]["set"]
@@ -9,7 +14,9 @@ type ResponseCookieOptions = Parameters<
 // Route Configuration
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Marketing, auth, checkout: no session required. Onboarding is auth-only (handled below). */
+/**
+ * Marketing, auth, checkout: no session required. Onboarding is auth-only (handled below).
+ */
 const PUBLIC_ROUTES = [
   "/",
   "/auth",
@@ -27,8 +34,13 @@ const PUBLIC_ROUTES = [
   "/booking",
   "/unsubscribe",
   "/checkout",
-  "/success",
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Webhooks (no Supabase session — must never run auth gates)
+// ─────────────────────────────────────────────────────────────────────────────
+// Stripe: POST /api/paiements/webhook (signing secret). Unipile: /api/webhooks/unipile.
+// All /api/* are excluded from this file's matcher; listed here for documentation only.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -44,12 +56,7 @@ function isOnboardingPath(pathname: string) {
 }
 
 function isAllowedOnboardingRoute(pathname: string) {
-  return (
-    pathname === "/onboarding" ||
-    pathname === "/onboarding/new" ||
-    pathname === "/onboarding/join" ||
-    pathname === "/onboarding/plan"
-  );
+  return pathname === "/onboarding/plan" || pathname === "/onboarding/setup";
 }
 
 /**
@@ -77,8 +84,6 @@ type OrgRow = {
   deleted_at: string | null;
 };
 
-const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trialing"]);
-
 function isProtectedAssetPath(pathname: string) {
   return (
     pathname.startsWith("/_next") ||
@@ -88,14 +93,6 @@ function isProtectedAssetPath(pathname: string) {
     pathname === "/sitemap.xml" ||
     pathname.includes(".")
   );
-}
-
-function allowsDashboardAccess(org: OrgRow | null) {
-  if (!org) return false;
-  if (org.status !== "active") return false;
-
-  if (org.subscription_status == null) return false;
-  return ACTIVE_SUBSCRIPTION_STATUSES.has(org.subscription_status);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -160,61 +157,15 @@ export async function proxy(request: NextRequest) {
     .eq("id", user.id)
     .maybeSingle();
 
-  let activeOrganizationId = profile?.active_organization_id ?? null;
+  const profileOrgId = profile?.active_organization_id ?? null;
+
+  // Post-checkout wait page: allow authenticated users without full dashboard entitlement
+  if (pathname === "/success") {
+    return response;
+  }
+
+  const activeOrganizationId = profileOrgId;
   let organization: OrgRow | null = null;
-
-  // Self-heal profiles.active_organization_id if the user is already a member.
-  if (!activeOrganizationId) {
-    const { data: memberships } = await supabase
-      .from("organization_members")
-      .select("organization_id")
-      .eq("user_id", user.id)
-      .limit(1);
-
-    const fallbackOrgId = memberships?.[0]?.organization_id ?? null;
-    if (fallbackOrgId) {
-      activeOrganizationId = fallbackOrgId;
-      await supabase
-        .from("profiles")
-        .update({
-          active_organization_id: fallbackOrgId,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", user.id);
-    }
-  }
-
-  if (activeOrganizationId) {
-    const { data: memberForActiveOrg } = await supabase
-      .from("organization_members")
-      .select("organization_id")
-      .eq("user_id", user.id)
-      .eq("organization_id", activeOrganizationId)
-      .maybeSingle();
-
-    // If the active org points to a non-member org, pivot to any real membership.
-    if (!memberForActiveOrg) {
-      const { data: memberships } = await supabase
-        .from("organization_members")
-        .select("organization_id")
-        .eq("user_id", user.id)
-        .limit(1);
-
-      const fallbackOrgId = memberships?.[0]?.organization_id ?? null;
-      if (fallbackOrgId) {
-        activeOrganizationId = fallbackOrgId;
-        await supabase
-          .from("profiles")
-          .update({
-            active_organization_id: fallbackOrgId,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", user.id);
-      } else {
-        activeOrganizationId = null;
-      }
-    }
-  }
 
   if (activeOrganizationId) {
     const { data: org } = await supabase
@@ -225,25 +176,63 @@ export async function proxy(request: NextRequest) {
     organization = org as OrgRow | null;
   }
 
-  const hasActiveOrg = allowsDashboardAccess(organization);
+  const { data: subscription } = await supabase
+    .from("user_subscriptions")
+    .select("plan_id, status")
+    .eq("user_id", user.id)
+    .in("status", ["active", "trialing"])
+    .maybeSingle();
+
+  const orgGate: OrgDashboardGateRow | null = organization
+    ? {
+        status: organization.status ?? "",
+        subscription_status: organization.subscription_status,
+        deleted_at: organization.deleted_at,
+        trial_ends_at: organization.trial_ends_at,
+      }
+    : null;
+
+  const { allowedForDashboard: hasActiveOrg } = evaluateDashboardEntitlement({
+    org: orgGate,
+    personalSub: subscription,
+  });
 
   if (isOnboardingPath(pathname)) {
+    if (pathname === "/onboarding" || pathname === "/onboarding/new") {
+      return NextResponse.redirect(createRedirectUrl("/onboarding/setup", request));
+    }
     if (!isAllowedOnboardingRoute(pathname)) {
-      return NextResponse.redirect(createRedirectUrl("/onboarding/new", request));
+      return NextResponse.redirect(createRedirectUrl("/onboarding/setup", request));
     }
     if (pathname === "/onboarding/plan" && !activeOrganizationId) {
-      return NextResponse.redirect(createRedirectUrl("/onboarding", request));
+      return NextResponse.redirect(createRedirectUrl("/onboarding/setup", request));
     }
-    // Active users don't need onboarding anymore.
     if (hasActiveOrg) {
+      // Allow finishing the setup wizard (LinkedIn return URL, post-create flow) without
+      // immediately ejecting to the dashboard.
+      if (pathname === "/onboarding/setup") {
+        return response;
+      }
       return NextResponse.redirect(createRedirectUrl("/dashboard", request));
     }
     return response;
   }
 
-  // Non-onboarding routes require an active paid organization membership.
   if (!hasActiveOrg) {
-    return NextResponse.redirect(createRedirectUrl("/onboarding", request));
+    if (
+      shouldRedirectToOrgInactivePage({
+        profileOrgId: activeOrganizationId,
+        org: orgGate,
+        allowedForDashboard: hasActiveOrg,
+      })
+    ) {
+      const inactive = createRedirectUrl(
+        "/auth/inactive?reason=organization",
+        request
+      );
+      return NextResponse.redirect(inactive);
+    }
+    return NextResponse.redirect(createRedirectUrl("/onboarding/setup", request));
   }
 
   return response;

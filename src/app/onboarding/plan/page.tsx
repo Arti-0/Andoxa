@@ -1,9 +1,12 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { ChevronLeft } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { LoadingSpinner } from '@/components/loading-spinner';
+import { Button } from '@/components/ui/button';
 import { TarifsSection } from '@/components/v3/homepage/TarifsSection';
 import {
     type OrgDashboardGateRow,
@@ -14,6 +17,29 @@ import {
     isMeaningfulPostgrestError,
     serializePostgrestError,
 } from '@/lib/supabase/postgrest-error';
+
+const PLAN_BACK_HREF = '/onboarding/setup?step=8';
+
+const planShellClass =
+    'flex min-h-dvh w-full flex-col bg-zinc-50 transition-colors duration-300 dark:bg-[#0A0A0A]';
+
+function PlanBackHeader() {
+    return (
+        <header className="flex w-full shrink-0 items-center px-4 py-3">
+            <Button
+                asChild
+                variant="ghost"
+                size="sm"
+                className="-ml-2 text-sm font-medium text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+            >
+                <Link href={PLAN_BACK_HREF}>
+                    <ChevronLeft className="size-4" />
+                    Retour
+                </Link>
+            </Button>
+        </header>
+    );
+}
 
 function PlanPageContent() {
     const router = useRouter();
@@ -38,7 +64,7 @@ function PlanPageContent() {
 
                 if (authError || !user) {
                     if (isMounted) {
-                        router.push('/auth/login');
+                        setLoading(false);
                     }
                     return;
                 }
@@ -56,7 +82,7 @@ function PlanPageContent() {
                         serializePostgrestError(profileError)
                     );
                     if (isMounted) {
-                        router.replace('/onboarding');
+                        router.replace('/onboarding/setup');
                         setLoading(false);
                     }
                     return;
@@ -133,7 +159,7 @@ function PlanPageContent() {
 
                 if (isMounted) {
                     if (!profile?.active_organization_id) {
-                        router.replace('/onboarding/join');
+                        router.replace('/onboarding/setup');
                         return;
                     }
                     setLoading(false);
@@ -157,17 +183,23 @@ function PlanPageContent() {
 
     if (loading || hasPlan) {
         return (
-            <div className="flex flex-1 flex-col items-center justify-center px-4 py-10 text-muted-foreground sm:py-12">
-                <LoadingSpinner text="Vérification de votre plan..." />
+            <div className={planShellClass}>
+                <PlanBackHeader />
+                <div className="flex flex-1 flex-col items-center justify-center px-4 py-10 text-muted-foreground sm:py-12">
+                    <LoadingSpinner text="Vérification de votre plan..." />
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="flex flex-1 flex-col text-foreground dark:text-[#f7f7f8]">
-            <div className="flex flex-1 flex-col py-10 sm:py-12">
-                <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 space-y-8">
-                    <TarifsSection />
+        <div className={planShellClass}>
+            <PlanBackHeader />
+            <div className="flex flex-1 flex-col text-foreground dark:text-[#f7f7f8]">
+                <div className="flex flex-1 flex-col py-10 sm:py-12">
+                    <div className="mx-auto w-full max-w-6xl space-y-8 px-4 sm:px-6 lg:px-10">
+                        <TarifsSection />
+                    </div>
                 </div>
             </div>
         </div>
@@ -178,8 +210,11 @@ export default function PlanPage() {
     return (
         <Suspense
             fallback={
-                <div className="flex flex-1 flex-col items-center justify-center px-4 py-10 text-muted-foreground sm:py-12">
-                    <LoadingSpinner text="Chargement…" />
+                <div className={planShellClass}>
+                    <PlanBackHeader />
+                    <div className="flex flex-1 flex-col items-center justify-center px-4 py-10 text-muted-foreground sm:py-12">
+                        <LoadingSpinner text="Chargement…" />
+                    </div>
                 </div>
             }
         >

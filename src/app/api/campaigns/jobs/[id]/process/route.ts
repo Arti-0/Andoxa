@@ -61,6 +61,7 @@ export const POST = createApiHandler(
       errors: result.errors,
       remaining: result.remaining,
       message: result.message,
+      rateLimited: result.rateLimited ?? false,
     };
   },
   { rateLimit: { name: "campaign-process", requests: 10, window: "1 m" } }

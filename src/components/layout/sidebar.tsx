@@ -62,6 +62,34 @@ function cleanOrgName(name: string | undefined | null): string {
   return cleaned;
 }
 
+function OrgLogoThumb({
+  logoUrl,
+  className,
+}: {
+  logoUrl?: string | null;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/60 bg-muted/50",
+        className ?? "h-7 w-7"
+      )}
+    >
+      {logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element -- remote Supabase URLs; matches dashboard-header
+        <img
+          src={logoUrl}
+          alt=""
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+      )}
+    </span>
+  );
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const { workspace, profile, user, switchWorkspace, refresh } = useWorkspace();
@@ -161,7 +189,10 @@ export function Sidebar() {
                   )}
                   title={isCollapsed ? displayName : undefined}
                 >
-                  <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <OrgLogoThumb
+                    logoUrl={workspace?.logo_url}
+                    className={cn(isCollapsed ? "h-8 w-8" : "h-7 w-7")}
+                  />
                   {!isCollapsed && (
                     <>
                       <span className="truncate flex-1 text-left">{displayName}</span>
@@ -170,7 +201,7 @@ export function Sidebar() {
                   )}
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-56 p-1" align="start" side="bottom">
+              <PopoverContent className="w-64 p-1" align="start" side="bottom">
                 <p className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Organisations
                 </p>
@@ -191,7 +222,10 @@ export function Sidebar() {
                           : "hover:bg-accent text-muted-foreground hover:text-foreground"
                       )}
                     >
-                      <span className="flex-1 truncate text-left">{cleanOrgName(org.name)}</span>
+                      <OrgLogoThumb logoUrl={org.logo_url} />
+                      <span className="min-w-0 flex-1 truncate text-left">
+                        {cleanOrgName(org.name)}
+                      </span>
                       {isActive && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
                     </button>
                   );

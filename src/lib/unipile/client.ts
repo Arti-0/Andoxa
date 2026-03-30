@@ -55,6 +55,18 @@ export class UnipileApiError extends Error {
   }
 }
 
+/** HTTP 429 from Unipile — batch runners should abort and release lock without marking prospects as hard errors. */
+export class UnipileRateLimitError extends UnipileApiError {
+  constructor(
+    message: string,
+    status: number,
+    public retryAfterSec?: number
+  ) {
+    super(message, status);
+    this.name = "UnipileRateLimitError";
+  }
+}
+
 export function getUnipileHeaders(): Record<string, string> {
   const key = process.env.UNIPILE_API_KEY?.trim();
   if (!key) {
@@ -100,6 +112,16 @@ export async function unipileFetch<T>(
   const text = await res.text();
 
   if (!res.ok) {
+    if (res.status === 429) {
+      const retryRaw = res.headers.get("Retry-After");
+      const retryAfterSec = retryRaw ? Number.parseInt(retryRaw, 10) : undefined;
+      const parsed = parseUnipileError(res, text);
+      throw new UnipileRateLimitError(
+        parsed.message,
+        429,
+        Number.isFinite(retryAfterSec) ? retryAfterSec : undefined
+      );
+    }
     throw parseUnipileError(res, text);
   }
 

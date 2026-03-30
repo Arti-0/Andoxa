@@ -198,7 +198,10 @@ export const POST = createApiHandler(async (req, ctx) => {
     .single();
 
   const autoEnrichEligible =
-    planAllowsAutoEnrichOnImport(planId) && readAutoEnrichOptIn(orgRow?.metadata);
+    planAllowsAutoEnrichOnImport(
+      ctx.workspace?.plan,
+      ctx.workspace?.subscription_status
+    ) && readAutoEnrichOptIn(orgRow?.metadata);
 
   for (const prospect of deduplicatedRows) {
     const { data: created, error: prospectError } = await ctx.supabase

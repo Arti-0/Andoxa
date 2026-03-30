@@ -28,6 +28,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
 import { Stopwatch, formatTime } from "@/components/call-sessions/Stopwatch";
 import type { StopwatchHandle } from "@/components/call-sessions/Stopwatch";
 
@@ -277,8 +278,52 @@ export default function CallSessionPage() {
       return json.data;
     },
     enabled: !!sessionId,
-    refetchInterval: 30000,
   });
+
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const supabase = createClient();
+    const invalidate = () => {
+      void queryClient.invalidateQueries({ queryKey: ["call-session", sessionId] });
+    };
+
+    const filterSession = `id=eq.${sessionId}`;
+    const filterBySessionId = `call_session_id=eq.${sessionId}`;
+
+    const channel = supabase
+      .channel(`call-session-${sessionId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "call_sessions", filter: filterSession },
+        invalidate
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "call_session_prospects",
+          filter: filterBySessionId,
+        },
+        invalidate
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "call_session_notes",
+          filter: filterBySessionId,
+        },
+        invalidate
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [sessionId, queryClient]);
 
   useEffect(() => {
     if (!session?.prospects?.length) return;

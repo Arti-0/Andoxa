@@ -1,5 +1,5 @@
-import OnboardingCreateClient from "../onboarding-create-client";
+import { redirect } from "next/navigation";
 
-export default function OnboardingNewPage() {
-  return <OnboardingCreateClient />;
+export default function OnboardingNewRedirectPage() {
+  redirect("/onboarding/setup");
 }

@@ -28,7 +28,7 @@ export function UpgradePlanWall({ featurePath }: UpgradePlanWallProps) {
       </div>
       <div className="flex flex-wrap items-center justify-center gap-2">
         <Button asChild>
-          <Link href="/onboarding">Voir les plans</Link>
+          <Link href="/onboarding/plan">Voir les plans</Link>
         </Button>
         <Button variant="outline" asChild>
           <Link href="/settings">Abonnement</Link>

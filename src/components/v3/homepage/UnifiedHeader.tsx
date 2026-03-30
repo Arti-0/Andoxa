@@ -15,7 +15,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { RiMenuLine, RiCloseLine } from "@remixicon/react";
-import { IconBrandLinkedin } from "@tabler/icons-react";
+import { LogIn } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
@@ -253,7 +253,7 @@ export function UnifiedHeader({
                       href="/auth/login"
                       className="relative z-10 flex items-center gap-2"
                     >
-                      <IconBrandLinkedin className="h-4 w-4" />
+                      <LogIn className="h-4 w-4" />
                       S&apos;inscrire
                     </Link>
                   </Button>
@@ -340,7 +340,7 @@ export function UnifiedHeader({
                             href="/auth/login"
                             className="relative z-10 flex items-center justify-center gap-2"
                           >
-                            <IconBrandLinkedin className="h-4 w-4" />
+                            <LogIn className="h-4 w-4" />
                             S&apos;inscrire
                           </Link>
                         </Button>

@@ -60,6 +60,19 @@ export const POST = createApiHandler(async (req, ctx) => {
     );
   }
 
+  const prospectIds = (prospects as ProspectRow[]).map((p) => p.id);
+  const { data: inboundLinks } = await ctx.supabase
+    .from("unipile_chat_prospects")
+    .select("prospect_id")
+    .eq("organization_id", ctx.workspaceId)
+    .in("prospect_id", prospectIds)
+    .not("last_inbound_at", "is", null);
+  const warnedIds = [...new Set((inboundLinks ?? []).map((r) => r.prospect_id))];
+  const warnings = warnedIds.map((prospect_id) => ({
+    prospect_id,
+    code: "linkedin_already_replied" as const,
+  }));
+
   const accountId = await getAccountIdForUser(ctx);
   const byProspect = body.message_by_prospect ?? {};
 
@@ -125,5 +138,6 @@ export const POST = createApiHandler(async (req, ctx) => {
     success_count: successCount,
     chat_id: lastChatId,
     errors: errors.slice(0, 10),
+    warnings,
   };
 }, { rateLimit: { name: "campaigns", requests: 5, window: "1 m" } });

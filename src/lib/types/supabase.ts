@@ -588,39 +588,6 @@ export interface Database {
         };
         Relationships: [];
       };
-      invitations: {
-        Row: {
-          id: string;
-          organization_id: string;
-          email: string | null;
-          linkedin_url: string | null;
-          role: string;
-          token: string | null;
-          invited_by: string | null;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          organization_id: string;
-          email?: string | null;
-          linkedin_url?: string | null;
-          role?: string;
-          token?: string | null;
-          invited_by?: string | null;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          organization_id?: string;
-          email?: string | null;
-          linkedin_url?: string | null;
-          role?: string;
-          token?: string | null;
-          invited_by?: string | null;
-          created_at?: string;
-        };
-        Relationships: [];
-      };
       events: {
         Row: {
           id: string;
@@ -710,6 +677,7 @@ export interface Database {
           unipile_chat_id: string;
           organization_id: string;
           created_at: string | null;
+          last_inbound_at: string | null;
         };
         Insert: {
           id?: string;
@@ -717,6 +685,7 @@ export interface Database {
           unipile_chat_id: string;
           organization_id: string;
           created_at?: string | null;
+          last_inbound_at?: string | null;
         };
         Update: {
           id?: string;
@@ -724,6 +693,7 @@ export interface Database {
           unipile_chat_id?: string;
           organization_id?: string;
           created_at?: string | null;
+          last_inbound_at?: string | null;
         };
         Relationships: [];
       };

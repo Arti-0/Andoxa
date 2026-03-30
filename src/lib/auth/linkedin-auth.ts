@@ -1,5 +1,45 @@
-import { createClient } from '@/lib/supabase/client';
-import { logger } from '@/lib/utils/logger';
+import { createClient } from "@/lib/supabase/client";
+import { logger } from "@/lib/utils/logger";
+
+function oauthBaseUrl(): string {
+  const envAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+  const isProd = process.env.NODE_ENV === "production";
+  return (
+    isProd && envAppUrl
+      ? envAppUrl.replace(/\/$/, "")
+      : typeof window !== "undefined"
+        ? window.location.origin
+        : ""
+  ).replace(/\/$/, "");
+}
+
+/**
+ * Link LinkedIn (OIDC) to the current session — use during onboarding, not `signInWithOAuth`.
+ * Redirect returns through `/auth/callback` then `next` (e.g. setup step 3).
+ */
+export async function linkLinkedInFromOnboarding(nextPath = "/onboarding/setup?step=4&linked=1") {
+  const supabase = createClient();
+  const baseUrl = oauthBaseUrl();
+  const next = encodeURIComponent(nextPath.startsWith("/") ? nextPath : `/${nextPath}`);
+  const { data, error } = await supabase.auth.linkIdentity({
+    provider: "linkedin_oidc",
+    options: {
+      redirectTo: `${baseUrl}/auth/callback?next=${next}`,
+      scopes: "openid profile email",
+      queryParams: {
+        access_type: "offline",
+        prompt: "consent",
+      },
+    },
+  });
+
+  if (error) {
+    logger.error("LinkedIn linkIdentity error:", error);
+    throw error;
+  }
+
+  return data;
+}
 
 /**
  * Sign in with LinkedIn OAuth (OIDC)
@@ -8,23 +48,13 @@ import { logger } from '@/lib/utils/logger';
  */
 export async function signInWithLinkedIn() {
   const supabase = createClient();
-
-  const envAppUrl = process.env.NEXT_PUBLIC_APP_URL;
-  const isProd = process.env.NODE_ENV === "production";
-
-  // In production, honor the explicit app URL (Vercel / custom domain).
-  // In development, always prefer the current origin (localhost),
-  // even if NEXT_PUBLIC_APP_URL points to a remote URL.
-  const baseUrl =
-    isProd && envAppUrl
-      ? envAppUrl.replace(/\/$/, "")
-      : window.location.origin;
+  const baseUrl = oauthBaseUrl();
 
   const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'linkedin_oidc',
+    provider: "linkedin_oidc",
     options: {
-      redirectTo: `${baseUrl.replace(/\/$/, "")}/auth/callback`,
-      scopes: 'openid profile email',
+      redirectTo: `${baseUrl}/auth/callback`,
+      scopes: "openid profile email",
     },
   });
 

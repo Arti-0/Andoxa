@@ -67,7 +67,12 @@ export const PATCH = createApiHandler(async (req, ctx) => {
 
   let mergedMetadata: Json | undefined;
   if (body.settings?.auto_enrich_on_import !== undefined) {
-    if (!planAllowsAutoEnrichOnImport(ctx.workspace.plan)) {
+    if (
+      !planAllowsAutoEnrichOnImport(
+        ctx.workspace.plan,
+        ctx.workspace.subscription_status
+      )
+    ) {
       throw Errors.badRequest(
         "L'enrichissement automatique à l'import est réservé aux plans Pro et Business."
       );

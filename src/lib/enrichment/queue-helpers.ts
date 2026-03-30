@@ -4,12 +4,26 @@
  * pour l’instant (pas de blocage import / pas d’affichage dashboard).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { normalizePlanIdForRoutes } from "@/lib/billing/effective-plan";
 import type { PlanId } from "@/lib/config/plans-config";
 import { checkPlanLimit, getPlanLimits } from "@/lib/config/plans-config";
 import type { Database } from "@/lib/types/supabase";
 
-export function planAllowsAutoEnrichOnImport(planId: PlanId | string): boolean {
-  return planId === "pro" || planId === "business";
+/**
+ * When `subscriptionStatus` is passed (including `null`), uses the same plan resolution as routes
+ * (e.g. Essential + trialing → Business when `TRIAL_ESSENTIAL_PROMO_FULL_ACCESS` is enabled in effective-plan).
+ */
+export function planAllowsAutoEnrichOnImport(
+  planId: PlanId | string | null | undefined,
+  subscriptionStatus?: string | null
+): boolean {
+  const effective =
+    subscriptionStatus !== undefined
+      ? normalizePlanIdForRoutes(planId, subscriptionStatus)
+      : (planId ?? "");
+  return (
+    effective === "pro" || effective === "business" || effective === "demo"
+  );
 }
 
 function startOfUtcMonth(): string {

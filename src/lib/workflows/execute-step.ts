@@ -6,6 +6,7 @@ import {
 } from "@/lib/unipile/account";
 import { applyMessageVariables, extractLinkedInSlug } from "@/lib/unipile/campaign";
 import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";
+import { prospectHasLinkedInInboundReply } from "@/lib/unipile/linkedin-inbound-reply";
 import type { UnipileChat } from "@/lib/unipile/types";
 import type { Database } from "@/lib/types/supabase";
 import {
@@ -99,6 +100,15 @@ async function handleWait(ctx: HandlerContext): Promise<void> {
 }
 
 async function handleLinkedInInvite(ctx: HandlerContext): Promise<void> {
+  if (
+    await prospectHasLinkedInInboundReply(
+      ctx.supabase,
+      ctx.prospect.id,
+      ctx.run.organization_id
+    )
+  ) {
+    return;
+  }
   const accountId = await getLinkedInAccountIdForUserId(
     ctx.supabase,
     ctx.startedByUserId
@@ -138,6 +148,15 @@ async function handleLinkedInInvite(ctx: HandlerContext): Promise<void> {
 }
 
 async function handleLinkedInMessage(ctx: HandlerContext): Promise<void> {
+  if (
+    await prospectHasLinkedInInboundReply(
+      ctx.supabase,
+      ctx.prospect.id,
+      ctx.run.organization_id
+    )
+  ) {
+    return;
+  }
   const accountId = await getLinkedInAccountIdForUserId(
     ctx.supabase,
     ctx.startedByUserId

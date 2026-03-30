@@ -1,55 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { hasActiveBilling } from "@/lib/billing/workspace-billing";
-import type { SubscriptionStatus } from "@/lib/workspace/types";
+import {
+  type OrgDashboardGateRow,
+  organizationAllowsDashboardAccess,
+  personalSubscriptionAllowsDashboard,
+  userDashboardEntitlement,
+  evaluateDashboardEntitlement,
+} from "@/lib/auth/dashboard-entitlement";
 
-export type OrgDashboardGateRow = {
-  status: string;
-  subscription_status: string | null;
-  deleted_at: string | null;
-  trial_ends_at: string | null;
+export type { OrgDashboardGateRow };
+export {
+  personalSubscriptionAllowsDashboard,
+  organizationAllowsDashboardAccess,
+  userDashboardEntitlement,
+  evaluateDashboardEntitlement,
 };
-
-export function personalSubscriptionAllowsDashboard(
-  sub: { status?: string | null } | null | undefined
-): boolean {
-  const s = sub?.status;
-  return s === "active" || s === "trialing";
-}
-
-/**
- * When the org row alone allows redirecting to /dashboard from the plan page.
- * Pending orgs are excluded (they must finish onboarding/plan + billing; protected layout blocks dashboard).
- */
-export function organizationAllowsDashboardAccess(org: OrgDashboardGateRow): boolean {
-  const billingOk = hasActiveBilling({
-    subscription_status: org.subscription_status as SubscriptionStatus | null,
-    trial_ends_at: org.trial_ends_at,
-  });
-
-  return (
-    (org.status === "active" && (billingOk || org.subscription_status === null)) ||
-    (org.status === "deleted" &&
-      org.deleted_at != null &&
-      new Date(org.deleted_at) >= new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
-  );
-}
-
-/**
- * Single rule for auto-redirect to /dashboard from plan page and OAuth callback.
- * Org side matches (protected) billing + onboarding layout; personal sub is an alternate path.
- */
-export function userDashboardEntitlement(params: {
-  org: OrgDashboardGateRow | null;
-  personalSub: { status?: string | null } | null | undefined;
-}): { allowed: boolean } {
-  if (personalSubscriptionAllowsDashboard(params.personalSub)) {
-    return { allowed: true };
-  }
-  if (params.org != null && organizationAllowsDashboardAccess(params.org)) {
-    return { allowed: true };
-  }
-  return { allowed: false };
-}
 
 /**
  * User belongs to the workspace; org row is readable. Does not encode billing — use for

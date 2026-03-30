@@ -179,6 +179,12 @@ export function ProspectProfileContent({
         toast.error(json?.error?.message ?? "Erreur lors de l'invitation");
         return;
       }
+      const warnings = (json?.data?.warnings ?? []) as { prospect_id: string; code: string }[];
+      if (warnings.length > 0) {
+        toast.info(
+          "Ce prospect a déjà une réponse LinkedIn enregistrée — l’invitation a quand même été envoyée."
+        );
+      }
       toast.success("Invitation envoyée");
       invalidateProspect();
     } catch {

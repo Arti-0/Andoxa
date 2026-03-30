@@ -38,7 +38,7 @@ test.describe("Demo Accounts", () => {
 
   test("inactive account page should be accessible", async ({ page }) => {
     await page.goto("/auth/inactive");
-    await expect(page.locator('text="Compte inactif"')).toBeVisible();
+    await expect(page.locator('text="Compte supprimé"')).toBeVisible();
   });
 
   test.skip("should show demo trial days remaining", async ({ page }) => {

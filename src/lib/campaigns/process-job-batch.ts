@@ -1,6 +1,10 @@
 import { env } from "@/lib/config/environment";
 import { getLinkedInAccountIdForUserId } from "@/lib/unipile/account";
-import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";
+import {
+  UnipileApiError,
+  UnipileRateLimitError,
+  unipileFetch,
+} from "@/lib/unipile/client";
 import { applyMessageVariables, extractLinkedInSlug } from "@/lib/unipile/campaign";
 import type { UnipileChat } from "@/lib/unipile/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -24,6 +28,7 @@ export type ProcessCampaignJobBatchResult =
       errors: number;
       remaining: boolean;
       message?: string;
+      rateLimited?: boolean;
     }
   | { ok: true; skipped: true; reason: "locked" | "delay" | "no_account" }
   | { ok: false; code: "not_found" | "wrong_workspace" | "bad_status"; message: string };
@@ -145,10 +150,35 @@ async function runBatch(
     bookingLink = `${appUrl}/booking/${profile.booking_slug}`;
   }
 
+  const { data: inboundRows } = await supabase
+    .from("unipile_chat_prospects")
+    .select("prospect_id")
+    .eq("organization_id", job.organization_id)
+    .in("prospect_id", prospectIds)
+    .not("last_inbound_at", "is", null);
+
+  const inboundReplyProspectIds = new Set(
+    (inboundRows ?? []).map((r) => r.prospect_id)
+  );
+
   let batchSuccess = 0;
   let batchError = 0;
+  let rateLimited = false;
 
   for (const cjp of pendingProspects) {
+    if (inboundReplyProspectIds.has(cjp.prospect_id)) {
+      await supabase
+        .from("campaign_job_prospects")
+        .update({
+          status: "skipped",
+          error: "Skipped: prospect replied on LinkedIn",
+          processed_at: new Date().toISOString(),
+        })
+        .eq("id", cjp.id);
+      batchError++;
+      continue;
+    }
+
     const prospect = prospectMap.get(cjp.prospect_id);
     if (!prospect || !prospect.linkedin) {
       await supabase
@@ -232,6 +262,18 @@ async function runBatch(
         .eq("id", cjp.id);
       batchSuccess++;
     } catch (err) {
+      if (err instanceof UnipileRateLimitError) {
+        await supabase
+          .from("campaign_job_prospects")
+          .update({
+            status: "pending",
+            error: null,
+            processed_at: null,
+          })
+          .eq("id", cjp.id);
+        rateLimited = true;
+        break;
+      }
       const msg = err instanceof UnipileApiError ? err.message : String(err);
       await supabase
         .from("campaign_job_prospects")
@@ -244,7 +286,9 @@ async function runBatch(
       batchError++;
     }
 
-    await new Promise((r) => setTimeout(r, 300 + Math.random() * 500));
+    if (!rateLimited) {
+      await new Promise((r) => setTimeout(r, 300 + Math.random() * 500));
+    }
   }
 
   const nowIso = new Date().toISOString();
@@ -281,5 +325,11 @@ async function runBatch(
     success: batchSuccess,
     errors: batchError,
     remaining: Boolean(remainingCheck?.length),
+    ...(rateLimited
+      ? {
+          message: "rate_limited",
+          rateLimited: true,
+        }
+      : {}),
   };
 }
