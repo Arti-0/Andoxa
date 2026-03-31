@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
@@ -37,6 +37,8 @@ function InviteCallbackInner() {
     ]);
   };
 
+  const supabase = useMemo(() => createClient(), []);
+  
   useEffect(() => {
     if (handled.current) return;
     handled.current = true;
@@ -45,7 +47,6 @@ function InviteCallbackInner() {
     // déclenche le cleanup tout de suite et abort() ne doit pas couper setSession).
     const controller = new AbortController();
     let unmounted = false;
-    const supabase = createClient();
 
     async function handleInvite() {
       try {
