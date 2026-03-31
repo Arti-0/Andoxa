@@ -95,6 +95,9 @@ export function translateAuthError(
       "Le mot de passe doit contenir au moins 6 caractères",
     "Signup requires a valid password": "Mot de passe requis",
 
+    invite_failed:
+      "L’invitation n’a pas pu être activée. Utilisez la même adresse e-mail que celle invitée ou demandez une nouvelle invitation.",
+
     // Token/session errors
     "Invalid Refresh Token": "Session expirée. Veuillez vous reconnecter.",
     refresh_token_not_found: "Session expirée. Veuillez vous reconnecter.",

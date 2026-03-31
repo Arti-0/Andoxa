@@ -16,6 +16,9 @@ export function createClient(): SupabaseClient<Database> {
     );
   }
 
+  // @supabase/ssr createBrowserClient merges options.auth then hardcodes flowType: "pkce",
+  // so implicit flow cannot be enabled from here. Email confirmation links should be opened
+  // in the same browser session as signup when possible, or rely on server /api/auth/confirm.
   const client = createBrowserClient<Database>(supabaseUrl, supabaseKey);
   // createBrowserClient<Database> infers a different schema generic than SupabaseClient<Database>
   return client as unknown as SupabaseClient<Database>;

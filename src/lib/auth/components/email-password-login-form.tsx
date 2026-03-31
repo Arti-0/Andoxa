@@ -47,11 +47,42 @@ function isDuplicateSignupError(message: string, code?: string): boolean {
   );
 }
 
+function appPublicOrigin(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  if (fromEnv) return fromEnv;
+  if (typeof window !== "undefined") return window.location.origin;
+  return "";
+}
+
+async function redeemInviteToken(token: string): Promise<boolean> {
+  const res = await fetch("/api/invitations/redeem", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  const json = (await res.json()) as {
+    success?: boolean;
+    error?: { message?: string };
+  };
+  if (!res.ok || !json.success) {
+    toast.error(
+      json.error?.message ??
+        "Impossible d’activer l’invitation. Vérifiez l’e-mail ou demandez une nouvelle invitation."
+    );
+    return false;
+  }
+  return true;
+}
+
 function EmailPasswordLoginFormInner() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const nextParam = searchParams.get("next");
+  const inviteToken = searchParams.get("invite_token");
+  const inviteEmailParam = searchParams.get("email");
+
   const safeNext =
     nextParam?.startsWith("/") && !nextParam.startsWith("//")
       ? nextParam
@@ -61,8 +92,17 @@ function EmailPasswordLoginFormInner() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const urlErrorHandled = useRef(false);
+  const invitePrefillDone = useRef(false);
 
   const urlError = searchParams.get("error");
+
+  const emailLocked = Boolean(inviteToken && inviteEmailParam?.trim());
+
+  useEffect(() => {
+    if (invitePrefillDone.current || !inviteEmailParam?.trim()) return;
+    invitePrefillDone.current = true;
+    setEmail(inviteEmailParam.trim());
+  }, [inviteEmailParam]);
 
   useEffect(() => {
     if (!urlError || urlErrorHandled.current) return;
@@ -99,6 +139,12 @@ function EmailPasswordLoginFormInner() {
       });
 
       if (!signInErr) {
+        if (inviteToken) {
+          const ok = await redeemInviteToken(inviteToken);
+          if (!ok) {
+            return;
+          }
+        }
         router.push(safeNext);
         router.refresh();
         return;
@@ -120,10 +166,15 @@ function EmailPasswordLoginFormInner() {
         return;
       }
 
-      const origin =
-        typeof window !== "undefined" ? window.location.origin : "";
-      const emailRedirectTo = origin
-        ? `${origin}/api/auth/confirm?next=${encodeURIComponent("/dashboard")}`
+      const base = appPublicOrigin();
+      const nextAfterConfirm = inviteToken
+        ? "/auth/update-password"
+        : "/dashboard";
+      const confirmQuery = inviteToken
+        ? `invite_token=${encodeURIComponent(inviteToken)}&next=${encodeURIComponent(nextAfterConfirm)}`
+        : `next=${encodeURIComponent(nextAfterConfirm)}`;
+      const emailRedirectTo = base
+        ? `${base}/api/auth/confirm?${confirmQuery}`
         : undefined;
 
       const { data: signUpData, error: signUpErr } = await supabase.auth.signUp(
@@ -179,7 +230,11 @@ function EmailPasswordLoginFormInner() {
                 autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                readOnly={emailLocked}
                 required
+                className={
+                  emailLocked ? "cursor-not-allowed opacity-90" : undefined
+                }
               />
             </div>
             <div className="space-y-2">

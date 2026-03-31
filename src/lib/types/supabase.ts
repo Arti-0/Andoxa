@@ -540,6 +540,39 @@ export interface Database {
         };
         Relationships: [];
       };
+      invitations: {
+        Row: {
+          id: string;
+          token: string;
+          organization_id: string;
+          email: string;
+          role: string;
+          created_at: string;
+          expires_at: string;
+          consumed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          token?: string;
+          organization_id: string;
+          email: string;
+          role?: string;
+          created_at?: string;
+          expires_at: string;
+          consumed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          token?: string;
+          organization_id?: string;
+          email?: string;
+          role?: string;
+          created_at?: string;
+          expires_at?: string;
+          consumed_at?: string | null;
+        };
+        Relationships: [];
+      };
       linkedin_invite_usage: {
         Row: {
           id: string;
@@ -1112,6 +1145,10 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
+      redeem_organization_invitation: {
+        Args: { p_token: string };
+        Returns: Json;
+      };
       campaign_try_acquire_batch_lock: {
         Args: { p_job_id: string; p_stale_seconds?: number };
         Returns: boolean;

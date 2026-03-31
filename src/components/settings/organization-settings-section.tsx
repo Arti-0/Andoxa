@@ -180,7 +180,7 @@ export function OrganizationSettingsSection({
             toast.success("Invitation envoyée par e-mail");
             setInviteEmail("");
             setInviteSuccess(
-                "Un e-mail d’invitation a été envoyé. La personne pourra définir son mot de passe après acceptation."
+                "Un e-mail d’invitation a été envoyé. La personne doit suivre le lien puis confirmer son e-mail si elle crée un compte."
             );
             loadMembers();
         } catch (err) {
@@ -505,8 +505,9 @@ export function OrganizationSettingsSection({
                         Inviter par e-mail
                     </Label>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                        Un e-mail Supabase est envoyé : la personne pourra
-                        accepter l&apos;invitation et définir son mot de passe.
+                        Un e-mail Andoxa avec un lien sécurisé est envoyé : la
+                        personne ouvre le lien, se connecte ou crée un compte
+                        avec la même adresse, puis accepte l&apos;invitation.
                     </p>
                     <form
                         onSubmit={handleInviteByEmail}

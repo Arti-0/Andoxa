@@ -1410,6 +1410,9 @@ export function OnboardingSetupClient() {
                                             >
                                                 Andoxa est plus puissant lorsque
                                                 toute votre équipe est à bord.
+                                                Chaque adresse recevra un e-mail
+                                                d&apos;invitation Andoxa avec un
+                                                lien sécurisé.
                                             </p>
                                             {!orgId ? (
                                                 <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
