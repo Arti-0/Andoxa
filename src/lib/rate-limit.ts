@@ -94,6 +94,7 @@ export async function withRateLimit(
   if (!result) return null;
 
   if (!result.success) {
+    // Same contract as createApiHandler errors: non-2xx + success: false (never 200).
     return NextResponse.json(
       {
         success: false,

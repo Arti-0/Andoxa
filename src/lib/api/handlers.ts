@@ -91,11 +91,21 @@ export const Errors = {
 // Response Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Success envelope. HTTP status is 2xx (default 200). Clients must not infer
+ * failure from the body alone: always pair with `response.ok` / status.
+ */
 function createResponse<T>(data: T, status = 200): NextResponse {
   const body: ApiResponse<T> = { success: true, data };
   return NextResponse.json(body, { status });
 }
 
+/**
+ * Error envelope for all thrown `ApiError`s and `withRateLimit` denials.
+ * Invariant: HTTP status is never 200 — always 4xx/5xx (e.g. 400, 401, 429, 500).
+ * Body: `{ success: false, error: { code, message, details? } }`.
+ * Callers must not return 200 with `success: false`; consumers rely on status + `success === true` for success.
+ */
 function createErrorResponse(error: ApiError): NextResponse {
   const body: ApiResponse<never> = {
     success: false,

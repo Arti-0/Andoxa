@@ -15,6 +15,9 @@ const UUID_RE =
 /**
  * POST /api/invitations/redeem
  * Accepts a pending invite for the authenticated user (session cookies).
+ *
+ * Responses go through `createApiHandler`: failures are always 4xx/5xx with
+ * `{ success: false, error: { code, message } }`; success is 200 with `{ success: true, data }`.
  */
 export const POST = createApiHandler(
   async (req: NextRequest, ctx: ApiContext) => {
