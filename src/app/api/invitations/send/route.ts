@@ -142,7 +142,7 @@ export const POST = createApiHandler(
     }
 
     const origin = appOrigin();
-    const redirectTo = `${origin}/api/auth/confirm?invite_token=${encodeURIComponent(token)}`;
+    const redirectTo = `${origin}/auth/invite/callback?invite_token=${encodeURIComponent(token)}`;
 
     const { data: linkData, error: linkErr } =
       await service.auth.admin.generateLink({

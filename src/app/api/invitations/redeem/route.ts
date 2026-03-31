@@ -18,8 +18,10 @@ const UUID_RE =
  */
 export const POST = createApiHandler(
   async (req: NextRequest, ctx: ApiContext) => {
-    const body = await parseBody<{ token?: string }>(req);
-    const token = body.token?.trim();
+    const body = await parseBody<{ token?: string; invite_token?: string }>(
+      req
+    );
+    const token = body.token?.trim() ?? body.invite_token?.trim();
     if (!token) {
       throw Errors.badRequest("Token requis");
     }
