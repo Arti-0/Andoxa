@@ -41,7 +41,10 @@ function InviteCallbackInner() {
     if (handled.current) return;
     handled.current = true;
 
+    // AbortController uniquement pour le fetch redeem — pas pour setSession (Strict Mode
+    // déclenche le cleanup tout de suite et abort() ne doit pas couper setSession).
     const controller = new AbortController();
+    let unmounted = false;
     const supabase = createClient();
 
     async function handleInvite() {
@@ -97,6 +100,11 @@ function InviteCallbackInner() {
             setErrorMsg(INVITE_LINK_ERROR_MESSAGE);
             return;
           }
+        }
+
+        if (unmounted) {
+          addStep("unmounted after setSession — stopping");
+          return;
         }
 
         if (inviteToken) {
@@ -183,6 +191,7 @@ function InviteCallbackInner() {
     void handleInvite();
 
     return () => {
+      unmounted = true;
       controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once at mount; inviteToken/router stable for this flow
