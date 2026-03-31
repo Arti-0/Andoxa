@@ -8,15 +8,29 @@ import { ResendConfirmationForm } from "@/lib/auth/components/resend-confirmatio
 interface AuthErrorPageProps {
   searchParams: Promise<{
     error?: string;
+    /** Alias historique / liens externes */
+    reason?: string;
     email?: string;
   }>;
+}
+
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 export default async function AuthErrorPage({
   searchParams,
 }: AuthErrorPageProps) {
   const params = await searchParams;
-  const error = params.error || "Une erreur inattendue s'est produite";
+  const raw =
+    params.error ||
+    params.reason ||
+    "Une erreur inattendue s'est produite";
+  const error = safeDecodeURIComponent(raw);
   const email = params.email;
 
   // Déterminer si c'est un problème de lien invalide

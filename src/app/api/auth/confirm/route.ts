@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import type { EmailOtpType, SupabaseClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-import { redeemOrganizationInvitation } from "@/lib/invitations/redeem-invite";
+import { redeemInvitation } from "@/lib/invitations";
 import type { Database } from "@/lib/types/supabase";
 
 export const runtime = "nodejs";
@@ -10,31 +10,6 @@ type CookieOptions = Parameters<NextResponse["cookies"]["set"]>[2];
 
 const INVITE_TOKEN_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-async function maybeRedirectAfterFailedInviteRedeem(
-  supabase: SupabaseClient<Database>,
-  baseUrl: string,
-  inviteToken: string | null
-): Promise<URL | null> {
-  if (!inviteToken) return null;
-  if (!INVITE_TOKEN_UUID_RE.test(inviteToken)) {
-    return new URL(
-      `/auth/login?error=${encodeURIComponent("invite_failed")}`,
-      baseUrl
-    );
-  }
-  const { result, rpcError } = await redeemOrganizationInvitation(
-    supabase,
-    inviteToken
-  );
-  if (rpcError || !result.success) {
-    return new URL(
-      `/auth/login?error=${encodeURIComponent("invite_failed")}`,
-      baseUrl
-    );
-  }
-  return null;
-}
 
 function getRedirectBase(request: NextRequest): string {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL;
@@ -49,9 +24,16 @@ function getRedirectBase(request: NextRequest): string {
   return new URL(request.url).origin;
 }
 
+function authErrorUrl(baseUrl: string, message: string): URL {
+  return new URL(
+    `/auth/error?error=${encodeURIComponent(message)}`,
+    baseUrl
+  );
+}
+
 /**
  * GET /api/auth/confirm
- * Completes email invite / magic-link: sets session cookies then redirects to `next` (default password setup).
+ * Échange le code PKCE ou vérifie le magic link (token_hash), puis traite l’invite si présente.
  */
 export async function GET(request: NextRequest) {
   const baseUrl = getRedirectBase(request);
@@ -95,22 +77,27 @@ export async function GET(request: NextRequest) {
     }
   );
 
+  const sb = supabase as unknown as SupabaseClient<Database>;
+
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
-      return NextResponse.redirect(
-        new URL(
-          `/auth/login?error=${encodeURIComponent(error.message)}`,
-          baseUrl
-        )
-      );
+      return NextResponse.redirect(authErrorUrl(baseUrl, error.message));
     }
-    const inviteFail = await maybeRedirectAfterFailedInviteRedeem(
-      supabase as unknown as SupabaseClient<Database>,
-      baseUrl,
-      inviteToken
-    );
-    if (inviteFail) return NextResponse.redirect(inviteFail);
+    if (inviteToken) {
+      if (!INVITE_TOKEN_UUID_RE.test(inviteToken)) {
+        return NextResponse.redirect(
+          authErrorUrl(baseUrl, "Invitation invalide.")
+        );
+      }
+      const redeemed = await redeemInvitation(sb, inviteToken);
+      if ("error" in redeemed) {
+        return NextResponse.redirect(
+          authErrorUrl(baseUrl, redeemed.error)
+        );
+      }
+      return NextResponse.redirect(new URL("/onboarding/join", baseUrl));
+    }
     return response;
   }
 
@@ -120,23 +107,26 @@ export async function GET(request: NextRequest) {
       token_hash,
     });
     if (error) {
-      return NextResponse.redirect(
-        new URL(
-          `/auth/login?error=${encodeURIComponent(error.message)}`,
-          baseUrl
-        )
-      );
+      return NextResponse.redirect(authErrorUrl(baseUrl, error.message));
     }
-    const inviteFailOtp = await maybeRedirectAfterFailedInviteRedeem(
-      supabase as unknown as SupabaseClient<Database>,
-      baseUrl,
-      inviteToken
-    );
-    if (inviteFailOtp) return NextResponse.redirect(inviteFailOtp);
+    if (inviteToken) {
+      if (!INVITE_TOKEN_UUID_RE.test(inviteToken)) {
+        return NextResponse.redirect(
+          authErrorUrl(baseUrl, "Invitation invalide.")
+        );
+      }
+      const redeemed = await redeemInvitation(sb, inviteToken);
+      if ("error" in redeemed) {
+        return NextResponse.redirect(
+          authErrorUrl(baseUrl, redeemed.error)
+        );
+      }
+      return NextResponse.redirect(new URL("/onboarding/join", baseUrl));
+    }
     return response;
   }
 
   return NextResponse.redirect(
-    new URL("/auth/login?error=missing_confirmation", baseUrl)
+    authErrorUrl(baseUrl, "Lien de confirmation incomplet ou expiré.")
   );
 }

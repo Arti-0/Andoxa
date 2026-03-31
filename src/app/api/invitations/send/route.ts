@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import * as Sentry from "@sentry/nextjs";
 import { NextRequest } from "next/server";
 import {
   createApiHandler,
@@ -141,16 +142,58 @@ export const POST = createApiHandler(
     }
 
     const origin = appOrigin();
-    const inviteUrl = `${origin}/auth/login?invite_token=${encodeURIComponent(token)}&email=${encodeURIComponent(emailRaw)}`;
+    const redirectTo = `${origin}/api/auth/confirm?invite_token=${encodeURIComponent(token)}`;
+
+    const { data: linkData, error: linkErr } =
+      await service.auth.admin.generateLink({
+        type: "magiclink",
+        email: emailLower,
+        options: { redirectTo },
+      });
+
+    if (linkErr || !linkData?.properties?.hashed_token) {
+      await service.from("invitations").delete().eq("token", token);
+      throw Errors.internal(
+        linkErr?.message ?? "Génération du lien de connexion impossible"
+      );
+    }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(
+      /\/$/,
+      ""
+    );
+    if (!supabaseUrl) {
+      await service.from("invitations").delete().eq("token", token);
+      throw Errors.internal("NEXT_PUBLIC_SUPABASE_URL manquant");
+    }
+
+    const confirmUrl =
+      linkData.properties.action_link ??
+      `${supabaseUrl}/auth/v1/verify?token=${encodeURIComponent(linkData.properties.hashed_token)}&type=magiclink&redirect_to=${encodeURIComponent(redirectTo)}`;
+
+    const { data: inviterProfile } = await ctx.supabase
+      .from("profiles")
+      .select("full_name, email")
+      .eq("id", ctx.userId)
+      .maybeSingle();
+
+    const invitedBy =
+      inviterProfile?.full_name?.trim() ||
+      inviterProfile?.email?.trim() ||
+      "Un collègue";
 
     try {
       await sendOrganizationInviteEmail({
         to: emailRaw,
-        inviteUrl,
+        confirmUrl,
         organizationName: orgRow.name,
+        invitedBy,
       });
     } catch (e) {
-      await service.from("invitations").delete().eq("token", token);
+      Sentry.captureException(e, {
+        tags: { flow: "org_invite_email" },
+        extra: { organizationId, token },
+      });
       const msg = e instanceof Error ? e.message : String(e);
       throw Errors.internal(
         `Envoi de l’e-mail d’invitation impossible : ${msg}`
