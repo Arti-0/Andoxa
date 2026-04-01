@@ -132,35 +132,107 @@ function InviteCallbackInner() {
                     }
 
                     if (!tokenData.access_token || !tokenData.refresh_token) {
-                        addStep(
-                            'no tokens in response: ' +
-                                JSON.stringify(tokenData)
-                        );
+                        addStep('no tokens in response');
                         setErrorMsg('Token invalide ou expiré.');
                         return;
                     }
 
-                    addStep('calling setSession with fresh tokens...');
-                    try {
-                        const { error: sessionError } =
-                            await supabase.auth.setSession({
-                                access_token: tokenData.access_token as string,
-                                refresh_token:
-                                    tokenData.refresh_token as string,
-                            });
-                        addStep(
-                            'setSession done — error: ' +
-                                (sessionError?.message ?? 'none')
-                        );
-                        if (sessionError) {
-                            setErrorMsg(
-                                'Session invalide : ' + sessionError.message
+                    const freshAccess = tokenData.access_token as string;
+                    const freshRefresh = tokenData.refresh_token as string;
+                    const expiresIn = Number(tokenData.expires_in) || 3600;
+                    const nowSec = Math.floor(Date.now() / 1000);
+                    let expiresAt: number;
+                    if (typeof tokenData.expires_at === 'number') {
+                        expiresAt = tokenData.expires_at;
+                    } else if (typeof tokenData.expires_at === 'string') {
+                        expiresAt = parseInt(tokenData.expires_at, 10);
+                    } else {
+                        expiresAt = nowSec + expiresIn;
+                    }
+
+                    let userObj = tokenData.user as User | undefined;
+                    if (!userObj || typeof userObj !== 'object' || !userObj.id) {
+                        addStep('fetching user via /auth/v1/user...');
+                        try {
+                            const userRes = await fetch(
+                                `${supabaseUrl}/auth/v1/user`,
+                                {
+                                    headers: {
+                                        Authorization: `Bearer ${freshAccess}`,
+                                        apikey: supabaseKey,
+                                    },
+                                }
                             );
+                            const userJson = (await userRes.json()) as {
+                                id?: string;
+                                user?: User;
+                            };
+                            userObj =
+                                userJson.user ??
+                                (userJson.id ? (userJson as User) : undefined);
+                            addStep(
+                                'user fetch status: ' +
+                                    userRes.status +
+                                    ' hasUser: ' +
+                                    Boolean(userObj?.id)
+                            );
+                        } catch (uErr: unknown) {
+                            addStep('user fetch threw: ' + String(uErr));
+                            setErrorMsg('Erreur réseau vers Supabase.');
                             return;
                         }
-                    } catch (sessionErr: unknown) {
-                        addStep('setSession threw: ' + String(sessionErr));
-                        setErrorMsg('setSession a échoué.');
+                    }
+
+                    if (!userObj?.id) {
+                        addStep('no user in token response or /user');
+                        setErrorMsg('Token invalide ou expiré.');
+                        return;
+                    }
+
+                    const sessionPayload = {
+                        access_token: freshAccess,
+                        refresh_token: freshRefresh,
+                        expires_in: expiresIn,
+                        expires_at: expiresAt,
+                        token_type:
+                            (tokenData.token_type as string) || 'bearer',
+                        user: userObj,
+                    };
+
+                    // Contourne setSession (getUser interne peut être annulé par Abort).
+                    addStep('storing session manually...');
+                    try {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const authAny = supabase.auth as any;
+                        if (typeof authAny._saveSession === 'function') {
+                            await authAny._saveSession(sessionPayload);
+                            addStep('_saveSession done');
+                        } else if (
+                            authAny.storage &&
+                            typeof authAny.storage.setItem === 'function' &&
+                            typeof authAny.storageKey === 'string'
+                        ) {
+                            addStep('_saveSession not available — storage.setItem');
+                            await authAny.storage.setItem(
+                                authAny.storageKey,
+                                JSON.stringify(sessionPayload)
+                            );
+                            addStep('storage.setItem done');
+                        } else {
+                            addStep('_saveSession not available — cookie fallback');
+                            const projectRef = new URL(
+                                supabaseUrl.startsWith('http')
+                                    ? supabaseUrl
+                                    : `https://${supabaseUrl}`
+                            ).hostname.split('.')[0];
+                            const cookieName = `sb-${projectRef}-auth-token`;
+                            const raw = JSON.stringify(sessionPayload);
+                            document.cookie = `${cookieName}=${encodeURIComponent(raw)}; path=/; max-age=${String(expiresIn)}; SameSite=Lax`;
+                            addStep('cookie written: ' + cookieName);
+                        }
+                    } catch (saveErr: unknown) {
+                        addStep('save threw: ' + String(saveErr));
+                        setErrorMsg('Impossible de sauvegarder la session.');
                         return;
                     }
 
@@ -170,6 +242,22 @@ function InviteCallbackInner() {
                         window.location.pathname + window.location.search
                     );
                     addStep('replaceState done');
+
+                    const {
+                        data: { session: savedSession },
+                    } = await supabase.auth.getSession();
+                    addStep(
+                        'getSession after save: ' +
+                            (savedSession
+                                ? 'found uid=' + savedSession.user.id
+                                : 'null')
+                    );
+                    if (!savedSession) {
+                        setErrorMsg(
+                            'Session non persistée — contactez le support.'
+                        );
+                        return;
+                    }
                 } else {
                     const {
                         data: { session },
@@ -182,7 +270,7 @@ function InviteCallbackInner() {
                 }
 
                 if (unmounted) {
-                    addStep('unmounted after setSession — stopping');
+                    addStep('unmounted after session save — stopping');
                     return;
                 }
 
