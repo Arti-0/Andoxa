@@ -64,33 +64,11 @@ export async function POST(req: NextRequest) {
         );
     }
 
-    // Mettre à jour le mot de passe via admin (invalide le JWT actuel)
-    const admin = createServiceClient();
-    const { error } = await admin.auth.admin.updateUserById(user.id, {
-        password,
-    });
+    const { error } = await supabase.auth.updateUser({ password });
 
     if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    // Forcer un refresh pour obtenir un nouveau JWT valide
-    // et le poser dans cookieCarrier via setAll
-    const { error: refreshError } = await supabase.auth.refreshSession();
-    if (refreshError) {
-        console.error('[update-password] refresh error:', refreshError.message);
-        // Ne pas bloquer — l'update a réussi, le navigateur peut re-auth
-    }
-
-    console.log(
-        '[update-password] Set-Cookie after refresh:',
-        cookieCarrier.headers.getSetCookie?.() ?? []
-    );
-
-    // Copier les nouveaux cookies vers la réponse finale
-    const out = NextResponse.json({ success: true });
-    for (const line of cookieCarrier.headers.getSetCookie?.() ?? []) {
-        out.headers.append('Set-Cookie', line);
-    }
-    return out;
+    return NextResponse.json({ success: true });
 }
