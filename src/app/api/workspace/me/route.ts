@@ -24,9 +24,11 @@ export async function GET() {
     .eq("id", user.id)
     .maybeSingle();
 
+  const userWithIdentities = { ...user, identities: user.identities ?? [] };
+
   if (!profile?.active_organization_id) {
     return NextResponse.json({
-      user,
+      user: userWithIdentities,
       profile: profile ?? null,
       workspace: null,
       members: [],
@@ -57,7 +59,7 @@ export async function GET() {
   ]);
 
   return NextResponse.json({
-    user,
+    user: userWithIdentities,
     profile,
     workspace: workspaceRes.data ?? null,
     members: membersRes.data ?? [],

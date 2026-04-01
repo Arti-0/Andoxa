@@ -1,8 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { linkedinDisplayFromUser } from "@/lib/utils/onboarding-helpers";
+
+type WorkspaceMeResponse = {
+  user: {
+    id: string;
+    identities?: Array<{
+      provider: string;
+      identity_data?: Record<string, unknown>;
+    }>;
+    user_metadata?: Record<string, unknown>;
+  } | null;
+  profile: {
+    full_name?: string | null;
+    active_organization_id?: string | null;
+  } | null;
+  workspace: {
+    id: string;
+    name: string;
+    logo_url?: string | null;
+  } | null;
+};
 
 export function useOnboardingProfile(initialFullName: string) {
   const [orgId, setOrgId] = useState<string | null>(null);
@@ -22,45 +41,43 @@ export function useOnboardingProfile(initialFullName: string) {
   const orgFieldsHydrated = useRef(false);
 
   const refresh = useCallback(async () => {
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+    try {
+      const res = await fetch("/api/workspace/me", {
+        credentials: "include",
+      });
+      if (!res.ok) return;
 
-    const linked =
-      user.identities?.some((i) => i.provider === "linkedin_oidc") ?? false;
-    setLinkedinLinked(linked);
-    if (linked) setLiProfile(linkedinDisplayFromUser(user));
+      const data = (await res.json()) as WorkspaceMeResponse;
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("full_name, active_organization_id")
-      .eq("id", user.id)
-      .maybeSingle();
+      if (!data.user) return;
 
-    if (profile?.active_organization_id) {
-      setOrgId(profile.active_organization_id);
-      if (!orgFieldsHydrated.current) {
-        const { data: orgRow } = await supabase
-          .from("organizations")
-          .select("name, logo_url")
-          .eq("id", profile.active_organization_id)
-          .maybeSingle();
-        if (orgRow?.name) {
-          setOrgName(orgRow.name);
-        }
-        if (orgRow?.logo_url && typeof orgRow.logo_url === "string") {
-          setOrgLogoRemoteUrl(orgRow.logo_url);
-        }
-        orgFieldsHydrated.current = true;
+      const identities = data.user.identities ?? [];
+      const linked = identities.some((i) => i.provider === "linkedin_oidc");
+      setLinkedinLinked(linked);
+      if (linked) {
+        setLiProfile(linkedinDisplayFromUser(data.user));
+      } else {
+        setLiProfile(null);
       }
-    } else {
-      setOrgId(null);
-    }
-    if (profile?.full_name && !nameHydrated.current) {
-      nameHydrated.current = true;
-      setFullName(profile.full_name);
+
+      if (data.profile?.active_organization_id) {
+        setOrgId(data.profile.active_organization_id);
+        if (!orgFieldsHydrated.current) {
+          if (data.workspace?.name) setOrgName(data.workspace.name);
+          if (data.workspace?.logo_url)
+            setOrgLogoRemoteUrl(data.workspace.logo_url);
+          orgFieldsHydrated.current = true;
+        }
+      } else {
+        setOrgId(null);
+      }
+
+      if (data.profile?.full_name && !nameHydrated.current) {
+        nameHydrated.current = true;
+        setFullName(data.profile.full_name);
+      }
+    } catch {
+      // silencieux — l'onboarding reste fonctionnel sans refresh
     }
   }, []);
 
