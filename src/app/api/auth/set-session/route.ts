@@ -124,13 +124,15 @@ export async function POST(request: NextRequest) {
     if ("error" in result) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
-    await sb
+    const { error: updateError } = await sb
       .from("profiles")
       .update({
         onboarding_step: ONBOARDING_PROFILE_STEP.INVITED,
         updated_at: new Date().toISOString(),
       })
       .eq("id", user.id);
+
+    console.log("[set-session] onboarding_step update error:", updateError);
 
     return jsonPreservingSessionCookies(cookieCarrier, {
       success: true,

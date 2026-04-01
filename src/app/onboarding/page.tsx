@@ -35,6 +35,12 @@ export default async function OnboardingPage({
 
   let onboardingStep = profile?.onboarding_step ?? null;
 
+  console.log("[onboarding/page]", {
+    userId: user.id,
+    onboarding_step: profile?.onboarding_step,
+    active_organization_id: profile?.active_organization_id,
+  });
+
   const scenarioProbe = deriveScenario({
     hasOrg: !!profile?.active_organization_id,
     onboardingStep,
