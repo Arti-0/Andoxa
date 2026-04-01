@@ -6,7 +6,7 @@ interface InviteEmailProps {
 
 /**
  * E-mail d'invitation org — le CTA pointe vers Supabase /auth/v1/verify (magic link),
- * puis redirection vers /auth/login avec invite_token et e-mail (définition du mot de passe).
+ * puis /auth/invite/callback (session + redeem) puis /auth/login pour définir le mot de passe.
  */
 export function InviteEmail({
   confirmUrl,

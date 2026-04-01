@@ -80,6 +80,7 @@ function EmailPasswordLoginFormInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const nextParam = searchParams.get("next");
+  const modeParam = searchParams.get("mode");
   const inviteToken = searchParams.get("invite_token");
   const inviteEmailParam = searchParams.get("email");
 
@@ -96,7 +97,10 @@ function EmailPasswordLoginFormInner() {
 
   const urlError = searchParams.get("error");
 
-  const emailLocked = Boolean(inviteToken && inviteEmailParam?.trim());
+  const emailLocked = Boolean(
+    inviteEmailParam?.trim() &&
+      (Boolean(inviteToken) || modeParam === "set-password")
+  );
 
   useEffect(() => {
     if (invitePrefillDone.current || !inviteEmailParam?.trim()) return;
@@ -132,6 +136,19 @@ function EmailPasswordLoginFormInner() {
     setLoading(true);
     try {
       const supabase = createClient();
+
+      if (modeParam === "set-password") {
+        const { error: updateErr } = await supabase.auth.updateUser({
+          password,
+        });
+        if (updateErr) {
+          toast.error(translateAuthError(updateErr));
+          return;
+        }
+        router.push(safeNext);
+        router.refresh();
+        return;
+      }
 
       const { error: signInErr } = await supabase.auth.signInWithPassword({
         email: trimmedEmail,
