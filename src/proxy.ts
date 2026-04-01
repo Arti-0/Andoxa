@@ -209,6 +209,17 @@ export async function proxy(request: NextRequest) {
         return response;
     }
 
+    console.log('[proxy]', {
+        pathname,
+        userId: user.id,
+        profileOrgId,
+        activeOrganizationId,
+        orgStatus: organization?.status ?? 'null',
+        orgSubStatus: organization?.subscription_status ?? 'null',
+        orgDeletedAt: organization?.deleted_at ?? 'null',
+        hasActiveOrg,
+    });
+
     if (!hasActiveOrg) {
         if (
             shouldRedirectToOrgInactivePage({
