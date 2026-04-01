@@ -145,6 +145,13 @@ export async function POST(request: NextRequest) {
 
     console.log("[set-session] onboarding_step update error:", updateError);
 
+    // Forcer un refresh de session pour que le JWT embarque le
+    // active_organization_id mis à jour par le trigger (post-redeem).
+    const { error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError) {
+      console.error("[set-session] refresh error:", refreshError.message);
+    }
+
     logCookieCarrierBeforeCopy(cookieCarrier);
     return jsonPreservingSessionCookies(cookieCarrier, {
       success: true,
