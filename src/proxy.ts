@@ -141,7 +141,14 @@ export async function proxy(request: NextRequest) {
     const {
         data: { user },
     } = await supabase.auth.getUser();
-
+    console.log(
+        '[proxy]',
+        pathname,
+        'user:',
+        user?.id ?? 'null',
+        'cookies:',
+        request.cookies.getAll().map((c) => c.name)
+    );
     if (!user) {
         const loginUrl = createRedirectUrl('/auth/login', request);
         loginUrl.searchParams.set('next', pathname);
@@ -216,9 +223,7 @@ export async function proxy(request: NextRequest) {
             );
             return NextResponse.redirect(inactive);
         }
-        return NextResponse.redirect(
-            createRedirectUrl('/onboarding', request)
-        );
+        return NextResponse.redirect(createRedirectUrl('/onboarding', request));
     }
 
     return response;
