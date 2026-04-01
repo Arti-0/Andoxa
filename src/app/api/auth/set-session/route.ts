@@ -21,6 +21,17 @@ function jsonPreservingSessionCookies(
   return out;
 }
 
+function logCookieCarrierBeforeCopy(cookieCarrier: NextResponse) {
+  console.log(
+    "[set-session] cookieCarrier cookies:",
+    cookieCarrier.cookies.getAll()
+  );
+  console.log(
+    "[set-session] cookieCarrier Set-Cookie headers:",
+    cookieCarrier.headers.getSetCookie?.() ?? []
+  );
+}
+
 const INVITE_TOKEN_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -134,12 +145,14 @@ export async function POST(request: NextRequest) {
 
     console.log("[set-session] onboarding_step update error:", updateError);
 
+    logCookieCarrierBeforeCopy(cookieCarrier);
     return jsonPreservingSessionCookies(cookieCarrier, {
       success: true,
       redirect: `/auth/login?mode=set-password&email=${encodeURIComponent(userEmail)}&next=/onboarding`,
     });
   }
 
+  logCookieCarrierBeforeCopy(cookieCarrier);
   return jsonPreservingSessionCookies(cookieCarrier, {
     success: true,
     redirect: "/dashboard",

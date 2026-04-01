@@ -138,6 +138,13 @@ export async function proxy(request: NextRequest) {
         }
     );
 
+    console.log(
+        '[proxy] cookie value preview:',
+        request.cookies
+            .get('sb-uggsuchjyysjpcyeqqgy-auth-token')
+            ?.value?.slice(0, 50)
+    );
+
     const {
         data: { user },
     } = await supabase.auth.getUser();
