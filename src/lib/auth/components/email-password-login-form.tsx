@@ -152,15 +152,33 @@ function EmailPasswordLoginFormInner() {
         setLoading(true);
         try {
             if (modeParam === 'set-password') {
-                const { ok, error: pwdErr } = await postUpdatePassword(
-                    password
+                const res = await fetch('/api/auth/update-password', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password }),
+                });
+
+                const data = (await res.json()) as {
+                    success?: boolean;
+                    error?: string;
+                };
+
+                console.log('[set-password] status:', res.status, 'data:', data);
+                console.log(
+                    '[set-password] safeNext:',
+                    safeNext,
+                    'nextParam:',
+                    nextParam
                 );
-                if (!ok) {
+
+                if (!res.ok || !data.success) {
                     toast.error(
-                        pwdErr ?? 'Impossible de définir le mot de passe.'
+                        data.error ?? 'Impossible de définir le mot de passe.'
                     );
                     return;
                 }
+
                 router.push(safeNext);
                 router.refresh();
                 return;
