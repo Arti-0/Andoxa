@@ -184,9 +184,9 @@ function EmailPasswordLoginFormInner() {
                     return;
                 }
 
-                // router.push peut échouer après un flux auth (session non vue côté client) ; reload lit les cookies et le proxy correctement.
-                await router.refresh();
-                router.push(safeNext);
+                // Navigation document complète : le proxy voit les cookies posés par update-password.
+                // assign est plus fiable que location.href (moins interceptable) vs router.refresh/push.
+                window.location.assign(safeNext);
                 return;
             }
 

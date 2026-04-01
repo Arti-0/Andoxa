@@ -37,6 +37,7 @@ export function FinishStep(_props: StepProps) {
       toast.error("Impossible de finaliser.");
       return;
     }
+    await router.refresh();
     router.push("/dashboard");
   };
 
