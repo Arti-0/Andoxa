@@ -56,10 +56,6 @@ function isOnboardingPath(pathname: string) {
     return pathname === '/onboarding' || pathname.startsWith('/onboarding/');
 }
 
-function isAllowedOnboardingRoute(pathname: string) {
-    return pathname === '/onboarding/plan' || pathname === '/onboarding';
-}
-
 /**
  * Builds redirect URL, avoiding localhost in production when behind a proxy.
  * Uses NEXT_PUBLIC_APP_URL in production when available.
@@ -201,31 +197,8 @@ export async function proxy(request: NextRequest) {
     });
 
     if (isOnboardingPath(pathname)) {
-        if (pathname === '/onboarding/new') {
-            return NextResponse.redirect(
-                createRedirectUrl('/onboarding', request)
-            );
-        }
-        if (!isAllowedOnboardingRoute(pathname)) {
-            return NextResponse.redirect(
-                createRedirectUrl('/onboarding', request)
-            );
-        }
-        if (pathname === '/onboarding/plan' && !activeOrganizationId) {
-            return NextResponse.redirect(
-                createRedirectUrl('/onboarding', request)
-            );
-        }
-        if (hasActiveOrg) {
-            // Allow finishing the setup wizard (LinkedIn return URL, post-create flow) without
-            // immediately ejecting to the dashboard.
-            if (pathname === '/onboarding') {
-                return response;
-            }
-            return NextResponse.redirect(
-                createRedirectUrl('/dashboard', request)
-            );
-        }
+        // User authentifié → laisser le Server Component décider
+        // (deriveScenario gère les redirections : terminé → /dashboard, etc.)
         return response;
     }
 
