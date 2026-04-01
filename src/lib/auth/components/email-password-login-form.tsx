@@ -164,7 +164,12 @@ function EmailPasswordLoginFormInner() {
                     error?: string;
                 };
 
-                console.log('[set-password] status:', res.status, 'data:', data);
+                console.log(
+                    '[set-password] status:',
+                    res.status,
+                    'data:',
+                    data
+                );
                 console.log(
                     '[set-password] safeNext:',
                     safeNext,
@@ -180,7 +185,8 @@ function EmailPasswordLoginFormInner() {
                 }
 
                 // router.push peut échouer après un flux auth (session non vue côté client) ; reload lit les cookies et le proxy correctement.
-                window.location.href = safeNext;
+                await router.refresh();
+                router.push(safeNext);
                 return;
             }
 
