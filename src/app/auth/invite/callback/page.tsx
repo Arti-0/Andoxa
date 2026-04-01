@@ -207,6 +207,52 @@ function InviteCallbackInner() {
                         if (typeof authAny._saveSession === 'function') {
                             await authAny._saveSession(sessionPayload);
                             addStep('_saveSession done');
+
+                            addStep('raw getUser start');
+                            try {
+                                const userRes = await fetch(
+                                    `${supabaseUrl}/auth/v1/user`,
+                                    {
+                                        headers: {
+                                            apikey: supabaseKey,
+                                            Authorization: `Bearer ${freshAccess}`,
+                                        },
+                                    }
+                                );
+                                addStep(
+                                    'raw getUser status: ' + userRes.status
+                                );
+                                const userData =
+                                    (await userRes.json()) as Record<
+                                        string,
+                                        unknown
+                                    >;
+                                addStep(
+                                    'raw getUser id: ' +
+                                        (typeof userData.id === 'string'
+                                            ? userData.id
+                                            : 'none')
+                                );
+
+                                if (userRes.ok && userData.id) {
+                                    addStep(
+                                        'SDK inutile — redirect direct'
+                                    );
+                                    // Heuristique nouveau compte (identities) — temporaire : false
+                                    window.history.replaceState(
+                                        null,
+                                        '',
+                                        window.location.pathname +
+                                            window.location.search
+                                    );
+                                    router.replace('/dashboard');
+                                    return;
+                                }
+                            } catch (e: unknown) {
+                                addStep(
+                                    'raw getUser threw: ' + String(e)
+                                );
+                            }
                         } else if (
                             authAny.storage &&
                             typeof authAny.storage.setItem === 'function' &&
