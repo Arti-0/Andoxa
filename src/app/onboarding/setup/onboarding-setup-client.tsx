@@ -43,7 +43,21 @@ import {
     type SetupUrlNavRef,
 } from './onboarding-setup-url-sync';
 
-const TOTAL_STEPS = 8;
+export type OnboardingMode = 'owner' | 'invited';
+
+export interface OnboardingSetupClientProps {
+    mode?: OnboardingMode;
+}
+
+/** Invité : pas d’étapes org (2) ni invitations (7) — map step navigation → contenu owner. */
+const INVITED_STEP_MAP: Record<number, number> = {
+    1: 1,
+    2: 3,
+    3: 4,
+    4: 5,
+    5: 6,
+    6: 8,
+};
 
 /** First step that wraps content in `cardShell` (theme step uses tiles only). */
 const FIRST_CARD_STEP = 4;
@@ -123,8 +137,11 @@ function linkedinDisplayFromUser(user: {
     return { name, picture };
 }
 
-export function OnboardingSetupClient() {
+export function OnboardingSetupClient({
+    mode = 'owner',
+}: OnboardingSetupClientProps) {
     const router = useRouter();
+    const TOTAL_STEPS = mode === 'invited' ? 6 : 8;
     const { setTheme, resolvedTheme } = useTheme();
 
     const [mounted, setMounted] = useState(false);
@@ -153,6 +170,14 @@ export function OnboardingSetupClient() {
     const urlNavRef = useRef<SetupUrlNavRef | null>(null);
     const nameHydrated = useRef(false);
     const orgFieldsHydrated = useRef(false);
+
+    const contentStep = useMemo(
+        () =>
+            mode === 'invited'
+                ? (INVITED_STEP_MAP[step] ?? step)
+                : step,
+        [mode, step]
+    );
 
     const chromeExtUrl = process.env.NEXT_PUBLIC_EXTENSION_CHROME_URL ?? '';
     const firefoxExtUrl = process.env.NEXT_PUBLIC_EXTENSION_FIREFOX_URL ?? '';
@@ -273,12 +298,12 @@ export function OnboardingSetupClient() {
     }, [refreshAuthAndProfile]);
 
     useEffect(() => {
-        if (step !== 4) return;
+        if (contentStep !== 4) return;
         void fetchUnipile();
-    }, [step, fetchUnipile]);
+    }, [contentStep, fetchUnipile]);
 
     useEffect(() => {
-        if (step !== 4 || whatsappConnected) return;
+        if (contentStep !== 4 || whatsappConnected) return;
 
         const onVisible = () => {
             if (document.visibilityState === 'visible') {
@@ -297,7 +322,7 @@ export function OnboardingSetupClient() {
             document.removeEventListener('visibilitychange', onVisible);
             window.removeEventListener('focus', onFocus);
         };
-    }, [step, whatsappConnected, fetchUnipile]);
+    }, [contentStep, whatsappConnected, fetchUnipile]);
 
     const applyStepInUrl = useCallback((next: number) => {
         if (urlNavRef.current) {
@@ -308,17 +333,19 @@ export function OnboardingSetupClient() {
     }, []);
 
     const canContinue = useMemo(() => {
-        if (step === 1) return fullName.trim().length >= 2;
-        if (step === 2) return !!orgId || orgName.trim().length >= 2;
-        if (step === 3) return true;
-        if (step === 4 || step === 5) return true;
-        if (step === 6 || step === 7) return true;
-        return false;
-    }, [step, fullName, orgName, orgId]);
+        if (contentStep === 1) return fullName.trim().length >= 2;
+        if (contentStep === 2) {
+            if (mode === 'owner') {
+                return !!orgId || orgName.trim().length >= 2;
+            }
+            return true;
+        }
+        return true;
+    }, [contentStep, fullName, orgName, orgId, mode]);
 
     const handleContinue = async () => {
         if (!canContinue) return;
-        if (step === 1) {
+        if (contentStep === 1) {
             setSavingName(true);
             try {
                 const res = await fetch('/api/profile', {
@@ -342,7 +369,7 @@ export function OnboardingSetupClient() {
             }
             return;
         }
-        if (step === 2) {
+        if (contentStep === 2 && mode === 'owner') {
             if (orgId) {
                 setSavingName(true);
                 try {
@@ -501,7 +528,7 @@ export function OnboardingSetupClient() {
     };
 
     const handleEnterDashboard = () => {
-        router.push('/onboarding/plan');
+        router.push(mode === 'invited' ? '/dashboard' : '/onboarding/plan');
     };
 
     const cardShell =
@@ -524,7 +551,7 @@ export function OnboardingSetupClient() {
     const welcomeQuestionClass =
         'text-base font-medium text-zinc-800 dark:text-zinc-200 sm:text-lg';
 
-    const showCardChrome = step >= FIRST_CARD_STEP;
+    const showCardChrome = contentStep >= FIRST_CARD_STEP;
 
     const stepDots = (
         <div
@@ -602,7 +629,7 @@ export function OnboardingSetupClient() {
                             }}
                             className="flex min-h-0 flex-1 flex-col"
                         >
-                            {step === 1 && (
+                            {contentStep === 1 && (
                                 <div className="flex min-h-0 flex-1 flex-col px-1 sm:px-0">
                                     <div
                                         className={cn(
@@ -674,7 +701,7 @@ export function OnboardingSetupClient() {
                                 </div>
                             )}
 
-                            {step === 2 && (
+                            {contentStep === 2 && (
                                 <div className="flex min-h-0 flex-1 flex-col px-1 sm:px-0">
                                     <div
                                         className={cn(
@@ -853,7 +880,7 @@ export function OnboardingSetupClient() {
                                 </div>
                             )}
 
-                            {step === 3 && (
+                            {contentStep === 3 && (
                                 <div className="flex min-h-0 flex-1 flex-col px-1 sm:px-0">
                                     <div
                                         className={cn(
@@ -931,7 +958,7 @@ export function OnboardingSetupClient() {
                                 </div>
                             )}
 
-                            {step === 4 && (
+                            {contentStep === 4 && (
                                 <div className="flex min-h-0 flex-1 flex-col px-1 sm:px-0">
                                     <div
                                         className={cn(
@@ -1064,7 +1091,7 @@ export function OnboardingSetupClient() {
                                 </div>
                             )}
 
-                            {step === 5 && (
+                            {contentStep === 5 && (
                                 <div className="flex min-h-0 flex-1 flex-col px-1 sm:px-0">
                                     <div
                                         className={cn(
@@ -1114,19 +1141,33 @@ export function OnboardingSetupClient() {
                                                     {!orgId ? (
                                                         <p className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-left text-sm text-zinc-800 dark:text-zinc-200 sm:p-4">
                                                             Une organisation est
-                                                            requise.{' '}
-                                                            <button
-                                                                type="button"
-                                                                className="font-medium text-[#5e6ad2] underline-offset-2 hover:underline"
-                                                                onClick={() =>
-                                                                    applyStepInUrl(
-                                                                        2
-                                                                    )
-                                                                }
-                                                            >
-                                                                Configurer
-                                                                l’organisation
-                                                            </button>
+                                                            requise pour connecter
+                                                            WhatsApp.{' '}
+                                                            {mode === 'owner' ? (
+                                                                <button
+                                                                    type="button"
+                                                                    className="font-medium text-[#5e6ad2] underline-offset-2 hover:underline"
+                                                                    onClick={() =>
+                                                                        applyStepInUrl(
+                                                                            2
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    Configurer
+                                                                    l’organisation
+                                                                </button>
+                                                            ) : (
+                                                                <button
+                                                                    type="button"
+                                                                    className="font-medium text-[#5e6ad2] underline-offset-2 hover:underline"
+                                                                    onClick={() =>
+                                                                        void refreshAuthAndProfile()
+                                                                    }
+                                                                >
+                                                                    Actualiser le
+                                                                    profil
+                                                                </button>
+                                                            )}
                                                         </p>
                                                     ) : null}
                                                     <Button
@@ -1209,7 +1250,7 @@ export function OnboardingSetupClient() {
                                 </div>
                             )}
 
-                            {step === 6 && (
+                            {contentStep === 6 && (
                                 <div className="flex min-h-0 flex-1 flex-col px-1 sm:px-0">
                                     <div
                                         className={cn(
@@ -1375,7 +1416,7 @@ export function OnboardingSetupClient() {
                                 </div>
                             )}
 
-                            {step === 7 && (
+                            {contentStep === 7 && (
                                 <div className="flex min-h-0 flex-1 flex-col px-1 sm:px-0">
                                     <div
                                         className={cn(
@@ -1510,7 +1551,7 @@ export function OnboardingSetupClient() {
                                 </div>
                             )}
 
-                            {step === 8 && (
+                            {contentStep === 8 && (
                                 <div className="flex min-h-0 flex-1 flex-col px-1 sm:px-0">
                                     <div
                                         className={cn(
@@ -1545,9 +1586,9 @@ export function OnboardingSetupClient() {
                                                     '!mt-0'
                                                 )}
                                             >
-                                                Il reste à choisir votre offre
-                                                pour activer l’espace, puis vous
-                                                accéderez au tableau de bord.
+                                                {mode === 'invited'
+                                                    ? 'Vous êtes prêt à utiliser Andoxa avec votre équipe. Accédez au tableau de bord pour commencer.'
+                                                    : 'Il reste à choisir votre offre pour activer l’espace, puis vous accéderez au tableau de bord.'}
                                             </p>
                                             <div className="w-full overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100 dark:border-white/10 dark:bg-zinc-900/80">
                                                 <div className="flex items-center gap-1.5 border-b border-zinc-200 px-3 py-2 dark:border-white/10">
@@ -1571,7 +1612,9 @@ export function OnboardingSetupClient() {
                                                             handleEnterDashboard
                                                         }
                                                     >
-                                                        Continuer vers l’offre
+                                                        {mode === 'invited'
+                                                            ? 'Accéder au tableau de bord'
+                                                            : 'Continuer vers l’offre'}
                                                     </OnboardingContinueButton>
                                                 </div>
                                             </div>
