@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  console.log("[update-password] user:", user?.id ?? "null");
 
   if (!user) {
     return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
