@@ -179,8 +179,8 @@ function EmailPasswordLoginFormInner() {
                     return;
                 }
 
-                router.push(safeNext);
-                router.refresh();
+                // router.push peut échouer après un flux auth (session non vue côté client) ; reload lit les cookies et le proxy correctement.
+                window.location.href = safeNext;
                 return;
             }
 
