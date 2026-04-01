@@ -54,6 +54,20 @@ function appPublicOrigin(): string {
     return '';
 }
 
+async function postUpdatePassword(password: string): Promise<{
+    ok: boolean;
+    error?: string;
+}> {
+    const res = await fetch('/api/auth/update-password', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+    });
+    const data = (await res.json()) as { success?: boolean; error?: string };
+    return { ok: res.ok && data.success === true, error: data.error };
+}
+
 async function redeemInviteToken(token: string): Promise<boolean> {
     const res = await fetch('/api/invitations/redeem', {
         method: 'POST',
@@ -138,11 +152,13 @@ function EmailPasswordLoginFormInner() {
         setLoading(true);
         try {
             if (modeParam === 'set-password') {
-                const { error: updateErr } = await supabase.auth.updateUser({
-                    password,
-                });
-                if (updateErr) {
-                    toast.error(translateAuthError(updateErr));
+                const { ok, error: pwdErr } = await postUpdatePassword(
+                    password
+                );
+                if (!ok) {
+                    toast.error(
+                        pwdErr ?? 'Impossible de définir le mot de passe.'
+                    );
                     return;
                 }
                 router.push(safeNext);
@@ -211,13 +227,12 @@ function EmailPasswordLoginFormInner() {
                     )
                 ) {
                     if (inviteToken) {
-                        const { error: updateErr } =
-                            await supabase.auth.updateUser({
-                                password,
-                            });
-                        if (updateErr) {
+                        const { ok: pwdOk, error: pwdErr } =
+                            await postUpdatePassword(password);
+                        if (!pwdOk) {
                             toast.error(
-                                'Veuillez d’abord cliquer sur le lien reçu par e-mail avant de définir votre mot de passe.'
+                                pwdErr ??
+                                    'Veuillez d’abord cliquer sur le lien reçu par e-mail avant de définir votre mot de passe.'
                             );
                             return;
                         }
