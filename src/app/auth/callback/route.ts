@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${baseUrl}/auth/login?error=no_code`);
   }
 
-  let redirectPath = "/onboarding/setup";
+  let redirectPath = "/onboarding";
   let response = NextResponse.redirect(new URL(redirectPath, baseUrl));
 
   const supabase = createServerClient(
@@ -145,19 +145,19 @@ export async function GET(request: NextRequest) {
 
   const nextParam = searchParams.get("next");
   if (nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")) {
-    const obsoleteOnboarding =
-      nextParam === "/onboarding" || nextParam === "/onboarding/new";
-    const normalizedNext = obsoleteOnboarding ? "/onboarding/setup" : nextParam;
+    const normalizedNext = nextParam.replace(
+      /^\/onboarding\/(setup|join)(?=[/?#]|$)/,
+      "/onboarding"
+    );
     const dashboardish =
-      normalizedNext === "/dashboard" || normalizedNext.startsWith("/dashboard/");
+      normalizedNext === "/dashboard" ||
+      normalizedNext.startsWith("/dashboard/");
     redirectPath =
-      dashboardish && !allowedForDashboard
-        ? "/onboarding/setup"
-        : normalizedNext;
+      dashboardish && !allowedForDashboard ? "/onboarding" : normalizedNext;
   } else if (allowedForDashboard) {
     redirectPath = "/dashboard";
   } else {
-    redirectPath = "/onboarding/setup";
+    redirectPath = "/onboarding";
   }
 
   return redirectPreservingSessionCookies(response, redirectPath, baseUrl);

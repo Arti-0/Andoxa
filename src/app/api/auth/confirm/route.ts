@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import type { EmailOtpType, SupabaseClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { ONBOARDING_PROFILE_STEP } from "@/app/onboarding/config";
 import { redeemInvitation } from "@/lib/invitations";
 import type { Database } from "@/lib/types/supabase";
 
@@ -96,7 +97,16 @@ export async function GET(request: NextRequest) {
           authErrorUrl(baseUrl, redeemed.error)
         );
       }
-      return NextResponse.redirect(new URL("/onboarding/join", baseUrl));
+      const {
+        data: { user: invitedUser },
+      } = await supabase.auth.getUser();
+      if (invitedUser) {
+        await sb.from("profiles").update({
+          onboarding_step: ONBOARDING_PROFILE_STEP.INVITED,
+          updated_at: new Date().toISOString(),
+        }).eq("id", invitedUser.id);
+      }
+      return NextResponse.redirect(new URL("/onboarding", baseUrl));
     }
     return response;
   }
@@ -121,7 +131,16 @@ export async function GET(request: NextRequest) {
           authErrorUrl(baseUrl, redeemed.error)
         );
       }
-      return NextResponse.redirect(new URL("/onboarding/join", baseUrl));
+      const {
+        data: { user: invitedUserOtp },
+      } = await supabase.auth.getUser();
+      if (invitedUserOtp) {
+        await sb.from("profiles").update({
+          onboarding_step: ONBOARDING_PROFILE_STEP.INVITED,
+          updated_at: new Date().toISOString(),
+        }).eq("id", invitedUserOtp.id);
+      }
+      return NextResponse.redirect(new URL("/onboarding", baseUrl));
     }
     return response;
   }

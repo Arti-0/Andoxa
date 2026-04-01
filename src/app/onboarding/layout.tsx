@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { OnboardingShell } from "./onboarding-shell";
+import { OnboardingLayoutShell } from "./onboarding-layout-shell";
 
 export default function OnboardingLayout({ children }: { children: ReactNode }) {
-  return <OnboardingShell>{children}</OnboardingShell>;
+  return <OnboardingLayoutShell>{children}</OnboardingLayoutShell>;
 }

@@ -18,7 +18,7 @@ import {
     serializePostgrestError,
 } from '@/lib/supabase/postgrest-error';
 
-const PLAN_BACK_HREF = '/onboarding/setup?step=8';
+const PLAN_BACK_HREF = '/onboarding?step=9';
 
 const planShellClass =
     'flex min-h-dvh w-full flex-col bg-zinc-50 transition-colors duration-300 dark:bg-[#0A0A0A]';
@@ -82,7 +82,7 @@ function PlanPageContent() {
                         serializePostgrestError(profileError)
                     );
                     if (isMounted) {
-                        router.replace('/onboarding/setup');
+                        router.replace('/onboarding');
                         setLoading(false);
                     }
                     return;
@@ -159,7 +159,7 @@ function PlanPageContent() {
 
                 if (isMounted) {
                     if (!profile?.active_organization_id) {
-                        router.replace('/onboarding/setup');
+                        router.replace('/onboarding');
                         return;
                     }
                     setLoading(false);

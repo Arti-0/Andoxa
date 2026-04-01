@@ -17,7 +17,9 @@ function oauthBaseUrl(): string {
  * Link LinkedIn (OIDC) to the current session — use during onboarding, not `signInWithOAuth`.
  * Redirect returns through `/auth/callback` then `next` (e.g. setup step 3).
  */
-export async function linkLinkedInFromOnboarding(nextPath = "/onboarding/setup?step=4&linked=1") {
+export async function linkLinkedInFromOnboarding(
+  nextPath = "/onboarding?step=7&linked=1"
+) {
   const supabase = createClient();
   const baseUrl = oauthBaseUrl();
   const next = encodeURIComponent(nextPath.startsWith("/") ? nextPath : `/${nextPath}`);

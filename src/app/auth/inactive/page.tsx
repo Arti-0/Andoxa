@@ -36,7 +36,7 @@ export default async function InactiveAccountPage({
           icon: Building2,
           iconWrap: "bg-amber-100 dark:bg-amber-900/30",
           iconClass: "text-amber-700 dark:text-amber-400",
-          primary: { href: "/onboarding/setup", label: "Créer une organisation" },
+          primary: { href: "/onboarding", label: "Créer une organisation" },
           secondary: { href: "/auth/login", label: "Retour à la connexion" },
         }
       : {

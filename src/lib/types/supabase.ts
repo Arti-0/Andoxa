@@ -139,6 +139,7 @@ export interface Database {
           linkedin_access_token_encrypted: string | null;
           linkedin_refresh_token_encrypted: string | null;
           active_organization_id: string | null;
+          onboarding_step: string | null;
           metadata: Json | null;
           created_at: string | null;
           updated_at: string | null;
@@ -154,6 +155,7 @@ export interface Database {
           linkedin_access_token_encrypted?: string | null;
           linkedin_refresh_token_encrypted?: string | null;
           active_organization_id?: string | null;
+          onboarding_step?: string | null;
           metadata?: Json | null;
           created_at?: string | null;
           updated_at?: string | null;
@@ -169,6 +171,7 @@ export interface Database {
           linkedin_access_token_encrypted?: string | null;
           linkedin_refresh_token_encrypted?: string | null;
           active_organization_id?: string | null;
+          onboarding_step?: string | null;
           metadata?: Json | null;
           created_at?: string | null;
           updated_at?: string | null;

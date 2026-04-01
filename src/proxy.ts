@@ -57,7 +57,7 @@ function isOnboardingPath(pathname: string) {
 }
 
 function isAllowedOnboardingRoute(pathname: string) {
-    return pathname === '/onboarding/plan' || pathname === '/onboarding/setup';
+    return pathname === '/onboarding/plan' || pathname === '/onboarding';
 }
 
 /**
@@ -201,25 +201,25 @@ export async function proxy(request: NextRequest) {
     });
 
     if (isOnboardingPath(pathname)) {
-        if (pathname === '/onboarding' || pathname === '/onboarding/new') {
+        if (pathname === '/onboarding/new') {
             return NextResponse.redirect(
-                createRedirectUrl('/onboarding/setup', request)
+                createRedirectUrl('/onboarding', request)
             );
         }
         if (!isAllowedOnboardingRoute(pathname)) {
             return NextResponse.redirect(
-                createRedirectUrl('/onboarding/setup', request)
+                createRedirectUrl('/onboarding', request)
             );
         }
         if (pathname === '/onboarding/plan' && !activeOrganizationId) {
             return NextResponse.redirect(
-                createRedirectUrl('/onboarding/setup', request)
+                createRedirectUrl('/onboarding', request)
             );
         }
         if (hasActiveOrg) {
             // Allow finishing the setup wizard (LinkedIn return URL, post-create flow) without
             // immediately ejecting to the dashboard.
-            if (pathname === '/onboarding/setup') {
+            if (pathname === '/onboarding') {
                 return response;
             }
             return NextResponse.redirect(
@@ -244,7 +244,7 @@ export async function proxy(request: NextRequest) {
             return NextResponse.redirect(inactive);
         }
         return NextResponse.redirect(
-            createRedirectUrl('/onboarding/setup', request)
+            createRedirectUrl('/onboarding', request)
         );
     }
 

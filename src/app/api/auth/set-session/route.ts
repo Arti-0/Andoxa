@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { ONBOARDING_PROFILE_STEP } from '@/app/onboarding/config';
 import { redeemInvitation } from '@/lib/invitations';
 import type { Database } from '@/lib/types/supabase';
 
@@ -130,6 +131,10 @@ export async function POST(request: NextRequest) {
         if ('error' in result) {
             return NextResponse.json({ error: result.error }, { status: 400 });
         }
+        await sb.from('profiles').update({
+            onboarding_step: ONBOARDING_PROFILE_STEP.INVITED,
+            updated_at: new Date().toISOString(),
+        }).eq('id', user.id);
     }
 
     const isNew =
@@ -145,7 +150,7 @@ export async function POST(request: NextRequest) {
     return jsonPreservingSessionCookies(cookieCarrier, {
         success: true,
         redirect: isNew
-            ? '/auth/update-password?next=/onboarding/join'
+            ? '/auth/update-password?next=/onboarding'
             : '/dashboard',
     });
 }
