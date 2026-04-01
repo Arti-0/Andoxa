@@ -22,6 +22,71 @@ import type {
   MemberRole,
 } from "./types";
 
+type OrgRowForWorkspace = {
+  id: string;
+  name: string;
+  slug: string | null;
+  logo_url: string | null;
+  plan: string | null;
+  status: string | null;
+  subscription_status: string | null;
+  trial_ends_at: string | null;
+  credits: number | null;
+  owner_id: string;
+  deleted_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  metadata: unknown;
+};
+
+type MemberApiRow = {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  role: string | null;
+  joined_at: string | null;
+  created_at?: string | null;
+  profiles?: Profile | Profile[] | null;
+};
+
+function normalizeWorkspaceFromApi(workspaceData: OrgRowForWorkspace): Workspace {
+  const subscriptionStatus =
+    workspaceData.subscription_status as Workspace["subscription_status"] | null;
+  return {
+    id: workspaceData.id,
+    name: workspaceData.name,
+    slug: workspaceData.slug || workspaceData.id,
+    type: "team",
+    logo_url: workspaceData.logo_url,
+    plan: (workspaceData.plan ?? "free") as Workspace["plan"],
+    subscription_status: subscriptionStatus ?? null,
+    trial_ends_at: workspaceData.trial_ends_at,
+    credits: workspaceData.credits ?? 0,
+    owner_id: workspaceData.owner_id,
+    created_at: workspaceData.created_at ?? new Date().toISOString(),
+    updated_at: workspaceData.updated_at ?? new Date().toISOString(),
+    metadata: workspaceData.metadata as Workspace["metadata"],
+    status: workspaceData.status,
+    deleted_at: workspaceData.deleted_at,
+  };
+}
+
+function mapMembersFromApi(rows: MemberApiRow[] | null | undefined): WorkspaceMember[] {
+  return (rows ?? []).map((m) => {
+    const p = m.profiles;
+    const profileNested =
+      p == null ? undefined : Array.isArray(p) ? p[0] : p;
+    return {
+      id: m.id,
+      workspace_id: m.organization_id,
+      user_id: m.user_id,
+      role: (m.role ?? "member") as MemberRole,
+      joined_at: m.joined_at ?? m.created_at ?? "",
+      profile: profileNested,
+    };
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Context
 // ─────────────────────────────────────────────────────────────────────────────
@@ -92,153 +157,79 @@ export function WorkspaceProvider({
   // Load workspace data (single optimized query)
   // ─────────────────────────────────────────────────────────────────────────
 
-  const loadWorkspaceData = useCallback(
-    async (userId: string, isRefresh = false) => {
-      // Si c'est un refresh (pas l'initialisation), déclencher la barre de synchro
+  const fetchWorkspaceMe = useCallback(async (isRefresh = false) => {
+    if (isRefresh && mountedRef.current) {
+      setIsSyncing(true);
+    }
+
+    try {
+      const res = await fetch("/api/workspace/me", {
+        credentials: "include",
+      });
+
+      if (!mountedRef.current) {
+        return null;
+      }
+
+      if (res.status === 401) {
+        setUser(null);
+        setProfile(null);
+        setWorkspace(null);
+        setMembers([]);
+        setSubscription(null);
+        return null;
+      }
+
+      if (!res.ok) {
+        console.error("[Workspace] /api/workspace/me HTTP", res.status);
+        return null;
+      }
+
+      const data = (await res.json()) as {
+        user: { id: string; email?: string | null; created_at: string } | null;
+        profile: Profile | null;
+        workspace: OrgRowForWorkspace | null;
+        members: MemberApiRow[];
+        subscription: unknown | null;
+      };
+
+      if (!mountedRef.current) {
+        return null;
+      }
+
+      if (data.user) {
+        setUser({
+          id: data.user.id,
+          email: data.user.email ?? "",
+          created_at: data.user.created_at,
+        });
+      }
+
+      setProfile(data.profile);
+
+      if (data.workspace) {
+        setWorkspace(normalizeWorkspaceFromApi(data.workspace));
+      } else {
+        setWorkspace(null);
+      }
+
+      setMembers(mapMembersFromApi(data.members));
+      setSubscription(
+        data.subscription
+          ? (data.subscription as unknown as Subscription)
+          : null
+      );
+
+      return data;
+    } catch (error) {
+      console.error("[Workspace] Init error:", error);
+      return null;
+    } finally {
       if (isRefresh && mountedRef.current) {
-        setIsSyncing(true);
+        setIsSyncing(false);
       }
-
-      try {
-        // Single query to get profile with active organization
-        const { data: profileData, error: profileError } = await supabase
-          .from("profiles")
-          .select(
-            `
-          id,
-          email,
-          full_name,
-          avatar_url,
-          linkedin_url,
-          active_organization_id,
-          created_at,
-          updated_at
-        `
-          )
-          .eq("id", userId)
-          .single();
-
-        if (profileError || !profileData) {
-          console.error("[Workspace] Profile not found:", profileError);
-          return null;
-        }
-
-        // Protéger tous les setState avec mountedRef
-        if (!mountedRef.current) return null;
-        setProfile(profileData as Profile);
-
-        // If no active organization, return early
-        if (!profileData.active_organization_id) {
-          return { profile: profileData, workspace: null };
-        }
-
-        // Load workspace with subscription in single query
-        // Note: Using separate queries for clarity, could be optimized with a view
-        const { data: workspaceData, error: workspaceError } = await supabase
-        .from("organizations") // Keep using organizations table for now
-        .select(
-          `
-          id,
-          name,
-          slug,
-          logo_url,
-          plan,
-          status,
-          subscription_status,
-          trial_ends_at,
-          credits,
-          owner_id,
-          deleted_at,
-          created_at,
-          updated_at,
-          metadata
-        `
-        )
-        .eq("id", profileData.active_organization_id)
-        .single();
-
-        if (workspaceError || !workspaceData) {
-          console.error("[Workspace] Workspace not found:", workspaceError);
-          return { profile: profileData, workspace: null };
-        }
-
-        // Transform to Workspace type (override Supabase nullables)
-        const subscriptionStatus = workspaceData.subscription_status as Workspace["subscription_status"] | null;
-        const workspaceTransformed: Workspace = {
-          ...workspaceData,
-          type: "team",
-          slug: workspaceData.slug || workspaceData.id,
-          plan: (workspaceData.plan ?? "free") as Workspace["plan"],
-          subscription_status: subscriptionStatus ?? null,
-          credits: workspaceData.credits ?? 0,
-          created_at: workspaceData.created_at ?? new Date().toISOString(),
-          updated_at: workspaceData.updated_at ?? new Date().toISOString(),
-          metadata: workspaceData.metadata as Workspace["metadata"],
-        };
-
-        if (!mountedRef.current) return null;
-        setWorkspace(workspaceTransformed);
-
-        // Load subscription
-        const { data: subscriptionData } = await supabase
-          .from("user_subscriptions")
-          .select("*")
-          .eq("user_id", workspaceData.owner_id)
-          .in("status", ["active", "trialing"])
-          .maybeSingle();
-
-        if (subscriptionData && mountedRef.current) {
-          setSubscription(subscriptionData as unknown as Subscription);
-        }
-
-        // Load members (optional, only if needed)
-        const { data: membersData } = await supabase
-          .from("organization_members")
-          .select(
-            `
-          id,
-          organization_id,
-          user_id,
-          role,
-          joined_at,
-          profiles:user_id (
-            id,
-            full_name,
-            email,
-            avatar_url
-          )
-        `
-          )
-          .eq("organization_id", profileData.active_organization_id);
-
-        if (membersData && mountedRef.current) {
-          setMembers(
-            membersData.map((m: any) => ({
-              id: m.id,
-              workspace_id: m.organization_id,
-              user_id: m.user_id,
-              role: m.role,
-              joined_at: m.joined_at,
-              profile: m.profiles,
-            }))
-          );
-        }
-
-        return {
-          profile: profileData,
-          workspace: workspaceTransformed,
-          subscription: subscriptionData,
-          members: membersData,
-        };
-      } finally {
-        // Toujours remettre isSyncing à false après le chargement
-        if (isRefresh && mountedRef.current) {
-          setIsSyncing(false);
-        }
-      }
-    },
-    [supabase]
-  );
+    }
+  }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Initialize
@@ -248,7 +239,6 @@ export function WorkspaceProvider({
     mountedRef.current = true;
 
     const initialize = async () => {
-      // Verrou : si déjà en train d'initialiser, on sort
       if (isInitializing.current) return;
 
       isInitializing.current = true;
@@ -258,33 +248,8 @@ export function WorkspaceProvider({
           setIsLoading(true);
         }
 
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
-
-        if (!mountedRef.current) {
-          isInitializing.current = false;
-          return;
-        }
-
-        if (error || !session?.user) {
-          setUser(null);
-          setProfile(null);
-          setWorkspace(null);
-          setIsInitialized(true);
-          setIsLoading(false);
-          isInitializing.current = false;
-          return;
-        }
-
-        setUser({
-          id: session.user.id,
-          email: session.user.email!,
-          created_at: session.user.created_at,
-        });
-
-        await loadWorkspaceData(session.user.id);
+        // Fetch brut vers route API serveur — évite AbortError du SDK browser (getSession)
+        await fetchWorkspaceMe(false);
       } catch (error) {
         console.error("[Workspace] Init error:", error);
       } finally {
@@ -307,15 +272,14 @@ export function WorkspaceProvider({
       // Ne recharger QUE sur SIGNED_IN (pas sur TOKEN_REFRESHED ou INITIAL_SESSION)
       if (event === "SIGNED_IN" && session?.user && !isInitializing.current) {
         isInitializing.current = true;
-        setUser({
-          id: session.user.id,
-          email: session.user.email!,
-          created_at: session.user.created_at,
-        });
-        setIsLoading(true);
-        await loadWorkspaceData(session.user.id);
-        setIsLoading(false);
-        setIsInitialized(true);
+        if (mountedRef.current) {
+          setIsLoading(true);
+        }
+        await fetchWorkspaceMe(false);
+        if (mountedRef.current) {
+          setIsLoading(false);
+          setIsInitialized(true);
+        }
         isInitializing.current = false;
       } else if (event === "SIGNED_OUT") {
         setUser(null);
@@ -333,7 +297,7 @@ export function WorkspaceProvider({
       mountedRef.current = false;
       authSubscription.unsubscribe();
     };
-  }, [supabase, loadWorkspaceData]);
+  }, [supabase, fetchWorkspaceMe]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Actions
@@ -384,16 +348,15 @@ export function WorkspaceProvider({
         throw metaErr;
       }
 
-      // Reload workspace data
-      await loadWorkspaceData(user.id, true); // Passer isRefresh=true pour déclencher la barre
+      await fetchWorkspaceMe(true);
     },
-    [user, supabase, loadWorkspaceData]
+    [user, supabase, fetchWorkspaceMe]
   );
 
   const refresh = useCallback(async () => {
     if (!user) return;
-    await loadWorkspaceData(user.id, true); // Passer isRefresh=true pour déclencher la barre
-  }, [user, loadWorkspaceData]);
+    await fetchWorkspaceMe(true);
+  }, [user, fetchWorkspaceMe]);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
