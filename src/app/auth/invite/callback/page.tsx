@@ -85,26 +85,91 @@ function InviteCallbackInner() {
                 );
 
                 if (accessToken && refreshToken) {
-                    const { error: sessionError } =
-                        await supabase.auth.setSession({
-                            access_token: accessToken,
-                            refresh_token: refreshToken,
-                        });
-                    addStep(
-                        'setSession error: ' + (sessionError?.message ?? 'none')
-                    );
-                    if (sessionError) {
-                        setErrorMsg(
-                            'Session invalide : ' + sessionError.message
+                    const supabaseUrl = (
+                        process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+                    ).replace(/\/$/, '');
+                    const supabaseKey =
+                        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '';
+                    if (!supabaseUrl || !supabaseKey) {
+                        addStep(
+                            'missing NEXT_PUBLIC_SUPABASE_URL or PUBLISHABLE_KEY'
                         );
+                        setErrorMsg('Configuration Supabase manquante.');
                         return;
                     }
+
+                    addStep('raw fetch start');
+
+                    let tokenData: Record<string, unknown> = {};
+                    try {
+                        const tokenRes = await fetch(
+                            `${supabaseUrl}/auth/v1/token?grant_type=refresh_token`,
+                            {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    apikey: supabaseKey,
+                                },
+                                body: JSON.stringify({
+                                    refresh_token: refreshToken,
+                                }),
+                            }
+                        );
+                        addStep(
+                            'raw fetch done — status: ' + tokenRes.status
+                        );
+                        tokenData = (await tokenRes.json()) as Record<
+                            string,
+                            unknown
+                        >;
+                        addStep(
+                            'raw fetch keys: ' + Object.keys(tokenData).join(', ')
+                        );
+                    } catch (fetchErr: unknown) {
+                        addStep('raw fetch threw: ' + String(fetchErr));
+                        setErrorMsg('Erreur réseau vers Supabase.');
+                        return;
+                    }
+
+                    if (!tokenData.access_token || !tokenData.refresh_token) {
+                        addStep(
+                            'no tokens in response: ' +
+                                JSON.stringify(tokenData)
+                        );
+                        setErrorMsg('Token invalide ou expiré.');
+                        return;
+                    }
+
+                    addStep('calling setSession with fresh tokens...');
+                    try {
+                        const { error: sessionError } =
+                            await supabase.auth.setSession({
+                                access_token: tokenData.access_token as string,
+                                refresh_token:
+                                    tokenData.refresh_token as string,
+                            });
+                        addStep(
+                            'setSession done — error: ' +
+                                (sessionError?.message ?? 'none')
+                        );
+                        if (sessionError) {
+                            setErrorMsg(
+                                'Session invalide : ' + sessionError.message
+                            );
+                            return;
+                        }
+                    } catch (sessionErr: unknown) {
+                        addStep('setSession threw: ' + String(sessionErr));
+                        setErrorMsg('setSession a échoué.');
+                        return;
+                    }
+
                     window.history.replaceState(
                         null,
                         '',
                         window.location.pathname + window.location.search
                     );
-                    addStep('replaceState (hash cleared)');
+                    addStep('replaceState done');
                 } else {
                     const {
                         data: { session },
