@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { ONBOARDING_PROFILE_STEP } from "@/app/onboarding/config";
 import {
   createApiHandler,
   Errors,
@@ -52,6 +53,14 @@ export const POST = createApiHandler(
               : "Impossible d’accepter l’invitation.";
       throw Errors.badRequest(message);
     }
+
+    await ctx.supabase
+      .from("profiles")
+      .update({
+        onboarding_step: ONBOARDING_PROFILE_STEP.INVITED,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", ctx.userId);
 
     return {
       ok: true as const,

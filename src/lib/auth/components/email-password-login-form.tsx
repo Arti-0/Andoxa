@@ -144,8 +144,10 @@ function EmailPasswordLoginFormInner() {
           if (!ok) {
             return;
           }
+          router.push("/onboarding");
+        } else {
+          router.push(safeNext);
         }
-        router.push(safeNext);
         router.refresh();
         return;
       }
@@ -167,9 +169,7 @@ function EmailPasswordLoginFormInner() {
       }
 
       const base = appPublicOrigin();
-      const nextAfterConfirm = inviteToken
-        ? "/auth/update-password"
-        : "/dashboard";
+      const nextAfterConfirm = inviteToken ? "/onboarding" : "/dashboard";
       const confirmQuery = inviteToken
         ? `invite_token=${encodeURIComponent(inviteToken)}&next=${encodeURIComponent(nextAfterConfirm)}`
         : `next=${encodeURIComponent(nextAfterConfirm)}`;
@@ -187,6 +187,22 @@ function EmailPasswordLoginFormInner() {
 
       if (signUpErr) {
         if (isDuplicateSignupError(signUpErr.message ?? "", signUpErr.code)) {
+          if (inviteToken) {
+            const { error: updateErr } = await supabase.auth.updateUser({
+              password,
+            });
+            if (updateErr) {
+              toast.error(
+                "Veuillez d’abord cliquer sur le lien reçu par e-mail avant de définir votre mot de passe."
+              );
+              return;
+            }
+            const ok = await redeemInviteToken(inviteToken);
+            if (!ok) return;
+            router.push("/onboarding");
+            router.refresh();
+            return;
+          }
           toast.error("Mot de passe incorrect.");
         } else {
           toast.error(translateAuthError(signUpErr));
@@ -195,7 +211,13 @@ function EmailPasswordLoginFormInner() {
       }
 
       if (signUpData.session) {
-        router.push(safeNext);
+        if (inviteToken) {
+          const ok = await redeemInviteToken(inviteToken);
+          if (!ok) return;
+          router.push("/onboarding");
+        } else {
+          router.push(safeNext);
+        }
         router.refresh();
         return;
       }
