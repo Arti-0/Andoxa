@@ -39,8 +39,8 @@ export const POST = createApiHandler(
     }
 
     const notifyUrl = `${baseUrl.replace(/\/$/, "")}/api/webhooks/unipile`;
-    const successUrl = `${baseUrl.replace(/\/$/, "")}/installation?whatsapp_connected=1`;
-    const failureUrl = `${baseUrl.replace(/\/$/, "")}/installation?whatsapp_connected=0`;
+    const successUrl = `${baseUrl.replace(/\/$/, "")}/settings?whatsapp_connected=1`;
+    const failureUrl = `${baseUrl.replace(/\/$/, "")}/settings?whatsapp_connected=0`;
     const expiresOn = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
     const body: Record<string, unknown> = {

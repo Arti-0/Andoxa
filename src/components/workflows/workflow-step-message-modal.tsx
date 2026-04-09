@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { MessageSquare, Smartphone, UserPlus } from "lucide-react";
 import {
@@ -16,13 +16,16 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { MessageComposeForm } from "@/components/campaigns/message-compose-form";
+import { LinkedInPremiumBadge } from "@/components/ui/linkedin-premium-badge";
 import { toast } from "sonner";
 import type { WorkflowStepType } from "@/lib/workflows/schema";
+import { getMaxCharsForMode } from "@/lib/linkedin/limits";
 
 async function postMessageTemplate(
   name: string,
   content: string,
-  channel: "linkedin" | "whatsapp"
+  channel: "linkedin" | "whatsapp",
+  maxLen: number
 ): Promise<boolean> {
   const res = await fetch("/api/message-templates", {
     method: "POST",
@@ -31,7 +34,7 @@ async function postMessageTemplate(
     body: JSON.stringify({
       name: name.trim(),
       channel,
-      content: content.trim().slice(0, 2000),
+      content: content.trim().slice(0, maxLen),
     }),
   });
   if (!res.ok) {
@@ -48,6 +51,7 @@ interface WorkflowStepMessageModalProps {
   stepType: "linkedin_invite" | "linkedin_message" | "whatsapp_message";
   initialMessage: string;
   onSave: (message: string) => void;
+  isPremium?: boolean;
 }
 
 export function WorkflowStepMessageModal({
@@ -56,22 +60,42 @@ export function WorkflowStepMessageModal({
   stepType,
   initialMessage,
   onSave,
+  isPremium = false,
 }: WorkflowStepMessageModalProps) {
   const queryClient = useQueryClient();
   const [message, setMessage] = useState(initialMessage);
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
   const [templateName, setTemplateName] = useState("");
 
-  useEffect(() => {
-    if (open) {
-      setMessage(initialMessage);
-      setSaveAsTemplate(false);
-      setTemplateName("");
-    }
-  }, [open, initialMessage]);
-
   const channel = stepType === "whatsapp_message" ? "whatsapp" : "linkedin";
   const linkedinMode = stepType === "linkedin_invite" ? "invite" : "contact";
+
+  const maxChars =
+    channel === "linkedin"
+      ? getMaxCharsForMode(linkedinMode, isPremium)
+      : 2000;
+
+  const wasOpenRef = useRef(false);
+  const lastInitialRef = useRef(initialMessage);
+  useEffect(() => {
+    if (!open) {
+      wasOpenRef.current = false;
+      return;
+    }
+    const initialChanged = lastInitialRef.current !== initialMessage;
+    if (!wasOpenRef.current || initialChanged) {
+      setMessage(initialMessage.slice(0, maxChars));
+      setSaveAsTemplate(false);
+      setTemplateName("");
+      lastInitialRef.current = initialMessage;
+    }
+    wasOpenRef.current = true;
+  }, [open, initialMessage, maxChars]);
+
+  useEffect(() => {
+    if (!open) return;
+    setMessage((m) => m.slice(0, maxChars));
+  }, [maxChars, open]);
 
   const title =
     stepType === "linkedin_invite"
@@ -92,13 +116,21 @@ export function WorkflowStepMessageModal({
       toast.error("Indiquez un nom pour le modèle");
       return;
     }
+    if (stepType === "whatsapp_message" && !message.trim()) {
+      toast.error("Le message WhatsApp est obligatoire.");
+      return;
+    }
     onSave(message);
     if (saveAsTemplate && templateName.trim()) {
-      const ok = await postMessageTemplate(templateName, message, channel);
+      const ok = await postMessageTemplate(
+        templateName,
+        message,
+        channel,
+        maxChars
+      );
       if (ok) {
         toast.success("Modèle enregistré");
-        await queryClient.invalidateQueries({ queryKey: ["message-templates", channel] });
-        await queryClient.invalidateQueries({ queryKey: ["message-templates", channel, "compose-form"] });
+        await queryClient.invalidateQueries({ queryKey: ["message-templates"] });
       }
     }
     onOpenChange(false);
@@ -113,10 +145,13 @@ export function WorkflowStepMessageModal({
             <DialogTitle>{title}</DialogTitle>
           </div>
           {stepType === "linkedin_invite" ? (
-            <DialogDescription>
-              La note d’invitation est facultative : sur LinkedIn, une demande peut être envoyée sans texte
-              personnel (selon les règles du compte et de l’API). Ce n’est pas réservé à Premium ; les limites
-              de longueur et d’usage peuvent toutefois varier.
+            <DialogDescription className="flex flex-wrap items-center gap-1.5">
+              <LinkedInPremiumBadge size="sm" />
+              <span>
+                {isPremium
+                  ? `Note facultative — jusqu'à ${maxChars} caractères (Premium).`
+                  : `Note facultative — jusqu'à ${maxChars} caractères. Limite étendue à 300 caractères avec LinkedIn Premium.`}
+              </span>
             </DialogDescription>
           ) : null}
         </DialogHeader>
@@ -139,6 +174,8 @@ export function WorkflowStepMessageModal({
             onMessageChange={setMessage}
             channel={channel}
             linkedinMode={linkedinMode}
+            isPremium={isPremium}
+            maxLength={maxChars}
           />
           {saveAsTemplate ? (
             <div>

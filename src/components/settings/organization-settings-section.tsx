@@ -16,17 +16,15 @@ import {
     ShieldCheck,
     Crown,
     Mail,
-    Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Switch } from "@/components/ui/switch";
-import { PremiumBadge } from "@/components/ui/PremiumBadge";
 import {
     SettingsCard,
     settingsFieldClass,
     settingsLabelClass,
     settingsSaveButtonClass,
 } from "@/components/settings/settings-card";
+import { PLAN_DISPLAY, STATUS_DISPLAY } from "@/lib/billing/display";
 import { cn } from "@/lib/utils";
 
 interface Member {
@@ -35,6 +33,16 @@ interface Member {
     role: string;
     avatar_url: string | null;
     email: string | null;
+}
+
+interface PendingInvitation {
+    id: string;
+    email: string;
+    role: string;
+    created_at: string;
+    expires_at: string;
+    consumed_at: string | null;
+    status: "pending" | "joined" | "expired";
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -69,16 +77,8 @@ const inviteRoleSelectClass = cn(
 
 export function OrganizationSettingsSection({
     onSwitch,
-    showLinkedInAutoEnrich,
-    linkedInAutoEnrich,
-    linkedInAutoEnrichSaving,
-    onLinkedInAutoEnrichChange,
 }: {
     onSwitch?: () => void;
-    showLinkedInAutoEnrich?: boolean;
-    linkedInAutoEnrich?: boolean;
-    linkedInAutoEnrichSaving?: boolean;
-    onLinkedInAutoEnrichChange?: (checked: boolean) => void;
 }) {
     const { user, workspace, workspaceId, isOwner, switchWorkspace, refresh } =
         useWorkspace();
@@ -96,10 +96,15 @@ export function OrganizationSettingsSection({
 
     const [members, setMembers] = useState<Member[]>([]);
     const [loadingMembers, setLoadingMembers] = useState(false);
+    const [invitations, setInvitations] = useState<PendingInvitation[]>([]);
+    const [loadingInvitations, setLoadingInvitations] = useState(false);
     const [memberToRemove, setMemberToRemove] = useState<{
         id: string;
         name: string;
     } | null>(null);
+
+    const [billingLoading, setBillingLoading] = useState(false);
+    const [billingError, setBillingError] = useState<string | null>(null);
 
     const loadOrgs = useCallback(async () => {
         if (!user?.id) return;
@@ -131,6 +136,28 @@ export function OrganizationSettingsSection({
         }
     }, [workspaceId]);
 
+    const loadInvitations = useCallback(async () => {
+        if (!workspaceId) return;
+        const admin =
+            isOwner ||
+            members.find((m) => m.id === user?.id)?.role === "admin";
+        if (!admin) return;
+        setLoadingInvitations(true);
+        try {
+            const res = await fetch("/api/invitations", {
+                credentials: "include",
+            });
+            const json = await res.json();
+            setInvitations(
+                (json.data?.items ?? json.items ?? []) as PendingInvitation[]
+            );
+        } catch {
+            setInvitations([]);
+        } finally {
+            setLoadingInvitations(false);
+        }
+    }, [workspaceId, isOwner, members, user?.id]);
+
     useEffect(() => {
         loadOrgs();
     }, [loadOrgs]);
@@ -138,6 +165,10 @@ export function OrganizationSettingsSection({
     useEffect(() => {
         loadMembers();
     }, [loadMembers]);
+
+    useEffect(() => {
+        void loadInvitations();
+    }, [loadInvitations]);
 
     useEffect(() => {
         setOrgNameInput(workspace?.name ?? "");
@@ -183,12 +214,30 @@ export function OrganizationSettingsSection({
                 "Un e-mail d’invitation a été envoyé. La personne doit suivre le lien puis confirmer son e-mail si elle crée un compte."
             );
             loadMembers();
+            void loadInvitations();
         } catch (err) {
             setInviteError(
                 err instanceof Error ? err.message : "Erreur lors de l’invitation"
             );
         } finally {
             setInviteEmailLoading(false);
+        }
+    };
+
+    const handleCancelInvitation = async (id: string) => {
+        try {
+            const res = await fetch(`/api/invitations/${id}`, {
+                method: "DELETE",
+                credentials: "include",
+            });
+            if (!res.ok) {
+                const json = await res.json();
+                throw new Error(json?.error?.message ?? "Erreur");
+            }
+            toast.success("Invitation annulée");
+            void loadInvitations();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Erreur");
         }
     };
 
@@ -263,14 +312,56 @@ export function OrganizationSettingsSection({
         }
     };
 
+    const handleManageBilling = async () => {
+        setBillingLoading(true);
+        setBillingError(null);
+        try {
+            const res = await fetch("/api/paiements/portal", {
+                method: "POST",
+                credentials: "include",
+            });
+            const data = (await res.json()) as { error?: string; url?: string };
+            if (!res.ok) throw new Error(data.error || "Erreur");
+            if (data.url) window.location.href = data.url;
+            else throw new Error("URL du portail non reçue");
+        } catch (err) {
+            setBillingError(err instanceof Error ? err.message : "Erreur");
+        } finally {
+            setBillingLoading(false);
+        }
+    };
+
     const callerIsAdmin =
         isOwner ||
         members.find((m) => m.id === user?.id)?.role === "admin";
 
+    const pendingInvites = callerIsAdmin
+        ? invitations.filter((i) => i.status !== "joined")
+        : [];
+
+    const membersAndInvitesScroll =
+        members.length + pendingInvites.length > 3
+            ? "max-h-[280px] overflow-y-auto pr-1 scrollbar-thin"
+            : undefined;
+
+    const planKey = (workspace?.plan ?? "free").toLowerCase();
+    const planDisplay = PLAN_DISPLAY[planKey] ?? PLAN_DISPLAY.free;
+    const PlanIconBilling = planDisplay.icon;
+    const subscriptionStatusLabel =
+        STATUS_DISPLAY[workspace?.subscription_status ?? ""] ??
+        workspace?.subscription_status ??
+        "—";
+
+    const showEmptyMembersList =
+        !loadingMembers &&
+        members.length === 0 &&
+        pendingInvites.length === 0 &&
+        !(callerIsAdmin && loadingInvitations);
+
     return (
         <SettingsCard
             title="Organisation"
-            description="Organisation active, membres et invitations"
+            description="Organisation, membres, invitations et abonnement"
         >
             {workspaceId && (
                 <div className="space-y-2">
@@ -399,17 +490,19 @@ export function OrganizationSettingsSection({
                             </div>
                         </div>
                     )}
-                    {loadingMembers ? (
+                    {loadingMembers && members.length === 0 ? (
                         <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
                             <Loader2 className="h-4 w-4 animate-spin" />{" "}
                             Chargement…
                         </div>
-                    ) : members.length === 0 ? (
+                    ) : showEmptyMembersList ? (
                         <p className="text-sm text-zinc-500 dark:text-zinc-400">
                             Aucun membre
                         </p>
                     ) : (
-                        <div className="space-y-1">
+                        <div
+                            className={cn("space-y-1", membersAndInvitesScroll)}
+                        >
                             {members.map((m) => {
                                 const Icon = ROLE_ICONS[m.role] ?? Shield;
                                 const isSelf = m.id === user?.id;
@@ -485,6 +578,97 @@ export function OrganizationSettingsSection({
                                                     </button>
                                                 </div>
                                             )}
+                                    </div>
+                                );
+                            })}
+                            {callerIsAdmin &&
+                                loadingInvitations &&
+                                pendingInvites.length === 0 && (
+                                    <div className="flex items-center gap-2 py-1 text-sm text-zinc-500 dark:text-zinc-400">
+                                        <Loader2 className="h-4 w-4 animate-spin" />{" "}
+                                        Chargement des invitations…
+                                    </div>
+                                )}
+                            {pendingInvites.map((inv) => {
+                                const isPending = inv.status === "pending";
+                                const isExpired = inv.status === "expired";
+                                const RoleIcon = ROLE_ICONS[inv.role] ?? Shield;
+
+                                return (
+                                    <div
+                                        key={inv.id}
+                                        className={cn(
+                                            "flex flex-col gap-2 rounded-md border p-2 sm:flex-row sm:items-center",
+                                            isPending
+                                                ? "border-amber-200 bg-amber-50/50 dark:border-amber-500/20 dark:bg-amber-500/5"
+                                                : "border-zinc-200/60 bg-zinc-50/50 opacity-60 dark:border-white/5 dark:bg-white/2"
+                                        )}
+                                    >
+                                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-dashed border-zinc-300 bg-zinc-100 dark:border-white/20 dark:bg-zinc-800">
+                                            <Mail className="h-3.5 w-3.5 text-zinc-400 dark:text-zinc-500" />
+                                        </div>
+
+                                        <div className="min-w-0 flex-1">
+                                            <p
+                                                className={cn(
+                                                    "truncate text-sm font-medium",
+                                                    isPending
+                                                        ? "text-zinc-900 dark:text-white"
+                                                        : "text-zinc-500 dark:text-zinc-400"
+                                                )}
+                                            >
+                                                {inv.email}
+                                            </p>
+                                            <div className="mt-0.5 flex items-center gap-2">
+                                                <div className="flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+                                                    <RoleIcon className="h-3 w-3" />
+                                                    {ROLE_LABELS[inv.role] ??
+                                                        inv.role}
+                                                </div>
+                                                {isPending && (
+                                                    <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+                                                        En attente
+                                                    </span>
+                                                )}
+                                                {isExpired && (
+                                                    <span className="inline-flex items-center rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 dark:bg-white/5 dark:text-zinc-400">
+                                                        Expirée
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {isPending && (
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setInviteEmail(inv.email);
+                                                        setInviteRole(
+                                                            inv.role as
+                                                                | "member"
+                                                                | "admin"
+                                                        );
+                                                    }}
+                                                    className="rounded p-1 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-white"
+                                                    title="Pré-remplir le formulaire d'invitation"
+                                                >
+                                                    <Mail className="h-3.5 w-3.5" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        void handleCancelInvitation(
+                                                            inv.id
+                                                        )
+                                                    }
+                                                    className="rounded p-1 text-zinc-500 hover:bg-red-500/10 hover:text-red-600 dark:text-zinc-400"
+                                                    title="Annuler l'invitation"
+                                                >
+                                                    <UserMinus className="h-3.5 w-3.5" />
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -566,46 +750,57 @@ export function OrganizationSettingsSection({
                 </div>
             )}
 
-            {showLinkedInAutoEnrich &&
-                onLinkedInAutoEnrichChange !== undefined &&
-                linkedInAutoEnrich !== undefined && (
-                    <div className="flex flex-col gap-3 border-t border-zinc-200 pt-4 dark:border-white/10 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="min-w-0 space-y-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                                <Sparkles className="h-4 w-4 shrink-0 text-zinc-500 dark:text-zinc-400" />
-                                <span
-                                    className={cn(
-                                        settingsLabelClass,
-                                        "inline-flex items-center gap-2"
-                                    )}
-                                >
-                                    Enrichissement LinkedIn à l&apos;import
-                                </span>
-                                <PremiumBadge variant="small" showStar={false}>
-                                    Pro+
-                                </PremiumBadge>
-                            </div>
+            <div className="space-y-3 border-t border-zinc-200 pt-4 dark:border-white/10">
+                <Label className={settingsLabelClass}>Abonnement</Label>
+                <div className="grid grid-cols-2 gap-2">
+                    <div
+                        className={cn(
+                            "flex items-center gap-2 rounded-lg border px-3 py-2",
+                            planDisplay.accent
+                        )}
+                    >
+                        <PlanIconBilling className="h-4 w-4 shrink-0" />
+                        <div className="min-w-0">
+                            <p className="text-sm font-semibold">
+                                {planDisplay.label}
+                            </p>
                             <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                                Après chaque import CSV, enrichir automatiquement
-                                les fiches (file d&apos;attente, crédits).
+                                Plan actuel
                             </p>
                         </div>
-                        <Switch
-                            checked={linkedInAutoEnrich}
-                            disabled={linkedInAutoEnrichSaving}
-                            onCheckedChange={onLinkedInAutoEnrichChange}
-                            aria-label="Enrichissement automatique à l'import"
-                            className={cn(
-                                "h-6 w-11 shrink-0 border border-zinc-300 bg-zinc-200/90 shadow-none dark:border-white/15 dark:bg-zinc-700",
-                                "data-[state=checked]:border-zinc-900 data-[state=checked]:bg-zinc-900",
-                                "dark:data-[state=checked]:border-white dark:data-[state=checked]:bg-white",
-                                "[&_[data-slot=switch-thumb]]:size-[1.125rem]",
-                                "data-[state=checked]:[&_[data-slot=switch-thumb]]:bg-white",
-                                "dark:data-[state=checked]:[&_[data-slot=switch-thumb]]:bg-zinc-900"
-                            )}
-                        />
+                    </div>
+                    <div className="flex items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 dark:border-white/10">
+                        <div className="min-w-0">
+                            <p className="text-sm font-semibold text-zinc-900 dark:text-white">
+                                {subscriptionStatusLabel}
+                            </p>
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                                Statut
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                {isOwner && (
+                    <div className="flex justify-end">
+                        <button
+                            type="button"
+                            onClick={() => void handleManageBilling()}
+                            disabled={billingLoading}
+                            className={settingsSaveButtonClass}
+                        >
+                            {billingLoading
+                                ? "Redirection…"
+                                : "Gérer ma facturation"}
+                        </button>
                     </div>
                 )}
+                {billingError && (
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                        {billingError}
+                    </p>
+                )}
+            </div>
         </SettingsCard>
     );
 }

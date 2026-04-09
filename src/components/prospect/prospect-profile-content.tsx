@@ -29,6 +29,7 @@ import {
 import Link from "next/link";
 import { toast } from "sonner";
 import { CampaignModal } from "@/components/campaigns/campaign-modal";
+import type { CampaignConfig } from "@/lib/campaigns/types";
 import { WorkflowEnrollModal } from "@/components/workflows/workflow-enroll-modal";
 import { ActivityFeed } from "@/components/design";
 import type { ActivityFeedItem } from "@/components/design";
@@ -36,6 +37,7 @@ import type { Prospect } from "@/lib/types/prospects";
 import { useWorkspace } from "@/lib/workspace";
 import { normalizePlanIdForRoutes } from "@/lib/billing/effective-plan";
 import { canAccessRoute, type PlanId } from "@/lib/config/plans-config";
+import { useLinkedInAccount } from "@/hooks/use-linkedin-account";
 
 const INVITE_DEFAULT_MESSAGE = `Bonjour {{firstName}},
 Je souhaite échanger avec vous sur {{company}}.
@@ -100,8 +102,10 @@ export function ProspectProfileContent({
   const [linkingChat, setLinkingChat] = useState(false);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
   const [showWorkflowModal, setShowWorkflowModal] = useState(false);
-  const [campaignAction, setCampaignAction] = useState<"invite" | "contact" | null>(null);
+  const [campaignConfig, setCampaignConfig] = useState<CampaignConfig | null>(null);
   const [editing, setEditing] = useState(false);
+  const { data: linkedInAccount } = useLinkedInAccount();
+  const linkedinIsPremium = linkedInAccount?.linkedin_is_premium ?? false;
 
   const hasContact = prospect.email || prospect.phone || prospect.website || prospect.linkedin;
   const hasLinkedin = !!prospect.linkedin?.trim();
@@ -195,12 +199,15 @@ export function ProspectProfileContent({
   };
 
   const openInviteModal = () => {
-    setCampaignAction("invite");
+    setCampaignConfig({
+      channel: "linkedin",
+      linkedInAction: linkedinIsPremium ? "invite_with_note" : "invite",
+    });
     setShowCampaignModal(true);
   };
 
   const openContactModal = () => {
-    setCampaignAction("contact");
+    setCampaignConfig({ channel: "linkedin", linkedInAction: "contact" });
     setShowCampaignModal(true);
   };
 
@@ -238,7 +245,7 @@ export function ProspectProfileContent({
   const handleCampaignModalClose = (open: boolean) => {
     if (!open) {
       setShowCampaignModal(false);
-      setCampaignAction(null);
+      setCampaignConfig(null);
     }
   };
 
@@ -330,13 +337,14 @@ export function ProspectProfileContent({
       <CampaignModal
         open={showCampaignModal}
         onOpenChange={handleCampaignModalClose}
-        action={campaignAction}
+        config={campaignConfig}
         prospects={[prospect]}
         onSuccess={() => {
           setShowCampaignModal(false);
-          setCampaignAction(null);
+          setCampaignConfig(null);
           invalidateProspect();
         }}
+        isPremium={linkedinIsPremium}
       />
 
       <WorkflowEnrollModal

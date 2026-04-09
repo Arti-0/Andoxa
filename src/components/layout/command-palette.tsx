@@ -10,7 +10,6 @@ import {
   Calendar,
   Settings,
   User,
-  Wrench,
 } from "lucide-react";
 import {
   CommandDialog,
@@ -30,7 +29,6 @@ const PAGES = [
   { label: "Campagnes & Appels", href: "/campaigns", icon: Megaphone },
   { label: "Messagerie", href: "/messagerie", icon: MessageSquare },
   { label: "Calendrier", href: "/calendar", icon: Calendar },
-  { label: "Installation", href: "/installation", icon: Wrench },
   { label: "Paramètres", href: "/settings", icon: Settings },
 ];
 

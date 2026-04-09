@@ -7,7 +7,7 @@ import {
 } from "../../../../lib/config/plans-config";
 import { deduplicateProspects, mapProspectRow } from "../../../../lib/utils/deduplicateProspects";
 import { extractLinkedInSlug } from "@/lib/unipile/campaign";
-import { planAllowsAutoEnrichOnImport, readAutoEnrichOptIn } from "@/lib/enrichment/queue-helpers";
+import { planAllowsAutoEnrichOnImport } from "@/lib/enrichment/queue-helpers";
 import { effectivePlanIdForLimits } from "@/lib/billing/effective-plan";
 
 const SOURCE_LINKEDIN_EXTENSION = "linkedin_extension";
@@ -191,17 +191,17 @@ export const POST = createApiHandler(async (req, ctx) => {
   let duplicates = normalizedRows.length - deduplicatedRows.length;
   let skipped = body.prospects.length - normalizedRows.length;
 
-  const { data: orgRow } = await ctx.supabase
-    .from("organizations")
-    .select("metadata")
-    .eq("id", ctx.workspaceId)
+  const { data: profileRow } = await ctx.supabase
+    .from("profiles")
+    .select("linkedin_auto_enrich")
+    .eq("id", ctx.userId)
     .single();
 
   const autoEnrichEligible =
     planAllowsAutoEnrichOnImport(
       ctx.workspace?.plan,
       ctx.workspace?.subscription_status
-    ) && readAutoEnrichOptIn(orgRow?.metadata);
+    ) && profileRow?.linkedin_auto_enrich === true;
 
   for (const prospect of deduplicatedRows) {
     const { data: created, error: prospectError } = await ctx.supabase

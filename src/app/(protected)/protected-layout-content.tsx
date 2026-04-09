@@ -7,6 +7,7 @@ import { Header } from "../../components/layout/header";
 import { useWorkspace } from "../../lib/workspace";
 import { LoadingSpinner } from "../../components/ui/loading-spinner";
 import { DeletedOrganizationBanner } from "../../components/guards/DeletedOrganizationBanner";
+import { UnipileAccountBanner } from "@/components/guards/UnipileAccountBanner";
 import { AnnouncementBanner } from "../../components/guards/AnnouncementBanner";
 import { ErrorButton } from "../../components/debug/ErrorButton";
 import { CommandPalette } from "../../components/layout/command-palette";
@@ -67,6 +68,7 @@ function ProtectedLayoutContentInner({ children }: { children: ReactNode }) {
 
         <AnnouncementBanner />
         <DeletedOrganizationBanner />
+        <UnipileAccountBanner />
 
         <main className="flex-1 overflow-auto bg-background relative">
           {/* Barre de progression discrète en haut du contenu lors d'un rechargement */}

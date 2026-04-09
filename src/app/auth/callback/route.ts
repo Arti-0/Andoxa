@@ -1,6 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
-import { handleLinkedInCallback } from "@/lib/auth/linkedin-auth-server";
 import { evaluateDashboardEntitlement } from "@/lib/auth/dashboard-entitlement";
 import type { OrgDashboardGateRow } from "@/lib/auth/dashboard-entitlement";
 import { logger } from "@/lib/utils/logger";
@@ -102,12 +101,6 @@ export async function GET(request: NextRequest) {
   if (exchangeError || !session) {
     logger.error("Failed to exchange code for session:", exchangeError);
     return NextResponse.redirect(`${baseUrl}/auth/login?error=auth_failed`);
-  }
-
-  try {
-    await handleLinkedInCallback(session, supabase);
-  } catch (profileError) {
-    logger.error("Failed to handle LinkedIn callback:", profileError);
   }
 
   const userId = session.user.id;

@@ -9,7 +9,7 @@ export const POST = createApiHandler(
     if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
 
     const body = await parseBody<{
-      type: "invite" | "contact";
+      type: "invite" | "invite_with_note" | "contact" | "whatsapp";
       prospect_ids: string[];
       message_template?: string;
       batch_size?: number;
@@ -17,8 +17,11 @@ export const POST = createApiHandler(
       message_overrides?: Record<string, string>;
     }>(req);
 
-    if (!body.type || !["invite", "contact"].includes(body.type)) {
-      throw Errors.validation({ type: "Must be 'invite' or 'contact'" });
+    const allowedTypes = ["invite", "invite_with_note", "contact", "whatsapp"] as const;
+    if (!body.type || !allowedTypes.includes(body.type)) {
+      throw Errors.validation({
+        type: "Must be 'invite', 'invite_with_note', 'contact', or 'whatsapp'",
+      });
     }
     if (!body.prospect_ids?.length) {
       throw Errors.validation({ prospect_ids: "At least one prospect required" });
@@ -36,6 +39,7 @@ export const POST = createApiHandler(
         organization_id: ctx.workspaceId,
         created_by: ctx.userId!,
         type: body.type,
+        status: "draft",
         total_count: body.prospect_ids.length,
         batch_size: body.batch_size ?? 10,
         delay_ms: body.delay_ms ?? 120000,

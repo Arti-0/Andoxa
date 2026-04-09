@@ -45,6 +45,7 @@ export interface Profile {
   full_name: string | null;
   avatar_url: string | null;
   linkedin_url?: string | null;
+  linkedin_auto_enrich?: boolean;
   active_organization_id: string | null;
   created_at: string;
   updated_at: string;

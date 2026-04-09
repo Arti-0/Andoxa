@@ -1,19 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { Check, Loader2 } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { linkLinkedInFromOnboarding } from "@/lib/auth/linkedin-auth";
 import { cn } from "@/lib/utils";
-import {
-  initialsFromName,
-  LinkedInMark,
-} from "@/lib/utils/onboarding-helpers";
-import { stepNumberForId } from "../../config";
+import { LinkedInMark } from "@/lib/utils/onboarding-helpers";
 import { OnboardingContinueButton } from "../../_components/OnboardingContinueButton";
-import { useOnboardingRuntime } from "../../_components/OnboardingContext";
 import {
   cardShell,
   setupFormMax,
@@ -23,47 +16,59 @@ import {
 import type { StepProps } from "../types";
 
 export function LinkedInStep({ onNext, onError }: StepProps) {
-  const {
-    scenario,
-    linkedinLinked,
-    liProfile,
-    refresh,
-    fetchUnipile,
-  } = useOnboardingRuntime();
   const [connectingLi, setConnectingLi] = useState(false);
+  const [linkedinConnected, setLinkedinConnected] = useState(false);
+
+  const checkLinkedIn = async () => {
+    try {
+      const res = await fetch("/api/unipile/me", { credentials: "include" });
+      if (!res.ok) return;
+      const json = (await res.json()) as { data?: { connected?: boolean } };
+      const data = json.data ?? (json as { connected?: boolean });
+      setLinkedinConnected(!!data.connected);
+    } catch {
+      // silencieux
+    }
+  };
 
   useEffect(() => {
-    void fetchUnipile();
-  }, [fetchUnipile]);
+    void checkLinkedIn();
+  }, []);
 
   useEffect(() => {
+    if (linkedinConnected) return;
     const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        void refresh();
-      }
+      if (document.visibilityState === "visible") void checkLinkedIn();
     };
-    const onFocus = () => {
-      void refresh();
-    };
+    const onFocus = () => void checkLinkedIn();
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onFocus);
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onFocus);
     };
-  }, [refresh]);
+  }, [linkedinConnected]);
 
   const handleConnectLinkedIn = async () => {
     setConnectingLi(true);
     try {
-      const n = stepNumberForId(scenario, "install.linkedin");
-      await linkLinkedInFromOnboarding(
-        `/onboarding?step=${n}&linked=1`
+      const res = await fetch("/api/unipile/connect-linkedin", {
+        method: "POST",
+        credentials: "include",
+      });
+      const json = await res.json();
+      const data = json?.data ?? json;
+      const url = (data as { url?: string })?.url;
+      if (url) {
+        window.location.href = url;
+        return;
+      }
+      toast.error(
+        (json?.error?.message as string) ?? "Impossible de lancer LinkedIn"
       );
-    } catch (e) {
-      onError(
-        e instanceof Error ? e.message : "Connexion LinkedIn impossible"
-      );
+    } catch {
+      onError("Connexion LinkedIn impossible");
+    } finally {
       setConnectingLi(false);
     }
   };
@@ -79,22 +84,20 @@ export function LinkedInStep({ onNext, onError }: StepProps) {
         >
           <div className="flex w-full flex-col gap-12">
             <h1 className={welcomeStepTitleClass}>
-              {!linkedinLinked
+              {!linkedinConnected
                 ? "Connectez votre LinkedIn."
                 : "LinkedIn connecté"}
             </h1>
-            <div
-              className={cn(cardShell, setupFormMax, "text-center")}
-            >
-              {!linkedinLinked ? (
+            <div className={cn(cardShell, setupFormMax, "text-center")}>
+              {!linkedinConnected ? (
                 <>
                   <div className="mx-auto mb-4 flex size-13 items-center justify-center rounded-2xl bg-[#0077B5]/10 shadow-inner shadow-[#0077B5]/5 dark:bg-[#0077B5]/15">
                     <LinkedInMark className="size-8 text-[#0077B5]" />
                   </div>
                   <p className={cn(subClass, "!mt-0")}>
-                    Optionnel pour l’instant — vous pourrez le faire plus tard
-                    depuis les paramètres. Andoxa s’appuie sur LinkedIn pour les
-                    prospects et l’automatisation.
+                    Optionnel pour l&apos;instant — vous pourrez le faire plus
+                    tard depuis les paramètres. Andoxa s&apos;appuie sur
+                    LinkedIn pour les prospects et l&apos;automatisation.
                   </p>
                   <Button
                     type="button"
@@ -111,22 +114,9 @@ export function LinkedInStep({ onNext, onError }: StepProps) {
               ) : (
                 <div className="space-y-4 sm:space-y-5">
                   <div className="relative mx-auto size-24 shrink-0 sm:size-29">
-                    {liProfile?.picture ? (
-                      <Image
-                        src={liProfile.picture}
-                        alt="Photo de profil LinkedIn"
-                        width={116}
-                        height={116}
-                        className="size-24 rounded-full object-cover shadow-xl ring-4 ring-zinc-100 dark:ring-zinc-800 sm:size-29"
-                        unoptimized
-                      />
-                    ) : (
-                      <Avatar className="size-24 shadow-xl ring-4 ring-zinc-100 dark:ring-zinc-800 sm:size-29">
-                        <AvatarFallback className="text-xl font-semibold sm:text-2xl">
-                          {initialsFromName(liProfile?.name ?? "?")}
-                        </AvatarFallback>
-                      </Avatar>
-                    )}
+                    <div className="flex size-24 items-center justify-center rounded-full bg-[#0077B5]/10 shadow-xl ring-4 ring-zinc-100 dark:bg-[#0077B5]/15 dark:ring-zinc-800 sm:size-29">
+                      <LinkedInMark className="size-12 text-[#0077B5] sm:size-14" />
+                    </div>
                     <span
                       className="absolute -bottom-0.5 -right-0.5 flex size-8 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg ring-4 ring-white dark:ring-zinc-900 sm:size-9"
                       aria-hidden
@@ -135,9 +125,6 @@ export function LinkedInStep({ onNext, onError }: StepProps) {
                     </span>
                   </div>
                   <p className="text-base font-medium text-zinc-800 dark:text-zinc-200">
-                    {liProfile?.name ?? "Profil LinkedIn"}
-                  </p>
-                  <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
                     Votre compte est prêt pour la prospection.
                   </p>
                   <div

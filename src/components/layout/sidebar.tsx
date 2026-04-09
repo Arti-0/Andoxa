@@ -12,7 +12,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Wrench,
   Check,
   Building2,
   Workflow,
@@ -33,11 +32,13 @@ import {
 } from "../../lib/organizations/utils-client";
 import { normalizePlanIdForRoutes } from "@/lib/billing/effective-plan";
 import { canAccessRoute, type PlanId } from "@/lib/config/plans-config";
+import { useMessagingRealtime } from "@/hooks/use-messaging-realtime";
 
 interface NavItem {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  badge?: number;
 }
 
 const MAIN_NAV_ITEMS: NavItem[] = [
@@ -50,7 +51,6 @@ const MAIN_NAV_ITEMS: NavItem[] = [
 ];
 
 const FOOTER_NAV_ITEMS: NavItem[] = [
-  { href: "/installation", label: "Installation", icon: Wrench },
   { href: "/settings", label: "Paramètres", icon: Settings },
 ];
 
@@ -98,6 +98,14 @@ export function Sidebar() {
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [orgsLoaded, setOrgsLoaded] = useState(false);
 
+  const { unseenCount, markAllSeen } = useMessagingRealtime();
+
+  useEffect(() => {
+    if (pathname?.startsWith("/messagerie")) {
+      void markAllSeen();
+    }
+  }, [pathname, markAllSeen]);
+
   const loadOrgs = useCallback(async () => {
     if (!user?.id) return;
     try {
@@ -136,6 +144,13 @@ export function Sidebar() {
   const mainNavItems = MAIN_NAV_ITEMS.filter((item) =>
     canAccessRoute(routePlan, item.href)
   );
+
+  const mainNavItemsWithBadges = mainNavItems.map((item) => {
+    if (item.href === "/messagerie" && unseenCount > 0) {
+      return { ...item, badge: unseenCount };
+    }
+    return item;
+  });
 
   const displayUserName =
     profile?.full_name ||
@@ -236,16 +251,22 @@ export function Sidebar() {
           <li aria-hidden="true">
             <div className="my-1 border-t" />
           </li>
-          {mainNavItems.map((item) => {
+          {mainNavItemsWithBadges.map((item) => {
             const isActive = pathname?.startsWith(item.href);
             const Icon = item.icon;
+            const badge = item.badge ?? 0;
 
             return (
               <li key={item.href}>
                 <Link
                   href={item.href}
+                  onClick={() => {
+                    if (item.href === "/messagerie" && badge > 0) {
+                      void markAllSeen();
+                    }
+                  }}
                   className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    "relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                     isActive
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -253,8 +274,28 @@ export function Sidebar() {
                   )}
                   title={isCollapsed ? item.label : undefined}
                 >
-                  <Icon className="h-5 w-5 shrink-0" />
+                  <span className="relative shrink-0">
+                    <Icon className="h-5 w-5" />
+                    {isCollapsed && badge > 0 && (
+                      <span
+                        className={cn(
+                          "absolute -right-1.5 -top-1.5 flex items-center justify-center rounded-full bg-red-500 font-semibold leading-none text-white",
+                          badge > 99
+                            ? "h-4 min-w-4 px-0.5 text-[9px]"
+                            : "h-4 min-w-4 px-0.5 text-[10px]"
+                        )}
+                        aria-label={`${badge} message${badge > 1 ? "s" : ""} non lu${badge > 1 ? "s" : ""}`}
+                      >
+                        {badge > 99 ? "99+" : badge}
+                      </span>
+                    )}
+                  </span>
                   {!isCollapsed && <span>{item.label}</span>}
+                  {!isCollapsed && badge > 0 && (
+                    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+                      {badge > 99 ? "99+" : badge}
+                    </span>
+                  )}
                 </Link>
               </li>
             );

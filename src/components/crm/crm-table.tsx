@@ -18,6 +18,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { getProspectColumns } from "./prospect-columns";
 import { getBddColumns } from "./bdd-columns";
 import type { Prospect } from "@/lib/types/prospects";
+import { useLinkedInAccount } from "@/hooks/use-linkedin-account";
+import { getLinkedInInviteWeeklyUsageCap } from "@/lib/linkedin/limits";
 
 export interface FilterState {
   status: string[];
@@ -208,6 +210,7 @@ function ProspectsTableContent({
   });
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
   const lastSelectedIdsRef = useRef<string>("");
+  const { data: linkedInAccount } = useLinkedInAccount();
 
   const VISIBILITY_KEY = `crm-col-vis-${workspaceId ?? "default"}`;
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => {
@@ -256,21 +259,35 @@ function ProspectsTableContent({
 
   const prospectsItems = prospectsData?.items ?? [];
 
-  const { data: inviteQuota } = useQuery({
-    queryKey: ["linkedin-invite-quota", workspaceId],
+  const { data: usageData } = useQuery({
+    queryKey: ["usage-counters", workspaceId],
     queryFn: async () => {
-      const res = await fetch("/api/unipile/invite-quota", {
-        credentials: "include",
-      });
+      const res = await fetch("/api/usage", { credentials: "include" });
       if (!res.ok) return null;
-      const json = (await res.json()) as {
-        data?: { used: number; cap: number; period_start: string };
-      };
-      return json.data ?? null;
+      const json = await res.json();
+      return (json?.data ?? json) as {
+        linkedin_invites_this_week: number;
+        linkedin_contacts_today: number;
+        whatsapp_new_chats_today: number;
+        period_week?: string;
+        period_day?: string;
+      } | null;
     },
     enabled: !!workspaceId,
     staleTime: 30_000,
   });
+
+  const inviteCap = getLinkedInInviteWeeklyUsageCap(
+    linkedInAccount?.linkedin_is_premium ?? false
+  );
+
+  const inviteQuota = usageData
+    ? {
+        used: usageData.linkedin_invites_this_week,
+        cap: inviteCap,
+        period_start: usageData.period_week ?? new Date().toISOString().slice(0, 10),
+      }
+    : undefined;
 
   const linkedInInviteMutation = useMutation({
     mutationFn: async (prospectId: string) => {
@@ -290,7 +307,7 @@ function ProspectsTableContent({
       return json;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["linkedin-invite-quota"] });
+      queryClient.invalidateQueries({ queryKey: ["usage-counters"] });
       queryClient.invalidateQueries({ queryKey: ["prospects"] });
       toast.success("Invitation LinkedIn envoyée");
     },
@@ -390,12 +407,7 @@ function ProspectsTableContent({
         inviteQuota: inviteQuota ?? undefined,
         invitePendingProspectId,
       }),
-    [
-      allMetaKeys,
-      handleLinkedInInvite,
-      inviteQuota,
-      invitePendingProspectId,
-    ]
+    [allMetaKeys, handleLinkedInInvite, inviteQuota, invitePendingProspectId]
   );
 
   const table = useReactTable({

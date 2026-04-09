@@ -1,20 +1,25 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import {
+    useState,
+    useEffect,
+    useCallback,
+    useRef,
+    type CSSProperties,
+} from 'react';
+import { useMessagingRealtime } from '@/hooks/use-messaging-realtime';
+import { ChatCrmPanel } from '@/components/messagerie/chat-crm-panel';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
     MessageSquare,
     Loader2,
     Paperclip,
-    User,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import type { UnipileChat, UnipileMessage } from '@/lib/unipile/types';
-
-export type InboxChannelFilter = 'all' | 'LINKEDIN' | 'WHATSAPP';
 
 interface ChatsApiResponse {
     items?: UnipileChat[];
@@ -28,8 +33,6 @@ interface MessagesApiResponse {
 
 interface MessagingInboxProps {
     focusChatId?: string | null;
-    /** Filtre API Unipile (canal) */
-    channelFilter?: InboxChannelFilter;
     /** Ne garder que les conversations non liées à un prospect CRM */
     onlyHorsCrm?: boolean;
 }
@@ -39,12 +42,44 @@ interface AndoxaIdsResponse {
     chatToProspect?: Record<string, string>;
 }
 
+/** Heure si aujourd'hui, date courte sinon */
+function formatChatTimestamp(ts: string | null | undefined): string {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const now = new Date();
+    const isToday =
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate();
+
+    if (isToday) {
+        return d.toLocaleTimeString('fr-FR', {
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+    }
+    return d.toLocaleDateString('fr-FR', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+    });
+}
+
+/** Timestamp complet pour le fil de messages */
+function formatMessageTimestamp(ts: string | null | undefined): string {
+    if (!ts) return '';
+    return new Date(ts).toLocaleString('fr-FR', {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
+
 export function MessagingInbox({
     focusChatId,
-    channelFilter = 'all',
     onlyHorsCrm = false,
 }: MessagingInboxProps) {
-    const router = useRouter();
     const [chats, setChats] = useState<UnipileChat[]>([]);
     const [chatToProspect, setChatToProspect] = useState<
         Record<string, string>
@@ -59,12 +94,27 @@ export function MessagingInbox({
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const scrollPositions = useRef<Record<string, number>>({});
+    const messagesContainerRef = useRef<HTMLDivElement>(null);
+    const scrollBottomAfterSendRef = useRef(false);
+    const scrollBottomAfterRealtimeRef = useRef(false);
+
+    const { lastIncomingChatId, markChatSeen } = useMessagingRealtime();
+
+    const saveScrollPosition = useCallback(() => {
+        if (selectedChatId && messagesContainerRef.current) {
+            scrollPositions.current[selectedChatId] =
+                messagesContainerRef.current.scrollTop;
+        }
+    }, [selectedChatId]);
+
     const fetchChats = useCallback(async () => {
         setLoadingChats(true);
         setError(null);
         try {
             const [chatsRes, idsRes] = await Promise.all([
-                fetch(`/api/unipile/chats?channel=${channelFilter}`, {
+                fetch('/api/unipile/chats?channel=all', {
                     credentials: 'include',
                 }),
                 fetch('/api/unipile/chats/andoxa-ids', {
@@ -87,8 +137,8 @@ export function MessagingInbox({
             setChats(Array.isArray(items) ? items : []);
 
             if (idsRes.ok) {
-                const idsData =
-                    (await idsRes.json())?.data ?? (await idsRes.json());
+                const idsJson = await idsRes.json();
+                const idsData = idsJson?.data ?? idsJson;
                 const andoxa = idsData as AndoxaIdsResponse;
                 setChatToProspect(andoxa?.chatToProspect ?? {});
             }
@@ -100,7 +150,7 @@ export function MessagingInbox({
         } finally {
             setLoadingChats(false);
         }
-    }, [channelFilter]);
+    }, []);
 
     const fetchMessages = useCallback(async (chatId: string) => {
         setLoadingMessages(true);
@@ -133,7 +183,19 @@ export function MessagingInbox({
         fetchChats();
     }, [fetchChats]);
 
-    // Sync focus via ?chat= : sélectionner le chat si présent ; activer filtre si chat hors CRM
+    useEffect(() => {
+        if (lastIncomingChatId && lastIncomingChatId === selectedChatId) {
+            scrollBottomAfterRealtimeRef.current = true;
+            void fetchMessages(selectedChatId);
+        }
+    }, [lastIncomingChatId, selectedChatId, fetchMessages]);
+
+    useEffect(() => {
+        if (selectedChatId) {
+            void markChatSeen(selectedChatId);
+        }
+    }, [selectedChatId, markChatSeen]);
+
     useEffect(() => {
         if (!focusChatId || !chats.some((c) => c.id === focusChatId)) return;
         setSelectedChatId(focusChatId);
@@ -146,6 +208,39 @@ export function MessagingInbox({
             setMessages([]);
         }
     }, [selectedChatId, fetchMessages]);
+
+    useEffect(() => {
+        if (loadingMessages || !messagesContainerRef.current) return;
+        const container = messagesContainerRef.current;
+
+        if (scrollBottomAfterSendRef.current) {
+            scrollBottomAfterSendRef.current = false;
+            requestAnimationFrame(() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            });
+            return;
+        }
+
+        if (scrollBottomAfterRealtimeRef.current) {
+            scrollBottomAfterRealtimeRef.current = false;
+            requestAnimationFrame(() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            });
+            return;
+        }
+
+        const savedPos = selectedChatId
+            ? scrollPositions.current[selectedChatId]
+            : undefined;
+
+        if (savedPos !== undefined && savedPos > 0) {
+            container.scrollTop = savedPos;
+        } else {
+            requestAnimationFrame(() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+            });
+        }
+    }, [messages, selectedChatId, loadingMessages]);
 
     const handleSend = async () => {
         if (!selectedChatId || !newMessage.trim()) return;
@@ -165,6 +260,7 @@ export function MessagingInbox({
                 return;
             }
             setNewMessage('');
+            scrollBottomAfterSendRef.current = true;
             await fetchMessages(selectedChatId);
         } catch {
             setError("Impossible d'envoyer le message.");
@@ -181,9 +277,6 @@ export function MessagingInbox({
     const displayedChats = onlyHorsCrm
         ? chats.filter((c) => !isChatInCrm(c.id))
         : chats;
-
-    const formatTimestamp = (ts: string | null | undefined) =>
-        ts ? new Date(ts).toLocaleString('fr-FR') : '';
 
     const formatSize = (bytes: number) => {
         if (bytes < 1024) return `${bytes} o`;
@@ -218,7 +311,6 @@ export function MessagingInbox({
                 return;
             }
             const blob = await res.blob();
-            const contentType = res.headers.get('Content-Type') || '';
             const contentDisposition =
                 res.headers.get('Content-Disposition') || '';
             const match = contentDisposition.match(
@@ -260,9 +352,15 @@ export function MessagingInbox({
     }
 
     return (
-        <div className="grid h-full min-h-0 grid-cols-1 gap-4 lg:grid-cols-3">
-            {/* Liste des conversations */}
-            <div className="flex min-h-0 flex-col rounded-lg border">
+        <div
+            className={cn(
+                'grid h-full min-h-0 gap-0',
+                selectedChatId
+                    ? 'grid-cols-1 lg:grid-cols-[minmax(200px,280px)_1fr_minmax(180px,240px)]'
+                    : 'grid-cols-1 lg:grid-cols-[minmax(200px,280px)_1fr]'
+            )}
+        >
+            <div className="flex min-h-0 flex-col rounded-lg border lg:rounded-r-none lg:border-r-0">
                 <div className="shrink-0 border-b px-3 py-2">
                     <span className="font-medium text-sm">
                         Conversations
@@ -280,24 +378,43 @@ export function MessagingInbox({
                                 const channel = (
                                     chat as UnipileChat & { _channel?: string }
                                 )._channel;
+                                const isSelected = selectedChatId === chat.id;
+                                const isFocused = focusChatId === chat.id;
+                                const name = chatLabel(
+                                    chat as UnipileChat & {
+                                        interlocutor_name?: string;
+                                    }
+                                );
+                                const hasUnread =
+                                    (chat.unread_count ?? 0) > 0;
+
                                 return (
                                     <button
                                         key={chat.id}
                                         type="button"
-                                        onClick={() =>
-                                            setSelectedChatId(chat.id)
-                                        }
-                                        className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                                            selectedChatId === chat.id
-                                                ? 'bg-primary/10 text-primary ring-1 ring-primary'
-                                                : focusChatId === chat.id
-                                                  ? 'ring-1 ring-primary/50 bg-primary/5 hover:bg-accent'
+                                        onClick={() => {
+                                            saveScrollPosition();
+                                            setSelectedChatId(chat.id);
+                                        }}
+                                        className={cn(
+                                            'w-full rounded-md px-3 py-2.5 text-left text-sm transition-colors',
+                                            isSelected
+                                                ? 'bg-primary/10 text-primary ring-1 ring-primary/30'
+                                                : isFocused
+                                                  ? 'bg-primary/5 ring-1 ring-primary/50 hover:bg-accent'
                                                   : 'hover:bg-accent'
-                                        }`}
+                                        )}
                                     >
-                                        <div className="flex items-center gap-2">
-                                            <span className="truncate font-medium">
-                                                {chatLabel(chat)}
+                                        <div className="flex min-w-0 items-center gap-2">
+                                            <span
+                                                className={cn(
+                                                    'flex-1 truncate font-medium',
+                                                    hasUnread &&
+                                                        !isSelected &&
+                                                        'font-semibold text-foreground'
+                                                )}
+                                            >
+                                                {name}
                                             </span>
                                             {channel === 'WHATSAPP' && (
                                                 <span className="shrink-0 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-200">
@@ -309,24 +426,26 @@ export function MessagingInbox({
                                                     LI
                                                 </span>
                                             )}
-                                            {!inCrm && (
-                                                <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
-                                                    Hors CRM
+                                            {chat.timestamp && (
+                                                <span className="shrink-0 text-xs text-muted-foreground">
+                                                    {formatChatTimestamp(
+                                                        chat.timestamp
+                                                    )}
                                                 </span>
                                             )}
                                         </div>
-                                        {chat.timestamp && (
-                                            <div className="truncate text-xs text-muted-foreground">
-                                                {formatTimestamp(
-                                                    chat.timestamp
-                                                )}
-                                            </div>
-                                        )}
-                                        {chat.unread_count > 0 && (
-                                            <span className="mt-1 inline-block rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
-                                                {chat.unread_count} non lu(s)
-                                            </span>
-                                        )}
+                                        <div className="mt-0.5 flex items-center gap-1.5">
+                                            {!inCrm && (
+                                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                                                    Hors CRM
+                                                </span>
+                                            )}
+                                            {hasUnread && (
+                                                <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">
+                                                    {chat.unread_count}
+                                                </span>
+                                            )}
+                                        </div>
                                     </button>
                                 );
                             })
@@ -335,17 +454,22 @@ export function MessagingInbox({
                 </ScrollArea>
             </div>
 
-            {/* Messages + envoi */}
-            <div className="flex min-h-0 flex-col rounded-lg border lg:col-span-2">
+            <div
+                className={cn(
+                    'flex min-h-0 flex-col border-y border-border bg-card lg:border-x-0',
+                    selectedChatId
+                        ? 'lg:rounded-none lg:border-r-0'
+                        : 'rounded-lg border lg:rounded-l-none'
+                )}
+            >
                 {selectedChatId ? (
                     <>
                         {(() => {
                             const selChat = chats.find(
                                 (c) => c.id === selectedChatId
                             );
-                            const prospectId = chatToProspect[selectedChatId];
                             return (
-                                <div className="flex shrink-0 items-center justify-between border-b px-4 py-2">
+                                <div className="flex shrink-0 items-center border-b px-4 py-2">
                                     <span className="truncate font-medium text-sm">
                                         {selChat
                                             ? chatLabel(
@@ -355,25 +479,22 @@ export function MessagingInbox({
                                               )
                                             : 'Conversation'}
                                     </span>
-                                    {prospectId && (
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() =>
-                                                router.push(
-                                                    `/prospect/${prospectId}`
-                                                )
-                                            }
-                                            className="shrink-0"
-                                        >
-                                            <User className="mr-1.5 h-4 w-4" />
-                                            Profil prospect
-                                        </Button>
-                                    )}
                                 </div>
                             );
                         })()}
-                        <ScrollArea className="min-h-0 flex-1 p-4">
+                        <div
+                            ref={messagesContainerRef}
+                            className="min-h-0 flex-1 overflow-y-auto p-4"
+                            onScroll={() => {
+                                if (
+                                    selectedChatId &&
+                                    messagesContainerRef.current
+                                ) {
+                                    scrollPositions.current[selectedChatId] =
+                                        messagesContainerRef.current.scrollTop;
+                                }
+                            }}
+                        >
                             <div className="space-y-3">
                                 {loadingMessages ? (
                                     <div className="flex items-center justify-center py-8">
@@ -429,7 +550,7 @@ export function MessagingInbox({
                                                                         className="inline-flex items-center gap-2 rounded border bg-background px-2 py-1.5 text-left text-xs hover:bg-accent"
                                                                     >
                                                                         <Paperclip className="h-3.5 w-3.5 shrink-0" />
-                                                                        <span className="truncate max-w-[180px]">
+                                                                        <span className="max-w-[180px] truncate">
                                                                             {
                                                                                 label
                                                                             }
@@ -459,30 +580,47 @@ export function MessagingInbox({
                                                     </div>
                                                 )}
                                             <div className="mt-1 text-xs text-muted-foreground">
-                                                {formatTimestamp(m.timestamp)}
+                                                {formatMessageTimestamp(
+                                                    m.timestamp
+                                                )}
                                                 {m.is_sender === 1 && ' · Vous'}
                                             </div>
                                         </div>
                                     ))
                                 )}
+                                <div ref={messagesEndRef} />
                             </div>
-                        </ScrollArea>
-                        <div className="flex gap-2 border-t p-3">
-                            <Input
-                                placeholder="Votre message..."
+                        </div>
+                        <div className="flex items-end gap-2 border-t p-3">
+                            <Textarea
+                                placeholder="Votre message... (Entrée pour envoyer, Maj+Entrée pour un saut de ligne)"
                                 value={newMessage}
-                                onChange={(e) => setNewMessage(e.target.value)}
+                                onChange={(e) =>
+                                    setNewMessage(e.target.value)
+                                }
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter' && !e.shiftKey) {
                                         e.preventDefault();
-                                        handleSend();
+                                        if (!sending && newMessage.trim()) {
+                                            void handleSend();
+                                        }
                                     }
                                 }}
                                 disabled={sending}
+                                rows={1}
+                                className="max-h-32 min-h-[38px] resize-none font-sans text-sm"
+                                style={
+                                    {
+                                        fieldSizing: 'content',
+                                    } as CSSProperties
+                                }
                             />
                             <Button
-                                onClick={handleSend}
+                                type="button"
+                                onClick={() => void handleSend()}
                                 disabled={sending || !newMessage.trim()}
+                                size="icon"
+                                className="shrink-0"
                             >
                                 {sending ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -503,6 +641,19 @@ export function MessagingInbox({
                     </div>
                 )}
             </div>
+
+            {selectedChatId && (
+                <ChatCrmPanel
+                    chatId={selectedChatId}
+                    prospectId={chatToProspect[selectedChatId] ?? null}
+                    onLinked={(chatId, prospectId) => {
+                        setChatToProspect((prev) => ({
+                            ...prev,
+                            [chatId]: prospectId,
+                        }));
+                    }}
+                />
+            )}
         </div>
     );
 }

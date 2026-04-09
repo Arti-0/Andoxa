@@ -39,6 +39,7 @@ import { WorkflowStepMessageModal } from "./workflow-step-message-modal";
 import type { WorkflowStep, WorkflowStepType } from "@/lib/workflows/schema";
 import { WORKFLOW_STEP_TYPES } from "@/lib/workflows/schema";
 import { WorkflowListIcon } from "./workflow-list-icon";
+import { useLinkedInAccount } from "@/hooks/use-linkedin-account";
 
 const STEP_TYPE_LABELS: Record<WorkflowStepType, string> = {
   wait: "Attente",
@@ -109,6 +110,8 @@ export function WorkflowNewPageClient() {
   const [submitting, setSubmitting] = useState(false);
   const [editWaitIndex, setEditWaitIndex] = useState<number | null>(null);
   const [editMsgIndex, setEditMsgIndex] = useState<number | null>(null);
+  const { data: linkedInAccount } = useLinkedInAccount();
+  const linkedinIsPremium = linkedInAccount?.linkedin_is_premium ?? false;
 
   const definitionPayload = useMemo(
     () => ({ schemaVersion: 1 as const, steps }),
@@ -398,6 +401,7 @@ export function WorkflowNewPageClient() {
             (steps[editMsgIndex].config as { messageTemplate?: string }).messageTemplate ?? ""
           }
           onSave={(msg) => updateStepConfig(editMsgIndex, { messageTemplate: msg })}
+          isPremium={linkedinIsPremium}
         />
       )}
     </div>

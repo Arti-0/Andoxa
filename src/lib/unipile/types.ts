@@ -8,12 +8,30 @@ export interface UnipileListResponse<T> {
   cursor?: string | null;
 }
 
+export interface UnipileLinkedInConnectionParams {
+  im?: {
+    id?: string;
+    publicIdentifier?: string;
+    username?: string;
+    premiumId?: string | null;
+    premiumFeatures?: string[];
+    premiumContractId?: string | null;
+    organizations?: unknown[];
+    proxy?: { country?: string };
+  };
+}
+
 export interface UnipileAccount {
   object: "Account";
   id: string;
   type: string;
   name: string;
   created_at: string;
+  sources?: Array<{ id: string; status: string }>;
+  groups?: unknown[];
+  connection_params?: {
+    im?: UnipileLinkedInConnectionParams["im"];
+  };
 }
 
 export interface UnipileChat {

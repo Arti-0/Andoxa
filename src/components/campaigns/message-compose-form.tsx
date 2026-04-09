@@ -5,6 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
+import { getMaxCharsForMode } from "@/lib/linkedin/limits";
 import {
   CAMPAIGN_VARIABLE_KEYS,
   CAMPAIGN_VARIABLE_META,
@@ -44,12 +46,16 @@ export interface MessageComposeFormProps {
   onMessageChange: (value: string) => void;
   channel: "linkedin" | "whatsapp";
   linkedinMode?: "invite" | "contact";
-  /** Extra controls below templates (e.g. batch mode) */
+  /** Contenu optionnel sous les templates */
   footerExtra?: ReactNode;
   /** Texte d’aide sous les boutons de variables (ex. colonnes d’import) */
   variablesFooterNote?: ReactNode;
   /** When false, compose UI is disabled visually */
   disabled?: boolean;
+  /** Surcharge de la limite de caractères (calculée depuis isPremium si absent) */
+  maxLength?: number;
+  /** Statut Premium LinkedIn de l'utilisateur connecté */
+  isPremium?: boolean;
 }
 
 /**
@@ -63,8 +69,16 @@ export function MessageComposeForm({
   footerExtra,
   variablesFooterNote,
   disabled = false,
+  maxLength,
+  isPremium,
 }: MessageComposeFormProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const effectiveMaxLength =
+    maxLength ??
+    (channel === "linkedin"
+      ? getMaxCharsForMode(linkedinMode ?? "contact", isPremium ?? false)
+      : 2000);
 
   const placeholder =
     channel === "whatsapp"
@@ -73,10 +87,11 @@ export function MessageComposeForm({
         ? INVITE_PLACEHOLDER
         : CONTACT_PLACEHOLDER;
 
+  /** Tous les canaux : un template LinkedIn peut servir pour WhatsApp (et inversement). */
   const { data: templatesData, isLoading: templatesLoading } = useQuery({
-    queryKey: ["message-templates", channel, "compose-form"],
+    queryKey: ["message-templates", "all", "compose-form"],
     queryFn: async () => {
-      const res = await fetch(`/api/message-templates?channel=${channel}`, {
+      const res = await fetch(`/api/message-templates?pageSize=100`, {
         credentials: "include",
       });
       if (!res.ok) return [] as MessageTemplate[];
@@ -92,12 +107,15 @@ export function MessageComposeForm({
     const token = `{{${varKey}}}`;
     const el = textareaRef.current;
     if (!el) {
-      onMessageChange(message + token);
+      onMessageChange((message + token).slice(0, effectiveMaxLength));
       return;
     }
     const start = el.selectionStart ?? message.length;
     const end = el.selectionEnd ?? message.length;
-    const next = message.slice(0, start) + token + message.slice(end);
+    const next = (message.slice(0, start) + token + message.slice(end)).slice(
+      0,
+      effectiveMaxLength
+    );
     onMessageChange(next);
     requestAnimationFrame(() => {
       el.focus();
@@ -134,15 +152,24 @@ export function MessageComposeForm({
           id="message-compose-form"
           placeholder={placeholder}
           value={message}
-          onChange={(e) => onMessageChange(e.target.value)}
+          onChange={(e) =>
+            onMessageChange(e.target.value.slice(0, effectiveMaxLength))
+          }
           rows={6}
           disabled={disabled}
           className="font-mono text-sm"
-          maxLength={2000}
+          maxLength={effectiveMaxLength}
           aria-label="Message"
         />
-        <p className="mt-1 text-right text-xs tabular-nums text-muted-foreground">
-          {message.length}/2000
+        <p
+          className={cn(
+            "mt-1 text-right text-xs tabular-nums",
+            message.length > effectiveMaxLength * 0.9
+              ? "text-amber-600 dark:text-amber-400"
+              : "text-muted-foreground"
+          )}
+        >
+          {message.length}/{effectiveMaxLength}
         </p>
       </div>
 
@@ -163,9 +190,16 @@ export function MessageComposeForm({
                   type="button"
                   disabled={disabled}
                   className="rounded-md border border-transparent bg-background px-3 py-2 text-left text-sm transition-colors hover:border-border hover:bg-accent/50 disabled:opacity-50"
-                  onClick={() => onMessageChange(tpl.content)}
+                  onClick={() =>
+                    onMessageChange(tpl.content.slice(0, effectiveMaxLength))
+                  }
                 >
-                  <span className="font-medium">{tpl.name}</span>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{tpl.name}</span>
+                    <span className="rounded bg-muted px-1.5 py-0 text-[10px] font-medium uppercase text-muted-foreground">
+                      {tpl.channel}
+                    </span>
+                  </span>
                   <span className="mt-0.5 line-clamp-2 block text-xs text-muted-foreground">
                     {tpl.content}
                   </span>

@@ -184,7 +184,14 @@ export const GET = createApiHandler(async (_req, ctx): Promise<Activity[]> => {
   for (const c of campaignsRes.data ?? []) {
     const creatorId = (c as { created_by?: string }).created_by;
     const actor = creatorId ? profileMap.get(creatorId) : null;
-    const typeLabel = c.type === "invite" ? "Invitation" : "Contact";
+    const typeLabel =
+      c.type === "invite"
+        ? "Invitation"
+        : c.type === "invite_with_note"
+          ? "Invitation (note)"
+          : c.type === "whatsapp"
+            ? "WhatsApp"
+            : "Contact";
     activities.push({
       id: `campaign-${c.id}`,
       type: "campaign_started",

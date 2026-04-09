@@ -269,7 +269,7 @@ export function getProspectColumns(
                                     type="button"
                                     title={
                                         atCap
-                                            ? 'Quota quotidien atteint'
+                                            ? 'Quota hebdomadaire atteint'
                                             : 'Inviter sur LinkedIn'
                                     }
                                     disabled={atCap || inviting}

@@ -7,6 +7,20 @@ const nextConfig: NextConfig = {
   },
   serverExternalPackages: [],
   turbopack: {},
+  async redirects() {
+    return [
+      {
+        source: "/installation",
+        destination: "/settings",
+        permanent: true,
+      },
+      {
+        source: "/linkedin",
+        destination: "/settings",
+        permanent: true,
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       {

@@ -13,8 +13,6 @@ export type OnboardingRuntimeContextValue = {
   setOrgName: (n: string) => void;
   orgLogoRemoteUrl: string | null;
   setOrgLogoRemoteUrl: (u: string | null) => void;
-  linkedinLinked: boolean;
-  liProfile: { name: string; picture: string | null } | null;
   whatsappConnected: boolean;
   refresh: () => Promise<void>;
   fetchUnipile: () => Promise<void>;

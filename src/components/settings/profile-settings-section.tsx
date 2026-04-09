@@ -128,7 +128,7 @@ export function ProfileSettingsSection({
     const handleConnectLinkedIn = async () => {
         setConnectingLinkedIn(true);
         try {
-            const res = await fetch("/api/unipile/connect", {
+            const res = await fetch("/api/unipile/connect-linkedin", {
                 method: "POST",
                 credentials: "include",
             });

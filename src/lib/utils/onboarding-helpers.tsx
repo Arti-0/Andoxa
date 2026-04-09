@@ -34,35 +34,3 @@ export function WhatsAppMark({ className }: { className?: string }) {
     </svg>
   );
 }
-
-export function linkedinDisplayFromUser(user: {
-  identities?: {
-    provider: string;
-    identity_data?: Record<string, unknown>;
-  }[];
-  user_metadata?: Record<string, unknown>;
-}): { name: string; picture: string | null } {
-  const li = user.identities?.find((i) => i.provider === "linkedin_oidc");
-  const id = (li?.identity_data ?? {}) as Record<string, unknown>;
-  const given = typeof id.given_name === "string" ? id.given_name : "";
-  const family = typeof id.family_name === "string" ? id.family_name : "";
-  const combined = `${given} ${family}`.trim();
-  const name =
-    (typeof id.name === "string" && id.name) ||
-    combined ||
-    (typeof id.full_name === "string" && id.full_name) ||
-    (typeof user.user_metadata?.full_name === "string" &&
-      user.user_metadata.full_name) ||
-    (typeof user.user_metadata?.name === "string" &&
-      user.user_metadata.name) ||
-    "Profil LinkedIn";
-  const picture =
-    (typeof id.picture === "string" && id.picture) ||
-    (typeof id.avatar_url === "string" && id.avatar_url) ||
-    (typeof user.user_metadata?.avatar_url === "string" &&
-      user.user_metadata.avatar_url) ||
-    (typeof user.user_metadata?.picture === "string" &&
-      user.user_metadata.picture) ||
-    null;
-  return { name, picture };
-}

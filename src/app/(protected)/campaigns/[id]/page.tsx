@@ -14,10 +14,13 @@ import {
   Clock,
   Users,
   RefreshCw,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
+import type { CampaignJobType } from "@/lib/campaigns/types";
+import { campaignLabel, configFromJobType } from "@/lib/campaigns/types";
 
 interface JobProspect {
   id: string;
@@ -30,7 +33,7 @@ interface JobProspect {
 
 interface CampaignJob {
   id: string;
-  type: string;
+  type: CampaignJobType;
   status: string;
   total_count: number;
   processed_count: number;
@@ -46,6 +49,7 @@ interface CampaignJob {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
+  draft: { label: "Brouillon", color: "text-zinc-500", icon: FileText },
   pending: { label: "En attente", color: "text-muted-foreground", icon: Clock },
   running: { label: "En cours", color: "text-blue-600", icon: RefreshCw },
   paused: { label: "En pause", color: "text-amber-600", icon: Pause },
@@ -76,7 +80,7 @@ export default function CampaignDetailPage() {
     enabled: !!id,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status === "running" ? 5000 : false;
+      return status === "running" || status === "pending" ? 5000 : false;
     },
   });
 
@@ -114,7 +118,9 @@ export default function CampaignDetailPage() {
         );
       }
       if (data.remaining) {
-        toast.info(`Batch traité: ${data.success} succès, ${data.errors} erreurs. Batches restantes.`);
+        toast.info(
+          `Étape traitée : ${data.success} succès, ${data.errors} erreurs. Il reste des destinataires.`
+        );
       } else {
         toast.success("Campagne terminée !");
       }
@@ -139,8 +145,22 @@ export default function CampaignDetailPage() {
   }
 
   const progress = job.total_count > 0 ? Math.round((job.processed_count / job.total_count) * 100) : 0;
-  const cfg = STATUS_CONFIG[job.status] ?? STATUS_CONFIG.pending;
+  const cfg = STATUS_CONFIG[job.status] ?? STATUS_CONFIG.draft;
   const Icon = cfg.icon;
+
+  const handleLaunchDraft = async () => {
+    const res = await fetch(`/api/campaigns/jobs/${id}/launch`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      toast.error(j?.error?.message ?? "Impossible de lancer la campagne");
+      return;
+    }
+    toast.success("Campagne lancée !");
+    void queryClient.invalidateQueries({ queryKey: ["campaign-job", id] });
+  };
 
   const batchSize = job.batch_size || 10;
   const prospects = job.prospects ?? [];
@@ -175,7 +195,7 @@ export default function CampaignDetailPage() {
         </Link>
         <div className="flex-1">
           <h1 className="text-xl font-bold">
-            Campagne {job.type === "invite" ? "Invitation" : "Contact"} LinkedIn
+            Campagne {campaignLabel(configFromJobType(job.type))}
           </h1>
           <p className="text-sm text-muted-foreground">
             Créée le{" "}
@@ -206,20 +226,30 @@ export default function CampaignDetailPage() {
               <span className="text-muted-foreground">Type d’action : </span>
               <span className="font-medium">
                 {job.type === "invite"
-                  ? "Demande de connexion LinkedIn (note d’invitation)"
-                  : "Premier message dans une conversation LinkedIn"}
+                  ? "Demande de connexion LinkedIn (sans note)"
+                  : job.type === "invite_with_note"
+                    ? "Demande de connexion LinkedIn avec note personnalisée"
+                    : job.type === "contact"
+                      ? "Premier message dans une conversation LinkedIn"
+                      : "Message WhatsApp direct"}
               </span>
             </li>
             <li>
               <span className="text-muted-foreground">Canal : </span>
-              <span className="font-medium">LinkedIn (compte relié à Andoxa)</span>
+              <span className="font-medium">
+                {job.type === "whatsapp"
+                  ? "WhatsApp (compte relié à Andoxa)"
+                  : "LinkedIn (compte relié à Andoxa)"}
+              </span>
             </li>
             <li>
               <span className="text-muted-foreground">Rythme : </span>
               <span className="font-medium">
-                {job.total_count > batchSize
-                  ? `Lots de ${batchSize} prospects, pause d’environ ${Math.round((job.delay_ms ?? 120000) / 60000)} min entre chaque lot`
-                  : "Traitement sans file d’attente par lots (tous dans le même volume)"}
+                {job.status === "draft"
+                  ? "Brouillon — l’envoi démarre après lancement"
+                  : job.total_count > batchSize
+                    ? "Envoi échelonné"
+                    : "Envoi en une fois"}
               </span>
             </li>
           </ul>
@@ -284,10 +314,10 @@ export default function CampaignDetailPage() {
         </div>
       </div>
 
-      {/* Batch progress indicators */}
+      {/* Envoi découpé en étapes (affichage sans détail technique) */}
       {batches.length > 1 && (
         <div className="space-y-2">
-          <p className="text-sm font-medium">Progression par batch</p>
+          <p className="text-sm font-medium">Avancement par étape</p>
           <div className="flex flex-wrap gap-2">
             {batches.map((b) => (
               <div
@@ -298,7 +328,7 @@ export default function CampaignDetailPage() {
                     : "border-muted bg-muted/30"
                 }`}
               >
-                <span className="font-medium">Batch {b.index}:</span>{" "}
+                <span className="font-medium">Étape {b.index} :</span>{" "}
                 {b.done ? (
                   <span>
                     {b.success} envoyés
@@ -327,6 +357,12 @@ export default function CampaignDetailPage() {
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2">
+        {job.status === "draft" && (
+          <Button onClick={() => void handleLaunchDraft()}>
+            <Play className="mr-2 h-4 w-4" />
+            Lancer la campagne
+          </Button>
+        )}
         {(job.status === "pending" || job.status === "paused") && (
           <Button
             onClick={() => {
@@ -358,7 +394,7 @@ export default function CampaignDetailPage() {
             ) : (
               <RefreshCw className="mr-2 h-4 w-4" />
             )}
-            Traiter un batch
+            Traiter l’étape suivante
           </Button>
         )}
       </div>
@@ -373,7 +409,7 @@ export default function CampaignDetailPage() {
             <thead className="bg-muted/40 sticky top-0">
               <tr>
                 {batches.length > 1 && (
-                  <th className="px-4 py-3 text-left font-medium w-16">Batch</th>
+                  <th className="px-4 py-3 text-left font-medium w-16">Étape</th>
                 )}
                 <th className="px-4 py-3 text-left font-medium">Prospect</th>
                 <th className="px-4 py-3 text-left font-medium">Statut</th>

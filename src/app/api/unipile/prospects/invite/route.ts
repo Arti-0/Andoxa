@@ -1,11 +1,12 @@
 import { ApiError, createApiHandler, Errors, parseBody } from "@/lib/api";
-import { LINKEDIN_INVITE_DAILY_CAP } from "@/lib/config/linkedin-invite";
+import {
+  incrementUsageCounter,
+  weeklyPeriodKey,
+} from "@/lib/campaigns/throttle";
+import { getLinkedInInviteWeeklyUsageCap } from "@/lib/linkedin/limits";
+import { createServiceClient } from "@/lib/supabase/service";
 import { UnipileApiError } from "@/lib/unipile/client";
 import { getAccountIdForUser } from "@/lib/unipile/account";
-import {
-  getLinkedInInviteUsage,
-  incrementLinkedInInviteUsage,
-} from "@/lib/unipile/invite-usage";
 import { sendLinkedInInviteForProspect } from "@/lib/unipile/linkedin-single-invite";
 
 /**
@@ -23,11 +24,30 @@ export const POST = createApiHandler(async (req, ctx) => {
     throw Errors.validation({ prospect_id: "Requis" });
   }
 
-  const usage = await getLinkedInInviteUsage(ctx.supabase, ctx.userId);
-  if (usage.used >= usage.cap) {
+  const week = weeklyPeriodKey();
+
+  const { data: acct } = await ctx.supabase
+    .from("user_unipile_accounts")
+    .select("is_premium")
+    .eq("user_id", ctx.userId)
+    .eq("account_type", "LINKEDIN")
+    .maybeSingle();
+
+  const cap = getLinkedInInviteWeeklyUsageCap(!!acct?.is_premium);
+
+  const { data: counterRow } = await ctx.supabase
+    .from("usage_counters")
+    .select("count")
+    .eq("user_id", ctx.userId)
+    .eq("action", "linkedin_invite")
+    .eq("period_key", week)
+    .maybeSingle();
+
+  const used = counterRow?.count ?? 0;
+  if (used >= cap) {
     throw new ApiError(
       "RATE_LIMIT",
-      `Limite quotidienne d'invitations LinkedIn atteinte (${LINKEDIN_INVITE_DAILY_CAP}). Réessayez demain.`,
+      `Limite hebdomadaire d'invitations LinkedIn atteinte (${cap}). Réessayez la semaine prochaine.`,
       429
     );
   }
@@ -57,7 +77,13 @@ export const POST = createApiHandler(async (req, ctx) => {
     throw Errors.badRequest(msg);
   }
 
-  await incrementLinkedInInviteUsage(ctx.supabase, ctx.userId);
+  const serviceSupabase = createServiceClient();
+  void incrementUsageCounter(
+    serviceSupabase,
+    ctx.userId,
+    "linkedin_invite",
+    week
+  );
 
-  return { ok: true as const, used: usage.used + 1, cap: usage.cap };
+  return { ok: true as const, used: used + 1, cap };
 });

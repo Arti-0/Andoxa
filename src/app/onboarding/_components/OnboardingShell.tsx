@@ -30,7 +30,6 @@ import {
   OnboardingRuntimeContext,
   type OnboardingRuntimeContextValue,
 } from "./OnboardingContext";
-import { OnboardingLinkedInReturnSync } from "./OnboardingLinkedInReturnSync";
 import { OnboardingStepUrlHydration } from "./OnboardingStepUrlHydration";
 
 const STEP_COMPONENTS: Record<StepId, ComponentType<StepProps>> = {
@@ -109,8 +108,6 @@ export function OnboardingShell({
       setOrgName: profile.setOrgName,
       orgLogoRemoteUrl: profile.orgLogoRemoteUrl,
       setOrgLogoRemoteUrl: profile.setOrgLogoRemoteUrl,
-      linkedinLinked: profile.linkedinLinked,
-      liProfile: profile.liProfile,
       whatsappConnected: profile.whatsappConnected,
       refresh: profile.refresh,
       fetchUnipile: profile.fetchUnipile,
@@ -126,8 +123,6 @@ export function OnboardingShell({
       profile.setOrgName,
       profile.orgLogoRemoteUrl,
       profile.setOrgLogoRemoteUrl,
-      profile.linkedinLinked,
-      profile.liProfile,
       profile.whatsappConnected,
       profile.refresh,
       profile.fetchUnipile,
@@ -190,7 +185,6 @@ export function OnboardingShell({
           totalSteps={totalSteps}
           onHydrate={onHydrateStep}
         />
-        <OnboardingLinkedInReturnSync refresh={profile.refresh} />
       </Suspense>
       <div className="flex min-h-dvh w-full flex-col bg-zinc-50 dark:bg-[#0A0A0A]">
         <header className="relative flex h-13 shrink-0 items-center px-3 pt-[env(safe-area-inset-top,0px)] sm:h-14 sm:px-4">

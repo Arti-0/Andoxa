@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   const { data: runningJobs, error: jobsError } = await supabase
     .from("campaign_jobs")
     .select("id, delay_ms, last_batch_at")
-    .eq("status", "running")
+    .in("status", ["pending", "running"])
     .order("last_batch_at", { ascending: true, nullsFirst: true });
 
   if (jobsError) {

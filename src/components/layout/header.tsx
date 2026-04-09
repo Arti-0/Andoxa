@@ -10,8 +10,6 @@ import { HeaderProspectSearch } from "./header-prospect-search";
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Tableau de bord",
   "/crm": "CRM",
-  "/installation": "Installation",
-  "/linkedin": "Installation",
   "/calendar": "Calendrier",
   "/settings": "Paramètres",
   "/messagerie": "Messagerie",

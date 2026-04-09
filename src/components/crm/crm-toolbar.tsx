@@ -18,7 +18,7 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useMemo } from "react";
+import { useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Popover,
@@ -36,6 +36,7 @@ import {
 import { ProspectCreateDialog } from "./prospect-create-dialog";
 import { ProspectImportDialog } from "./prospect-import-dialog";
 import { CampaignModal } from "@/components/campaigns/campaign-modal";
+import type { CampaignConfig } from "@/lib/campaigns/types";
 import type { BddItem, FilterState } from "./crm-table";
 
 export type CrmView = "listes" | "prospects" | "corbeille" | "kanban";
@@ -95,6 +96,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { BddRow, ListesFilterState } from "./crm-table";
 import type { Prospect } from "@/lib/types/prospects";
+import { useLinkedInAccount } from "@/hooks/use-linkedin-account";
 
 interface CrmToolbarProps {
   view: CrmView;
@@ -126,7 +128,9 @@ export function CrmToolbar({
   const router = useRouter();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
-  const [campaignAction, setCampaignAction] = useState<"invite" | "contact" | null>(null);
+  const [campaignConfig, setCampaignConfig] = useState<CampaignConfig | null>(null);
+  const { data: linkedInAccount } = useLinkedInAccount();
+  const linkedinIsPremium = linkedInAccount?.linkedin_is_premium ?? false;
 
   const prospectsWithLinkedin = selectedProspects.filter((p) => p.linkedin?.trim());
   const prospectsWithPhone = selectedProspects.filter((p) => p.phone?.trim());
@@ -134,14 +138,14 @@ export function CrmToolbar({
   const hasListesSelection = selectedListes.length > 0;
   const hasAnySelection = selectedProspects.length > 0 || hasListesSelection;
 
-  const openCampaignModal = (action: "invite" | "contact") => {
-    setCampaignAction(action);
+  const openCampaignModal = (config: CampaignConfig) => {
+    setCampaignConfig(config);
     setShowCampaignModal(true);
   };
 
   const closeCampaignModal = () => {
     setShowCampaignModal(false);
-    setCampaignAction(null);
+    setCampaignConfig(null);
   };
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showFiltersOpen, setShowFiltersOpen] = useState(false);
@@ -465,7 +469,7 @@ export function CrmToolbar({
           <div className="flex flex-wrap items-center gap-2 pt-1 border-t">
             <button
               type="button"
-              onClick={() => openCampaignModal("invite")}
+              onClick={() => openCampaignModal({ channel: "linkedin" })}
               className="flex items-center gap-2 rounded-lg border border-primary px-3 py-1.5 text-sm text-primary hover:bg-primary/10"
             >
               <UserPlus className="h-4 w-4" />
@@ -496,9 +500,10 @@ export function CrmToolbar({
       <CampaignModal
         open={showCampaignModal}
         onOpenChange={(open) => !open && closeCampaignModal()}
-        action={campaignAction}
+        config={campaignConfig}
         prospects={prospectsWithLinkedin}
         onSuccess={closeCampaignModal}
+        isPremium={linkedinIsPremium}
       />
     </>
   );

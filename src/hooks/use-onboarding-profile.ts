@@ -1,15 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { linkedinDisplayFromUser } from "@/lib/utils/onboarding-helpers";
 
 type WorkspaceMeResponse = {
   user: {
     id: string;
-    identities?: Array<{
-      provider: string;
-      identity_data?: Record<string, unknown>;
-    }>;
     user_metadata?: Record<string, unknown>;
   } | null;
   profile: {
@@ -30,11 +25,6 @@ export function useOnboardingProfile(initialFullName: string) {
   const [orgLogoRemoteUrl, setOrgLogoRemoteUrl] = useState<string | null>(
     null
   );
-  const [linkedinLinked, setLinkedinLinked] = useState(false);
-  const [liProfile, setLiProfile] = useState<{
-    name: string;
-    picture: string | null;
-  } | null>(null);
   const [whatsappConnected, setWhatsappConnected] = useState(false);
 
   const nameHydrated = useRef(false);
@@ -50,15 +40,6 @@ export function useOnboardingProfile(initialFullName: string) {
       const data = (await res.json()) as WorkspaceMeResponse;
 
       if (!data.user) return;
-
-      const identities = data.user.identities ?? [];
-      const linked = identities.some((i) => i.provider === "linkedin_oidc");
-      setLinkedinLinked(linked);
-      if (linked) {
-        setLiProfile(linkedinDisplayFromUser(data.user));
-      } else {
-        setLiProfile(null);
-      }
 
       if (data.profile?.active_organization_id) {
         setOrgId(data.profile.active_organization_id);
@@ -115,8 +96,6 @@ export function useOnboardingProfile(initialFullName: string) {
     setOrgName,
     orgLogoRemoteUrl,
     setOrgLogoRemoteUrl,
-    linkedinLinked,
-    liProfile,
     whatsappConnected,
     setWhatsappConnected,
     refresh,

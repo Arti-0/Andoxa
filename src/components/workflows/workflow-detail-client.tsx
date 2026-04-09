@@ -67,6 +67,7 @@ import { WorkflowListIcon } from "./workflow-list-icon";
 import { WorkflowStepWaitModal } from "./workflow-step-wait-modal";
 import { WorkflowStepMessageModal } from "./workflow-step-message-modal";
 import { WorkflowListEnrollModal } from "./workflow-list-enroll-modal";
+import { useLinkedInAccount } from "@/hooks/use-linkedin-account";
 
 const STEP_TYPE_LABELS: Record<WorkflowStepType, string> = {
   wait: "Attente",
@@ -214,6 +215,8 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
 
   const [editWaitIndex, setEditWaitIndex] = useState<number | null>(null);
   const [editMsgIndex, setEditMsgIndex] = useState<number | null>(null);
+  const { data: linkedInAccount } = useLinkedInAccount();
+  const linkedinIsPremium = linkedInAccount?.linkedin_is_premium ?? false;
 
   const [runsLoading, setRunsLoading] = useState(false);
   const [runs, setRuns] = useState<
@@ -625,7 +628,7 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
             <AlertDescription className="text-amber-950/90 dark:text-amber-100/90">
               <p className="mb-2 text-pretty">{launchPrereqMessage}</p>
               <p className="text-xs">
-                <Link href="/installation" className="font-medium underline underline-offset-2">
+                <Link href="/settings" className="font-medium underline underline-offset-2">
                   Connexion des comptes (LinkedIn / WhatsApp)
                 </Link>
                 {" · "}
@@ -1084,6 +1087,7 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
               (steps[editMsgIndex].config as { messageTemplate?: string }).messageTemplate ?? ""
             }
             onSave={(msg) => updateStepConfig(editMsgIndex, { messageTemplate: msg })}
+            isPremium={linkedinIsPremium}
           />
         )}
 
