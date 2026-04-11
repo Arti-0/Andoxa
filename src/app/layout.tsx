@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { ThemeProvider } from "next-themes";
+import { Analytics } from "@vercel/analytics/next";
 import QueryProvider from "@/components/QueryProvider";
 import { SentryClientInit } from "@/components/SentryClientInit";
 import { Toaster } from "@/components/ui/sonner";
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </QueryProvider>
           </ThemeProvider>
         </SentryClientInit>
+        <Analytics />
       </body>
     </html>
   );
