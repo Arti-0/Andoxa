@@ -19,6 +19,7 @@ type ResponseCookieOptions = Parameters<
  */
 const PUBLIC_ROUTES = [
     '/',
+    '/extension',
     '/auth',
     '/auth/login',
     '/auth/invite',
@@ -41,7 +42,17 @@ const PUBLIC_ROUTES = [
 // Webhooks (no Supabase session — must never run auth gates)
 // ─────────────────────────────────────────────────────────────────────────────
 // Stripe: POST /api/paiements/webhook (signing secret). Unipile: /api/webhooks/unipile.
-// All /api/* are excluded from this file's matcher; listed here for documentation only.
+// API routes are matched separately (see `config.matcher`) so we can answer OPTIONS
+// (CORS preflight) for the browser extension without running auth gates.
+
+const API_CORS_PREFLIGHT = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods':
+        'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD',
+    'Access-Control-Allow-Headers':
+        'Authorization, Content-Type, X-Requested-With',
+    'Access-Control-Max-Age': '86400',
+} as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -98,6 +109,17 @@ function isProtectedAssetPath(pathname: string) {
 
 export async function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
+
+    if (pathname.startsWith('/api/')) {
+        if (request.method === 'OPTIONS') {
+            return new NextResponse(null, {
+                status: 204,
+                headers: API_CORS_PREFLIGHT,
+            });
+        }
+        return NextResponse.next({ request });
+    }
+
     let response = NextResponse.next({ request });
 
     if (
@@ -250,5 +272,6 @@ export async function proxy(request: NextRequest) {
 export const config = {
     matcher: [
         '/((?!_next/static|_next/image|favicon.ico|api|assets|robots.txt|sitemap.xml).*)',
+        '/api/:path*',
     ],
 };

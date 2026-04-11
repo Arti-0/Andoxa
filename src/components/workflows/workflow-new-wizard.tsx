@@ -76,7 +76,7 @@ function newStepId(): string {
 function defaultConfigForType(type: WorkflowStepType): WorkflowStep["config"] {
   switch (type) {
     case "wait":
-      return { durationHours: 24 };
+      return { durationHours: 24, onlyIfNoReply: false };
     case "linkedin_invite":
     case "linkedin_message":
       return { messageTemplate: "" };
@@ -387,8 +387,15 @@ export function WorkflowNewPageClient() {
         <WorkflowStepWaitModal
           open
           onOpenChange={(o) => !o && setEditWaitIndex(null)}
-          durationHours={(steps[editWaitIndex].config as { durationHours: number }).durationHours}
-          onSave={(hours) => updateStepConfig(editWaitIndex, { durationHours: hours })}
+          durationHours={
+            (steps[editWaitIndex].config as { durationHours: number }).durationHours
+          }
+          onlyIfNoReply={
+            (steps[editWaitIndex].config as { onlyIfNoReply?: boolean }).onlyIfNoReply
+          }
+          onSave={(hours, onlyIfNoReply) =>
+            updateStepConfig(editWaitIndex, { durationHours: hours, onlyIfNoReply })
+          }
         />
       )}
 

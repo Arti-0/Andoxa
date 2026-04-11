@@ -6,7 +6,10 @@ import {
 } from "@/lib/unipile/account";
 import { applyMessageVariables, extractLinkedInSlug } from "@/lib/unipile/campaign";
 import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";
-import { prospectHasLinkedInInboundReply } from "@/lib/unipile/linkedin-inbound-reply";
+import {
+  prospectHasInboundReplyAfter,
+  prospectHasLinkedInInboundReply,
+} from "@/lib/unipile/linkedin-inbound-reply";
 import type { UnipileChat } from "@/lib/unipile/types";
 import type { Database } from "@/lib/types/supabase";
 import {
@@ -90,16 +93,43 @@ type HandlerContext = {
   prospect: ProspectRow;
   config: Record<string, unknown>;
   startedByUserId: string;
+  executionId: string;
+  /** `run_after` courant de l'exécution (pour timeout / invite déjà en attente) */
+  executionRunAfter: string;
 };
 
-async function handleWait(ctx: HandlerContext): Promise<void> {
+type StepHandlerResult = {
+  awaitingConnection: boolean;
+  /** Si défini, remplace le délai avant l’étape suivante (ex. wait immédiat). */
+  delayOverrideMs?: number;
+};
+
+async function handleWait(ctx: HandlerContext): Promise<StepHandlerResult> {
   const hours = Number(ctx.config.durationHours);
   if (!Number.isFinite(hours) || hours <= 0) {
     throw new Error("Durée d’attente invalide");
   }
+
+  const onlyIfNoReply = Boolean(ctx.config.onlyIfNoReply);
+
+  if (onlyIfNoReply) {
+    const hasReplied = await prospectHasInboundReplyAfter(
+      ctx.supabase,
+      ctx.prospect.id,
+      ctx.run.organization_id,
+      ctx.executionRunAfter
+    );
+    if (hasReplied) {
+      return { awaitingConnection: false, delayOverrideMs: 0 };
+    }
+  }
+
+  return { awaitingConnection: false };
 }
 
-async function handleLinkedInInvite(ctx: HandlerContext): Promise<void> {
+async function handleLinkedInInvite(
+  ctx: HandlerContext
+): Promise<StepHandlerResult> {
   if (
     await prospectHasLinkedInInboundReply(
       ctx.supabase,
@@ -107,8 +137,32 @@ async function handleLinkedInInvite(ctx: HandlerContext): Promise<void> {
       ctx.run.organization_id
     )
   ) {
-    return;
+    return { awaitingConnection: false };
   }
+
+  const pendingId =
+    typeof ctx.config.pending_provider_id === "string"
+      ? ctx.config.pending_provider_id.trim()
+      : "";
+  if (pendingId.length > 0) {
+    const { data: relWhilePending } = await ctx.supabase
+      .from("linkedin_relations")
+      .select("id")
+      .eq("user_id", ctx.startedByUserId)
+      .eq("attendee_id", pendingId)
+      .maybeSingle();
+    if (relWhilePending) {
+      return { awaitingConnection: false };
+    }
+    const deadline = Date.parse(ctx.executionRunAfter);
+    if (!Number.isFinite(deadline) || Date.now() < deadline) {
+      return { awaitingConnection: true };
+    }
+    throw new Error(
+      "Invitation LinkedIn non acceptée dans le délai (30 jours)."
+    );
+  }
+
   const accountId = await getLinkedInAccountIdForUserId(
     ctx.supabase,
     ctx.startedByUserId
@@ -137,6 +191,20 @@ async function handleLinkedInInvite(ctx: HandlerContext): Promise<void> {
     throw new Error("Impossible de résoudre le profil LinkedIn");
   }
 
+  const { data: existingRelation } = await ctx.supabase
+    .from("linkedin_relations")
+    .select("id")
+    .eq("user_id", ctx.startedByUserId)
+    .eq("attendee_id", providerId)
+    .maybeSingle();
+
+  if (existingRelation) {
+    console.info(
+      "[workflow] linkedin_invite: already connected (linkedin_relations), skipping invite"
+    );
+    return { awaitingConnection: false };
+  }
+
   await unipileFetch("/users/invite", {
     method: "POST",
     body: JSON.stringify({
@@ -145,6 +213,27 @@ async function handleLinkedInInvite(ctx: HandlerContext): Promise<void> {
       message: note,
     }),
   });
+
+  const AWAIT_CONNECTION_TIMEOUT_MS = 30 * 24 * 60 * 60 * 1000;
+  const runAfter = new Date(
+    Date.now() + AWAIT_CONNECTION_TIMEOUT_MS
+  ).toISOString();
+
+  await ctx.supabase
+    .from("workflow_step_executions")
+    .update({
+      config_snapshot: {
+        ...ctx.config,
+        pending_provider_id: providerId,
+        pending_account_id: accountId,
+      },
+      run_after: runAfter,
+      status: "pending",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", ctx.executionId);
+
+  return { awaitingConnection: true };
 }
 
 async function handleLinkedInMessage(ctx: HandlerContext): Promise<void> {
@@ -237,12 +326,18 @@ async function handleWhatsAppMessage(ctx: HandlerContext): Promise<void> {
 
 const HANDLERS: Record<
   WorkflowStepType,
-  (ctx: HandlerContext) => Promise<void>
+  (ctx: HandlerContext) => Promise<StepHandlerResult>
 > = {
-  wait: handleWait,
+  wait: (ctx) => handleWait(ctx),
   linkedin_invite: handleLinkedInInvite,
-  linkedin_message: handleLinkedInMessage,
-  whatsapp_message: handleWhatsAppMessage,
+  linkedin_message: async (ctx) => {
+    await handleLinkedInMessage(ctx);
+    return { awaitingConnection: false };
+  },
+  whatsapp_message: async (ctx) => {
+    await handleWhatsAppMessage(ctx);
+    return { awaitingConnection: false };
+  },
 };
 
 export type ProcessExecutionResult =
@@ -366,14 +461,20 @@ export async function processWorkflowStepExecution(
     return { outcome: "error", message: msg };
   }
 
+  let awaitingConnection = false;
+  let delayOverrideMs: number | undefined;
   try {
-    await handler({
+    const result = await handler({
       supabase,
       run: runRow,
       prospect: prospect as ProspectRow,
       config,
       startedByUserId: runRow.started_by,
+      executionId,
+      executionRunAfter: execution.run_after,
     });
+    awaitingConnection = result.awaitingConnection;
+    delayOverrideMs = result.delayOverrideMs;
   } catch (err) {
     const msg = err instanceof UnipileApiError ? err.message : String(err);
     const attempts = (execution.attempts ?? 0) + 1;
@@ -428,6 +529,17 @@ export async function processWorkflowStepExecution(
     return { outcome: "skipped", reason: "retry_scheduled" };
   }
 
+  if (awaitingConnection) {
+    await supabase
+      .from("workflow_step_executions")
+      .update({
+        status: "pending",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", executionId);
+    return { outcome: "processed" };
+  }
+
   const doneIso = new Date().toISOString();
 
   await supabase
@@ -455,6 +567,9 @@ export async function processWorkflowStepExecution(
   if (step.type === "wait") {
     const hours = Number(config.durationHours);
     delayBeforeNextMs = Math.round(hours * 3600 * 1000);
+  }
+  if (delayOverrideMs !== undefined) {
+    delayBeforeNextMs = delayOverrideMs;
   }
 
   const next = await enqueueNextStep(
@@ -548,6 +663,8 @@ async function failExecution(
 
 /**
  * Pick one due execution (pending, run_after <= now, run is running).
+ * Les `linkedin_invite` en attente de connexion ont un `run_after` repoussé
+ * (ex. +30 j) : ils n’apparaissent pas ici tant que le webhook n’a pas avancé le run.
  */
 export async function pickDueWorkflowExecution(
   supabase: SupabaseClient<Database>

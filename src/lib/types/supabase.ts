@@ -766,6 +766,26 @@ export interface Database {
                 };
                 Relationships: [];
             };
+            linkedin_relations: {
+                Row: {
+                    id: string;
+                    user_id: string;
+                    attendee_id: string;
+                    connected_at: string;
+                    created_at: string;
+                };
+                Insert: {
+                    id?: string;
+                    user_id: string;
+                    attendee_id: string;
+                    connected_at?: string;
+                    created_at?: string;
+                };
+                Update: {
+                    connected_at?: string;
+                };
+                Relationships: [];
+            };
             unipile_chat_prospects: {
                 Row: {
                     id: string;
@@ -1276,6 +1296,29 @@ export interface Database {
                     p_sources: string[] | null;
                 };
                 Returns: Json;
+            };
+            get_bdd_with_counts: {
+                Args: {
+                    p_organization_id: string;
+                    p_limit?: number;
+                    p_offset?: number;
+                    p_search?: string | null;
+                    p_source?: string | null;
+                    p_proprietaire?: string | null;
+                    p_date_from?: string | null;
+                    p_date_to?: string | null;
+                };
+                Returns: {
+                    id: string;
+                    name: string;
+                    source: string;
+                    proprietaire: string | null;
+                    created_at: string | null;
+                    updated_at: string | null;
+                    prospects_count: number;
+                    phones_count: number;
+                    total_count: number;
+                }[];
             };
             get_unseen_inbox_count: {
                 Args: { p_org_id: string };

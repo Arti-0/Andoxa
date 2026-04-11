@@ -11,6 +11,8 @@ export type WorkflowStepType = (typeof WORKFLOW_STEP_TYPES)[number];
 
 const waitConfigSchema = z.object({
   durationHours: z.number().positive(),
+  /** Si true : n’attendre que si le prospect n’a pas répondu depuis le début de cette étape. */
+  onlyIfNoReply: z.boolean().optional().default(false),
 });
 
 const linkedinInviteConfigSchema = z.object({

@@ -83,13 +83,17 @@ export function applyMessageVariables(
   return applyImportMetadataVariables(result, prospect.metadata);
 }
 
-const LINKEDIN_SLUG_RE = /linkedin\.com\/in\/([^/?]+)/i;
-
 /**
  * Extract LinkedIn profile slug from URL (e.g. "john-doe" from linkedin.com/in/john-doe)
  */
 export function extractLinkedInSlug(url: string | null | undefined): string | null {
   if (!url?.trim()) return null;
-  const m = url.match(LINKEDIN_SLUG_RE);
-  return m ? m[1].replace(/\/$/, "") : null;
+  try {
+    const decoded = decodeURIComponent(url);
+    const match = decoded.match(/linkedin\.com\/in\/([^/?#]+)/i);
+    return match?.[1]?.replace(/\/$/, "") ?? null;
+  } catch {
+    const match = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
+    return match?.[1]?.replace(/\/$/, "") ?? null;
+  }
 }

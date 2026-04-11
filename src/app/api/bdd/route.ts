@@ -3,6 +3,7 @@ import {
   Errors,
   getSearchParams,
   getPagination,
+  parseBody,
 } from "../../../lib/api";
 
 /**
@@ -19,98 +20,94 @@ export const GET = createApiHandler(async (req, ctx) => {
   const params = getSearchParams(req);
   const { page, pageSize, offset } = getPagination(req);
 
-  let query = ctx.supabase
-    .from("bdd")
-    .select("*", { count: "exact" })
-    .eq("organization_id", workspaceId)
-    .order("created_at", { ascending: false })
-    .range(offset, offset + pageSize - 1);
-
-  if (params.source) {
-    query = query.in("source", params.source.split(","));
-  }
-  if (params.proprietaire) {
-    query = query.eq("proprietaire", params.proprietaire);
-  }
-  if (params.date_from) {
-    query = query.gte("created_at", params.date_from);
-  }
-  if (params.date_to) {
-    query = query.lte("created_at", params.date_to + "T23:59:59.999Z");
-  }
-  if (params.search?.trim()) {
-    query = query.ilike("name", `%${params.search.trim()}%`);
-  }
-
-  const { data, error, count } = await query;
+  const { data, error } = await ctx.supabase.rpc("get_bdd_with_counts", {
+    p_organization_id: workspaceId,
+    p_limit: pageSize,
+    p_offset: offset,
+    p_search: params.search?.trim() || null,
+    p_source: params.source?.trim() || null,
+    p_proprietaire: params.proprietaire?.trim() || null,
+    p_date_from: params.date_from?.trim() || null,
+    p_date_to: params.date_to?.trim()
+      ? `${params.date_to.trim()}T23:59:59.999Z`
+      : null,
+  });
 
   if (error) {
-    console.error("[API] BDD fetch error:", error);
+    console.error("[API] BDD RPC error:", error);
     throw Errors.internal("Failed to fetch listes d'import");
   }
 
-  const items = (data ?? []) as Array<{
+  const rows = (data ?? []) as Array<{
     id: string;
     name: string;
-    proprietaire: string | null;
     source: string;
+    proprietaire: string | null;
     created_at: string | null;
-    [k: string]: unknown;
+    updated_at: string | null;
+    prospects_count: number | string;
+    phones_count: number | string;
+    total_count: number | string;
   }>;
 
-  // Fetch prospects count per list in parallel
-  const bddIds = items.map((r) => r.id);
-  const countPromises =
-    bddIds.length > 0
-      ? bddIds.map((bddId) =>
-          ctx.supabase
-            .from("prospects")
-            .select("id", { count: "exact", head: true })
-            .eq("organization_id", workspaceId)
-            .is("deleted_at", null)
-            .eq("bdd_id", bddId)
-        )
-      : [];
+  const total = rows[0] != null ? Number(rows[0].total_count) : 0;
 
-  const countResults = await Promise.all(countPromises);
-  const prospectsCountByBddId = new Map<string, number>();
-  bddIds.forEach((id, i) => {
-    const res = countResults[i];
-    prospectsCountByBddId.set(id, res?.count ?? 0);
-  });
-
-  const phoneCountPromises =
-    bddIds.length > 0
-      ? bddIds.map((bddId) =>
-          ctx.supabase
-            .from("prospects")
-            .select("id", { count: "exact", head: true })
-            .eq("organization_id", workspaceId)
-            .is("deleted_at", null)
-            .eq("bdd_id", bddId)
-            .not("phone", "is", null)
-            .neq("phone", "")
-        )
-      : [];
-
-  const phoneCountResults = await Promise.all(phoneCountPromises);
-  const phonesCountByBddId = new Map<string, number>();
-  bddIds.forEach((id, i) => {
-    const res = phoneCountResults[i];
-    phonesCountByBddId.set(id, res?.count ?? 0);
-  });
-
-  const itemsWithCount = items.map((row) => ({
-    ...row,
-    prospects_count: prospectsCountByBddId.get(row.id) ?? 0,
-    phones_count: phonesCountByBddId.get(row.id) ?? 0,
+  const items = rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    source: row.source,
+    proprietaire: row.proprietaire,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    prospects_count: Number(row.prospects_count),
+    phones_count: Number(row.phones_count),
   }));
 
   return {
-    items: itemsWithCount,
-    total: count ?? 0,
+    items,
+    total,
     page,
     pageSize,
-    hasMore: (count ?? 0) > offset + pageSize,
+    hasMore: total > offset + pageSize,
+  };
+});
+
+/**
+ * POST /api/bdd
+ * Crée une liste d’import (BDD) dans le workspace courant.
+ */
+export const POST = createApiHandler(async (req, ctx) => {
+  if (!ctx.workspaceId) {
+    throw Errors.badRequest("Workspace required");
+  }
+
+  const body = await parseBody<{ name?: string }>(req);
+  const name = String(body.name ?? "").trim();
+  if (!name) {
+    throw Errors.validation({ name: "Le nom de la liste est requis" });
+  }
+
+  const { data, error } = await ctx.supabase
+    .from("bdd")
+    .insert({
+      name,
+      organization_id: ctx.workspaceId,
+      proprietaire: ctx.userId,
+      source: "linkedin_extension",
+      csv_url: null,
+      csv_hash: null,
+    })
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    console.error("[API] BDD create error:", error);
+    throw Errors.internal("Impossible de creer la liste");
+  }
+
+  return {
+    ...data,
+    prospects_count: 0,
+    phones_count: 0,
   };
 });

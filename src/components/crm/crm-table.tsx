@@ -254,6 +254,7 @@ function ProspectsTableContent({
       return (json.data ?? json) as ProspectsApiResponse;
     },
     enabled: !!workspaceId,
+    staleTime: 30_000,
     placeholderData: (prev) => prev,
   });
 
@@ -274,7 +275,7 @@ function ProspectsTableContent({
       } | null;
     },
     enabled: !!workspaceId,
-    staleTime: 30_000,
+    staleTime: 60_000,
   });
 
   const inviteCap = getLinkedInInviteWeeklyUsageCap(

@@ -5,7 +5,7 @@ import {
   parseWorkflowDefinition,
 } from "@/lib/workflows";
 
-const MAX_RUNS_SCAN = 4000;
+const MAX_RUNS_SCAN = 1000;
 
 function getWorkflowIdFromUrl(req: Request): string {
   const segments = new URL(req.url).pathname.split("/").filter(Boolean);
@@ -68,23 +68,6 @@ export const GET = createApiHandler(async (req, ctx) => {
   }
 
   const bddKeys = [...countByBdd.keys()];
-  let bddNameById: Record<string, string> = {};
-  if (bddKeys.length) {
-    const { data: bdds } = await ctx.supabase
-      .from("bdd")
-      .select("id, name")
-      .in("id", bddKeys)
-      .eq("organization_id", ctx.workspaceId);
-    bddNameById = Object.fromEntries((bdds ?? []).map((b) => [b.id, b.name ?? "Liste"]));
-  }
-
-  const available_lists = bddKeys
-    .map((bdd_id) => ({
-      bdd_id,
-      name: bddNameById[bdd_id] ?? bdd_id.slice(0, 8),
-      run_count: countByBdd.get(bdd_id) ?? 0,
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name, "fr"));
 
   const filtered = filterRunsByBddId(all, bddId);
 
@@ -95,19 +78,68 @@ export const GET = createApiHandler(async (req, ctx) => {
   }
 
   const filteredIds = filtered.map((r) => r.id);
+
+  const [bddResult, execPendingResult, defsResult, execDoneResult, activityResult] =
+    await Promise.all([
+      bddKeys.length
+        ? ctx.supabase
+            .from("bdd")
+            .select("id, name")
+            .in("id", bddKeys)
+            .eq("organization_id", ctx.workspaceId)
+        : Promise.resolve({ data: [] as { id: string; name: string }[] | null }),
+
+      filteredIds.length
+        ? ctx.supabase
+            .from("workflow_step_executions")
+            .select("status")
+            .in("run_id", filteredIds)
+            .in("status", ["pending", "processing"])
+        : Promise.resolve({ data: [] as { status: string }[] | null }),
+
+      filteredIds.length
+        ? ctx.supabase
+            .from("workflow_runs")
+            .select("id, definition_snapshot")
+            .in("id", filteredIds)
+        : Promise.resolve(
+            { data: [] as { id: string; definition_snapshot: unknown }[] | null }
+          ),
+
+      filteredIds.length
+        ? ctx.supabase
+            .from("workflow_step_executions")
+            .select("run_id")
+            .in("run_id", filteredIds)
+            .eq("status", "completed")
+        : Promise.resolve({ data: [] as { run_id: string }[] | null }),
+
+      ctx.supabase
+        .from("prospect_activity")
+        .select("id, prospect_id, action, details, created_at")
+        .eq("organization_id", ctx.workspaceId)
+        .eq("workflow_id", workflowId)
+        .order("created_at", { ascending: false })
+        .limit(bddId ? 120 : 40),
+    ]);
+
+  const bddNameById: Record<string, string> = Object.fromEntries(
+    (bddResult.data ?? []).map((b) => [b.id, b.name ?? "Liste"])
+  );
+
+  const available_lists = bddKeys
+    .map((bdd_id) => ({
+      bdd_id,
+      name: bddNameById[bdd_id] ?? bdd_id.slice(0, 8),
+      run_count: countByBdd.get(bdd_id) ?? 0,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+
   let pendingSteps = 0;
   let processingSteps = 0;
-  if (filteredIds.length) {
-    const { data: execs } = await ctx.supabase
-      .from("workflow_step_executions")
-      .select("status")
-      .in("run_id", filteredIds)
-      .in("status", ["pending", "processing"]);
-
-    for (const e of execs ?? []) {
-      if (e.status === "pending") pendingSteps++;
-      if (e.status === "processing") processingSteps++;
-    }
+  for (const e of execPendingResult.data ?? []) {
+    if (e.status === "pending") pendingSteps++;
+    if (e.status === "processing") processingSteps++;
   }
 
   let stepsProgressPct: number | null = null;
@@ -115,26 +147,18 @@ export const GET = createApiHandler(async (req, ctx) => {
   const failedRuns = filtered.filter((r) => r.status === "failed").length;
   const sampleErrors: { prospect_id: string; message: string }[] = [];
 
+  const defs = defsResult.data ?? [];
+  const execDone = execDoneResult.data ?? [];
+
   if (filteredIds.length) {
-    const { data: defs } = await ctx.supabase
-      .from("workflow_runs")
-      .select("id, definition_snapshot")
-      .in("id", filteredIds);
-
-    const { data: execDone } = await ctx.supabase
-      .from("workflow_step_executions")
-      .select("run_id")
-      .in("run_id", filteredIds)
-      .eq("status", "completed");
-
     const completedByRun = new Map<string, number>();
-    for (const e of execDone ?? []) {
+    for (const e of execDone) {
       completedByRun.set(e.run_id, (completedByRun.get(e.run_id) ?? 0) + 1);
     }
 
     let totalStepSlots = 0;
     let completedStepSlots = 0;
-    for (const row of defs ?? []) {
+    for (const row of defs) {
       let n = 0;
       try {
         const def = parseWorkflowDefinition(row.definition_snapshot);
@@ -168,20 +192,13 @@ export const GET = createApiHandler(async (req, ctx) => {
   }
 
   const prospectSet = new Set(filtered.map((r) => r.prospect_id));
-
-  const { data: recentActivity } = await ctx.supabase
-    .from("prospect_activity")
-    .select("id, prospect_id, action, details, created_at")
-    .eq("organization_id", ctx.workspaceId)
-    .eq("workflow_id", workflowId)
-    .order("created_at", { ascending: false })
-    .limit(bddId ? 120 : 40);
+  const recentActivity = activityResult.data ?? [];
 
   const recentFiltered = bddId
-    ? (recentActivity ?? []).filter(
+    ? recentActivity.filter(
         (a) => a.prospect_id && prospectSet.has(a.prospect_id)
       )
-    : (recentActivity ?? []);
+    : recentActivity;
 
   const pids = [
     ...new Set(recentFiltered.map((a) => a.prospect_id).filter(Boolean)),

@@ -251,7 +251,9 @@ export function getProspectColumns(
             header: 'Contact',
             cell: ({ row }) => {
                 const p = row.original;
-                const hasChat = !!p.linked_chat_id;
+                const linkedChatId = p.linked_chat_id ?? null;
+                const hasDirectChat = !!linkedChatId;
+                const canOpenProspectForChat = !!p.linkedin;
                 const q = options?.inviteQuota;
                 const atCap = q != null && q.used >= q.cap;
                 const canRowInvite =
@@ -325,11 +327,20 @@ export function getProspectColumns(
                                 <ExternalLink className="h-4 w-4 text-muted-foreground" />
                             </a>
                         )}
-                        {hasChat ? (
+                        {hasDirectChat ? (
                             <Link
-                                href={`/messagerie?chat=${p.linked_chat_id}`}
+                                href={`/messagerie?chat=${encodeURIComponent(linkedChatId)}`}
                                 className="rounded p-1 hover:bg-accent"
                                 title="Ouvrir le chat"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                            </Link>
+                        ) : canOpenProspectForChat ? (
+                            <Link
+                                href={`/prospect/${p.id}`}
+                                className="rounded p-1 hover:bg-accent"
+                                title="Fiche prospect — messagerie depuis la fiche"
                                 onClick={(e) => e.stopPropagation()}
                             >
                                 <MessageSquare className="h-4 w-4 text-muted-foreground" />

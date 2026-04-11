@@ -155,6 +155,7 @@ export default function CampaignsPage() {
             return (Array.isArray(raw) ? raw : []) as CampaignJob[];
         },
         enabled: !!workspaceId,
+        staleTime: 30_000,
     });
 
     const { data: sessionsData, isLoading: sessionsLoading } = useQuery({
@@ -169,6 +170,7 @@ export default function CampaignsPage() {
             return d as { items: CallSession[]; total: number };
         },
         enabled: !!workspaceId,
+        staleTime: 30_000,
     });
 
     const jobs = Array.isArray(jobsData) ? jobsData : [];
@@ -232,6 +234,7 @@ export default function CampaignsPage() {
             };
         },
         enabled: !!workspaceId,
+        staleTime: 30_000,
     });
 
     const memberNames = useMemo(

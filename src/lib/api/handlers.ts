@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import * as Sentry from "@sentry/nextjs";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../types/supabase";
@@ -122,32 +123,59 @@ function createErrorResponse(error: ApiError): NextResponse {
 // Context Builder
 // ─────────────────────────────────────────────────────────────────────────────
 
+function getBearerToken(request: NextRequest): string | null {
+  const h = request.headers.get("authorization") ?? request.headers.get("Authorization");
+  if (!h?.toLowerCase().startsWith("bearer ")) return null;
+  const t = h.slice(7).trim();
+  return t || null;
+}
+
 async function buildApiContext(
   request: NextRequest,
   options: HandlerOptions
 ): Promise<ApiContext> {
-  // Create Supabase client
-  let response = NextResponse.next();
-  const supabase = createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-    {
-      cookies: {
-        getAll: () => request.cookies.getAll(),
-        setAll: (cookies: Array<{ name: string; value: string; options?: Record<string, unknown> }>) => {
-          cookies.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          );
-        },
-      },
-    }
-  );
+  const bearerToken = getBearerToken(request);
 
-  // Get authenticated user
+  let supabase: SupabaseClient<Database>;
+
+  if (bearerToken) {
+    supabase = createClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+      {
+        global: {
+          headers: { Authorization: `Bearer ${bearerToken}` },
+        },
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      }
+    ) as unknown as SupabaseClient<Database>;
+  } else {
+    let response = NextResponse.next();
+    supabase = createServerClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+      {
+        cookies: {
+          getAll: () => request.cookies.getAll(),
+          setAll: (cookies: Array<{ name: string; value: string; options?: Record<string, unknown> }>) => {
+            cookies.forEach(({ name, value, options }) =>
+              response.cookies.set(name, value, options)
+            );
+          },
+        },
+      }
+    ) as unknown as SupabaseClient<Database>;
+  }
+
   const {
     data: { user },
     error: authError,
-  } = await supabase.auth.getUser();
+  } = bearerToken
+    ? await supabase.auth.getUser(bearerToken)
+    : await supabase.auth.getUser();
 
   if (options.requireAuth !== false && (!user || authError)) {
     throw Errors.unauthorized();

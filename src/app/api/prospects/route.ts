@@ -26,28 +26,6 @@ export const GET = createApiHandler(async (req, ctx) => {
 
   const searchTrimmed = params.search?.trim() ?? "";
 
-  async function enrichWithLinkedChat<T extends { id: string }>(items: T[]): Promise<(T & { linked_chat_id: string | null })[]> {
-    const prospectIds = items.map((p) => p.id);
-    const prospectToChat: Record<string, string> = {};
-    if (prospectIds.length > 0) {
-      const { data: chatRows } = await ctx.supabase
-        .from("unipile_chat_prospects")
-        .select("prospect_id, unipile_chat_id")
-        .eq("organization_id", workspaceId)
-        .in("prospect_id", prospectIds);
-
-      for (const r of chatRows ?? []) {
-        if (r.prospect_id && r.unipile_chat_id) {
-          prospectToChat[r.prospect_id] = r.unipile_chat_id;
-        }
-      }
-    }
-    return items.map((p) => ({
-      ...p,
-      linked_chat_id: prospectToChat[p.id] ?? null,
-    }));
-  }
-
   // Recherche : RPC insensible à la casse et aux accents (extension unaccent — voir migrations/003)
   if (searchTrimmed) {
     const statuses = params.status ? params.status.split(",").filter(Boolean) : null;
@@ -68,10 +46,8 @@ export const GET = createApiHandler(async (req, ctx) => {
       const parsed = rpcResult as { items: unknown[]; total: number };
       const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
       const total = typeof parsed.total === "number" ? parsed.total : 0;
-      const itemsWithChat = await enrichWithLinkedChat(rawItems as { id: string }[]);
-
       return {
-        items: itemsWithChat,
+        items: rawItems,
         total,
         page,
         pageSize,
@@ -115,10 +91,9 @@ export const GET = createApiHandler(async (req, ctx) => {
     }
 
     const items = data || [];
-    const itemsWithChat = await enrichWithLinkedChat(items);
 
     return {
-      items: itemsWithChat,
+      items,
       total: count || 0,
       page,
       pageSize,
@@ -154,10 +129,9 @@ export const GET = createApiHandler(async (req, ctx) => {
   }
 
   const items = data || [];
-  const itemsWithChat = await enrichWithLinkedChat(items);
 
   return {
-    items: itemsWithChat,
+    items,
     total: count || 0,
     page,
     pageSize,

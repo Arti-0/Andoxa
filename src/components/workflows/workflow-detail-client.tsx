@@ -129,7 +129,7 @@ function newStepId(): string {
 function defaultConfigForType(type: WorkflowStepType): WorkflowStep["config"] {
   switch (type) {
     case "wait":
-      return { durationHours: 24 };
+      return { durationHours: 24, onlyIfNoReply: false };
     case "linkedin_invite":
     case "linkedin_message":
       return { messageTemplate: "" };
@@ -143,7 +143,8 @@ function defaultConfigForType(type: WorkflowStepType): WorkflowStep["config"] {
 function stepSummary(step: WorkflowStep): string {
   if (step.type === "wait") {
     const h = (step.config as { durationHours?: number }).durationHours ?? 0;
-    return `${h} h`;
+    const conditional = (step.config as { onlyIfNoReply?: boolean }).onlyIfNoReply;
+    return conditional ? `${h} h (si pas de réponse)` : `${h} h`;
   }
   const t = (step.config as { messageTemplate?: string }).messageTemplate ?? "";
   const s = t.replace(/\s+/g, " ").trim();
@@ -1073,8 +1074,15 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
           <WorkflowStepWaitModal
             open
             onOpenChange={(o) => !o && setEditWaitIndex(null)}
-            durationHours={(steps[editWaitIndex].config as { durationHours: number }).durationHours}
-            onSave={(hours) => updateStepConfig(editWaitIndex, { durationHours: hours })}
+            durationHours={
+              (steps[editWaitIndex].config as { durationHours: number }).durationHours
+            }
+            onlyIfNoReply={
+              (steps[editWaitIndex].config as { onlyIfNoReply?: boolean }).onlyIfNoReply
+            }
+            onSave={(hours, onlyIfNoReply) =>
+              updateStepConfig(editWaitIndex, { durationHours: hours, onlyIfNoReply })
+            }
           />
         )}
 

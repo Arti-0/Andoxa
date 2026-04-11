@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/service";
+import type { Database } from "@/lib/types/supabase";
 import { unipileFetch } from "@/lib/unipile/client";
 import type { UnipileAccount } from "@/lib/unipile/types";
+import { processConnectionAccepted } from "@/lib/workflows/process-connection-accepted";
+
+const UNIPILE_MESSAGING_HANDLED_EVENTS = new Set([
+  "message_received",
+  "new_relation",
+]);
 
 /** Unipile event/status → statut normalisé stocké en base */
 const UNIPILE_STATUS_MAP: Record<string, string> = {
@@ -44,6 +52,9 @@ function extractPremiumData(account: UnipileAccount): {
 
 interface UnipileWebhookPayload {
   account_id?: string;
+  /** Ancien nom possible ; le payload réel `new_relation` utilise `user_provider_id`. */
+  attendee_id?: string;
+  user_provider_id?: string;
   account_type?: string;
   event?: string;
   chat_id?: string;
@@ -102,6 +113,63 @@ async function storeUnipileAccount(
   if (error) {
     console.error("[Unipile webhook] upsert user_unipile_accounts:", error);
     throw new Error("Failed to store account");
+  }
+}
+
+/**
+ * Sync les 50 connexions LinkedIn les plus récentes vers linkedin_relations.
+ * Appelé uniquement à CREATION_SUCCESS / RECONNECTED pour ne pas surcharger l’API.
+ * Non bloquant côté appelant — les erreurs sont loguées sans throw.
+ */
+async function syncLinkedInRelations(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  unipileAccountId: string
+): Promise<void> {
+  try {
+    const data = await unipileFetch<{
+      object?: string;
+      items?: Array<{
+        provider_id?: string;
+        id?: string;
+      }>;
+    }>(
+      `/users/relations?account_id=${encodeURIComponent(unipileAccountId)}&limit=50`
+    );
+
+    const items = data?.items ?? [];
+    if (!items.length) return;
+
+    const rows = items
+      .map((r) => ({
+        user_id: userId,
+        attendee_id: r.provider_id ?? r.id ?? null,
+        connected_at: new Date().toISOString(),
+      }))
+      .filter(
+        (r): r is { user_id: string; attendee_id: string; connected_at: string } =>
+          r.attendee_id != null
+      );
+
+    if (!rows.length) return;
+
+    const { error } = await supabase.from("linkedin_relations").upsert(rows, {
+      onConflict: "user_id,attendee_id",
+      ignoreDuplicates: true,
+    });
+
+    if (error) {
+      console.error("[Unipile webhook] syncLinkedInRelations upsert:", error);
+    } else {
+      console.info(
+        `[Unipile webhook] syncLinkedInRelations: ${rows.length} relations stored for user ${userId}`
+      );
+    }
+  } catch (err) {
+    console.warn(
+      "[Unipile webhook] syncLinkedInRelations failed (non-blocking):",
+      err
+    );
   }
 }
 
@@ -199,6 +267,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Internal error" }, { status: 500 });
     }
 
+    if (isLinkedIn && isSuccess) {
+      const rawName = body.name!;
+      const syncUserId = rawName.endsWith("__whatsapp")
+        ? rawName.replace(/__whatsapp$/, "")
+        : rawName;
+      void syncLinkedInRelations(
+        createServiceClient(),
+        syncUserId,
+        body.account_id!
+      );
+    }
+
     if (eventCode === "CREATION_ERROR") {
       Sentry.captureMessage(`Unipile CREATION_ERROR for ${body.name}`, {
         level: "warning",
@@ -222,6 +302,9 @@ export async function POST(req: NextRequest) {
         const premiumData =
           isLinkedIn && isSuccess ? extractPremiumData(account) : undefined;
         await storeUnipileAccount(userId, accountId, eventCode, premiumData);
+        if (isLinkedIn && isSuccess) {
+          void syncLinkedInRelations(createServiceClient(), userId, accountId);
+        }
       }
     } catch (err) {
       console.error("[Unipile webhook] AccountStatus fetch/store:", err);
@@ -320,11 +403,88 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const HANDLED_EVENTS = new Set(["message_received"]);
+  if (event === "new_relation") {
+    const attendeeId =
+      body.user_provider_id ?? body.attendee_id ?? null;
+    const unipileAccountId = body.account_id ?? null;
+
+    if (!attendeeId || !unipileAccountId) {
+      console.warn(
+        "[Unipile webhook] new_relation missing user_provider_id (or attendee_id) or account_id"
+      );
+      return NextResponse.json({ received: true }, { status: 200 });
+    }
+
+    const supabase = createServiceClient();
+
+    const { data: accountRow } = await supabase
+      .from("user_unipile_accounts")
+      .select("user_id")
+      .eq("unipile_account_id", unipileAccountId)
+      .maybeSingle();
+
+    const userId = accountRow?.user_id;
+    if (!userId) {
+      console.warn("[Unipile webhook] new_relation: account not found", {
+        unipileAccountId,
+      });
+      return NextResponse.json({ received: true }, { status: 200 });
+    }
+
+    const connectedAt = new Date().toISOString();
+    const { error: relErr } = await supabase.from("linkedin_relations").upsert(
+      [
+        {
+          user_id: userId,
+          attendee_id: attendeeId,
+          connected_at: connectedAt,
+        },
+      ],
+      { onConflict: "user_id,attendee_id" }
+    );
+    if (relErr) {
+      console.error("[Unipile webhook] linkedin_relations upsert:", relErr);
+      Sentry.captureException(relErr);
+    }
+
+    const { data: waitingExecutions, error: waitErr } = await supabase
+      .from("workflow_step_executions")
+      .select("id, run_id, step_index, step_id, step_type, config_snapshot")
+      .eq("status", "pending")
+      .eq("step_type", "linkedin_invite")
+      .filter("config_snapshot->>pending_provider_id", "eq", attendeeId)
+      .filter("config_snapshot->>pending_account_id", "eq", unipileAccountId);
+
+    if (waitErr) {
+      console.error(
+        "[Unipile webhook] new_relation workflow_step_executions:",
+        waitErr
+      );
+      Sentry.captureException(waitErr);
+      return NextResponse.json({ received: true }, { status: 200 });
+    }
+
+    if (waitingExecutions?.length) {
+      for (const exec of waitingExecutions) {
+        try {
+          await processConnectionAccepted(supabase, exec.id, userId);
+        } catch (err) {
+          console.error(
+            "[Unipile webhook] new_relation processConnectionAccepted:",
+            err
+          );
+          Sentry.captureException(err);
+        }
+      }
+    }
+
+    return NextResponse.json({ received: true }, { status: 200 });
+  }
+
   if (
     typeof event === "string" &&
     event.length > 0 &&
-    !HANDLED_EVENTS.has(event) &&
+    !UNIPILE_MESSAGING_HANDLED_EVENTS.has(event) &&
     !isHostedAuthCallback &&
     !isAccountStatusCallback
   ) {

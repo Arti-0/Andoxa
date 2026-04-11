@@ -30,7 +30,8 @@ export const POST = createApiHandler(async (req, ctx) => {
   }
 
   const body = await parseBody<{
-    name: string;
+    name?: string;
+    bdd_id?: string;
     source?: ImportSource;
     prospects: Array<
       | { name?: string; url?: string }
@@ -47,8 +48,11 @@ export const POST = createApiHandler(async (req, ctx) => {
 
   const source = (body.source ?? SOURCE_LINKEDIN_EXTENSION) as ImportSource;
 
-  if (!body.name?.trim()) {
-    throw Errors.validation({ name: "Le nom de la liste est requis" });
+  const bddIdFromBody = typeof body.bdd_id === "string" ? body.bdd_id.trim() : "";
+  if (!bddIdFromBody && !body.name?.trim()) {
+    throw Errors.validation({
+      name: "Le nom de la liste est requis si bdd_id n'est pas fourni",
+    });
   }
   if (!Array.isArray(body.prospects) || body.prospects.length === 0) {
     throw Errors.validation({ prospects: "Le tableau prospects ne peut pas etre vide" });
@@ -167,25 +171,40 @@ export const POST = createApiHandler(async (req, ctx) => {
     return { ...r, metadata: metadataByIdx.get(idx) ?? null } as MappedProspect;
   });
 
-  const { data: bddRow, error: bddError } = await ctx.supabase
-    .from("bdd")
-    .insert({
-      name: body.name.trim(),
-      organization_id: ctx.workspaceId,
-      proprietaire: ctx.userId,
-      source,
-      csv_url: null,
-      csv_hash: null,
-    })
-    .select("id")
-    .single();
+  let bddId: string;
 
-  if (bddError || !bddRow) {
-    console.error("[API] Prospects import BDD create error:", bddError);
-    throw Errors.internal("Impossible de creer la liste d'import");
+  if (bddIdFromBody) {
+    const { data: existingBdd } = await ctx.supabase
+      .from("bdd")
+      .select("id")
+      .eq("id", bddIdFromBody)
+      .eq("organization_id", ctx.workspaceId)
+      .maybeSingle();
+
+    if (!existingBdd) {
+      throw Errors.notFound("Liste");
+    }
+    bddId = existingBdd.id;
+  } else {
+    const { data: bddRow, error: bddError } = await ctx.supabase
+      .from("bdd")
+      .insert({
+        name: body.name!.trim(),
+        organization_id: ctx.workspaceId,
+        proprietaire: ctx.userId,
+        source,
+        csv_url: null,
+        csv_hash: null,
+      })
+      .select("id")
+      .single();
+
+    if (bddError || !bddRow) {
+      console.error("[API] Prospects import BDD create error:", bddError);
+      throw Errors.internal("Impossible de creer la liste d'import");
+    }
+    bddId = bddRow.id;
   }
-
-  const bddId = bddRow.id;
   let inserted = 0;
   let enrichmentQueued = 0;
   let duplicates = normalizedRows.length - deduplicatedRows.length;

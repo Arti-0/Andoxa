@@ -14,6 +14,12 @@ export interface UnipileUserProfile {
   education?: unknown[];
   skills?: unknown[];
   summary?: string | null;
+  contact_info?: {
+    emails?: string[] | null;
+    phones?: string[] | null;
+    adresses?: string[] | null;
+    socials?: Array<{ type?: string; name?: string }> | null;
+  } | null;
 }
 
 export type EnrichProspectResult =
@@ -34,7 +40,7 @@ export async function enrichProspectFromUnipile(params: {
 
   const { data: prospect, error: fetchError } = await supabase
     .from("prospects")
-    .select("id, full_name, company, job_title, location, website, linkedin")
+    .select("id, full_name, company, job_title, location, website, linkedin, email, phone")
     .eq("id", prospectId)
     .eq("organization_id", organizationId)
     .single();
@@ -71,12 +77,26 @@ export async function enrichProspectFromUnipile(params: {
       ? `${profile.first_name} ${profile.last_name}`.trim()
       : prospect.full_name;
 
+  const contactEmail =
+    profile.contact_info?.emails?.[0]?.trim() || null;
+  const contactPhone =
+    profile.contact_info?.phones?.[0]?.trim() || null;
+
   const updatePayload = {
     full_name: fullName || prospect.full_name,
     job_title: profile.headline || work0?.position || prospect.job_title,
     company: work0?.company || prospect.company,
     location: profile.location || prospect.location,
     website: profile.websites?.[0] || prospect.website,
+
+    ...(contactEmail && !prospect.email?.trim()
+      ? { email: contactEmail.toLowerCase() }
+      : {}),
+
+    ...(contactPhone && !prospect.phone?.trim()
+      ? { phone: contactPhone }
+      : {}),
+
     enrichment_source: "unipile",
     enriched_at: new Date().toISOString(),
     enrichment_metadata: JSON.parse(
@@ -86,6 +106,7 @@ export async function enrichProspectFromUnipile(params: {
         education: profile.education,
         skills: profile.skills,
         summary: profile.summary,
+        contact_info: profile.contact_info,
       })
     ),
     updated_at: new Date().toISOString(),
