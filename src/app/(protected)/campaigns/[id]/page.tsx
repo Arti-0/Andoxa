@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
@@ -67,6 +67,7 @@ const PROSPECT_STATUS: Record<string, { label: string; color: string }> = {
 
 export default function CampaignDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const queryClient = useQueryClient();
 
   const { data: job, isLoading } = useQuery({
@@ -95,7 +96,8 @@ export default function CampaignDetailPage() {
       if (!res.ok) throw new Error(String(res.status));
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaign-job", id] });
+      void queryClient.invalidateQueries({ queryKey: ["campaign-job", id] });
+      router.refresh();
     },
     onError: () => toast.error("Échec de la mise à jour du statut"),
   });
@@ -111,7 +113,8 @@ export default function CampaignDetailPage() {
       return json.data ?? json;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["campaign-job", id] });
+      void queryClient.invalidateQueries({ queryKey: ["campaign-job", id] });
+      router.refresh();
       if (data.rateLimited) {
         toast.warning(
           "Limite LinkedIn atteinte (429). Les prospects restants restent en attente — réessayez plus tard ou laissez le traitement automatique reprendre."
@@ -160,6 +163,18 @@ export default function CampaignDetailPage() {
     }
     toast.success("Campagne lancée !");
     void queryClient.invalidateQueries({ queryKey: ["campaign-job", id] });
+    router.refresh();
+  };
+
+  const handleStartOrResume = () => {
+    void (async () => {
+      try {
+        await statusMutation.mutateAsync("running");
+        await processMutation.mutateAsync();
+      } catch {
+        /* toasts déjà gérés par les mutations */
+      }
+    })();
   };
 
   const batchSize = job.batch_size || 10;
@@ -358,37 +373,50 @@ export default function CampaignDetailPage() {
       {/* Actions */}
       <div className="flex flex-wrap gap-2">
         {job.status === "draft" && (
-          <Button onClick={() => void handleLaunchDraft()}>
+          <Button type="button" onClick={() => void handleLaunchDraft()}>
             <Play className="mr-2 h-4 w-4" />
             Lancer la campagne
           </Button>
         )}
         {(job.status === "pending" || job.status === "paused") && (
           <Button
-            onClick={() => {
-              statusMutation.mutate("running");
-              setTimeout(() => processMutation.mutate(), 500);
-            }}
-            disabled={statusMutation.isPending}
+            type="button"
+            onClick={handleStartOrResume}
+            disabled={statusMutation.isPending || processMutation.isPending}
           >
             <Play className="mr-2 h-4 w-4" />
             {job.status === "pending" ? "Démarrer" : "Reprendre"}
           </Button>
         )}
         {job.status === "running" && (
-          <Button variant="outline" onClick={() => statusMutation.mutate("paused")} disabled={statusMutation.isPending}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => statusMutation.mutate("paused")}
+            disabled={statusMutation.isPending}
+          >
             <Pause className="mr-2 h-4 w-4" />
             Mettre en pause
           </Button>
         )}
         {["pending", "running", "paused"].includes(job.status) && (
-          <Button variant="destructive" onClick={() => statusMutation.mutate("failed")} disabled={statusMutation.isPending}>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => statusMutation.mutate("failed")}
+            disabled={statusMutation.isPending}
+          >
             <XCircle className="mr-2 h-4 w-4" />
             Annuler
           </Button>
         )}
         {job.status === "running" && (
-          <Button variant="outline" onClick={() => processMutation.mutate()} disabled={processMutation.isPending}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => processMutation.mutate()}
+            disabled={processMutation.isPending}
+          >
             {processMutation.isPending ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (

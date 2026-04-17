@@ -12,7 +12,7 @@ interface HostedAuthLinkResponse {
 
 /**
  * POST /api/unipile/connect-whatsapp
- * Generate Unipile Hosted Auth link for connecting WhatsApp.
+ * Génère un lien d’authentification hébergée pour connecter WhatsApp.
  */
 export const POST = createApiHandler(
   async (req, ctx) => {
@@ -34,7 +34,7 @@ export const POST = createApiHandler(
       unipileBase = getUnipileApiRoot();
     } catch {
       throw Errors.badRequest(
-        "Configuration Unipile incomplète : définissez UNIPILE_API_URL (DSN du tableau de bord) et UNIPILE_API_KEY sur le serveur."
+        "Configuration de messagerie incomplète sur le serveur : définissez UNIPILE_API_URL et UNIPILE_API_KEY."
       );
     }
 
@@ -43,6 +43,7 @@ export const POST = createApiHandler(
     const failureUrl = `${baseUrl.replace(/\/$/, "")}/settings?whatsapp_connected=0`;
     const expiresOn = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
+    // `name` est renvoyé sur notify_url ; suffixe __whatsapp pour le type de compte.
     const body: Record<string, unknown> = {
       type: existingAccount?.unipile_account_id ? "reconnect" : "create",
       providers: ["WHATSAPP"],
@@ -52,6 +53,8 @@ export const POST = createApiHandler(
       expiresOn,
       success_redirect_url: successUrl,
       failure_redirect_url: failureUrl,
+      /** Hosted Auth Wizard UI language (Unipile; may be ignored if unsupported). */
+      locale: "fr",
     };
 
     if (existingAccount?.unipile_account_id) {
@@ -62,6 +65,7 @@ export const POST = createApiHandler(
       const data = await unipileFetch<HostedAuthLinkResponse>("/hosted/accounts/link", {
         method: "POST",
         body: JSON.stringify(body),
+        headers: { "Accept-Language": "fr-FR,fr;q=0.9" },
       });
       const url = (data as HostedAuthLinkResponse)?.url;
       if (!url) throw Errors.internal("Impossible d'obtenir le lien de connexion");
@@ -71,9 +75,9 @@ export const POST = createApiHandler(
         const type = err.unipileType ?? "";
         if (type === "errors/missing_credentials" || err.message === "Compte non connecté") {
           throw Errors.badRequest(
-            "Unipile n'arrive pas à valider vos identifiants d'API (UNIPILE_API_KEY). " +
-              "Vérifiez `UNIPILE_API_KEY` (token d'accès Unipile), assurez-vous qu'elle n'est pas expirée " +
-              "et redémarrez l'application après modification, puis réessayez « Connecter WhatsApp ».",
+            "Le service de messagerie n’a pas pu valider la clé d’accès serveur (UNIPILE_API_KEY). " +
+              "Vérifiez que la clé est correcte et non expirée, redémarrez l’application après modification, " +
+              "puis réessayez « Connecter WhatsApp ».",
             { unipileType: type }
           );
         }

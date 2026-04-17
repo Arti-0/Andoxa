@@ -265,15 +265,15 @@ export const GET = createApiHandler(async (_req, ctx): Promise<Activity[]> => {
     }
 
     const d = (sa.details ?? {}) as Record<string, unknown>;
-    const wname = typeof d.workflow_name === "string" ? d.workflow_name : "Workflow";
-    const wfUrl = sa.workflow_id ? `/workflows/${sa.workflow_id}` : null;
+    const wname = typeof d.workflow_name === "string" ? d.workflow_name : "Parcours";
+    const wfUrl = sa.workflow_id ? `/whatsapp/${sa.workflow_id}` : null;
 
     if (sa.action === "workflow_enrolled") {
       activities.push({
         id: `wfe-${sa.id}`,
         type: "workflow_enrolled",
-        title: "Workflow",
-        description: `${prospectName} · Inscrit à « ${wname} »${actor ? ` · par ${actor.name}` : ""}`,
+        title: "Suivi WhatsApp",
+        description: `${prospectName} · Inscrit au parcours « ${wname} »${actor ? ` · par ${actor.name}` : ""}`,
         actor_name: actor?.name ?? null,
         actor_avatar: actor?.avatar ?? null,
         target_url: wfUrl ?? (sa.prospect_id ? `/prospect/${sa.prospect_id}` : null),
@@ -291,7 +291,7 @@ export const GET = createApiHandler(async (_req, ctx): Promise<Activity[]> => {
       activities.push({
         id: `wfsc-${sa.id}`,
         type: "workflow_step_completed",
-        title: "Workflow",
+        title: "Suivi WhatsApp",
         description: `${prospectName} · ${stepLabel} · « ${wname} »`,
         actor_name: actor?.name ?? null,
         actor_avatar: actor?.avatar ?? null,
@@ -303,7 +303,7 @@ export const GET = createApiHandler(async (_req, ctx): Promise<Activity[]> => {
       activities.push({
         id: `wff-${sa.id}`,
         type: "workflow_step_failed",
-        title: "Workflow",
+        title: "Suivi WhatsApp",
         description: `${prospectName} · Échec · « ${wname} » — ${err}`,
         actor_name: actor?.name ?? null,
         actor_avatar: actor?.avatar ?? null,
@@ -314,7 +314,7 @@ export const GET = createApiHandler(async (_req, ctx): Promise<Activity[]> => {
       activities.push({
         id: `wfrc-${sa.id}`,
         type: "workflow_run_completed",
-        title: "Workflow",
+        title: "Suivi WhatsApp",
         description: `${prospectName} · Parcours terminé · « ${wname} »`,
         actor_name: actor?.name ?? null,
         actor_avatar: actor?.avatar ?? null,

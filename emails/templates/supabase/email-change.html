@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <title>Confirmer votre nouvelle adresse — Andoxa</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f4f4f5;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;">
+          <tr>
+            <td style="padding:32px 40px 24px 40px;border-bottom:1px solid #e5e7eb;">
+              <p style="margin:0;font-size:22px;font-weight:700;color:#0f172a;letter-spacing:-0.02em;">Andoxa</p>
+              <p style="margin:6px 0 0 0;font-size:14px;color:#64748b;line-height:1.4;">CRM pour Junior-Entreprises</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 40px 8px 40px;">
+              <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#0f172a;line-height:1.3;">Confirmer votre nouvelle adresse e-mail</h1>
+              <p style="margin:0 0 16px 0;font-size:15px;color:#334155;line-height:1.6;">Vous avez demandé à modifier l’adresse e-mail de votre compte Andoxa. Pour valider la nouvelle adresse <strong style="color:#0f172a;">{{ .Email }}</strong>, cliquez sur le bouton ci-dessous.</p>
+              <p style="margin:0 0 28px 0;font-size:15px;color:#334155;line-height:1.6;">Tant que vous n’avez pas confirmé, votre adresse actuelle reste utilisée pour la connexion.</p>
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="border-radius:8px;background-color:#0f172a;">
+                    <a href="{{ .ConfirmationURL }}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:14px 28px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">Confirmer ma nouvelle adresse</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:28px 0 0 0;font-size:13px;color:#94a3b8;line-height:1.5;">Si le bouton ne fonctionne pas, copiez-collez ce lien dans votre navigateur :<br><a href="{{ .ConfirmationURL }}" style="color:#475569;word-break:break-all;">{{ .ConfirmationURL }}</a></p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 40px 32px 40px;border-top:1px solid #e5e7eb;background-color:#fafafa;">
+              <p style="margin:0 0 8px 0;font-size:12px;color:#64748b;line-height:1.5;">© Andoxa · <a href="{{ .SiteURL }}" style="color:#475569;text-decoration:none;">andoxa.fr</a></p>
+              <p style="margin:0;font-size:11px;color:#94a3b8;line-height:1.5;">Si vous n’êtes pas à l’origine de cette demande, ignorez cet email.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

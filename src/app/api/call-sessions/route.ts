@@ -132,6 +132,7 @@ export const POST = createApiHandler(async (req, ctx) => {
       organization_id: ctx.workspaceId,
       created_by: ctx.userId,
       title: body.title ?? `Session ${new Date().toLocaleDateString("fr-FR")}`,
+      status: "pending",
     })
     .select()
     .single();

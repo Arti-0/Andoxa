@@ -5,21 +5,13 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowDown,
   ArrowLeft,
-  ArrowUp,
-  ChevronRight,
-  Clock,
   Info,
   ListPlus,
   Loader2,
-  MessageSquare,
   Pause,
   Pencil,
   Play,
-  Smartphone,
-  Trash2,
-  UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -54,34 +46,26 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ActivityFeed } from "@/components/design";
 import type { ActivityFeedItem } from "@/components/design";
 import type { WorkflowStep, WorkflowStepType } from "@/lib/workflows/schema";
-import { WORKFLOW_STEP_TYPES } from "@/lib/workflows/schema";
+import { WORKFLOW_STEP_TYPES_BUILDER_UI } from "@/lib/workflows/schema";
 import {
+  getStepLabel,
   parseWorkflowUi,
   WORKFLOW_COLOR_KEYS,
   WORKFLOW_ICON_KEYS,
   type WorkflowColorKey,
   type WorkflowIconKey,
 } from "@/lib/workflows";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { WorkflowListIcon } from "./workflow-list-icon";
 import { WorkflowStepWaitModal } from "./workflow-step-wait-modal";
 import { WorkflowStepMessageModal } from "./workflow-step-message-modal";
 import { WorkflowListEnrollModal } from "./workflow-list-enroll-modal";
+import {
+  WorkflowParcoursEditTimeline,
+  WorkflowParcoursReadOnlyTimeline,
+} from "./workflow-parcours-timeline";
 import { useLinkedInAccount } from "@/hooks/use-linkedin-account";
-
-const STEP_TYPE_LABELS: Record<WorkflowStepType, string> = {
-  wait: "Attente",
-  linkedin_invite: "Invitation LinkedIn",
-  linkedin_message: "Message LinkedIn",
-  whatsapp_message: "Message WhatsApp",
-};
-
-const STEP_TYPE_ICONS: Record<WorkflowStepType, typeof Clock> = {
-  wait: Clock,
-  linkedin_invite: UserPlus,
-  linkedin_message: MessageSquare,
-  whatsapp_message: Smartphone,
-};
 
 type WorkflowStatsPayload = {
   runs_total: number;
@@ -140,54 +124,6 @@ function defaultConfigForType(type: WorkflowStepType): WorkflowStep["config"] {
   }
 }
 
-function stepSummary(step: WorkflowStep): string {
-  if (step.type === "wait") {
-    const h = (step.config as { durationHours?: number }).durationHours ?? 0;
-    const conditional = (step.config as { onlyIfNoReply?: boolean }).onlyIfNoReply;
-    return conditional ? `${h} h (si pas de réponse)` : `${h} h`;
-  }
-  const t = (step.config as { messageTemplate?: string }).messageTemplate ?? "";
-  const s = t.replace(/\s+/g, " ").trim();
-  if (!s) {
-    if (step.type === "linkedin_invite") return "Sans note d’invitation";
-    return "Configurer le message…";
-  }
-  return s.length > 56 ? `${s.slice(0, 56)}…` : s;
-}
-
-function StepsReadOnlyChain({ steps }: { steps: WorkflowStep[] }) {
-  if (!steps.length) {
-    return <p className="text-sm text-muted-foreground">Aucune étape.</p>;
-  }
-  return (
-    <div className="flex flex-col items-center">
-      {steps.map((s, i) => {
-        const Icon = STEP_TYPE_ICONS[s.type];
-        return (
-          <div key={s.id} className="w-full max-w-xl">
-            <div className="flex gap-3 rounded-lg border bg-muted/30 p-4 shadow-xs">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground ring-1 ring-border">
-                <Icon className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xs font-medium tabular-nums text-muted-foreground">{i + 1}.</span>
-                  <span className="font-medium">{STEP_TYPE_LABELS[s.type]}</span>
-                </div>
-                <p className="mt-1 text-sm text-muted-foreground">{stepSummary(s)}</p>
-              </div>
-            </div>
-            {i < steps.length - 1 ? (
-              <div className="flex justify-center py-2" aria-hidden>
-                <ArrowDown className="h-5 w-5 text-muted-foreground" />
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 interface WorkflowDetailClientProps {
   workflowId: string;
@@ -248,7 +184,9 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
   /** `null` = toutes les sources ; `__none__` = sans liste BDD */
   const [listFilter, setListFilter] = useState<string | null>(null);
   const [enrollModalOpen, setEnrollModalOpen] = useState(false);
+  const [addStepSelectOpen, setAddStepSelectOpen] = useState(false);
   const [launchPrereqMessage, setLaunchPrereqMessage] = useState<string | null>(null);
+  const detailReduceMotion = useReducedMotion() ?? false;
 
   /** Parcours enregistré comme prêt (étapes figées + comptes OK) — permet de lancer sur des listes. */
   const published = workflow?.published_definition != null;
@@ -432,11 +370,12 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
       toast.error(json?.error?.message ?? "Suppression impossible");
       return;
     }
-    toast.success("Workflow supprimé");
-    router.push("/workflows");
+    toast.success("Parcours supprimé");
+    router.push("/whatsapp");
   };
 
   const addStep = (type: WorkflowStepType) => {
+    setAddStepSelectOpen(false);
     setSteps((prev) => [
       ...prev,
       {
@@ -449,16 +388,6 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
 
   const removeStep = (index: number) => {
     setSteps((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const moveStep = (index: number, dir: -1 | 1) => {
-    setSteps((prev) => {
-      const j = index + dir;
-      if (j < 0 || j >= prev.length) return prev;
-      const next = [...prev];
-      [next[index], next[j]] = [next[j], next[index]];
-      return next;
-    });
   };
 
   const updateStepConfig = (index: number, patch: Record<string, unknown>) => {
@@ -533,9 +462,9 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
   if (!workflow) {
     return (
       <div className="p-6">
-        <p className="text-muted-foreground">Workflow introuvable.</p>
+        <p className="text-muted-foreground">Parcours introuvable.</p>
         <Button asChild variant="outline" className="mt-4">
-          <Link href="/workflows">Retour</Link>
+          <Link href="/whatsapp">Retour</Link>
         </Button>
       </div>
     );
@@ -547,7 +476,7 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-3">
             <Button variant="ghost" size="icon" asChild className="shrink-0">
-              <Link href="/workflows" aria-label="Retour">
+              <Link href="/whatsapp" aria-label="Retour">
                 <ArrowLeft className="h-4 w-4" />
               </Link>
             </Button>
@@ -560,7 +489,7 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
                 {published
                   ? workflow.is_active
                     ? "Le parcours avance pour les contacts inscrits. La pause arrête le traitement des étapes sans annuler les parcours en cours."
-                    : "Le workflow est en pause : aucune étape ne s’exécute tant que vous ne reprenez pas. Vous pouvez modifier le parcours."
+                    : "Le parcours est en pause : aucune étape ne s’exécute tant que vous ne reprenez pas. Vous pouvez le modifier."
                   : "Après avoir enregistré le parcours comme prêt (étapes + comptes), vous pourrez lancer sur une ou plusieurs listes depuis ce bouton."}
               </p>
             </div>
@@ -673,13 +602,13 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
                 ) : null}
                 {!editMode && workflow.is_active ? (
                   <p className="text-xs text-muted-foreground">
-                    Mettez le workflow en pause pour modifier le parcours.
+                    Mettez le parcours en pause pour le modifier.
                   </p>
                 ) : null}
               </CardHeader>
               <CardContent className="space-y-6">
                 {!editMode ? (
-                  <StepsReadOnlyChain steps={stepsForView} />
+                  <WorkflowParcoursReadOnlyTimeline steps={stepsForView} />
                 ) : (
                   <>
                     <div className="space-y-2">
@@ -732,85 +661,59 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
                     </div>
                     <div className="space-y-2">
                       <Label>Étapes</Label>
-                      <Select onValueChange={(v) => addStep(v as WorkflowStepType)}>
+                      <Select
+                        open={addStepSelectOpen}
+                        onOpenChange={setAddStepSelectOpen}
+                        onValueChange={(v) => addStep(v as WorkflowStepType)}
+                      >
                         <SelectTrigger className="w-full max-w-sm">
                           <SelectValue placeholder="Ajouter une étape" />
                         </SelectTrigger>
                         <SelectContent>
-                          {WORKFLOW_STEP_TYPES.map((t) => (
+                          {WORKFLOW_STEP_TYPES_BUILDER_UI.map((t) => (
                             <SelectItem key={t} value={t}>
-                              {STEP_TYPE_LABELS[t]}
+                              {getStepLabel(t).label}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                       {steps.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">Aucune étape.</p>
+                        <AnimatePresence>
+                          <motion.div
+                            key="empty"
+                            initial={detailReduceMotion ? false : { opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={detailReduceMotion ? undefined : { opacity: 0, y: -4 }}
+                            transition={
+                              detailReduceMotion ? { duration: 0 } : { duration: 0.25 }
+                            }
+                            className="flex flex-col items-center justify-center rounded-xl border border-dashed bg-muted/20 px-6 py-12 text-center"
+                          >
+                            <p className="max-w-sm text-sm text-muted-foreground">
+                              Ajoutez des attentes, messages WhatsApp ou pauses pour composer votre parcours.
+                            </p>
+                            <Button
+                              type="button"
+                              className="mt-4"
+                              variant="default"
+                              onClick={() => setAddStepSelectOpen(true)}
+                            >
+                              Ajouter une première étape
+                            </Button>
+                          </motion.div>
+                        </AnimatePresence>
                       ) : (
-                        <div className="flex flex-col items-center gap-0">
-                          {steps.map((step, index) => (
-                            <div key={step.id} className="w-full max-w-xl">
-                              <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 shadow-xs">
-                                <button
-                                  type="button"
-                                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                                  onClick={() => {
-                                    if (step.type === "wait") setEditWaitIndex(index);
-                                    else setEditMsgIndex(index);
-                                  }}
-                                >
-                                  <span className="w-6 shrink-0 tabular-nums text-muted-foreground">
-                                    {index + 1}
-                                  </span>
-                                  <span className="shrink-0 font-medium">{STEP_TYPE_LABELS[step.type]}</span>
-                                  <span className="min-w-0 truncate text-sm text-muted-foreground">
-                                    {stepSummary(step)}
-                                  </span>
-                                  <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" />
-                                </button>
-                                <div className="flex shrink-0 gap-0.5">
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                    onClick={() => moveStep(index, -1)}
-                                    disabled={index === 0}
-                                    aria-label="Monter"
-                                  >
-                                    <ArrowUp className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                    onClick={() => moveStep(index, 1)}
-                                    disabled={index === steps.length - 1}
-                                    aria-label="Descendre"
-                                  >
-                                    <ArrowDown className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-destructive"
-                                    onClick={() => removeStep(index)}
-                                    aria-label="Supprimer"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </div>
-                              {index < steps.length - 1 ? (
-                                <div className="flex justify-center py-2" aria-hidden>
-                                  <ArrowDown className="h-5 w-5 text-muted-foreground" />
-                                </div>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
+                        <WorkflowParcoursEditTimeline
+                          steps={steps}
+                          onReorder={setSteps}
+                          onEditStep={(index) => {
+                            const s = steps[index];
+                            if (!s) return;
+                            if (s.type === "wait") setEditWaitIndex(index);
+                            else setEditMsgIndex(index);
+                          }}
+                          onRemoveStep={removeStep}
+                        />
                       )}
                     </div>
                     <div className="flex flex-wrap gap-2 border-t pt-4">
@@ -1063,7 +966,7 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
         <ConfirmDialog
           open={deleteOpen}
           onOpenChange={setDeleteOpen}
-          title="Supprimer ce workflow ?"
+          title="Supprimer ce parcours ?"
           description="Tout l’historique et les exécutions associées seront supprimés."
           confirmLabel="Supprimer"
           variant="destructive"
@@ -1159,7 +1062,7 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
                   {(sheetData.executions ?? []).map((ex) => (
                     <li key={String(ex.id)} className="rounded-md border p-2">
                       <div className="font-medium">
-                        #{Number(ex.step_index) + 1} — {String(ex.step_type)} —{" "}
+                        #{Number(ex.step_index) + 1} — {getStepLabel(String(ex.step_type)).label} —{" "}
                         {EXEC_STATUS_LABELS[String(ex.status)] ?? String(ex.status)}
                       </div>
                       {ex.last_error ? (

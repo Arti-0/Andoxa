@@ -108,7 +108,7 @@ export function getBddColumns(
                 const count = item.prospects_count ?? 0;
                 return (
                     <span className="text-sm text-muted-foreground tabular-nums">
-                        {count}
+                        {count === 0 ? '—' : count}
                     </span>
                 );
             },
@@ -121,7 +121,7 @@ export function getBddColumns(
                 const count = item.phones_count ?? 0;
                 return (
                     <span className="text-sm text-muted-foreground tabular-nums">
-                        {count}
+                        {count === 0 ? '—' : count}
                     </span>
                 );
             },

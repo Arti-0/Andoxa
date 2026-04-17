@@ -63,7 +63,7 @@ export async function logWorkflowEnrolled(
   }
 ): Promise<void> {
   const workflowName =
-    (await fetchWorkflowName(supabase, args.workflow_id)) ?? "Workflow";
+    (await fetchWorkflowName(supabase, args.workflow_id)) ?? "Parcours";
   await insertProspectActivity(supabase, {
     organization_id: args.organization_id,
     prospect_id: args.prospect_id,
@@ -91,7 +91,7 @@ export async function logWorkflowStepCompleted(
   }
 ): Promise<void> {
   const workflowName =
-    (await fetchWorkflowName(supabase, args.workflow_id)) ?? "Workflow";
+    (await fetchWorkflowName(supabase, args.workflow_id)) ?? "Parcours";
   await insertProspectActivity(supabase, {
     organization_id: args.organization_id,
     prospect_id: args.prospect_id,
@@ -119,7 +119,7 @@ export async function logWorkflowRunCompleted(
   }
 ): Promise<void> {
   const workflowName =
-    (await fetchWorkflowName(supabase, args.workflow_id)) ?? "Workflow";
+    (await fetchWorkflowName(supabase, args.workflow_id)) ?? "Parcours";
   await insertProspectActivity(supabase, {
     organization_id: args.organization_id,
     prospect_id: args.prospect_id,
@@ -147,7 +147,7 @@ export async function logWorkflowStepFailed(
   }
 ): Promise<void> {
   const workflowName =
-    (await fetchWorkflowName(supabase, args.workflow_id)) ?? "Workflow";
+    (await fetchWorkflowName(supabase, args.workflow_id)) ?? "Parcours";
   await insertProspectActivity(supabase, {
     organization_id: args.organization_id,
     prospect_id: args.prospect_id,

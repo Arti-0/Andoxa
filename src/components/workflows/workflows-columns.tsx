@@ -20,9 +20,12 @@ export interface WorkflowListRow {
   execution_progress_pct: number | null;
   updated_at: string;
   ui: { icon: WorkflowIconKey; color: WorkflowColorKey };
+  /** Présents sur la liste API (`select *`) — utilisés pour l’aperçu des étapes. */
+  draft_definition?: { schemaVersion?: number; steps?: { type: string }[] };
+  published_definition?: { schemaVersion?: number; steps?: { type: string }[] } | null;
 }
 
-function workflowStatePresentation(row: WorkflowListRow): {
+export function workflowStatePresentation(row: WorkflowListRow): {
   label: string;
   variant: "muted" | "default" | "primary" | "warning";
 } {
@@ -134,7 +137,7 @@ export function getWorkflowListColumns(
               </Button>
             ) : (
               <Button type="button" variant="secondary" size="sm" className="h-8" asChild>
-                <Link href={`/workflows/${row.original.id}`} title="Finaliser le parcours sur la fiche workflow">
+                <Link href={`/whatsapp/${row.original.id}`} title="Finaliser le parcours sur la fiche">
                   Configurer
                 </Link>
               </Button>

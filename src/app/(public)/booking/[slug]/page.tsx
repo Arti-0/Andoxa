@@ -20,7 +20,9 @@ export default function BookingPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
   const [guestName, setGuestName] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
   const [guestLinkedin, setGuestLinkedin] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -57,7 +59,7 @@ export default function BookingPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSlot || !guestName.trim() || !guestLinkedin.trim() || !slug) return;
+    if (!selectedSlot || !guestName.trim() || !guestEmail.trim() || !slug) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -68,7 +70,9 @@ export default function BookingPage() {
           slot_start: selectedSlot.start,
           slot_end: selectedSlot.end,
           guest_name: guestName.trim(),
-          guest_linkedin: guestLinkedin.trim(),
+          guest_email: guestEmail.trim(),
+          guest_linkedin: guestLinkedin.trim() || null,
+          guest_phone: guestPhone.trim() || null,
         }),
       });
       const json = await res.json();
@@ -117,7 +121,8 @@ export default function BookingPage() {
           </div>
           <h2 className="text-xl font-semibold mb-2">Rendez-vous confirmé</h2>
           <p className="text-muted-foreground text-sm">
-            Votre rendez-vous a bien été enregistré. Vous recevrez un rappel avant le créneau.
+            Votre rendez-vous a bien été enregistré. Un email de confirmation avec le lien de
+            réunion vous sera envoyé dans quelques instants.
           </p>
         </div>
       </div>
@@ -182,36 +187,56 @@ export default function BookingPage() {
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-5 border-t pt-6">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="guestName">Nom complet</Label>
-                    <Input
-                      id="guestName"
-                      value={guestName}
-                      onChange={(e) => setGuestName(e.target.value)}
-                      placeholder="Jean Dupont"
-                      required
-                      disabled={!selectedSlot}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="guestLinkedin">Profil LinkedIn</Label>
-                    <Input
-                      id="guestLinkedin"
-                      type="text"
-                      value={guestLinkedin}
-                      onChange={(e) => setGuestLinkedin(e.target.value)}
-                      placeholder="linkedin.com/in/jean-dupont"
-                      required
-                      disabled={!selectedSlot}
-                    />
-                  </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="guestName">Nom complet <span className="text-destructive">*</span></Label>
+                  <Input
+                    id="guestName"
+                    value={guestName}
+                    onChange={(e) => setGuestName(e.target.value)}
+                    placeholder="Jean Dupont"
+                    required
+                    disabled={!selectedSlot}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="guestEmail">Adresse email <span className="text-destructive">*</span></Label>
+                  <Input
+                    id="guestEmail"
+                    type="email"
+                    value={guestEmail}
+                    onChange={(e) => setGuestEmail(e.target.value)}
+                    placeholder="jean.dupont@exemple.fr"
+                    required
+                    disabled={!selectedSlot}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="guestLinkedin">Profil LinkedIn</Label>
+                  <Input
+                    id="guestLinkedin"
+                    type="text"
+                    value={guestLinkedin}
+                    onChange={(e) => setGuestLinkedin(e.target.value)}
+                    placeholder="linkedin.com/in/jean-dupont (optionnel)"
+                    disabled={!selectedSlot}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="guestPhone">Numéro de téléphone (optionnel)</Label>
+                  <Input
+                    id="guestPhone"
+                    type="tel"
+                    value={guestPhone}
+                    onChange={(e) => setGuestPhone(e.target.value)}
+                    placeholder="+33 6 12 34 56 78"
+                    disabled={!selectedSlot}
+                  />
                 </div>
                 {error && <p className="text-sm text-destructive">{error}</p>}
                 <Button
                   type="submit"
                   className="w-full"
-                  disabled={!selectedSlot || !guestName.trim() || !guestLinkedin.trim() || submitting}
+                  disabled={!selectedSlot || !guestName.trim() || !guestEmail.trim() || submitting}
                 >
                   {submitting ? (
                     <>

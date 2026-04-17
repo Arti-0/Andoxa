@@ -1,5 +1,12 @@
 import { env } from "@/lib/config/environment";
 import type { ApiContext } from "@/lib/api";
+import {
+  dailyPeriodKey,
+  incrementUsageCounter,
+  weeklyPeriodKey,
+} from "@/lib/campaigns/throttle";
+import { ensureLinkedInRelationFromUnipileProfile } from "@/lib/linkedin/ensure-relation-from-unipile-profile";
+import { createServiceClient } from "@/lib/supabase/service";
 import { applyMessageVariables, extractLinkedInSlug } from "@/lib/unipile/campaign";
 import { unipileFetch } from "@/lib/unipile/client";
 
@@ -50,12 +57,19 @@ export async function sendLinkedInInviteForProspect(
           bookingLink,
         });
 
-  const profileRes = await unipileFetch<{ provider_id?: string }>(
-    `/users/${encodeURIComponent(slug)}?account_id=${accountId}`
+  const { providerId, isFirstDegree } = await ensureLinkedInRelationFromUnipileProfile(
+    ctx.supabase,
+    ctx.userId,
+    accountId,
+    slug
   );
-  const providerId = profileRes?.provider_id;
   if (!providerId) {
     throw new Error("Impossible de résoudre le profil LinkedIn");
+  }
+  if (isFirstDegree) {
+    throw new Error(
+      "Vous êtes déjà connecté avec ce contact sur LinkedIn."
+    );
   }
 
   await unipileFetch("/users/invite", {
@@ -66,4 +80,18 @@ export async function sendLinkedInInviteForProspect(
       message: personalizedMessage,
     }),
   });
+
+  const serviceSupabase = createServiceClient();
+  await incrementUsageCounter(
+    serviceSupabase,
+    ctx.userId,
+    "linkedin_invite_direct",
+    dailyPeriodKey()
+  );
+  await incrementUsageCounter(
+    serviceSupabase,
+    ctx.userId,
+    "linkedin_invite",
+    weeklyPeriodKey()
+  );
 }

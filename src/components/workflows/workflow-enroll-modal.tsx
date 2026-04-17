@@ -72,7 +72,7 @@ export function WorkflowEnrollModal({
         }
       } catch (e) {
         if (!cancelled) {
-          toast.error(e instanceof Error ? e.message : "Impossible de charger les workflows");
+          toast.error(e instanceof Error ? e.message : "Impossible de charger les parcours");
           setList([]);
         }
       } finally {
@@ -109,8 +109,8 @@ export function WorkflowEnrollModal({
       if (created) {
         toast.success(
           created === 1
-            ? "Prospect inscrit au workflow."
-            : `${created} prospects inscrits au workflow.`
+            ? "Prospect inscrit au parcours."
+            : `${created} prospects inscrits au parcours.`
         );
       }
       if (skipped) {
@@ -118,7 +118,7 @@ export function WorkflowEnrollModal({
           `${skipped} ignoré(s)`,
           {
             description:
-              "Déjà un parcours actif pour ce workflow, ou prospect invalide.",
+              "Déjà un parcours actif pour ce suivi, ou prospect invalide.",
           }
         );
       }
@@ -142,7 +142,7 @@ export function WorkflowEnrollModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Inscrire au workflow</DialogTitle>
+          <DialogTitle>Inscrire au parcours</DialogTitle>
           <DialogDescription>
             {prospects.length === 1
               ? `Prospect : ${names}`
@@ -161,14 +161,14 @@ export function WorkflowEnrollModal({
             ) : list.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Aucun parcours prêt à lancer.{" "}
-                <Link href="/workflows" className="text-primary underline">
+                <Link href="/whatsapp" className="text-primary underline">
                   Créer ou finaliser un parcours
                 </Link>
               </p>
             ) : (
               <Select value={selectedId} onValueChange={setSelectedId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Choisir un workflow" />
+                  <SelectValue placeholder="Choisir un parcours" />
                 </SelectTrigger>
                 <SelectContent>
                   {list.map((w) => (

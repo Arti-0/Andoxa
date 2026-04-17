@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { ensureLinkedInRelationFromUnipileProfile } from "@/lib/linkedin/ensure-relation-from-unipile-profile";
 import { env } from "@/lib/config/environment";
 import {
   getLinkedInAccountIdForUserId,
@@ -168,7 +169,7 @@ async function handleLinkedInInvite(
     ctx.startedByUserId
   );
   if (!accountId) {
-    throw new Error("Aucun compte LinkedIn Unipile pour l’utilisateur ayant lancé le workflow");
+    throw new Error("Aucun compte LinkedIn connecté pour l’utilisateur ayant lancé le workflow");
   }
   const slug = extractLinkedInSlug(ctx.prospect.linkedin);
   if (!slug) {
@@ -183,24 +184,20 @@ async function handleLinkedInInvite(
       ? applyMessageVariables(trimmed, ctx.prospect, { bookingLink })
       : "";
 
-  const profileRes = await unipileFetch<{ provider_id?: string }>(
-    `/users/${encodeURIComponent(slug)}?account_id=${accountId}`
-  );
-  const providerId = profileRes?.provider_id;
+  const { providerId, isFirstDegree } =
+    await ensureLinkedInRelationFromUnipileProfile(
+      ctx.supabase,
+      ctx.startedByUserId,
+      accountId,
+      slug
+    );
   if (!providerId) {
     throw new Error("Impossible de résoudre le profil LinkedIn");
   }
 
-  const { data: existingRelation } = await ctx.supabase
-    .from("linkedin_relations")
-    .select("id")
-    .eq("user_id", ctx.startedByUserId)
-    .eq("attendee_id", providerId)
-    .maybeSingle();
-
-  if (existingRelation) {
+  if (isFirstDegree) {
     console.info(
-      "[workflow] linkedin_invite: already connected (linkedin_relations), skipping invite"
+      "[workflow] linkedin_invite: already connected (linkedin_relations / profil LinkedIn), skipping invite"
     );
     return { awaitingConnection: false };
   }
@@ -251,7 +248,7 @@ async function handleLinkedInMessage(ctx: HandlerContext): Promise<void> {
     ctx.startedByUserId
   );
   if (!accountId) {
-    throw new Error("Aucun compte LinkedIn Unipile pour l’utilisateur ayant lancé le workflow");
+    throw new Error("Aucun compte LinkedIn connecté pour l’utilisateur ayant lancé le workflow");
   }
   const slug = extractLinkedInSlug(ctx.prospect.linkedin);
   if (!slug) {
@@ -301,7 +298,7 @@ async function handleWhatsAppMessage(ctx: HandlerContext): Promise<void> {
     ctx.startedByUserId
   );
   if (!accountId) {
-    throw new Error("Aucun compte WhatsApp Unipile pour l’utilisateur ayant lancé le workflow");
+    throw new Error("Aucun compte WhatsApp connecté pour l’utilisateur ayant lancé le workflow");
   }
   const phone = (ctx.prospect.phone ?? "").trim();
   if (!phone) {

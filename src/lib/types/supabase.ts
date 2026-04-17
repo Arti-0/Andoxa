@@ -673,6 +673,10 @@ export interface Database {
                     guest_name: string | null;
                     guest_email: string | null;
                     guest_linkedin: string | null;
+                    guest_phone: string | null;
+                    google_meet_url: string | null;
+                    google_event_id: string | null;
+                    confirmation_email_sent_at: string | null;
                     created_by: string | null;
                     created_at: string | null;
                     updated_at: string | null;
@@ -691,6 +695,10 @@ export interface Database {
                     guest_name?: string | null;
                     guest_email?: string | null;
                     guest_linkedin?: string | null;
+                    guest_phone?: string | null;
+                    google_meet_url?: string | null;
+                    google_event_id?: string | null;
+                    confirmation_email_sent_at?: string | null;
                     created_by?: string | null;
                     created_at?: string | null;
                     updated_at?: string | null;
@@ -709,6 +717,10 @@ export interface Database {
                     guest_name?: string | null;
                     guest_email?: string | null;
                     guest_linkedin?: string | null;
+                    guest_phone?: string | null;
+                    google_meet_url?: string | null;
+                    google_event_id?: string | null;
+                    confirmation_email_sent_at?: string | null;
                     created_by?: string | null;
                     created_at?: string | null;
                     updated_at?: string | null;
@@ -810,6 +822,42 @@ export interface Database {
                     organization_id?: string;
                     created_at?: string | null;
                     last_inbound_at?: string | null;
+                };
+                Relationships: [];
+            };
+            user_google_tokens: {
+                Row: {
+                    id: string;
+                    user_id: string;
+                    access_token: string;
+                    refresh_token: string | null;
+                    token_expiry: string | null;
+                    scope: string | null;
+                    google_account_email: string | null;
+                    created_at: string | null;
+                    updated_at: string | null;
+                };
+                Insert: {
+                    id?: string;
+                    user_id: string;
+                    access_token: string;
+                    refresh_token?: string | null;
+                    token_expiry?: string | null;
+                    scope?: string | null;
+                    google_account_email?: string | null;
+                    created_at?: string | null;
+                    updated_at?: string | null;
+                };
+                Update: {
+                    id?: string;
+                    user_id?: string;
+                    access_token?: string;
+                    refresh_token?: string | null;
+                    token_expiry?: string | null;
+                    scope?: string | null;
+                    google_account_email?: string | null;
+                    created_at?: string | null;
+                    updated_at?: string | null;
                 };
                 Relationships: [];
             };

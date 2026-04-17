@@ -94,7 +94,7 @@ export function ProspectProfileContent({
     workspace?.plan,
     workspace?.subscription_status
   ) as PlanId;
-  const canUseWorkflows = canAccessRoute(routePlan, "/workflows");
+  const canUseWorkflows = canAccessRoute(routePlan, "/whatsapp");
 
   const queryClient = useQueryClient();
   const [enriching, setEnriching] = useState(false);
@@ -254,6 +254,7 @@ export function ProspectProfileContent({
       {/* Action bar */}
       <div className="flex flex-wrap gap-2">
         <Button
+          type="button"
           variant={editing ? "default" : "outline"}
           size="sm"
           onClick={() => setEditing(!editing)}
@@ -263,24 +264,24 @@ export function ProspectProfileContent({
         </Button>
         {hasLinkedin && (
           <>
-            <Button variant="outline" size="sm" onClick={handleEnrich} disabled={enriching}>
+            <Button type="button" variant="outline" size="sm" onClick={handleEnrich} disabled={enriching}>
               {enriching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               <span className="ml-2">Enrichir</span>
             </Button>
-            <Button variant="outline" size="sm" onClick={handleInviteDefault} disabled={inviting}>
+            <Button type="button" variant="outline" size="sm" onClick={handleInviteDefault} disabled={inviting}>
               {inviting ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
               <span className="ml-2">Inviter</span>
             </Button>
-            <Button variant="outline" size="sm" onClick={openInviteModal}>
+            <Button type="button" variant="outline" size="sm" onClick={openInviteModal}>
               <UserPlus className="h-4 w-4" />
               <span className="ml-2">Inviter avec message</span>
             </Button>
-            <Button variant="outline" size="sm" onClick={openContactModal}>
+            <Button type="button" variant="outline" size="sm" onClick={openContactModal}>
               <MessageSquare className="h-4 w-4" />
               <span className="ml-2">Démarrer conversation</span>
             </Button>
             {!linkedChatId && (
-              <Button variant="outline" size="sm" onClick={handleLinkExistingChat} disabled={linkingChat}>
+              <Button type="button" variant="outline" size="sm" onClick={handleLinkExistingChat} disabled={linkingChat}>
                 {linkingChat ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
                 <span className="ml-2">Associer la conversation existante</span>
               </Button>
@@ -288,50 +289,58 @@ export function ProspectProfileContent({
           </>
         )}
         {linkedChatId && (
-          <Link href={`/messagerie?chat=${encodeURIComponent(linkedChatId)}`} className="inline-flex items-center gap-2">
-            <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" asChild>
+            <Link
+              href={`/messagerie?chat=${encodeURIComponent(linkedChatId)}`}
+              className="inline-flex items-center"
+            >
               <MessageSquare className="h-4 w-4" />
               <span className="ml-2">Ouvrir la conversation</span>
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         )}
-        <Link href={`/call-sessions/new?prospects=${prospect.id}`}>
-          <Button variant="outline" size="sm">
+        <Button variant="outline" size="sm" asChild>
+          <Link href={`/call-sessions/new?prospects=${prospect.id}`} className="inline-flex items-center">
             <PhoneCall className="h-4 w-4" />
             <span className="ml-2">Session d&apos;appels</span>
-          </Button>
-        </Link>
-        <Link href="/campaigns">
-          <Button variant="outline" size="sm">
+          </Link>
+        </Button>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/campaigns" className="inline-flex items-center">
             <Megaphone className="h-4 w-4" />
             <span className="ml-2">Campagnes</span>
-          </Button>
-        </Link>
+          </Link>
+        </Button>
         {canUseWorkflows && (
-          <Button variant="outline" size="sm" onClick={() => setShowWorkflowModal(true)}>
+          <Button type="button" variant="outline" size="sm" onClick={() => setShowWorkflowModal(true)}>
             <Workflow className="h-4 w-4" />
-            <span className="ml-2">Workflow</span>
+            <span className="ml-2">Parcours WhatsApp</span>
           </Button>
         )}
         {hasLinkedin && (
-          <a
-            href={prospect.linkedin!.startsWith("http") ? prospect.linkedin! : `https://${prospect.linkedin}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" asChild>
+            <a
+              href={
+                prospect.linkedin!.startsWith("http")
+                  ? prospect.linkedin!
+                  : `https://${prospect.linkedin}`
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center"
+            >
               <Linkedin className="h-4 w-4" />
               <span className="ml-2">LinkedIn</span>
               <ExternalLink className="ml-1.5 h-3 w-3" />
-            </Button>
-          </a>
+            </a>
+          </Button>
         )}
-        <Link href="/crm">
-          <Button variant="outline" size="sm">
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/crm" className="inline-flex items-center">
             <LayoutGrid className="h-4 w-4" />
             <span className="ml-2">CRM</span>
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
 
       <CampaignModal
@@ -634,7 +643,7 @@ function ProspectOrganizationActivity({ prospectId }: { prospectId: string }) {
       title="Activité de l’organisation"
       icon={Activity}
       items={items}
-      emptyMessage="Aucune action enregistrée pour ce prospect (workflows, changements de statut, etc.)."
+      emptyMessage="Aucune action enregistrée pour ce prospect (parcours WhatsApp, changements de statut, etc.)."
     />
   );
 }

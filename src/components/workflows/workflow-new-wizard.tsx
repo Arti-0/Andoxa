@@ -37,7 +37,7 @@ import {
 import { WorkflowStepWaitModal } from "./workflow-step-wait-modal";
 import { WorkflowStepMessageModal } from "./workflow-step-message-modal";
 import type { WorkflowStep, WorkflowStepType } from "@/lib/workflows/schema";
-import { WORKFLOW_STEP_TYPES } from "@/lib/workflows/schema";
+import { WORKFLOW_STEP_TYPES_BUILDER_UI } from "@/lib/workflows/schema";
 import { WorkflowListIcon } from "./workflow-list-icon";
 import { useLinkedInAccount } from "@/hooks/use-linkedin-account";
 
@@ -169,8 +169,8 @@ export function WorkflowNewPageClient() {
         throw new Error(json?.error?.message ?? "Enregistrement impossible");
       }
       const id = json.data.id as string;
-      toast.success("Workflow enregistré");
-      router.push(`/workflows/${id}`);
+      toast.success("Parcours enregistré");
+      router.push(`/whatsapp/${id}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erreur");
     } finally {
@@ -189,7 +189,7 @@ export function WorkflowNewPageClient() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-1 items-start gap-3">
             <Button variant="ghost" size="icon" asChild className="shrink-0">
-              <Link href="/workflows" aria-label="Retour">
+              <Link href="/whatsapp" aria-label="Retour">
                 <ArrowLeft className="h-4 w-4" />
               </Link>
             </Button>
@@ -213,7 +213,7 @@ export function WorkflowNewPageClient() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Nom et repère visuel</CardTitle>
-              <CardDescription>Pour retrouver le workflow dans la liste.</CardDescription>
+              <CardDescription>Pour retrouver le parcours dans la liste.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -280,9 +280,9 @@ export function WorkflowNewPageClient() {
             <CardHeader>
               <CardTitle className="text-base">Parcours</CardTitle>
               <CardDescription className="text-pretty">
-                Construisez la séquence d’actions pour chaque contact : attentes, invitations et messages
-                s’enchaînent dans l’ordre affiché. Le détail de chaque message s’édite dans la fenêtre
-                dédiée ; des raccourcis pour les champs du contact y sont proposés.
+                Construisez la séquence pour chaque contact : attentes et messages WhatsApp s’enchaînent dans
+                l’ordre affiché. Le détail de chaque message s’édite dans la fenêtre dédiée ; des raccourcis pour
+                les champs du contact y sont proposés.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -293,7 +293,7 @@ export function WorkflowNewPageClient() {
                     <SelectValue placeholder="Choisir le type d’étape…" />
                   </SelectTrigger>
                   <SelectContent>
-                    {WORKFLOW_STEP_TYPES.map((t) => (
+                    {WORKFLOW_STEP_TYPES_BUILDER_UI.map((t) => (
                       <SelectItem key={t} value={t}>
                         {STEP_TYPE_LABELS[t]}
                       </SelectItem>

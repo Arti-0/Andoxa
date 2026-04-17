@@ -7,6 +7,11 @@ import {
     useRef,
     type CSSProperties,
 } from 'react';
+import {
+    useMutation,
+    useQuery,
+    useQueryClient,
+} from '@tanstack/react-query';
 import { useMessagingRealtime } from '@/hooks/use-messaging-realtime';
 import { ChatCrmPanel } from '@/components/messagerie/chat-crm-panel';
 import { Button } from '@/components/ui/button';
@@ -16,10 +21,15 @@ import {
     MessageSquare,
     Loader2,
     Paperclip,
+    PanelRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import type { UnipileChat, UnipileMessage } from '@/lib/unipile/types';
+import type {
+    UnipileAttachment,
+    UnipileChat,
+    UnipileMessage,
+} from '@/lib/unipile/types';
 
 interface ChatsApiResponse {
     items?: UnipileChat[];
@@ -29,6 +39,11 @@ interface ChatsApiResponse {
 interface MessagesApiResponse {
     items?: UnipileMessage[];
     cursor?: string | null;
+}
+
+/** React Query key for optimistic send + invalidation (messagerie). */
+export function unipileChatMessagesQueryKey(chatId: string) {
+    return ['unipile', 'chat-messages', chatId] as const;
 }
 
 interface MessagingInboxProps {
@@ -80,6 +95,7 @@ export function MessagingInbox({
     focusChatId,
     onlyHorsCrm = false,
 }: MessagingInboxProps) {
+    const queryClient = useQueryClient();
     const [chats, setChats] = useState<UnipileChat[]>([]);
     const [chatToProspect, setChatToProspect] = useState<
         Record<string, string>
@@ -87,12 +103,10 @@ export function MessagingInbox({
     const [selectedChatId, setSelectedChatId] = useState<string | null>(
         focusChatId ?? null
     );
-    const [messages, setMessages] = useState<UnipileMessage[]>([]);
     const [newMessage, setNewMessage] = useState('');
     const [loadingChats, setLoadingChats] = useState(true);
-    const [loadingMessages, setLoadingMessages] = useState(false);
-    const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [crmPanelOpen, setCrmPanelOpen] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const scrollPositions = useRef<Record<string, number>>({});
@@ -152,32 +166,36 @@ export function MessagingInbox({
         }
     }, []);
 
-    const fetchMessages = useCallback(async (chatId: string) => {
-        setLoadingMessages(true);
-        setError(null);
-        try {
-            const res = await fetch(`/api/unipile/chats/${chatId}/messages`);
+    const messagesQuery = useQuery({
+        queryKey: unipileChatMessagesQueryKey(
+            selectedChatId ?? '__no_chat__'
+        ),
+        queryFn: async () => {
+            if (!selectedChatId) return [];
+            const res = await fetch(
+                `/api/unipile/chats/${selectedChatId}/messages`,
+                { credentials: 'include' }
+            );
             const json = await res.json();
             if (!res.ok) {
                 const msg =
                     json?.error?.message ||
                     'Erreur lors du chargement des messages';
                 setError(msg);
-                setMessages([]);
-                return;
+                return [];
             }
             const data = json?.data ?? json;
             const items =
                 (data as MessagesApiResponse)?.items ??
                 (Array.isArray(data) ? data : []);
-            setMessages(Array.isArray(items) ? items : []);
-        } catch {
-            setError('Impossible de charger les messages.');
-            setMessages([]);
-        } finally {
-            setLoadingMessages(false);
-        }
-    }, []);
+            return Array.isArray(items) ? items : [];
+        },
+        enabled: !!selectedChatId,
+    });
+
+    const messages = selectedChatId ? (messagesQuery.data ?? []) : [];
+    const loadingMessages =
+        messagesQuery.isPending && messages.length === 0;
 
     useEffect(() => {
         fetchChats();
@@ -186,9 +204,11 @@ export function MessagingInbox({
     useEffect(() => {
         if (lastIncomingChatId && lastIncomingChatId === selectedChatId) {
             scrollBottomAfterRealtimeRef.current = true;
-            void fetchMessages(selectedChatId);
+            void queryClient.invalidateQueries({
+                queryKey: unipileChatMessagesQueryKey(selectedChatId),
+            });
         }
-    }, [lastIncomingChatId, selectedChatId, fetchMessages]);
+    }, [lastIncomingChatId, selectedChatId, queryClient]);
 
     useEffect(() => {
         if (selectedChatId) {
@@ -202,12 +222,66 @@ export function MessagingInbox({
     }, [focusChatId, chats]);
 
     useEffect(() => {
-        if (selectedChatId) {
-            fetchMessages(selectedChatId);
-        } else {
-            setMessages([]);
-        }
-    }, [selectedChatId, fetchMessages]);
+        setCrmPanelOpen(false);
+    }, [selectedChatId]);
+
+    const sendMutation = useMutation({
+        mutationFn: async (vars: { chatId: string; text: string }) => {
+            const res = await fetch(
+                `/api/unipile/chats/${vars.chatId}/messages`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ text: vars.text }),
+                }
+            );
+            const json = await res.json();
+            if (!res.ok) {
+                throw new Error(
+                    json?.error?.message || "Erreur lors de l'envoi"
+                );
+            }
+            return json;
+        },
+        onMutate: async (variables) => {
+            await queryClient.cancelQueries({
+                queryKey: unipileChatMessagesQueryKey(variables.chatId),
+            });
+            const previous = queryClient.getQueryData<UnipileMessage[]>(
+                unipileChatMessagesQueryKey(variables.chatId)
+            );
+            const nowIso = new Date().toISOString();
+            const optimistic: UnipileMessage = {
+                id: `temp-${Date.now()}`,
+                text: variables.text,
+                timestamp: nowIso,
+                sender_id: 'local',
+                is_sender: 1,
+            };
+            queryClient.setQueryData<UnipileMessage[]>(
+                unipileChatMessagesQueryKey(variables.chatId),
+                (old) => [optimistic, ...(old ?? [])]
+            );
+            scrollBottomAfterSendRef.current = true;
+            return { previous };
+        },
+        onError: (err, variables, context) => {
+            if (context?.previous !== undefined) {
+                queryClient.setQueryData(
+                    unipileChatMessagesQueryKey(variables.chatId),
+                    context.previous
+                );
+            }
+            setNewMessage(variables.text);
+            setError(err instanceof Error ? err.message : "Erreur d'envoi");
+        },
+        onSuccess: (_data, variables) => {
+            void queryClient.invalidateQueries({
+                queryKey: unipileChatMessagesQueryKey(variables.chatId),
+            });
+        },
+    });
 
     useEffect(() => {
         if (loadingMessages || !messagesContainerRef.current) return;
@@ -242,31 +316,12 @@ export function MessagingInbox({
         }
     }, [messages, selectedChatId, loadingMessages]);
 
-    const handleSend = async () => {
+    const handleSend = () => {
         if (!selectedChatId || !newMessage.trim()) return;
-        setSending(true);
-        try {
-            const res = await fetch(
-                `/api/unipile/chats/${selectedChatId}/messages`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: newMessage.trim() }),
-                }
-            );
-            const json = await res.json();
-            if (!res.ok) {
-                setError(json?.error?.message || "Erreur lors de l'envoi");
-                return;
-            }
-            setNewMessage('');
-            scrollBottomAfterSendRef.current = true;
-            await fetchMessages(selectedChatId);
-        } catch {
-            setError("Impossible d'envoyer le message.");
-        } finally {
-            setSending(false);
-        }
+        const text = newMessage.trim();
+        setNewMessage('');
+        setError(null);
+        sendMutation.mutate({ chatId: selectedChatId, text });
     };
 
     const chatLabel = (chat: UnipileChat & { interlocutor_name?: string }) =>
@@ -351,12 +406,19 @@ export function MessagingInbox({
         );
     }
 
+    const selectedChat = selectedChatId
+        ? chats.find((c) => c.id === selectedChatId)
+        : undefined;
+    const selectedChannel = selectedChat
+        ? (selectedChat as UnipileChat & { _channel?: string })._channel
+        : undefined;
+
     return (
         <div
             className={cn(
-                'grid h-full min-h-0 gap-0',
+                'relative grid h-full min-h-0 gap-0',
                 selectedChatId
-                    ? 'grid-cols-1 lg:grid-cols-[minmax(200px,280px)_1fr_minmax(180px,240px)]'
+                    ? 'grid-cols-1 lg:grid-cols-[minmax(200px,280px)_1fr_240px]'
                     : 'grid-cols-1 lg:grid-cols-[minmax(200px,280px)_1fr]'
             )}
         >
@@ -469,8 +531,8 @@ export function MessagingInbox({
                                 (c) => c.id === selectedChatId
                             );
                             return (
-                                <div className="flex shrink-0 items-center border-b px-4 py-2">
-                                    <span className="truncate font-medium text-sm">
+                                <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2">
+                                    <span className="min-w-0 flex-1 truncate font-medium text-sm">
                                         {selChat
                                             ? chatLabel(
                                                   selChat as UnipileChat & {
@@ -479,6 +541,18 @@ export function MessagingInbox({
                                               )
                                             : 'Conversation'}
                                     </span>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="icon"
+                                        className="h-8 w-8 shrink-0 lg:hidden"
+                                        aria-label="Ouvrir le panneau CRM"
+                                        onClick={() =>
+                                            setCrmPanelOpen((v) => !v)
+                                        }
+                                    >
+                                        <PanelRight className="h-4 w-4" />
+                                    </Button>
                                 </div>
                             );
                         })()}
@@ -519,7 +593,7 @@ export function MessagingInbox({
                                                 m.attachments.length > 0 && (
                                                     <div className="mt-2 flex flex-wrap gap-2">
                                                         {m.attachments.map(
-                                                            (a) => {
+                                                            (a: UnipileAttachment) => {
                                                                 const attId =
                                                                     a.id ??
                                                                     (
@@ -601,12 +675,15 @@ export function MessagingInbox({
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter' && !e.shiftKey) {
                                         e.preventDefault();
-                                        if (!sending && newMessage.trim()) {
-                                            void handleSend();
+                                        if (
+                                            !sendMutation.isPending &&
+                                            newMessage.trim()
+                                        ) {
+                                            handleSend();
                                         }
                                     }
                                 }}
-                                disabled={sending}
+                                disabled={sendMutation.isPending}
                                 rows={1}
                                 className="max-h-32 min-h-[38px] resize-none font-sans text-sm"
                                 style={
@@ -617,12 +694,15 @@ export function MessagingInbox({
                             />
                             <Button
                                 type="button"
-                                onClick={() => void handleSend()}
-                                disabled={sending || !newMessage.trim()}
+                                onClick={() => handleSend()}
+                                disabled={
+                                    sendMutation.isPending ||
+                                    !newMessage.trim()
+                                }
                                 size="icon"
                                 className="shrink-0"
                             >
-                                {sending ? (
+                                {sendMutation.isPending ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                 ) : (
                                     <MessageSquare className="h-4 w-4" />
@@ -642,17 +722,40 @@ export function MessagingInbox({
                 )}
             </div>
 
-            {selectedChatId && (
-                <ChatCrmPanel
-                    chatId={selectedChatId}
-                    prospectId={chatToProspect[selectedChatId] ?? null}
-                    onLinked={(chatId, prospectId) => {
-                        setChatToProspect((prev) => ({
-                            ...prev,
-                            [chatId]: prospectId,
-                        }));
-                    }}
+            {selectedChatId && crmPanelOpen && (
+                <button
+                    type="button"
+                    aria-label="Fermer le panneau CRM"
+                    className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+                    onClick={() => setCrmPanelOpen(false)}
                 />
+            )}
+
+            {selectedChatId && (
+                <div
+                    className={cn(
+                        'flex min-h-0 flex-col border-t bg-card transition-transform duration-200 ease-out lg:max-w-[240px] lg:w-full lg:translate-x-0 lg:border-l lg:border-t-0',
+                        'max-lg:fixed max-lg:bottom-0 max-lg:right-0 max-lg:top-0 max-lg:z-50 max-lg:w-[min(100vw,280px)] max-lg:border-l max-lg:shadow-xl',
+                        crmPanelOpen
+                            ? 'max-lg:translate-x-0'
+                            : 'max-lg:pointer-events-none max-lg:translate-x-full'
+                    )}
+                >
+                    <ChatCrmPanel
+                        chatId={selectedChatId}
+                        prospectId={
+                            chatToProspect[selectedChatId] ?? null
+                        }
+                        chatChannel={selectedChannel ?? null}
+                        onCloseMobile={() => setCrmPanelOpen(false)}
+                        onLinked={(chatId, prospectId) => {
+                            setChatToProspect((prev) => ({
+                                ...prev,
+                                [chatId]: prospectId,
+                            }));
+                        }}
+                    />
+                </div>
             )}
         </div>
     );

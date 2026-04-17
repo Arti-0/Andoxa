@@ -76,7 +76,7 @@ export interface UnipileError {
   status: number;
 }
 
-/** User-friendly messages for known Unipile error types */
+/** Messages lisibles pour certains types d’erreur renvoyés par le fournisseur */
 export const UNIPILE_ERROR_MESSAGES: Record<string, string> = {
   "errors/missing_credentials": "Compte non connecté",
   "errors/disconnected_account": "Compte déconnecté, reconnectez LinkedIn",

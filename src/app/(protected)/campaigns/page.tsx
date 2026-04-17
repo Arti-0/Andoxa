@@ -24,6 +24,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useLinkedInAccount } from '@/hooks/use-linkedin-account';
+import { ConnectionGate } from '@/components/unipile/connection-gate';
 import type {
     CampaignConfig,
     CampaignJobStatus,
@@ -408,6 +409,7 @@ export default function CampaignsPage() {
         });
 
     return (
+        <ConnectionGate acceptEitherLinkedInOrWhatsApp pageName="Campagnes & Appels">
         <div className="flex flex-col gap-6 p-6 lg:p-8">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-wrap rounded-lg border bg-muted/30 p-1">
@@ -779,5 +781,6 @@ export default function CampaignsPage() {
                 isPremium={isPremium}
             />
         </div>
+        </ConnectionGate>
     );
 }

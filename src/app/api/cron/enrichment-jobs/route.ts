@@ -65,7 +65,7 @@ export async function POST(req: Request) {
         .from("enrichment_jobs")
         .update({
           status: "failed",
-          last_error: "Aucun compte LinkedIn Unipile pour l'utilisateur ayant importé",
+          last_error: "Aucun compte LinkedIn connecté pour l'utilisateur ayant importé",
           updated_at: new Date().toISOString(),
         })
         .eq("id", candidate.id);

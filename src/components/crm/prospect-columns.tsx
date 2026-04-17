@@ -20,6 +20,7 @@ import {
     PROSPECT_STATUS_LABELS,
     PROSPECT_STATUS_COLORS,
 } from '@/lib/types/prospects';
+import { extractCleanRole } from '@/lib/utils/extract-role';
 
 const SOURCE_LABELS: Record<string, string> = {
     manual: 'Manuel',
@@ -34,10 +35,13 @@ function InlineEditCell({
     value,
     onSave,
     className = '',
+    onBeginEditing,
 }: {
     value: string;
     onSave: (v: string) => void;
     className?: string;
+    /** Annule la navigation différée au clic sur la ligne (double-clic pour éditer). */
+    onBeginEditing?: () => void;
 }) {
     const [editing, setEditing] = useState(false);
     const [local, setLocal] = useState(value);
@@ -48,6 +52,7 @@ function InlineEditCell({
                 className={`cursor-text rounded px-1 -mx-1 hover:bg-accent/50 ${className}`}
                 onDoubleClick={(e) => {
                     e.stopPropagation();
+                    onBeginEditing?.();
                     setLocal(value);
                     setEditing(true);
                 }}
@@ -91,6 +96,8 @@ export function getProspectColumns(
         onLinkedInInvite?: (prospect: Prospect) => void;
         inviteQuota?: { used: number; cap: number };
         invitePendingProspectId?: string | null;
+        /** CRM prospects : annule le setTimeout de navigation au double-clic édition. */
+        clearPendingRowNavigation?: () => void;
     }
 ): ColumnDef<Prospect>[] {
     const metaCols: ColumnDef<Prospect>[] = (options?.metadataKeys ?? []).map((key) => ({
@@ -188,22 +195,26 @@ export function getProspectColumns(
             cell: ({ row }) => {
                 const p = row.original;
                 return (
-                    <div onClick={(e) => e.stopPropagation()}>
+                    <>
                         {onUpdate ? (
                             <InlineEditCell
                                 value={p.full_name ?? ''}
                                 onSave={(v) => onUpdate(p.id, 'full_name', v)}
                                 className="font-medium"
+                                onBeginEditing={options?.clearPendingRowNavigation}
                             />
                         ) : (
                             <p className="font-medium">{p.full_name ?? '—'}</p>
                         )}
                         {p.job_title && (
-                            <p className="text-sm text-muted-foreground">
-                                {p.job_title}
+                            <p
+                                className="min-w-0 truncate text-sm text-muted-foreground"
+                                title={p.job_title}
+                            >
+                                {extractCleanRole(p.job_title)}
                             </p>
                         )}
-                    </div>
+                    </>
                 );
             },
         },
@@ -212,17 +223,14 @@ export function getProspectColumns(
             header: 'Entreprise',
             cell: ({ row }) => {
                 const p = row.original;
-                return (
-                    <div onClick={(e) => e.stopPropagation()}>
-                        {onUpdate ? (
-                            <InlineEditCell
-                                value={p.company ?? ''}
-                                onSave={(v) => onUpdate(p.id, 'company', v)}
-                            />
-                        ) : (
-                            <span className="text-sm">{p.company ?? '—'}</span>
-                        )}
-                    </div>
+                return onUpdate ? (
+                    <InlineEditCell
+                        value={p.company ?? ''}
+                        onSave={(v) => onUpdate(p.id, 'company', v)}
+                        onBeginEditing={options?.clearPendingRowNavigation}
+                    />
+                ) : (
+                    <span className="text-sm">{p.company ?? '—'}</span>
                 );
             },
         },

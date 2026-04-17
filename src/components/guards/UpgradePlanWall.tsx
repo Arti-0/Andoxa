@@ -22,7 +22,7 @@ export function UpgradePlanWall({ featurePath }: UpgradePlanWallProps) {
         </h2>
         <p className="text-sm text-muted-foreground">
           {isMessagerie
-            ? "La messagerie centralisée (Unipile) est incluse à partir du plan Pro."
+            ? "La messagerie centralisée LinkedIn et WhatsApp est incluse à partir du plan Pro."
             : "Cette page est réservée aux plans Pro et Business."}
         </p>
       </div>

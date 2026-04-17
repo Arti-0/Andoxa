@@ -82,7 +82,7 @@ export function WorkflowStepWaitModal({
             </Label>
             <p className="text-xs text-muted-foreground">
               Si le prospect a déjà répondu quand cette étape est atteinte, le
-              workflow passe immédiatement à l’étape suivante.
+              parcours passe immédiatement à l’étape suivante.
             </p>
           </div>
         </div>

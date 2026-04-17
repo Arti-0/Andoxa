@@ -71,7 +71,7 @@ export const GET = createApiHandler(async (req, ctx) => {
       workflow_name: r.workflow_id ? workflowMap.get(r.workflow_id) ?? null : null,
       title: activityTitle(r.action, d),
       description: activityDescription(r.action, d),
-      target_url: r.workflow_id ? `/workflows/${r.workflow_id}` : undefined,
+      target_url: r.workflow_id ? `/whatsapp/${r.workflow_id}` : undefined,
     };
   });
 
@@ -83,13 +83,13 @@ function activityTitle(action: string, d: Record<string, unknown>): string {
     case "status_change":
       return "Statut CRM";
     case "workflow_enrolled":
-      return "Workflow";
+      return "Suivi WhatsApp";
     case "workflow_step_completed":
-      return "Workflow";
+      return "Suivi WhatsApp";
     case "workflow_step_failed":
-      return "Workflow";
+      return "Suivi WhatsApp";
     case "workflow_run_completed":
-      return "Workflow";
+      return "Suivi WhatsApp";
     default:
       return action;
   }
@@ -104,7 +104,7 @@ function activityDescription(action: string, d: Record<string, unknown>): string
       return `Statut : ${from} → ${to}`;
     }
     case "workflow_enrolled":
-      return wn ? `Inscrit au parcours « ${wn} »` : "Inscrit à un workflow";
+      return wn ? `Inscrit au parcours « ${wn} »` : "Inscrit à un parcours";
     case "workflow_step_completed": {
       const st = typeof d.step_type === "string" ? d.step_type : "";
       const labels: Record<string, string> = {
@@ -118,7 +118,7 @@ function activityDescription(action: string, d: Record<string, unknown>): string
     case "workflow_step_failed":
       return typeof d.error === "string" ? `Échec : ${d.error.slice(0, 200)}` : "Échec d’étape";
     case "workflow_run_completed":
-      return wn ? `Parcours « ${wn} » terminé` : "Parcours workflow terminé";
+      return wn ? `Parcours « ${wn} » terminé` : "Parcours terminé";
     default:
       return JSON.stringify(d).slice(0, 200);
   }

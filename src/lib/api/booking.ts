@@ -19,7 +19,14 @@ export async function fetchBookingSlots(slug: string): Promise<Slot[]> {
 
 export async function bookSlot(
   slug: string,
-  params: { slot_start: string; slot_end: string; guest_name: string; guest_email: string }
+  params: {
+    slot_start: string;
+    slot_end: string;
+    guest_name: string;
+    guest_email: string;
+    guest_linkedin?: string | null;
+    guest_phone?: string | null;
+  }
 ): Promise<{ id: string; start_time: string; end_time: string; title: string }> {
   const res = await fetch(`/api/booking/${slug}/book`, {
     method: "POST",

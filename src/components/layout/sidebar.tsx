@@ -14,7 +14,8 @@ import {
   ChevronDown,
   Check,
   Building2,
-  Workflow,
+  MessageCircle,
+  Lock,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "../../lib/utils";
@@ -33,6 +34,8 @@ import {
 import { normalizePlanIdForRoutes } from "@/lib/billing/effective-plan";
 import { canAccessRoute, type PlanId } from "@/lib/config/plans-config";
 import { useMessagingRealtime } from "@/hooks/use-messaging-realtime";
+import { useLinkedInAccount } from "@/hooks/use-linkedin-account";
+import { isAnyUnipileMessagingConnected } from "@/components/unipile/connection-gate";
 
 interface NavItem {
   href: string;
@@ -45,7 +48,7 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
   { href: "/crm", label: "CRM", icon: Users },
   { href: "/campaigns", label: "Campagnes & Appels", icon: Megaphone },
-  { href: "/workflows", label: "Workflows", icon: Workflow },
+  { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
   { href: "/messagerie", label: "Messagerie", icon: MessageSquare },
   { href: "/calendar", label: "Calendrier", icon: Calendar },
 ];
@@ -99,6 +102,9 @@ export function Sidebar() {
   const [orgsLoaded, setOrgsLoaded] = useState(false);
 
   const { unseenCount, markAllSeen } = useMessagingRealtime();
+  const { data: unipileMe, isPending: unipilePending } = useLinkedInAccount();
+  const showUnipileNavLock =
+    !unipilePending && !isAnyUnipileMessagingConnected(unipileMe);
 
   useEffect(() => {
     if (pathname?.startsWith("/messagerie")) {
@@ -290,11 +296,31 @@ export function Sidebar() {
                       </span>
                     )}
                   </span>
-                  {!isCollapsed && <span>{item.label}</span>}
-                  {!isCollapsed && badge > 0 && (
-                    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
-                      {badge > 99 ? "99+" : badge}
-                    </span>
+                  {!isCollapsed && (
+                    <>
+                      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <span className="truncate">{item.label}</span>
+                        {showUnipileNavLock &&
+                          (item.href === "/messagerie" ||
+                            item.href === "/campaigns" ||
+                            item.href === "/whatsapp") && (
+                            <Lock
+                              className={cn(
+                                "h-3 w-3 shrink-0",
+                                isActive
+                                  ? "text-primary-foreground/85"
+                                  : "text-muted-foreground"
+                              )}
+                              aria-hidden
+                            />
+                          )}
+                      </span>
+                      {badge > 0 ? (
+                        <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+                          {badge > 99 ? "99+" : badge}
+                        </span>
+                      ) : null}
+                    </>
                   )}
                 </Link>
               </li>

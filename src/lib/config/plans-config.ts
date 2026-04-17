@@ -86,7 +86,7 @@ export const PLAN_LIMITS: Record<PlanId, PlanLimits> = {
 
 /**
  * Routes de l’app (protected) accessibles selon le plan.
- * Pro / Business : messagerie Unipile + modèles (onglet Templates dans /messagerie).
+ * Pro / Business : messagerie centralisée + modèles (onglet Templates dans /messagerie).
  */
 const CORE_APP_ROUTES: string[] = [
   "/dashboard",
@@ -101,7 +101,7 @@ const CORE_APP_ROUTES: string[] = [
   "/design-3",
 ];
 
-const PRO_PLUS_EXTRA = ["/messagerie", "/workflows"];
+const PRO_PLUS_EXTRA = ["/messagerie", "/whatsapp"];
 
 export const PLAN_ROUTES: Record<PlanId, string[]> = {
   trial: [...CORE_APP_ROUTES],
@@ -133,7 +133,7 @@ export const PLAN_FEATURES_TEXT: Record<PlanId, string[]> = {
   ],
   pro: [
     "Tout Essential",
-    "Messagerie Unipile centralisée (LinkedIn, etc.)",
+    "Messagerie centralisée LinkedIn et WhatsApp",
     "500 crédits d'enrichissement / mois",
     "Enrichissement automatique à l'import (opt-in)",
     "Modèles de messages pour campagnes",
@@ -168,7 +168,7 @@ export const PLANS_CONFIG: Record<PlanId, PlanConfig> = {
   essential: {
     id: "essential",
     name: "Essential",
-    description: "CRM, campagnes et appels — sans messagerie Unipile centralisée.",
+    description: "CRM, campagnes et appels — sans messagerie centralisée.",
     limits: PLAN_LIMITS.essential,
     features: {
       routes: PLAN_ROUTES.essential,
@@ -178,7 +178,7 @@ export const PLANS_CONFIG: Record<PlanId, PlanConfig> = {
   pro: {
     id: "pro",
     name: "Pro",
-    description: "Messagerie Unipile, enrichissement et modèles — pour équipes qui scalent.",
+    description: "Messagerie centralisée, enrichissement et modèles — pour équipes qui scalent.",
     limits: PLAN_LIMITS.pro,
     features: {
       routes: PLAN_ROUTES.pro,

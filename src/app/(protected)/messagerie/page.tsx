@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useState, useEffect } from "react";
 import { MessagingInbox } from "@/components/linkedin/messaging-inbox";
 import { MessageTemplatesPanel } from "@/components/messagerie/message-templates-panel";
+import { ConnectionGate } from "@/components/unipile/connection-gate";
 import { useMessagingRealtime } from "@/hooks/use-messaging-realtime";
 import { Loader2 } from "lucide-react";
 
@@ -79,7 +80,9 @@ export default function MessageriePage() {
         </div>
       }
     >
-      <MessagerieContent />
+      <ConnectionGate acceptEitherLinkedInOrWhatsApp pageName="Messagerie">
+        <MessagerieContent />
+      </ConnectionGate>
     </Suspense>
   );
 }

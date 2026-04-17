@@ -1,18 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-    Loader2,
-    ExternalLink,
-    Linkedin,
-    Link2,
-    Sparkles,
-    MessageCircle,
-    CheckCircle,
-} from "lucide-react";
+import { Loader2, ExternalLink, Linkedin, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import {
     SettingsCard,
@@ -59,45 +51,22 @@ export function ProfileSettingsSection({
     );
     const [linkedinLoading, setLinkedinLoading] = useState(false);
     const [enriching, setEnriching] = useState(false);
-    const [connectingLinkedIn, setConnectingLinkedIn] = useState(false);
-    const [connectingWhatsApp, setConnectingWhatsApp] = useState(false);
-    const [linkedinConnected, setLinkedinConnected] = useState<boolean | null>(
-        null
-    );
-    const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
-        null
-    );
 
     useEffect(() => {
         setName(fullName ?? "");
     }, [fullName]);
 
-    const fetchUnipileStatus = useCallback(async () => {
-        try {
-            const res = await fetch("/api/unipile/me", { credentials: "include" });
-            const json = await res.json();
-            const data = json?.data ?? json;
-            setLinkedinConnected(data?.connected ?? false);
-            setWhatsappConnected(data?.whatsapp_connected ?? false);
-        } catch {
-            setLinkedinConnected(false);
-            setWhatsappConnected(false);
-        }
-    }, []);
-
     useEffect(() => {
         setLinkedinLoading(true);
-        Promise.all([
-            fetch("/api/profile/linkedin", { credentials: "include" })
-                .then((res) => res.json())
-                .then((json) => {
-                    const data = json?.data ?? json;
-                    setLinkedinData(data as LinkedinProfileData);
-                })
-                .catch(() => setLinkedinData(null)),
-            fetchUnipileStatus(),
-        ]).finally(() => setLinkedinLoading(false));
-    }, [fetchUnipileStatus]);
+        fetch("/api/profile/linkedin", { credentials: "include" })
+            .then((res) => res.json())
+            .then((json) => {
+                const data = json?.data ?? json;
+                setLinkedinData(data as LinkedinProfileData);
+            })
+            .catch(() => setLinkedinData(null))
+            .finally(() => setLinkedinLoading(false));
+    }, []);
 
     const saveFullNameIfChanged = async () => {
         if (namesEqual(name, fullName)) return;
@@ -122,56 +91,6 @@ export function ProfileSettingsSection({
             );
         } finally {
             setSavingName(false);
-        }
-    };
-
-    const handleConnectLinkedIn = async () => {
-        setConnectingLinkedIn(true);
-        try {
-            const res = await fetch("/api/unipile/connect-linkedin", {
-                method: "POST",
-                credentials: "include",
-            });
-            const json = await res.json();
-            const data = json?.data ?? json;
-            const url = (data as { url?: string })?.url;
-            if (url) {
-                window.location.href = url;
-                return;
-            }
-            toast.error(
-                (json?.error?.message as string) ??
-                    "Erreur lors de la connexion"
-            );
-        } catch {
-            toast.error("Impossible de lancer la connexion LinkedIn");
-        } finally {
-            setConnectingLinkedIn(false);
-        }
-    };
-
-    const handleConnectWhatsApp = async () => {
-        setConnectingWhatsApp(true);
-        try {
-            const res = await fetch("/api/unipile/connect-whatsapp", {
-                method: "POST",
-                credentials: "include",
-            });
-            const json = await res.json();
-            const data = json?.data ?? json;
-            const url = (data as { url?: string })?.url;
-            if (url) {
-                window.location.href = url;
-                return;
-            }
-            toast.error(
-                (json?.error?.message as string) ??
-                    "Erreur lors de la connexion WhatsApp"
-            );
-        } catch {
-            toast.error("Impossible de lancer la connexion WhatsApp");
-        } finally {
-            setConnectingWhatsApp(false);
         }
     };
 
@@ -224,24 +143,10 @@ export function ProfileSettingsSection({
         linkedinData?.avatar_url ??
         null;
 
-    const linkedInBtnClass = cn(
-        "flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition-colors disabled:opacity-60",
-        linkedinConnected
-            ? "border border-emerald-500/50 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-500/40 dark:bg-emerald-950/40 dark:text-emerald-200 dark:hover:bg-emerald-950/60"
-            : "border-0 bg-[#0077B5] text-white shadow-md shadow-blue-500/20 hover:bg-[#00669c]"
-    );
-
-    const whatsAppBtnClass = cn(
-        "flex flex-1 items-center justify-center gap-2 rounded-lg border-2 px-4 py-3 text-sm font-semibold transition-colors disabled:opacity-60",
-        whatsappConnected
-            ? "border-emerald-500/50 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-500/40 dark:bg-emerald-950/40 dark:text-emerald-200 dark:hover:bg-emerald-950/60"
-            : "border-[#25D366] bg-[#25D366]/12 text-[#075E54] hover:bg-[#25D366]/20 dark:border-[#25D366]/60 dark:bg-[#25D366]/15 dark:text-[#dcf8c6]"
-    );
-
     return (
         <SettingsCard
             title="Profil"
-            description="Nom, e-mail et comptes liés"
+            description="Nom et e-mail"
         >
             <div className="flex flex-col gap-4">
                 <div className="space-y-2">
@@ -275,52 +180,6 @@ export function ProfileSettingsSection({
                 </div>
 
                 <div className="space-y-3 border-t border-zinc-200 pt-4 dark:border-white/10">
-                    <p className={settingsLabelClass}>Compte lié</p>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                        <button
-                            type="button"
-                            onClick={() => void handleConnectLinkedIn()}
-                            disabled={
-                                connectingLinkedIn || linkedinConnected === null
-                            }
-                            className={linkedInBtnClass}
-                        >
-                            {connectingLinkedIn ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : linkedinConnected ? (
-                                <CheckCircle className="h-4 w-4 shrink-0" />
-                            ) : (
-                                <Linkedin className="h-4 w-4 shrink-0" />
-                            )}
-                            {connectingLinkedIn
-                                ? "Connexion…"
-                                : linkedinConnected
-                                  ? "LinkedIn connecté"
-                                  : "LinkedIn"}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => void handleConnectWhatsApp()}
-                            disabled={
-                                connectingWhatsApp || whatsappConnected === null
-                            }
-                            className={whatsAppBtnClass}
-                        >
-                            {connectingWhatsApp ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : whatsappConnected ? (
-                                <CheckCircle className="h-4 w-4 shrink-0" />
-                            ) : (
-                                <MessageCircle className="h-4 w-4 shrink-0" />
-                            )}
-                            {connectingWhatsApp
-                                ? "Connexion…"
-                                : whatsappConnected
-                                  ? "WhatsApp connecté"
-                                  : "WhatsApp"}
-                        </button>
-                    </div>
-
                     {linkedinLoading ? (
                         <div className="flex items-center gap-2 py-2 text-sm text-zinc-500 dark:text-zinc-400">
                             <Loader2 className="h-4 w-4 animate-spin" />

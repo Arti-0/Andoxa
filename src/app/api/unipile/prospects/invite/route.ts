@@ -1,10 +1,6 @@
 import { ApiError, createApiHandler, Errors, parseBody } from "@/lib/api";
-import {
-  incrementUsageCounter,
-  weeklyPeriodKey,
-} from "@/lib/campaigns/throttle";
+import { weeklyPeriodKey } from "@/lib/campaigns/throttle";
 import { getLinkedInInviteWeeklyUsageCap } from "@/lib/linkedin/limits";
-import { createServiceClient } from "@/lib/supabase/service";
 import { UnipileApiError } from "@/lib/unipile/client";
 import { getAccountIdForUser } from "@/lib/unipile/account";
 import { sendLinkedInInviteForProspect } from "@/lib/unipile/linkedin-single-invite";
@@ -76,14 +72,6 @@ export const POST = createApiHandler(async (req, ctx) => {
     const msg = err instanceof UnipileApiError ? err.message : String(err);
     throw Errors.badRequest(msg);
   }
-
-  const serviceSupabase = createServiceClient();
-  void incrementUsageCounter(
-    serviceSupabase,
-    ctx.userId,
-    "linkedin_invite",
-    week
-  );
 
   return { ok: true as const, used: used + 1, cap };
 });

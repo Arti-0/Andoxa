@@ -6,7 +6,9 @@ import {
   type PlanId,
 } from "../../../../lib/config/plans-config";
 import { deduplicateProspects, mapProspectRow } from "../../../../lib/utils/deduplicateProspects";
+import { ensureLinkedInRelationFromUnipileProfile } from "@/lib/linkedin/ensure-relation-from-unipile-profile";
 import { extractLinkedInSlug } from "@/lib/unipile/campaign";
+import { getLinkedInAccountIdForUserId } from "@/lib/unipile/account";
 import { planAllowsAutoEnrichOnImport } from "@/lib/enrichment/queue-helpers";
 import { effectivePlanIdForLimits } from "@/lib/billing/effective-plan";
 
@@ -222,6 +224,11 @@ export const POST = createApiHandler(async (req, ctx) => {
       ctx.workspace?.subscription_status
     ) && profileRow?.linkedin_auto_enrich === true;
 
+  const linkedInAccountId = await getLinkedInAccountIdForUserId(
+    ctx.supabase,
+    ctx.userId
+  );
+
   for (const prospect of deduplicatedRows) {
     const { data: created, error: prospectError } = await ctx.supabase
       .from("prospects")
@@ -267,6 +274,22 @@ export const POST = createApiHandler(async (req, ctx) => {
         status: "pending",
       });
       if (!jobErr) enrichmentQueued += 1;
+    }
+
+    if (linkedInAccountId && prospect.linkedin?.trim()) {
+      const slug = extractLinkedInSlug(prospect.linkedin);
+      if (slug) {
+        try {
+          await ensureLinkedInRelationFromUnipileProfile(
+            ctx.supabase,
+            ctx.userId,
+            linkedInAccountId,
+            slug
+          );
+        } catch (e) {
+          console.warn("[API] Prospects import LinkedIn relation fallback:", e);
+        }
+      }
     }
   }
 

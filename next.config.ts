@@ -19,6 +19,21 @@ const nextConfig: NextConfig = {
         destination: "/settings",
         permanent: true,
       },
+      {
+        source: "/workflows",
+        destination: "/whatsapp",
+        permanent: true,
+      },
+      {
+        source: "/workflows/new",
+        destination: "/whatsapp/new",
+        permanent: true,
+      },
+      {
+        source: "/workflows/:id",
+        destination: "/whatsapp/:id",
+        permanent: true,
+      },
     ];
   },
   images: {

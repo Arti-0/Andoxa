@@ -243,10 +243,10 @@ export const GET = createApiHandler(async (req, ctx) => {
 });
 
 function summarizeWorkflowActivity(action: string, d: Record<string, unknown>): string {
-  const wname = typeof d.workflow_name === "string" ? d.workflow_name : "Workflow";
+  const wname = typeof d.workflow_name === "string" ? d.workflow_name : "Parcours";
   switch (action) {
     case "workflow_enrolled":
-      return `Inscrit au workflow « ${wname} »`;
+      return `Inscrit au parcours « ${wname} »`;
     case "workflow_step_completed": {
       const st = typeof d.step_type === "string" ? d.step_type : "";
       const labels: Record<string, string> = {

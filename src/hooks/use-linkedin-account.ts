@@ -17,7 +17,7 @@ export function useLinkedInAccount() {
     queryKey: ["unipile-me"],
     queryFn: async (): Promise<LinkedInAccountData> => {
       const res = await fetch("/api/unipile/me", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch Unipile status");
+      if (!res.ok) throw new Error("Impossible de charger le statut de connexion LinkedIn / WhatsApp");
       const json = await res.json();
       return (json?.data ?? json) as LinkedInAccountData;
     },

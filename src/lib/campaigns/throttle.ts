@@ -71,6 +71,7 @@ export function weeklyPeriodKey(date = new Date()): string {
 
 export type UsageAction =
   | "linkedin_invite"
+  | "linkedin_invite_direct"
   | "linkedin_contact"
   | "whatsapp_new_chat";
 

@@ -8,6 +8,8 @@ import {
   type FormEvent,
 } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   User,
   Search,
@@ -16,11 +18,28 @@ import {
   UserPlus,
   Link2,
   X,
+  StickyNote,
+  Megaphone,
+  Phone,
+  PanelRightClose,
+  Workflow,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { extractCleanRole } from "@/lib/utils/extract-role";
+import { WorkflowEnrollModal } from "@/components/workflows/workflow-enroll-modal";
+import { useWorkspace } from "@/lib/workspace";
+import { normalizePlanIdForRoutes } from "@/lib/billing/effective-plan";
+import { canAccessRoute, type PlanId } from "@/lib/config/plans-config";
+import type { Prospect } from "@/lib/types/prospects";
+import {
+  PROSPECT_STATUS_COLORS,
+  PROSPECT_STATUS_LABELS,
+  type ProspectStatus,
+} from "@/lib/types/prospects";
 
 interface ProspectHit {
   id: string;
@@ -30,105 +49,410 @@ interface ProspectHit {
   status: string | null;
 }
 
-interface ChatCrmPanelProps {
+interface MessagerieContextPayload {
+  linkedinFirstDegree: boolean | null;
+  activeWorkflow: {
+    runId: string;
+    workflowId: string;
+    workflowName: string;
+    runStatus: string;
+    currentStepLabel: string | null;
+    canProcessNextStep: boolean;
+  } | null;
+}
+
+export interface ChatCrmPanelProps {
   chatId: string;
   prospectId: string | null;
   onLinked: (chatId: string, prospectId: string) => void;
+  /** Canal de la conversation (ex. LINKEDIN, WHATSAPP). */
+  chatChannel?: string | null;
+  /** When set, show a control to dismiss the mobile CRM drawer. */
+  onCloseMobile?: () => void;
 }
 
-function LinkedProspectCard({
+function parseProspectJson(json: unknown): Prospect | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const data = (o.success === true ? o.data : o.data ?? o) as Prospect | null;
+  return data && typeof data === "object" && "id" in data ? (data as Prospect) : null;
+}
+
+function LinkedCrmSidebar({
   prospectId,
-  onNavigate,
+  chatChannel,
+  onCloseMobile,
 }: {
   prospectId: string;
-  onNavigate: () => void;
+  chatChannel?: string | null;
+  onCloseMobile?: () => void;
 }) {
-  const [prospect, setProspect] = useState<ProspectHit | null>(null);
-  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { workspace } = useWorkspace();
+  const routePlan = normalizePlanIdForRoutes(
+    workspace?.plan,
+    workspace?.subscription_status
+  ) as PlanId;
+  const canUseWorkflows = canAccessRoute(routePlan, "/whatsapp");
 
-  useEffect(() => {
-    setLoading(true);
-    fetch(`/api/prospects/${prospectId}`, { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((json) => {
-        if (!json) {
-          setProspect(null);
-          return;
-        }
-        const data = json.success ? json.data : (json?.data ?? json);
-        setProspect((data as ProspectHit) ?? null);
-      })
-      .catch(() => setProspect(null))
-      .finally(() => setLoading(false));
-  }, [prospectId]);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [workflowModalOpen, setWorkflowModalOpen] = useState(false);
 
-  if (loading) {
+  const { data: prospect, isLoading: prospectLoading } = useQuery({
+    queryKey: ["prospect", prospectId],
+    queryFn: async () => {
+      const res = await fetch(`/api/prospects/${prospectId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) return null;
+      const json = await res.json();
+      return parseProspectJson(json);
+    },
+    enabled: !!prospectId,
+  });
+
+  const { data: ctxData, isLoading: ctxLoading } = useQuery({
+    queryKey: ["prospect-messagerie-context", prospectId],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/prospects/${prospectId}/messagerie-context`,
+        { credentials: "include" }
+      );
+      if (!res.ok) return null;
+      const json = await res.json();
+      const payload = (json?.data ?? json) as MessagerieContextPayload;
+      return payload;
+    },
+    enabled: !!prospectId,
+  });
+
+  const noteMutation = useMutation({
+    mutationFn: async (addition: string) => {
+      const trimmed = addition.trim();
+      if (!trimmed) return;
+      const current = prospect?.notes?.trim() ?? "";
+      const next = current ? `${current}\n${trimmed}` : trimmed;
+      const res = await fetch(`/api/prospects/${prospectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ notes: next }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(
+          (j as { error?: { message?: string } })?.error?.message ??
+            "Échec de l’enregistrement"
+        );
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["prospect", prospectId] });
+      setNoteOpen(false);
+      setNoteDraft("");
+      toast.success("Note enregistrée");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const processStepMutation = useMutation({
+    mutationFn: async () => {
+      const wf = ctxData?.activeWorkflow;
+      if (!wf) throw new Error("Aucun parcours actif");
+      const res = await fetch(
+        `/api/workflows/${wf.workflowId}/runs/${wf.runId}/process-now`,
+        { method: "POST", credentials: "include" }
+      );
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          json?.error?.message ?? "Impossible d’exécuter l’étape"
+        );
+      }
+      const data = json?.data ?? json;
+      return data as { outcome?: string; reason?: string };
+    },
+    onSuccess: (data) => {
+      if (data?.outcome === "skipped") {
+        toast.message("Étape non exécutée", {
+          description: data.reason ?? "Raison inconnue",
+        });
+      } else {
+        toast.success("Étape lancée");
+      }
+      void queryClient.invalidateQueries({
+        queryKey: ["prospect-messagerie-context", prospectId],
+      });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const copyPhone = useCallback(() => {
+    const p = prospect?.phone?.trim();
+    if (!p) return;
+    void navigator.clipboard.writeText(p);
+    toast.success("Numéro copié");
+  }, [prospect?.phone]);
+
+  if (prospectLoading || !prospect) {
     return (
-      <div className="flex items-center justify-center py-6">
+      <div className="flex items-center justify-center py-8">
         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
-  if (!prospect) {
-    return (
-      <p className="text-sm text-muted-foreground">Prospect introuvable</p>
-    );
-  }
+  const statusKey = (prospect.status ?? "new") as ProspectStatus;
+  const statusLabel =
+    PROSPECT_STATUS_LABELS[statusKey] ?? prospect.status ?? "—";
+  const statusClass =
+    PROSPECT_STATUS_COLORS[statusKey] ??
+    "bg-muted text-muted-foreground";
 
-  const statusColors: Record<string, string> = {
-    new: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-    contacted:
-      "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-    qualified:
-      "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
-    converted:
-      "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-    lost: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
-  };
+  const phone = prospect.phone?.trim() ?? "";
+  const showLinkedinBlock = chatChannel !== "WHATSAPP";
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-start gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted">
-          <User className="h-4 w-4 text-muted-foreground" />
+    <div className="space-y-4 text-sm">
+      {onCloseMobile && (
+        <div className="flex justify-end lg:hidden">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            onClick={onCloseMobile}
+            aria-label="Fermer le panneau CRM"
+          >
+            <PanelRightClose className="h-4 w-4" />
+          </Button>
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">
-            {prospect.full_name ?? "Sans nom"}
-          </p>
-          {prospect.company && (
-            <p className="truncate text-xs text-muted-foreground">
-              {prospect.company}
-            </p>
-          )}
-          {prospect.job_title && (
-            <p className="truncate text-xs text-muted-foreground">
-              {prospect.job_title}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {prospect.status && (
-        <span
-          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-            statusColors[prospect.status] ?? "bg-muted text-muted-foreground"
-          }`}
-        >
-          {prospect.status}
-        </span>
       )}
 
-      <Button
-        variant="outline"
-        size="sm"
-        className="w-full gap-2"
-        onClick={onNavigate}
-      >
-        <ExternalLink className="h-3.5 w-3.5" />
-        Voir la fiche prospect
-      </Button>
+      <section className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Prospect
+        </p>
+        <div className="flex gap-2">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted">
+            <User className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-medium leading-tight">
+              {prospect.full_name ?? "Sans nom"}
+              {prospect.job_title?.trim() ? (
+                <span className="font-normal text-muted-foreground">
+                  {" "}
+                  · {extractCleanRole(prospect.job_title)}
+                </span>
+              ) : null}
+            </p>
+            {prospect.company?.trim() ? (
+              <p className="truncate text-xs text-muted-foreground">
+                {prospect.company}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        {prospect.status && (
+          <span
+            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusClass}`}
+          >
+            {statusLabel}
+          </span>
+        )}
+        <Link
+          href={`/prospect/${prospectId}`}
+          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+        >
+          Voir la fiche →
+        </Link>
+      </section>
+
+      <section className="space-y-2 border-t pt-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Actions rapides
+        </p>
+        <div className="flex flex-wrap gap-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            aria-label="Ajouter une note"
+            title="Ajouter une note"
+            onClick={() => setNoteOpen((v) => !v)}
+          >
+            <StickyNote className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            aria-label="Voir les campagnes"
+            title="Voir les campagnes"
+            onClick={() =>
+              router.push(`/campaigns?prospect=${encodeURIComponent(prospectId)}`)
+            }
+          >
+            <Megaphone className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            disabled={!phone}
+            aria-label={
+              phone ? "Copier le numéro" : "Numéro non renseigné"
+            }
+            title={phone ? "Copier le numéro" : "Numéro non renseigné"}
+            onClick={copyPhone}
+          >
+            {phone ? (
+              <Phone className="h-3.5 w-3.5" />
+            ) : (
+              <span className="text-xs text-muted-foreground">—</span>
+            )}
+          </Button>
+        </div>
+        {noteOpen && (
+          <form
+            className="space-y-2 pt-1"
+            onSubmit={(e) => {
+              e.preventDefault();
+              noteMutation.mutate(noteDraft);
+            }}
+          >
+            <Textarea
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              placeholder="Votre note…"
+              rows={3}
+              className="text-xs"
+            />
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => {
+                  setNoteOpen(false);
+                  setNoteDraft("");
+                }}
+              >
+                Annuler
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                className="h-7 flex-1 text-xs"
+                disabled={!noteDraft.trim() || noteMutation.isPending}
+              >
+                {noteMutation.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  "Enregistrer"
+                )}
+              </Button>
+            </div>
+          </form>
+        )}
+      </section>
+
+      <section className="space-y-2 border-t pt-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Workflow
+        </p>
+        {ctxLoading ? (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Chargement…
+          </div>
+        ) : ctxData?.activeWorkflow ? (
+          <div className="space-y-2 rounded-md border bg-muted/30 p-2.5">
+            <div className="flex items-start gap-2">
+              <Workflow className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <div className="min-w-0">
+                <p className="font-medium leading-tight">
+                  {ctxData.activeWorkflow.workflowName}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {ctxData.activeWorkflow.currentStepLabel ?? "Étape en cours"}
+                </p>
+                <p className="text-[10px] uppercase text-muted-foreground">
+                  {ctxData.activeWorkflow.runStatus}
+                </p>
+              </div>
+            </div>
+            {ctxData.activeWorkflow.canProcessNextStep && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-7 w-full text-xs"
+                disabled={processStepMutation.isPending}
+                onClick={() => processStepMutation.mutate()}
+              >
+                {processStepMutation.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  "Envoyer la prochaine étape maintenant"
+                )}
+              </Button>
+            )}
+          </div>
+        ) : canUseWorkflows ? (
+          <button
+            type="button"
+            className="text-xs font-medium text-primary hover:underline"
+            onClick={() => setWorkflowModalOpen(true)}
+          >
+            Ajouter à un parcours
+          </button>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Aucun parcours actif pour ce prospect.
+          </p>
+        )}
+      </section>
+
+      {showLinkedinBlock && (
+        <section className="space-y-1 border-t pt-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            LinkedIn
+          </p>
+          <p className="text-xs">
+            {ctxLoading ? (
+              <span className="text-muted-foreground">Vérification…</span>
+            ) : ctxData?.linkedinFirstDegree === true ? (
+              "Relation LinkedIn ✓"
+            ) : (
+              "Pas encore en relation"
+            )}
+          </p>
+        </section>
+      )}
+
+      <WorkflowEnrollModal
+        open={workflowModalOpen}
+        onOpenChange={setWorkflowModalOpen}
+        prospects={[
+          {
+            id: prospectId,
+            full_name: prospect.full_name ?? undefined,
+          },
+        ]}
+        onSuccess={() => {
+          void queryClient.invalidateQueries({
+            queryKey: ["prospect-messagerie-context", prospectId],
+          });
+        }}
+      />
     </div>
   );
 }
@@ -270,9 +594,7 @@ function CreateProspectForm({
       });
       const json = await res.json();
       if (!res.ok) {
-        toast.error(
-          json?.error?.message ?? "Erreur lors de la création"
-        );
+        toast.error(json?.error?.message ?? "Erreur lors de la création");
         return;
       }
       const data = (json.success ? json.data : (json?.data ?? json)) as ProspectHit;
@@ -339,8 +661,13 @@ function CreateProspectForm({
   );
 }
 
-export function ChatCrmPanel({ chatId, prospectId, onLinked }: ChatCrmPanelProps) {
-  const router = useRouter();
+export function ChatCrmPanel({
+  chatId,
+  prospectId,
+  onLinked,
+  chatChannel,
+  onCloseMobile,
+}: ChatCrmPanelProps) {
   const [mode, setMode] = useState<"idle" | "link" | "create">("idle");
   const [linking, setLinking] = useState(false);
 
@@ -363,9 +690,7 @@ export function ChatCrmPanel({ chatId, prospectId, onLinked }: ChatCrmPanelProps
         });
         const json = await res.json();
         if (!res.ok) {
-          toast.error(
-            json?.error?.message ?? "Erreur lors de la liaison"
-          );
+          toast.error(json?.error?.message ?? "Erreur lors de la liaison");
           return;
         }
         toast.success(
@@ -383,16 +708,19 @@ export function ChatCrmPanel({ chatId, prospectId, onLinked }: ChatCrmPanelProps
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col border-t bg-card lg:border-l lg:border-t-0">
-      <div className="shrink-0 border-b px-4 py-3">
-        <p className="text-sm font-semibold">CRM</p>
+    <div className="flex h-full min-h-0 w-full max-w-[240px] flex-col border-t bg-card lg:border-l lg:border-t-0">
+      <div className="shrink-0 border-b px-3 py-2.5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          CRM
+        </p>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {prospectId ? (
-          <LinkedProspectCard
+          <LinkedCrmSidebar
             prospectId={prospectId}
-            onNavigate={() => router.push(`/prospect/${prospectId}`)}
+            chatChannel={chatChannel}
+            onCloseMobile={onCloseMobile}
           />
         ) : (
           <div className="space-y-4">

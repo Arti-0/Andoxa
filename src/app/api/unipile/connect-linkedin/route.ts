@@ -12,8 +12,8 @@ interface HostedAuthLinkResponse {
 
 /**
  * POST /api/unipile/connect-linkedin
- * Génère un lien Unipile Hosted Auth pour connecter LinkedIn.
- * - type "reconnect" si l'user a déjà un compte Unipile LINKEDIN
+ * Génère un lien d’authentification hébergée pour connecter LinkedIn.
+ * - type "reconnect" si l’utilisateur a déjà un compte LinkedIn lié
  * - type "create" sinon
  */
 export const POST = createApiHandler(
@@ -38,7 +38,7 @@ export const POST = createApiHandler(
       unipileBase = getUnipileApiRoot();
     } catch {
       throw Errors.badRequest(
-        "Configuration Unipile incomplète : définissez UNIPILE_API_URL et UNIPILE_API_KEY."
+        "Configuration de messagerie incomplète sur le serveur : définissez UNIPILE_API_URL et UNIPILE_API_KEY."
       );
     }
 
@@ -47,6 +47,7 @@ export const POST = createApiHandler(
     const failureUrl = `${baseUrl.replace(/\/$/, "")}/onboarding?linkedin_connected=0`;
     const expiresOn = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
+    // `name` est renvoyé sur notify_url ; format actuel = userId (compat futur : userId|orgId si besoin).
     const body: Record<string, unknown> = {
       type: existingAccount?.unipile_account_id ? "reconnect" : "create",
       providers: ["LINKEDIN"],
@@ -56,6 +57,8 @@ export const POST = createApiHandler(
       expiresOn,
       success_redirect_url: successUrl,
       failure_redirect_url: failureUrl,
+      /** Hosted Auth Wizard UI language (Unipile; may be ignored if unsupported). */
+      locale: "fr",
     };
 
     if (existingAccount?.unipile_account_id) {
@@ -68,6 +71,7 @@ export const POST = createApiHandler(
         {
           method: "POST",
           body: JSON.stringify(body),
+          headers: { "Accept-Language": "fr-FR,fr;q=0.9" },
         }
       );
       const url = (data as HostedAuthLinkResponse)?.url;

@@ -8,6 +8,7 @@ import {
   getPaginationRowModel,
   useReactTable,
   type PaginationState,
+  type Row,
   type VisibilityState,
 } from "@tanstack/react-table";
 import { toast } from "sonner";
@@ -326,6 +327,27 @@ function ProspectsTableContent({
     ? linkedInInviteMutation.variables
     : null;
 
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearPendingRowNavigation = useCallback(() => {
+    if (clickTimerRef.current != null) {
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
+  }, []);
+
+  const handleProspectRowClick = useCallback(
+    (row: Row<Prospect>) => {
+      clearPendingRowNavigation();
+      clickTimerRef.current = setTimeout(() => {
+        clickTimerRef.current = null;
+        router.push(`/prospect/${row.original.id}`);
+      }, 200);
+    },
+    [clearPendingRowNavigation, router]
+  );
+
+  useEffect(() => () => clearPendingRowNavigation(), [clearPendingRowNavigation]);
+
   useEffect(() => {
     if (!onSelectionChange) return;
     const selected = Object.entries(rowSelection)
@@ -407,8 +429,9 @@ function ProspectsTableContent({
         onLinkedInInvite: handleLinkedInInvite,
         inviteQuota: inviteQuota ?? undefined,
         invitePendingProspectId,
+        clearPendingRowNavigation,
       }),
-    [allMetaKeys, handleLinkedInInvite, inviteQuota, invitePendingProspectId]
+    [allMetaKeys, handleLinkedInInvite, inviteQuota, invitePendingProspectId, clearPendingRowNavigation]
   );
 
   const table = useReactTable({
@@ -487,7 +510,7 @@ function ProspectsTableContent({
         emptyMessage={emptyMessage}
         footer={footer}
         maxTableHeightClassName="max-h-[calc(100vh-360px)]"
-        onRowClick={(row) => router.push(`/prospect/${row.original.id}`)}
+        onRowClick={(row) => handleProspectRowClick(row)}
       />
       <ConfirmDialog
         open={!!prospectToDelete}

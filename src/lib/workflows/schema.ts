@@ -7,6 +7,13 @@ export const WORKFLOW_STEP_TYPES = [
   "whatsapp_message",
 ] as const;
 
+// TODO: LinkedIn steps hidden — repositioning to WhatsApp-only workflows
+// Re-enable when LinkedIn outreach is reintroduced as a separate feature
+/** Types shown in the builder “Ajouter une étape” selector (published runs may still contain LinkedIn steps). */
+export const WORKFLOW_STEP_TYPES_BUILDER_UI = WORKFLOW_STEP_TYPES.filter(
+  (t) => t !== "linkedin_invite" && t !== "linkedin_message"
+);
+
 export type WorkflowStepType = (typeof WORKFLOW_STEP_TYPES)[number];
 
 const waitConfigSchema = z.object({

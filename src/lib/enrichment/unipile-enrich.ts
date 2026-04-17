@@ -65,7 +65,7 @@ export async function enrichProspectFromUnipile(params: {
     );
   } catch (err) {
     const msg =
-      err instanceof UnipileApiError ? err.message : "Erreur Unipile";
+      err instanceof UnipileApiError ? err.message : "Erreur lors de la récupération du profil LinkedIn";
     const code = err instanceof UnipileApiError ? err.status : 0;
     const retryable = code === 429 || (code >= 500 && code < 600) || code === 0;
     return { ok: false, error: msg, retryable };

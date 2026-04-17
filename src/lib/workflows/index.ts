@@ -29,6 +29,13 @@ export {
   type WorkflowIconKey,
   type WorkflowColorKey,
 } from "./workflow-ui";
+export {
+  STEP_TYPE_LABELS,
+  getStepLabel,
+  getStepTypeLucideIcon,
+  type StepLabelIconName,
+  type StepTypeDisplay,
+} from "./step-labels";
 export { enqueueFirstStep, enqueueNextStep, buildIdempotencyKey, getStepAt } from "./enqueue";
 export {
   processWorkflowStepExecution,

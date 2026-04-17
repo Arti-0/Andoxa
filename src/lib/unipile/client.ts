@@ -25,7 +25,7 @@ export function getUnipileApiRoot(): string {
   const raw = process.env.UNIPILE_API_URL?.trim();
   if (!raw) {
     throw new Error(
-      "UNIPILE_API_URL is not configured. Set it to your Unipile DSN from the dashboard (e.g. https://api2.unipile.com:13219)."
+      "UNIPILE_API_URL n'est pas configurée. Définissez l'URL de l'API de messagerie (UNIPILE_API_URL) et la clé d'accès (UNIPILE_API_KEY) sur le serveur."
     );
   }
   const withScheme = raw.startsWith("http")
@@ -90,7 +90,7 @@ function parseUnipileError(res: Response, text: string): UnipileApiError {
     return new UnipileApiError(userMsg, res.status, type);
   } catch {
     return new UnipileApiError(
-      text || res.statusText || `Unipile API ${res.status}`,
+      text || res.statusText || `Erreur du service de messagerie (${res.status})`,
       res.status
     );
   }
@@ -132,6 +132,6 @@ export async function unipileFetch<T>(
   try {
     return JSON.parse(text) as T;
   } catch {
-    throw new UnipileApiError("Invalid JSON response", res.status);
+    throw new UnipileApiError("Réponse invalide du service de messagerie", res.status);
   }
 }

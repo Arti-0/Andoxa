@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import type { Database } from "@/lib/types/supabase";
 import { unipileFetch } from "@/lib/unipile/client";
 import type { UnipileAccount } from "@/lib/unipile/types";
+import { syncAllLinkedInRelations } from "@/lib/linkedin/sync-relations-full";
 import { processConnectionAccepted } from "@/lib/workflows/process-connection-accepted";
 
 const UNIPILE_MESSAGING_HANDLED_EVENTS = new Set([
@@ -35,9 +36,16 @@ const UNIPILE_ERROR_LABELS: Record<string, string> = {
   ACCOUNT_STOPPED: "Compte LinkedIn suspendu ou arrêté.",
 };
 
+/** Statuts renvoyés sur notify_url (Hosted Auth) — utilisé pour reconnaître le callback même sans `name`. */
+const HOSTED_AUTH_NOTIFY_STATUSES = new Set([
+  "CREATION_SUCCESS",
+  "RECONNECTED",
+  "CREATION_ERROR",
+]);
+
 /**
  * Unipile webhook payloads:
- * - Hosted Auth notify_url: { status, account_id, name } — name = our user_id
+ * - Hosted Auth notify_url: { status, account_id, name? } — name = our user_id (ou récupéré via GET /accounts)
  * - Dashboard AccountStatus: { AccountStatus: { account_id, message, account_type } } — no name
  */
 function extractPremiumData(account: UnipileAccount): {
@@ -72,12 +80,27 @@ interface UnipileWebhookPayload {
   sender?: { attendee_provider_id?: string };
 }
 
+async function fetchUnipileAccount(
+  accountId: string
+): Promise<UnipileAccount | null> {
+  try {
+    return await unipileFetch<UnipileAccount>(
+      `/accounts/${encodeURIComponent(accountId)}`
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @returns false si un autre utilisateur possède déjà ce compte Unipile (pas d’écriture).
+ */
 async function storeUnipileAccount(
   rawName: string,
   accountId: string,
   eventCode?: string,
   premiumData?: { isPremium: boolean; premiumFeatures: string[] }
-) {
+): Promise<boolean> {
   const isWhatsApp = rawName.endsWith("__whatsapp");
   const userId = isWhatsApp ? rawName.replace(/__whatsapp$/, "") : rawName;
   const accountType = isWhatsApp ? "WHATSAPP" : "LINKEDIN";
@@ -88,6 +111,36 @@ async function storeUnipileAccount(
   const isError = status === "error" || status === "stopped";
 
   const supabase = createServiceClient();
+
+  const { data: otherOwner } = await supabase
+    .from("user_unipile_accounts")
+    .select("user_id")
+    .eq("unipile_account_id", accountId)
+    .maybeSingle();
+
+  if (otherOwner?.user_id && otherOwner.user_id !== userId) {
+    console.warn(
+      `[Unipile webhook] unipile_account_id ${accountId} already linked to user ${otherOwner.user_id}; skip store for user ${userId}`
+    );
+    return false;
+  }
+
+  const { data: existingRow } = await supabase
+    .from("user_unipile_accounts")
+    .select("unipile_account_id")
+    .eq("user_id", userId)
+    .eq("account_type", accountType)
+    .maybeSingle();
+
+  if (
+    existingRow?.unipile_account_id &&
+    existingRow.unipile_account_id !== accountId
+  ) {
+    console.info(
+      `[Unipile] Replacing old account_id ${existingRow.unipile_account_id} with new ${accountId} for user ${userId}`
+    );
+  }
+
   const { error } = await supabase.from("user_unipile_accounts").upsert(
     [
       {
@@ -114,6 +167,7 @@ async function storeUnipileAccount(
     console.error("[Unipile webhook] upsert user_unipile_accounts:", error);
     throw new Error("Failed to store account");
   }
+  return true;
 }
 
 /**
@@ -197,11 +251,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // Événements Hosted Auth (notify_url) : { status, account_id, name }
+  // Événements Hosted Auth (notify_url) : { status, account_id, name? }
   const isHostedAuthCallback =
     typeof body.status === "string" &&
     typeof body.account_id === "string" &&
-    typeof body.name === "string";
+    HOSTED_AUTH_NOTIFY_STATUSES.has(body.status);
 
   // Événements AccountStatus dashboard : { AccountStatus: { account_id, message } }
   const ACCOUNT_STATUS_EVENTS = new Set([
@@ -235,29 +289,57 @@ export async function POST(req: NextRequest) {
 
   if (isHostedAuthCallback) {
     const eventCode = body.status!;
-    const isLinkedIn = !body.name!.endsWith("__whatsapp");
+    const accountId = body.account_id!;
     const isSuccess =
       eventCode === "CREATION_SUCCESS" || eventCode === "RECONNECTED";
+
+    let rawName =
+      typeof body.name === "string" ? body.name.trim() : "";
+    let account: UnipileAccount | null = null;
+
+    const needAccountFetch =
+      !rawName || (isSuccess && !rawName.endsWith("__whatsapp"));
+
+    if (needAccountFetch) {
+      account = await fetchUnipileAccount(accountId);
+      if (!rawName && account?.name?.trim()) {
+        rawName = account.name.trim();
+      }
+    }
+
+    if (!rawName) {
+      Sentry.captureMessage(
+        "[Unipile webhook] Hosted auth: cannot resolve user (missing name)",
+        {
+          level: "warning",
+          extra: { account_id: accountId, status: eventCode },
+        }
+      );
+      return NextResponse.json({ received: true }, { status: 200 });
+    }
+
+    const isLinkedIn = !rawName.endsWith("__whatsapp");
 
     let premiumData:
       | { isPremium: boolean; premiumFeatures: string[] }
       | undefined;
 
     if (isLinkedIn && isSuccess) {
-      try {
-        const account = await unipileFetch<UnipileAccount>(
-          `/accounts/${body.account_id}`
-        );
+      if (!account) {
+        account = await fetchUnipileAccount(accountId);
+      }
+      if (account) {
         premiumData = extractPremiumData(account);
-      } catch (err) {
-        console.warn("[Unipile webhook] Premium fetch failed:", err);
+      } else {
+        console.warn("[Unipile webhook] Hosted Auth premium fetch failed");
       }
     }
 
+    let stored = true;
     try {
-      await storeUnipileAccount(
-        body.name!,
-        body.account_id!,
+      stored = await storeUnipileAccount(
+        rawName,
+        accountId,
         eventCode,
         premiumData
       );
@@ -267,22 +349,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Internal error" }, { status: 500 });
     }
 
-    if (isLinkedIn && isSuccess) {
-      const rawName = body.name!;
+    if (stored && isLinkedIn && isSuccess) {
       const syncUserId = rawName.endsWith("__whatsapp")
         ? rawName.replace(/__whatsapp$/, "")
         : rawName;
-      void syncLinkedInRelations(
-        createServiceClient(),
-        syncUserId,
-        body.account_id!
-      );
+      const svc = createServiceClient();
+      void syncLinkedInRelations(svc, syncUserId, accountId);
+      void syncAllLinkedInRelations(syncUserId, accountId, svc)
+        .then((result) =>
+          console.log("[LinkedIn] Full sync complete:", result)
+        )
+        .catch((err) =>
+          console.error("[LinkedIn] Full sync error:", err)
+        );
     }
 
     if (eventCode === "CREATION_ERROR") {
-      Sentry.captureMessage(`Unipile CREATION_ERROR for ${body.name}`, {
+      Sentry.captureMessage(`Unipile CREATION_ERROR for ${rawName}`, {
         level: "warning",
-        extra: { name: body.name, account_id: body.account_id },
+        extra: { name: rawName, account_id: accountId },
       });
     }
 
@@ -301,9 +386,22 @@ export async function POST(req: NextRequest) {
         const isLinkedIn = !userId.endsWith("__whatsapp");
         const premiumData =
           isLinkedIn && isSuccess ? extractPremiumData(account) : undefined;
-        await storeUnipileAccount(userId, accountId, eventCode, premiumData);
-        if (isLinkedIn && isSuccess) {
-          void syncLinkedInRelations(createServiceClient(), userId, accountId);
+        const stored = await storeUnipileAccount(
+          userId,
+          accountId,
+          eventCode,
+          premiumData
+        );
+        if (stored && isLinkedIn && isSuccess) {
+          const svc = createServiceClient();
+          void syncLinkedInRelations(svc, userId, accountId);
+          void syncAllLinkedInRelations(userId, accountId, svc)
+            .then((result) =>
+              console.log("[LinkedIn] Full sync complete:", result)
+            )
+            .catch((err) =>
+              console.error("[LinkedIn] Full sync error:", err)
+            );
         }
       }
     } catch (err) {

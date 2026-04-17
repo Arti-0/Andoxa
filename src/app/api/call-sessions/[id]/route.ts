@@ -28,7 +28,8 @@ export const GET = createApiHandler(async (req: NextRequest, ctx) => {
     ctx.supabase
       .from("call_session_prospects")
       .select("*")
-      .eq("call_session_id", sessionId),
+      .eq("call_session_id", sessionId)
+      .order("id", { ascending: true }),
     ctx.supabase
       .from("call_session_notes")
       .select("*")
@@ -44,22 +45,26 @@ export const GET = createApiHandler(async (req: NextRequest, ctx) => {
       ? (
           await ctx.supabase
             .from("prospects")
-            .select("id, full_name, email, company, phone, job_title, linkedin, metadata")
+            .select("id, full_name, email, company, phone, job_title, linkedin, metadata, status, notes")
             .in("id", prospectIds)
         ).data ?? []
       : [];
 
   const cspMap = new Map(cspRows.map((r) => [r.prospect_id, r]));
-  const enriched = prospects.map((p) => {
-    const csp = cspMap.get(p.id);
-    return {
-      ...p,
-      call_duration_s: csp?.call_duration_s ?? 0,
-      call_status: csp?.status ?? "pending",
-      called_at: csp?.called_at ?? null,
-      outcome: csp?.outcome ?? null,
-    };
-  });
+  const prospectById = new Map(prospects.map((p) => [p.id, p]));
+  const enriched = cspRows
+    .map((row) => {
+      const p = prospectById.get(row.prospect_id);
+      if (!p) return null;
+      return {
+        ...p,
+        call_duration_s: row.call_duration_s ?? 0,
+        call_status: row.status ?? "pending",
+        called_at: row.called_at ?? null,
+        outcome: row.outcome ?? null,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
 
   const notesByProspect: Record<string, typeof notes> = {};
   for (const n of notes) {
