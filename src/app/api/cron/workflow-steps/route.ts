@@ -5,6 +5,7 @@ import {
   processWorkflowStepExecution,
   resetStaleProcessingExecutions,
 } from "@/lib/workflows";
+import { captureRouteError } from "@/lib/sentry/route-error";
 
 const MAX_PER_RUN = 8;
 
@@ -13,6 +14,8 @@ const MAX_PER_RUN = 8;
  * Processes due workflow step executions (Vercel Cron + CRON_SECRET).
  */
 export async function POST(req: Request) {
+  const route = "api/cron/workflow-steps";
+  try {
   const secret = process.env.CRON_SECRET;
   if (secret) {
     const auth = req.headers.get("Authorization")?.replace("Bearer ", "");
@@ -43,6 +46,13 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ processed: results.length, results });
+  } catch (error) {
+    captureRouteError(route, error, { extra: { step: "unhandled" } });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function GET(req: Request) {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { enrichProspectFromUnipile } from "@/lib/enrichment/unipile-enrich";
 import { getLinkedInAccountIdForUserId } from "@/lib/unipile/account";
+import { captureRouteError } from "@/lib/sentry/route-error";
 
 const MAX_JOBS_PER_RUN = 3;
 const BASE_DELAY_MS = 3000;
@@ -19,6 +20,8 @@ function backoffSeconds(attempts: number): number {
  * Vercel Cron: processes pending LinkedIn enrichment jobs (Pro opt-in imports).
  */
 export async function POST(req: Request) {
+  const route = "api/cron/enrichment-jobs";
+  try {
   const secret = process.env.CRON_SECRET;
   if (secret) {
     const auth = req.headers.get("Authorization")?.replace("Bearer ", "");
@@ -122,6 +125,13 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ processed: results.length, results });
+  } catch (error) {
+    captureRouteError(route, error, { extra: { step: "unhandled" } });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }
 
 /** Vercel Cron invokes GET by default on some plans. */

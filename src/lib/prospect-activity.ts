@@ -7,7 +7,8 @@ export type ProspectActivityAction =
   | "workflow_enrolled"
   | "workflow_step_completed"
   | "workflow_step_failed"
-  | "workflow_run_completed";
+  | "workflow_run_completed"
+  | "prospect_restored";
 
 /**
  * Best-effort log; never throws (cron / workflows must not depend on this table).

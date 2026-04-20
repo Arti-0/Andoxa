@@ -87,6 +87,29 @@ export const POST = createApiHandler(async (req, ctx) => {
     throw Errors.validation({ name: "Le nom de la liste est requis" });
   }
 
+  const { data: existing } = await ctx.supabase
+    .from("bdd")
+    .select("*")
+    .eq("organization_id", ctx.workspaceId)
+    .ilike("name", name)
+    .limit(5);
+  const matched = (existing ?? []).find(
+    (l) => l.name.trim().toLowerCase() === name.toLowerCase()
+  );
+  if (matched) {
+    const { count: prospectsCount } = await ctx.supabase
+      .from("prospects")
+      .select("id", { count: "exact", head: true })
+      .eq("bdd_id", matched.id)
+      .is("deleted_at", null);
+    return {
+      ...matched,
+      prospects_count: prospectsCount ?? 0,
+      phones_count: 0,
+      reused: true,
+    };
+  }
+
   const { data, error } = await ctx.supabase
     .from("bdd")
     .insert({
@@ -109,5 +132,6 @@ export const POST = createApiHandler(async (req, ctx) => {
     ...data,
     prospects_count: 0,
     phones_count: 0,
+    reused: false,
   };
 });

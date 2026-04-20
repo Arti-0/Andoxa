@@ -4,6 +4,7 @@ import { validateAndNormalizeLinkedIn } from "@/lib/utils/linkedin";
 import { getValidGoogleAccessToken, createGoogleMeetEvent } from "@/lib/google/calendar";
 import { sendBookingOwnerConfirmationEmail } from "@/lib/email/send-booking-owner-confirmation";
 import { sendBookingGuestConfirmationEmail } from "@/lib/email/send-booking-guest-confirmation";
+import { captureRouteError } from "@/lib/sentry/route-error";
 
 function looksLikeEmail(s: string): boolean {
   const t = s.trim();
@@ -28,6 +29,8 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    const route = "api/booking/[slug]/book";
 
     const body = await request.json().catch(() => ({}));
     const { slot_start, slot_end, guest_name, guest_email, guest_linkedin, guest_phone } = body;
@@ -174,7 +177,9 @@ export async function POST(
           .single();
 
         if (prospectError) {
-          console.error("[booking/book] Prospect create error:", prospectError);
+          captureRouteError(route, prospectError, {
+            extra: { slug, step: "prospect_create", branch: "linkedin" },
+          });
           return NextResponse.json(
             { success: false, error: "Impossible de créer le prospect" },
             { status: 500 }
@@ -209,7 +214,9 @@ export async function POST(
           .single();
 
         if (prospectError) {
-          console.error("[booking/book] Prospect create error:", prospectError);
+          captureRouteError(route, prospectError, {
+            extra: { slug, step: "prospect_create", branch: "email" },
+          });
           return NextResponse.json(
             { success: false, error: "Impossible de créer le prospect" },
             { status: 500 }
@@ -250,7 +257,9 @@ export async function POST(
       .single();
 
     if (eventError || !event?.id) {
-      console.error("[booking/book] Event create error:", eventError);
+      captureRouteError(route, eventError ?? new Error("missing_event_id"), {
+        extra: { slug, step: "event_create" },
+      });
       return NextResponse.json(
         { success: false, error: "Failed to create booking" },
         { status: 500 }
@@ -297,7 +306,12 @@ export async function POST(
           .eq("id", eventId);
       }
     } catch (e) {
-      console.warn("[booking/book] Google Meet non généré (continuation sans lien):", e);
+      captureRouteError(
+        route,
+        e,
+        { extra: { slug, step: "google_meet" } },
+        "warn"
+      );
     }
 
     const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
@@ -320,7 +334,9 @@ export async function POST(
           crmProspectUrl,
         });
       } catch (e) {
-        console.error("[booking/book] Confirmation email error:", e);
+        captureRouteError(route, e, {
+          extra: { slug, step: "owner_confirmation_email", eventId },
+        });
       }
     }
 
@@ -343,7 +359,9 @@ export async function POST(
         meetUrl,
       });
     } catch (e) {
-      console.error("[booking/book] Guest confirmation email error:", e);
+      captureRouteError(route, e, {
+        extra: { slug, step: "guest_confirmation_email", eventId },
+      });
     }
 
     return NextResponse.json({
@@ -357,7 +375,9 @@ export async function POST(
       },
     });
   } catch (error) {
-    console.error("[booking/book] Error:", error);
+    captureRouteError("api/booking/[slug]/book", error, {
+      extra: { step: "unhandled" },
+    });
     return NextResponse.json(
       { success: false, error: "Internal server error" },
       { status: 500 }

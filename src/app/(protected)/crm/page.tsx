@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspace } from "../../../lib/workspace";
 import {
@@ -36,9 +37,17 @@ const defaultListesFilters: ListesFilterState = {
 
 export default function CrmPage() {
   const { workspaceId } = useWorkspace();
-  const [prospectFilters, setProspectFilters] = useState<FilterState>(defaultProspectFilters);
+  const searchParams = useSearchParams();
+  const initialBddId = searchParams.get("bdd_id");
+  const [prospectFilters, setProspectFilters] = useState<FilterState>(
+    initialBddId
+      ? { ...defaultProspectFilters, bddId: initialBddId }
+      : defaultProspectFilters
+  );
   const [listesFilters, setListesFilters] = useState<ListesFilterState>(defaultListesFilters);
-  const [view, setView] = useState<"listes" | "prospects" | "corbeille" | "kanban">("listes");
+  const [view, setView] = useState<"listes" | "prospects" | "corbeille" | "kanban">(
+    initialBddId ? "prospects" : "listes"
+  );
   const [selectedProspects, setSelectedProspects] = useState<Prospect[]>([]);
   const [selectedListes, setSelectedListes] = useState<BddRow[]>([]);
   const onSelectionChange = useCallback((prospects: Prospect[]) => {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { unipileFetch } from "@/lib/unipile/client";
+import { captureRouteError } from "@/lib/sentry/route-error";
 
 /**
  * POST /api/booking/reminders
@@ -9,6 +10,7 @@ import { unipileFetch } from "@/lib/unipile/client";
  * Security: should be called by a Vercel cron or with CRON_SECRET header.
  */
 export async function POST(req: Request) {
+  const route = "api/booking/reminders";
   const secret = process.env.CRON_SECRET;
   if (secret) {
     const auth = req.headers.get("Authorization")?.replace("Bearer ", "");
@@ -17,6 +19,7 @@ export async function POST(req: Request) {
     }
   }
 
+  try {
   const supabase = createServiceClient();
 
   const now = new Date();
@@ -91,9 +94,23 @@ export async function POST(req: Request) {
       });
       sent++;
     } catch (err) {
+      captureRouteError(route, err, {
+        extra: {
+          bookingId: booking.id,
+          prospectId: prospect.id,
+          organizationId: booking.organization_id,
+        },
+      });
       errors.push(`${prospect.full_name ?? prospect.id}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
   return NextResponse.json({ sent, errors: errors.slice(0, 10) });
+  } catch (error) {
+    captureRouteError(route, error, { extra: { step: "unhandled" } });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }

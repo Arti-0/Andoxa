@@ -5,6 +5,7 @@ import {
   excludeBookedSlots,
   type AvailabilityConfig,
 } from "@/lib/booking/slots";
+import { captureRouteError } from "@/lib/sentry/route-error";
 
 /**
  * GET /api/booking/[slug]/slots
@@ -14,6 +15,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
+  const route = "api/booking/[slug]/slots";
   try {
     const { slug } = await params;
     if (!slug || typeof slug !== "string") {
@@ -59,7 +61,9 @@ export async function GET(
       .lte("end_time", endRange.toISOString());
 
     if (eventsError) {
-      console.error("[booking/slots] Events fetch error:", eventsError);
+      captureRouteError(route, eventsError, {
+        extra: { slug, step: "events_fetch" },
+      });
       return NextResponse.json(
         { success: false, error: "Failed to load availability" },
         { status: 500 }
@@ -82,7 +86,7 @@ export async function GET(
       data: { slots: futureSlots },
     });
   } catch (error) {
-    console.error("[booking/slots] Error:", error);
+    captureRouteError(route, error, { extra: { step: "unhandled" } });
     return NextResponse.json(
       { success: false, error: "Internal server error" },
       { status: 500 }

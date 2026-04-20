@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { processCampaignJobBatch } from "@/lib/campaigns/process-job-batch";
+import { captureRouteError } from "@/lib/sentry/route-error";
 
 const MAX_JOBS_PER_RUN = 8;
 
@@ -10,6 +11,8 @@ const MAX_JOBS_PER_RUN = 8;
  * Secured with CRON_SECRET when set (same pattern as enrichment-jobs).
  */
 export async function POST(req: Request) {
+  const route = "api/cron/campaign-jobs";
+  try {
   const secret = process.env.CRON_SECRET;
   if (secret) {
     const auth = req.headers.get("Authorization")?.replace("Bearer ", "");
@@ -29,7 +32,7 @@ export async function POST(req: Request) {
     .order("last_batch_at", { ascending: true, nullsFirst: true });
 
   if (jobsError) {
-    console.error("[cron campaign-jobs] list jobs", jobsError);
+    captureRouteError(route, jobsError, { extra: { step: "list_jobs" } });
     return NextResponse.json({ error: jobsError.message }, { status: 500 });
   }
 
@@ -72,6 +75,13 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ checked: runningJobs?.length ?? 0, results });
+  } catch (error) {
+    captureRouteError(route, error, { extra: { step: "unhandled" } });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function GET(req: Request) {

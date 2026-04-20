@@ -201,7 +201,7 @@ function DataTableComponent<TData>(
 
         <div
           className={cn(
-            "relative min-w-0 overflow-hidden",
+            "relative min-w-0 overflow-clip",
             isDesign2 ? "rounded-xl border bg-card shadow-xs" : "rounded-md border"
           )}
         >

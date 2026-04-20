@@ -76,6 +76,62 @@ export function deduplicateProspects(
 }
 
 /**
+ * Classifie un lot de prospects à importer en trois buckets selon leur état actuel :
+ *   - inserts   : aucune clé ne correspond à un prospect existant → à créer
+ *   - restores  : clé correspond à un prospect en corbeille (soft-delete) → à restaurer
+ *   - duplicates: clé correspond à un prospect actif → à ignorer
+ *
+ * Le caller fournit les clés des prospects actifs (existingLiveKeys) et une map
+ * clé → prospect_id pour les prospects en corbeille. La même clé ne doit pas figurer
+ * dans les deux; si c'est le cas, "actif" l'emporte (résultat → duplicates).
+ */
+export function classifyProspectsForImport<
+  T extends ProspectRow
+>(
+  rows: T[],
+  existingLiveKeys: Set<string>,
+  trashedByKey: Map<string, string>,
+  keyPriority: string[] = ["email", "phone", "linkedin"]
+): {
+  inserts: T[];
+  restores: Array<{ row: T; prospectId: string }>;
+  duplicates: T[];
+} {
+  const liveSeen = new Set(existingLiveKeys);
+  const trashedSeen = new Map(trashedByKey);
+  const inserts: T[] = [];
+  const restores: Array<{ row: T; prospectId: string }> = [];
+  const duplicates: T[] = [];
+
+  for (const row of rows) {
+    const key = keyPriority.find(
+      (k) => row[k] && typeof row[k] === "string" && (row[k] as string).trim() !== ""
+    );
+    if (!key) {
+      inserts.push(row);
+      continue;
+    }
+    const value = String(row[key] ?? "").toLowerCase().trim();
+
+    if (liveSeen.has(value)) {
+      duplicates.push(row);
+      continue;
+    }
+    const trashedProspectId = trashedSeen.get(value);
+    if (trashedProspectId) {
+      restores.push({ row, prospectId: trashedProspectId });
+      trashedSeen.delete(value);
+      liveSeen.add(value);
+      continue;
+    }
+    inserts.push(row);
+    liveSeen.add(value);
+  }
+
+  return { inserts, restores, duplicates };
+}
+
+/**
  * Mapping dynamique pour remplir les champs standards à partir des metadata ou autres colonnes CSV
  * À utiliser lors du parsing CSV, avant l'upsert
  */

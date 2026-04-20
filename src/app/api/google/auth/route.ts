@@ -7,6 +7,7 @@ import {
   GOOGLE_BOOKING_SCOPES,
 } from "@/lib/google/oauth-config";
 import { encodeGoogleOAuthState } from "@/lib/google/oauth-state";
+import { captureRouteError } from "@/lib/sentry/route-error";
 
 /**
  * GET /api/google/auth — start Google OAuth (Calendar + Meet for bookings).
@@ -60,7 +61,10 @@ export async function DELETE() {
 
   const { error } = await supabase.from("user_google_tokens").delete().eq("user_id", user.id);
   if (error) {
-    console.error("[google/auth DELETE]", error);
+    captureRouteError("api/google/auth", error, {
+      userId: user.id,
+      extra: { method: "DELETE", step: "delete_tokens" },
+    });
     return NextResponse.json({ success: false, error: "Suppression impossible" }, { status: 500 });
   }
 

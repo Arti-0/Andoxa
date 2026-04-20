@@ -5,7 +5,8 @@ import {
   getImportMaxRows,
   type PlanId,
 } from "../../../../lib/config/plans-config";
-import { deduplicateProspects, mapProspectRow } from "../../../../lib/utils/deduplicateProspects";
+import { classifyProspectsForImport, mapProspectRow } from "../../../../lib/utils/deduplicateProspects";
+import { insertProspectActivity } from "@/lib/prospect-activity";
 import { ensureLinkedInRelationFromUnipileProfile } from "@/lib/linkedin/ensure-relation-from-unipile-profile";
 import { extractLinkedInSlug } from "@/lib/unipile/campaign";
 import { getLinkedInAccountIdForUserId } from "@/lib/unipile/account";
@@ -145,14 +146,28 @@ export const POST = createApiHandler(async (req, ctx) => {
 
   const { data: existingRows } = await ctx.supabase
     .from("prospects")
-    .select("email, phone, linkedin")
+    .select("id, email, phone, linkedin, deleted_at")
     .eq("organization_id", ctx.workspaceId);
 
-  const existingKeys = new Set<string>();
+  const existingLiveKeys = new Set<string>();
+  const trashedByKey = new Map<string, string>();
   for (const row of existingRows ?? []) {
-    if (row.email) existingKeys.add(String(row.email).trim().toLowerCase());
-    if (row.phone) existingKeys.add(String(row.phone).trim().toLowerCase());
-    if (row.linkedin) existingKeys.add(String(row.linkedin).trim().toLowerCase());
+    const keys: string[] = [];
+    if (row.email) keys.push(String(row.email).trim().toLowerCase());
+    if (row.phone) keys.push(String(row.phone).trim().toLowerCase());
+    if (row.linkedin) keys.push(String(row.linkedin).trim().toLowerCase());
+    if (row.deleted_at) {
+      for (const k of keys) {
+        if (!existingLiveKeys.has(k) && !trashedByKey.has(k)) {
+          trashedByKey.set(k, row.id);
+        }
+      }
+    } else {
+      for (const k of keys) {
+        existingLiveKeys.add(k);
+        trashedByKey.delete(k);
+      }
+    }
   }
 
   const metadataByIdx = new Map<number, Record<string, string> | null>();
@@ -162,16 +177,17 @@ export const POST = createApiHandler(async (req, ctx) => {
     return rest;
   });
 
-  const dedupResult = deduplicateProspects(
+  const { inserts, restores, duplicates: dupRows } = classifyProspectsForImport(
     rowsForDedup,
-    existingKeys,
+    existingLiveKeys,
+    trashedByKey,
     ["email", "phone", "linkedin"]
   );
 
-  const deduplicatedRows = dedupResult.map((r) => {
-    const idx = rowsForDedup.indexOf(r as typeof rowsForDedup[number]);
+  const withMeta = (r: typeof rowsForDedup[number]) => {
+    const idx = rowsForDedup.indexOf(r);
     return { ...r, metadata: metadataByIdx.get(idx) ?? null } as MappedProspect;
-  });
+  };
 
   let bddId: string;
 
@@ -188,28 +204,43 @@ export const POST = createApiHandler(async (req, ctx) => {
     }
     bddId = existingBdd.id;
   } else {
-    const { data: bddRow, error: bddError } = await ctx.supabase
+    const desiredName = body.name!.trim();
+    const { data: existingByName } = await ctx.supabase
       .from("bdd")
-      .insert({
-        name: body.name!.trim(),
-        organization_id: ctx.workspaceId,
-        proprietaire: ctx.userId,
-        source,
-        csv_url: null,
-        csv_hash: null,
-      })
-      .select("id")
-      .single();
+      .select("id, name")
+      .eq("organization_id", ctx.workspaceId)
+      .ilike("name", desiredName)
+      .limit(5);
+    const matched = (existingByName ?? []).find(
+      (l) => l.name.trim().toLowerCase() === desiredName.toLowerCase()
+    );
+    if (matched) {
+      bddId = matched.id;
+    } else {
+      const { data: bddRow, error: bddError } = await ctx.supabase
+        .from("bdd")
+        .insert({
+          name: desiredName,
+          organization_id: ctx.workspaceId,
+          proprietaire: ctx.userId,
+          source,
+          csv_url: null,
+          csv_hash: null,
+        })
+        .select("id")
+        .single();
 
-    if (bddError || !bddRow) {
-      console.error("[API] Prospects import BDD create error:", bddError);
-      throw Errors.internal("Impossible de creer la liste d'import");
+      if (bddError || !bddRow) {
+        console.error("[API] Prospects import BDD create error:", bddError);
+        throw Errors.internal("Impossible de creer la liste d'import");
+      }
+      bddId = bddRow.id;
     }
-    bddId = bddRow.id;
   }
-  let inserted = 0;
+  let created = 0;
+  let restored = 0;
   let enrichmentQueued = 0;
-  let duplicates = normalizedRows.length - deduplicatedRows.length;
+  let duplicates = dupRows.length;
   let skipped = body.prospects.length - normalizedRows.length;
 
   const { data: profileRow } = await ctx.supabase
@@ -229,37 +260,36 @@ export const POST = createApiHandler(async (req, ctx) => {
     ctx.userId
   );
 
-  for (const prospect of deduplicatedRows) {
-    const { data: created, error: prospectError } = await ctx.supabase
+  for (const restoreEntry of restores) {
+    const prospect = withMeta(restoreEntry.row);
+    const { error: restoreError } = await ctx.supabase
       .from("prospects")
-      .insert({
-        organization_id: ctx.workspaceId,
-        user_id: ctx.userId,
+      .update({
+        deleted_at: null,
         bdd_id: bddId,
-        full_name: prospect.full_name,
-        email: prospect.email,
-        phone: prospect.phone,
-        company: prospect.company,
-        job_title: prospect.job_title,
-        linkedin: prospect.linkedin,
-        source,
-        status: "new",
-        metadata: prospect.metadata as unknown as import("@/lib/types/supabase").Json ?? undefined,
+        updated_at: new Date().toISOString(),
       })
-      .select("id")
-      .single();
+      .eq("id", restoreEntry.prospectId)
+      .eq("organization_id", ctx.workspaceId);
 
-    if (prospectError || !created) {
-      if (prospectError?.code === "23505") {
-        duplicates += 1;
-        skipped += 1;
-        continue;
-      }
-      console.warn("[API] Prospects import row error:", prospectError);
+    if (restoreError) {
+      console.warn("[API] Prospects import restore error:", restoreError);
       skipped += 1;
       continue;
     }
-    inserted += 1;
+    restored += 1;
+
+    await insertProspectActivity(ctx.supabase, {
+      organization_id: ctx.workspaceId,
+      prospect_id: restoreEntry.prospectId,
+      actor_id: ctx.userId,
+      action: "prospect_restored",
+      details: {
+        via: "import",
+        source,
+        bdd_id: bddId,
+      },
+    });
 
     if (
       autoEnrichEligible &&
@@ -268,7 +298,7 @@ export const POST = createApiHandler(async (req, ctx) => {
     ) {
       const { error: jobErr } = await ctx.supabase.from("enrichment_jobs").insert({
         organization_id: ctx.workspaceId,
-        prospect_id: created.id,
+        prospect_id: restoreEntry.prospectId,
         requested_by_user_id: ctx.userId,
         bdd_id: bddId,
         status: "pending",
@@ -293,5 +323,80 @@ export const POST = createApiHandler(async (req, ctx) => {
     }
   }
 
-  return { bddId, inserted, skipped, duplicates, count: inserted, enrichment_queued: enrichmentQueued };
+  for (const row of inserts) {
+    const prospect = withMeta(row);
+    const { data: createdRow, error: prospectError } = await ctx.supabase
+      .from("prospects")
+      .insert({
+        organization_id: ctx.workspaceId,
+        user_id: ctx.userId,
+        bdd_id: bddId,
+        full_name: prospect.full_name,
+        email: prospect.email,
+        phone: prospect.phone,
+        company: prospect.company,
+        job_title: prospect.job_title,
+        linkedin: prospect.linkedin,
+        source,
+        status: "new",
+        metadata: prospect.metadata as unknown as import("@/lib/types/supabase").Json ?? undefined,
+      })
+      .select("id")
+      .single();
+
+    if (prospectError || !createdRow) {
+      if (prospectError?.code === "23505") {
+        duplicates += 1;
+        skipped += 1;
+        continue;
+      }
+      console.warn("[API] Prospects import row error:", prospectError);
+      skipped += 1;
+      continue;
+    }
+    created += 1;
+
+    if (
+      autoEnrichEligible &&
+      prospect.linkedin?.trim() &&
+      extractLinkedInSlug(prospect.linkedin)
+    ) {
+      const { error: jobErr } = await ctx.supabase.from("enrichment_jobs").insert({
+        organization_id: ctx.workspaceId,
+        prospect_id: createdRow.id,
+        requested_by_user_id: ctx.userId,
+        bdd_id: bddId,
+        status: "pending",
+      });
+      if (!jobErr) enrichmentQueued += 1;
+    }
+
+    if (linkedInAccountId && prospect.linkedin?.trim()) {
+      const slug = extractLinkedInSlug(prospect.linkedin);
+      if (slug) {
+        try {
+          await ensureLinkedInRelationFromUnipileProfile(
+            ctx.supabase,
+            ctx.userId,
+            linkedInAccountId,
+            slug
+          );
+        } catch (e) {
+          console.warn("[API] Prospects import LinkedIn relation fallback:", e);
+        }
+      }
+    }
+  }
+
+  return {
+    bddId,
+    created,
+    restored,
+    duplicates,
+    skipped,
+    enrichment_queued: enrichmentQueued,
+    // Legacy aliases for older clients (extension < v?.? and import dialog).
+    inserted: created,
+    count: created,
+  };
 });
