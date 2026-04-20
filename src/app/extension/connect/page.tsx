@@ -21,7 +21,11 @@ const LOGIN_REDIRECT = "/auth/login?next=/extension/connect";
 type ExtensionTokenPayload = {
   type: "ANDOXA_EXTENSION_TOKEN";
   token: string;
-  user?: { full_name?: string | null; email?: string | null } | null;
+  user?: {
+    full_name?: string | null;
+    email?: string | null;
+    avatar_url?: string | null;
+  } | null;
   expires_in: number;
   expires_at: number | null;
 };
@@ -68,13 +72,12 @@ export default function ExtensionConnectPage() {
       setHandshake(ok ? "acknowledged" : "missing");
 
       if (ok) {
-        // Le background va fermer l'onglet après avoir stocké le token.
-        // On déclenche également une fermeture via postMessage au cas où
-        // le background l'aurait déjà fait avant que l'ACK arrive côté page.
+        // Le background ferme l'onglet après 3s. On déclenche un fallback
+        // à 3,5s au cas où la fermeture via background échouerait.
         closeTimer.current = setTimeout(() => {
           if (cancelled) return;
           requestTabClose();
-        }, 800);
+        }, 8000);
       }
     }
 
@@ -105,12 +108,20 @@ export default function ExtensionConnectPage() {
         const json = (await res.json()) as {
           data?: {
             token: string;
-            user?: { full_name?: string | null; email?: string | null };
+            user?: {
+              full_name?: string | null;
+              email?: string | null;
+              avatar_url?: string | null;
+            };
             expires_in?: number | null;
             expires_at?: number | null;
           };
           token?: string;
-          user?: { full_name?: string | null; email?: string | null };
+          user?: {
+            full_name?: string | null;
+            email?: string | null;
+            avatar_url?: string | null;
+          };
           expires_in?: number | null;
           expires_at?: number | null;
         };
@@ -209,7 +220,7 @@ export default function ExtensionConnectPage() {
       ? "Authentification en cours…"
       : status === "success"
         ? handshake === "acknowledged"
-          ? `Connecté en tant que ${userLabel}. Cet onglet va se fermer automatiquement.`
+          ? `Connecté en tant que ${userLabel}. Cet onglet se ferme dans quelques secondes…`
           : handshake === "missing"
             ? "L'extension Andoxa ne répond pas sur cette page."
             : `Connecté en tant que ${userLabel}. ${message}`

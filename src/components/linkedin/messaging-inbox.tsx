@@ -17,6 +17,7 @@ import { ChatCrmPanel } from '@/components/messagerie/chat-crm-panel';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
     MessageSquare,
     Loader2,
@@ -48,8 +49,8 @@ export function unipileChatMessagesQueryKey(chatId: string) {
 
 interface MessagingInboxProps {
     focusChatId?: string | null;
-    /** Ne garder que les conversations non liées à un prospect CRM */
-    onlyHorsCrm?: boolean;
+    /** Masquer les conversations non liées à un prospect CRM */
+    hideHorsCrm?: boolean;
 }
 
 interface AndoxaIdsResponse {
@@ -93,16 +94,20 @@ function formatMessageTimestamp(ts: string | null | undefined): string {
 
 export function MessagingInbox({
     focusChatId,
-    onlyHorsCrm = false,
+    hideHorsCrm = false,
 }: MessagingInboxProps) {
     const queryClient = useQueryClient();
     const [chats, setChats] = useState<UnipileChat[]>([]);
     const [chatToProspect, setChatToProspect] = useState<
         Record<string, string>
     >({});
-    const [selectedChatId, setSelectedChatId] = useState<string | null>(
-        focusChatId ?? null
-    );
+    const [selectedChatId, setSelectedChatId] = useState<string | null>(() => {
+        if (focusChatId) return focusChatId;
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('andoxa:lastChatId') ?? null;
+        }
+        return null;
+    });
     const [newMessage, setNewMessage] = useState('');
     const [loadingChats, setLoadingChats] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -329,8 +334,8 @@ export function MessagingInbox({
 
     const isChatInCrm = (chatId: string) => !!chatToProspect[chatId];
 
-    const displayedChats = onlyHorsCrm
-        ? chats.filter((c) => !isChatInCrm(c.id))
+    const displayedChats = hideHorsCrm
+        ? chats.filter((c) => isChatInCrm(c.id))
         : chats;
 
     const formatSize = (bytes: number) => {
@@ -457,6 +462,7 @@ export function MessagingInbox({
                                         onClick={() => {
                                             saveScrollPosition();
                                             setSelectedChatId(chat.id);
+                                            localStorage.setItem('andoxa:lastChatId', chat.id);
                                         }}
                                         className={cn(
                                             'w-full rounded-md px-3 py-2.5 text-left text-sm transition-colors',
@@ -468,6 +474,12 @@ export function MessagingInbox({
                                         )}
                                     >
                                         <div className="flex min-w-0 items-center gap-2">
+                                            <Avatar className="h-7 w-7 shrink-0">
+                                                <AvatarImage src={(chat as UnipileChat & { picture_url?: string | null }).picture_url ?? undefined} />
+                                                <AvatarFallback className="bg-muted text-xs">
+                                                    {name.charAt(0).toUpperCase() || '?'}
+                                                </AvatarFallback>
+                                            </Avatar>
                                             <span
                                                 className={cn(
                                                     'flex-1 truncate font-medium',

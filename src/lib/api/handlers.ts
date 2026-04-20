@@ -86,6 +86,8 @@ export const Errors = {
     new ApiError("INTERNAL_ERROR", message, 500),
   planRequired: (message = "Active plan required") =>
     new ApiError("PLAN_REQUIRED", message, 402),
+  conflict: (message: string) =>
+    new ApiError("CONFLICT", message, 409),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

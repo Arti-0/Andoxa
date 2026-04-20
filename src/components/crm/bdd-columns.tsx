@@ -19,7 +19,7 @@ export function getBddColumns(
     onSelect: (bddId: string | null) => void,
     onDelete: (bddId: string) => void,
     memberNames: Map<string, string>,
-    memberAvatars?: Map<string, string | null>
+    memberAvatars?: Map<string, string | null>,
 ): ColumnDef<BddRow>[] {
     return [
         {
@@ -82,7 +82,7 @@ export function getBddColumns(
                 const item = row.original;
                 return (
                     <div className="flex items-center gap-2 font-medium">
-                        <List className="h-4 w-4 text-muted-foreground" />
+                        <List className="h-4 w-4 shrink-0 text-muted-foreground" />
                         {item.name}
                     </div>
                 );

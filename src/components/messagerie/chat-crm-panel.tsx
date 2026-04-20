@@ -99,6 +99,8 @@ function LinkedCrmSidebar({
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
   const [workflowModalOpen, setWorkflowModalOpen] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [listOpen, setListOpen] = useState(false);
 
   const { data: prospect, isLoading: prospectLoading } = useQuery({
     queryKey: ["prospect", prospectId],
@@ -157,6 +159,45 @@ function LinkedCrmSidebar({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const statusMutation = useMutation({
+    mutationFn: async (status: string) => {
+      const res = await fetch(`/api/prospects/${prospectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error("Échec de la mise à jour");
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["prospect", prospectId] });
+      void queryClient.invalidateQueries({ queryKey: ["prospects"] });
+      setStatusOpen(false);
+      toast.success("Statut mis à jour");
+    },
+    onError: () => toast.error("Échec de la mise à jour"),
+  });
+
+  const listMutation = useMutation({
+    mutationFn: async (bddId: string | null) => {
+      const res = await fetch(`/api/prospects/${prospectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ bdd_id: bddId }),
+      });
+      if (!res.ok) throw new Error("Échec de la mise à jour");
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["prospect", prospectId] });
+      void queryClient.invalidateQueries({ queryKey: ["prospects"] });
+      void queryClient.invalidateQueries({ queryKey: ["bdd-single"] });
+      setListOpen(false);
+      toast.success("Liste mise à jour");
+    },
+    onError: () => toast.error("Échec de la mise à jour"),
+  });
+
   const processStepMutation = useMutation({
     mutationFn: async () => {
       const wf = ctxData?.activeWorkflow;
@@ -187,6 +228,19 @@ function LinkedCrmSidebar({
       });
     },
     onError: (e: Error) => toast.error(e.message),
+  });
+
+  const { data: bddList } = useQuery({
+    queryKey: ["bdd-list-mini", prospectId],
+    queryFn: async () => {
+      const res = await fetch("/api/bdd?pageSize=50", { credentials: "include" });
+      if (!res.ok) return { items: [] as Array<{ id: string; name: string }> };
+      const json = await res.json();
+      const data = json.data ?? json;
+      return data as { items: Array<{ id: string; name: string }> };
+    },
+    enabled: listOpen,
+    staleTime: 30_000,
   });
 
   const copyPhone = useCallback(() => {
@@ -256,13 +310,84 @@ function LinkedCrmSidebar({
             ) : null}
           </div>
         </div>
-        {prospect.status && (
-          <span
-            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusClass}`}
-          >
-            {statusLabel}
-          </span>
-        )}
+        {/* Status — click to change */}
+        <div>
+          {!statusOpen ? (
+            <button
+              type="button"
+              onClick={() => setStatusOpen(true)}
+              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusClass} hover:opacity-80`}
+              title="Changer le statut"
+            >
+              {statusLabel}
+            </button>
+          ) : (
+            <div className="flex flex-wrap gap-1 pt-0.5">
+              {(["new", "contacted", "qualified", "rdv", "proposal", "won", "lost"] as ProspectStatus[]).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => statusMutation.mutate(s)}
+                  disabled={statusMutation.isPending}
+                  className={`rounded-full px-2 py-0.5 text-xs font-medium border ${PROSPECT_STATUS_COLORS[s]} ${s === statusKey ? "ring-1 ring-offset-1 ring-primary" : "opacity-70 hover:opacity-100"}`}
+                >
+                  {PROSPECT_STATUS_LABELS[s]}
+                </button>
+              ))}
+              <button type="button" onClick={() => setStatusOpen(false)} className="ml-1 text-muted-foreground hover:text-foreground">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* List assignment */}
+        <div className="text-xs text-muted-foreground">
+          {!listOpen ? (
+            <button
+              type="button"
+              onClick={() => setListOpen(true)}
+              className="hover:text-foreground hover:underline"
+            >
+              {prospect.bdd_id ? `Liste : changer` : `Ajouter à une liste`}
+            </button>
+          ) : (
+            <div className="space-y-1 pt-0.5">
+              <p className="font-medium text-foreground">Choisir une liste :</p>
+              {(bddList?.items ?? []).length === 0 ? (
+                <p className="text-muted-foreground">Chargement…</p>
+              ) : (
+                <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
+                  {(bddList?.items ?? []).map((b) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => listMutation.mutate(b.id)}
+                      disabled={listMutation.isPending}
+                      className={`rounded px-2 py-1 text-left text-xs hover:bg-accent ${b.id === prospect.bdd_id ? "bg-accent font-medium" : ""}`}
+                    >
+                      {b.name}
+                    </button>
+                  ))}
+                  {prospect.bdd_id && (
+                    <button
+                      type="button"
+                      onClick={() => listMutation.mutate(null)}
+                      disabled={listMutation.isPending}
+                      className="rounded px-2 py-1 text-left text-xs text-destructive hover:bg-destructive/10"
+                    >
+                      Retirer de la liste
+                    </button>
+                  )}
+                </div>
+              )}
+              <button type="button" onClick={() => setListOpen(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )}
+        </div>
+
         <Link
           href={`/prospect/${prospectId}`}
           className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"

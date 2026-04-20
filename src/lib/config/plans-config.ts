@@ -95,6 +95,7 @@ const CORE_APP_ROUTES: string[] = [
   "/campaigns",
   "/call-sessions",
   "/calendar",
+  "/calendar-2",
   "/settings",
   "/design-1",
   "/design-2",

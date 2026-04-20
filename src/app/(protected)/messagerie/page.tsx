@@ -22,7 +22,7 @@ function MessagerieContent() {
   const { markAllSeen } = useMessagingRealtime();
 
   const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [horsCrm, setHorsCrm] = useState(false);
+  const [hideHorsCrm, setHideHorsCrm] = useState(true);
 
   useEffect(() => {
     void markAllSeen();
@@ -41,12 +41,12 @@ function MessagerieContent() {
           <button
             type="button"
             onClick={() => {
-              setHorsCrm((v) => !v);
+              setHideHorsCrm((v) => !v);
               if (templatesOpen) setTemplatesOpen(false);
             }}
-            className={tabClass(horsCrm && !templatesOpen)}
+            className={tabClass(!hideHorsCrm && !templatesOpen)}
           >
-            Hors CRM
+            {hideHorsCrm ? "Afficher contacts hors CRM" : "Masquer contacts hors CRM"}
           </button>
         </div>
         <button
@@ -62,7 +62,7 @@ function MessagerieContent() {
         {templatesOpen ? (
           <MessageTemplatesPanel embedded templateChannelFilter="all" />
         ) : (
-          <MessagingInbox focusChatId={focusChatId} onlyHorsCrm={horsCrm} />
+          <MessagingInbox focusChatId={focusChatId} hideHorsCrm={hideHorsCrm} />
         )}
       </div>
     </div>

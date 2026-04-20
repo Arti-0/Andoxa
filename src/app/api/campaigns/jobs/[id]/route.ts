@@ -53,19 +53,43 @@ export const GET = createApiHandler(async (req, ctx) => {
 
 /**
  * PATCH /api/campaigns/jobs/[id]
- * Update job status (pause/resume/cancel)
+ * Update job status (pause/resume/cancel) or metadata.name
  */
 export const PATCH = createApiHandler(async (req, ctx) => {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
   const id = extractJobId(req);
 
-  const body = await parseBody<{ status: string }>(req);
-  if (!body.status || !["paused", "running", "failed"].includes(body.status)) {
-    throw Errors.validation({ status: "Must be 'paused', 'running', or 'failed'" });
+  const body = await parseBody<{ status?: string; name?: string }>(req);
+  const updates: Record<string, unknown> = {};
+
+  if (body.status !== undefined) {
+    if (!["paused", "running", "failed"].includes(body.status)) {
+      throw Errors.validation({ status: "Must be 'paused', 'running', or 'failed'" });
+    }
+    updates.status = body.status;
+    if (body.status === "running") updates.started_at = new Date().toISOString();
   }
 
-  const updates: Record<string, unknown> = { status: body.status };
-  if (body.status === "running") updates.started_at = new Date().toISOString();
+  if (body.name !== undefined) {
+    const { data: existing } = await ctx.supabase
+      .from("campaign_jobs")
+      .select("metadata")
+      .eq("id", id)
+      .eq("organization_id", ctx.workspaceId)
+      .single();
+    const existingMeta = (existing?.metadata as Record<string, unknown> | null) ?? {};
+    const trimmed = body.name.trim();
+    if (trimmed) {
+      updates.metadata = { ...existingMeta, name: trimmed };
+    } else {
+      const { name: _n, ...rest } = existingMeta;
+      updates.metadata = Object.keys(rest).length > 0 ? rest : null;
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw Errors.validation({ body: "Nothing to update" });
+  }
 
   const { data, error } = await ctx.supabase
     .from("campaign_jobs")

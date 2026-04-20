@@ -27,7 +27,10 @@ import {
   Activity,
 } from "lucide-react";
 import Link from "next/link";
+import { useRef } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { ProspectStateStrip } from "@/components/prospect/prospect-state-strip";
 import { CampaignModal } from "@/components/campaigns/campaign-modal";
 import type { CampaignConfig } from "@/lib/campaigns/types";
 import { WorkflowEnrollModal } from "@/components/workflows/workflow-enroll-modal";
@@ -97,9 +100,11 @@ export function ProspectProfileContent({
   const canUseWorkflows = canAccessRoute(routePlan, "/whatsapp");
 
   const queryClient = useQueryClient();
+  const activityRef = useRef<HTMLDivElement>(null);
   const [enriching, setEnriching] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [linkingChat, setLinkingChat] = useState(false);
+  const router = useRouter();
   const [showCampaignModal, setShowCampaignModal] = useState(false);
   const [showWorkflowModal, setShowWorkflowModal] = useState(false);
   const [campaignConfig, setCampaignConfig] = useState<CampaignConfig | null>(null);
@@ -312,9 +317,11 @@ export function ProspectProfileContent({
           </Link>
         </Button>
         {canUseWorkflows && (
-          <Button type="button" variant="outline" size="sm" onClick={() => setShowWorkflowModal(true)}>
-            <Workflow className="h-4 w-4" />
-            <span className="ml-2">Parcours WhatsApp</span>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/whatsapp" className="inline-flex items-center">
+              <Workflow className="h-4 w-4" />
+              <span className="ml-2">Parcours WhatsApp</span>
+            </Link>
           </Button>
         )}
         {hasLinkedin && (
@@ -329,14 +336,16 @@ export function ProspectProfileContent({
               rel="noopener noreferrer"
               className="inline-flex items-center"
             >
-              <Linkedin className="h-4 w-4" />
-              <span className="ml-2">LinkedIn</span>
-              <ExternalLink className="ml-1.5 h-3 w-3" />
+              <Linkedin className="h-4 w-4 shrink-0" />
+              <span className="ml-2 truncate max-w-[200px]">
+                {prospect.linkedin!.replace(/^https?:\/\/(www\.)?/, "")}
+              </span>
+              <ExternalLink className="ml-1.5 h-3 w-3 shrink-0" />
             </a>
           </Button>
         )}
         <Button variant="outline" size="sm" asChild>
-          <Link href="/crm" className="inline-flex items-center">
+          <Link href={prospect.bdd_id ? `/crm?bdd_id=${prospect.bdd_id}` : "/crm"} className="inline-flex items-center">
             <LayoutGrid className="h-4 w-4" />
             <span className="ml-2">CRM</span>
           </Link>
@@ -349,9 +358,11 @@ export function ProspectProfileContent({
         config={campaignConfig}
         prospects={[prospect]}
         onSuccess={() => {
+          const wasContact = campaignConfig?.linkedInAction === 'contact';
           setShowCampaignModal(false);
           setCampaignConfig(null);
           invalidateProspect();
+          if (wasContact) router.push('/messagerie');
         }}
         isPremium={linkedinIsPremium}
       />
@@ -392,6 +403,12 @@ export function ProspectProfileContent({
           </div>
         </CardHeader>
       </Card>
+
+      {/* State strip */}
+      <ProspectStateStrip
+        prospect={prospect}
+        onScrollToActivity={() => activityRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+      />
 
       {/* Contact */}
       <Card>
@@ -539,7 +556,9 @@ export function ProspectProfileContent({
         </CardContent>
       </Card>
 
-      <ProspectOrganizationActivity prospectId={prospect.id} />
+      <div ref={activityRef}>
+        <ProspectOrganizationActivity prospectId={prospect.id} />
+      </div>
 
       {/* Metadata */}
       <Card>
@@ -587,7 +606,8 @@ function activityItemStatus(action: string): ActivityFeedItem["status"] {
   if (
     action === "workflow_run_completed" ||
     action === "workflow_enrolled" ||
-    action === "workflow_step_completed"
+    action === "workflow_step_completed" ||
+    action === "prospect_restored"
   ) {
     return "success";
   }

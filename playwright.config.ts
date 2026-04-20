@@ -13,9 +13,19 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    {
+      name: 'flows',
+      testDir: './tests/flows',
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'security',
+      testDir: './tests/security',
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
   webServer: {
-    command: 'npm run dev',
+    command: 'bun run dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
   },

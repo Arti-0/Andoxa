@@ -10,6 +10,7 @@ interface UnipileAttendee {
   first_name?: string | null;
   last_name?: string | null;
   name?: string | null;
+  picture_url?: string | null;
 }
 
 /** Build display name from attendee (first_name, last_name, or name) */
@@ -20,7 +21,7 @@ function attendeeDisplayName(a: UnipileAttendee): string | null {
   return a.name?.trim() || null;
 }
 
-/** Enrich chats with interlocutor names from attendees API */
+/** Enrich chats with interlocutor names and picture_url from attendees API */
 async function enrichChatsWithInterlocutorNames(
   items: UnipileChat[],
   maxEnrich = 25
@@ -43,6 +44,8 @@ async function enrichChatsWithInterlocutorNames(
     const attendees = (data as { items?: UnipileAttendee[] })?.items ?? [];
     const name = attendees.map(attendeeDisplayName).find(Boolean);
     if (name) ext.interlocutor_name = name;
+    const pic = attendees.find((a) => a.picture_url)?.picture_url;
+    if (pic) ext.picture_url = pic;
     return ext;
   });
 

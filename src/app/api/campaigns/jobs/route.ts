@@ -9,11 +9,13 @@ export const POST = createApiHandler(
     if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
 
     const body = await parseBody<{
+      name?: string;
       type: "invite" | "invite_with_note" | "contact" | "whatsapp";
       prospect_ids: string[];
       message_template?: string;
       batch_size?: number;
       delay_ms?: number;
+      launch_now?: boolean;
       message_overrides?: Record<string, string>;
     }>(req);
 
@@ -28,10 +30,11 @@ export const POST = createApiHandler(
     }
 
     const overrides = body.message_overrides ?? {};
-    const metadata =
-      overrides && typeof overrides === "object" && Object.keys(overrides).length > 0
-        ? { message_overrides: overrides }
-        : null;
+    const metadata: Record<string, string | Record<string, string>> = {};
+    if (overrides && Object.keys(overrides).length > 0) metadata.message_overrides = overrides;
+    if (body.name?.trim()) metadata.name = body.name.trim();
+
+    const initialStatus = body.launch_now ? "pending" : "draft";
 
     const { data: job, error: jobError } = await ctx.supabase
       .from("campaign_jobs")
@@ -39,12 +42,12 @@ export const POST = createApiHandler(
         organization_id: ctx.workspaceId,
         created_by: ctx.userId!,
         type: body.type,
-        status: "draft",
+        status: initialStatus,
         total_count: body.prospect_ids.length,
         batch_size: body.batch_size ?? 10,
         delay_ms: body.delay_ms ?? 120000,
         message_template: body.message_template ?? null,
-        metadata,
+        metadata: Object.keys(metadata).length > 0 ? metadata : null,
       })
       .select()
       .single();

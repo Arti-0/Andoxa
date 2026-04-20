@@ -22,7 +22,7 @@ export const GET = createApiHandler(
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("full_name, email, active_organization_id")
+      .select("full_name, email, active_organization_id, avatar_url")
       .eq("id", ctx.userId)
       .single();
 
@@ -40,6 +40,7 @@ export const GET = createApiHandler(
         full_name: profile?.full_name ?? null,
         email: profile?.email ?? null,
         org_id: profile?.active_organization_id ?? null,
+        avatar_url: profile?.avatar_url ?? null,
       },
     };
   },

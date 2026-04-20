@@ -43,6 +43,7 @@ export interface UnipileChat {
   timestamp: string | null;
   unread_count: number;
   provider_id?: string;
+  picture_url?: string | null;
 }
 
 export interface UnipileAttachment {

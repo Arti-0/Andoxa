@@ -7,23 +7,23 @@
   height: var(--calendar-page-height, 70vh);
 }
 
-/* Light theme only: explicit violet for default calendar events (RDV stay blue) */
+/* Light theme: use blue for all calendar events and UI chrome */
 html:not(.dark) .sx__calendar {
-  --sx-color-primary: #6750a4;
+  --sx-color-primary: rgb(59 130 246);
   --sx-color-on-primary: #fff;
-  --sx-color-primary-container: #eaddff;
-  --sx-color-on-primary-container: #21005e;
+  --sx-color-primary-container: rgb(219 234 254);
+  --sx-color-on-primary-container: rgb(30 58 138);
 }
 
 .dark .sx__calendar {
   --sx-color-blue: rgb(96 165 250);
   --sx-color-blue-container: rgb(30 58 138);
   --sx-color-on-blue-container: rgb(219 234 254);
-  /* Primary (violet) in dark: keep app primary so default events stay violet */
-  --sx-color-primary: var(--primary);
-  --sx-color-on-primary: var(--primary-foreground);
-  --sx-color-primary-container: var(--accent);
-  --sx-color-on-primary-container: var(--primary-foreground);
+  /* Dark: blue for primary (consistent with light theme) */
+  --sx-color-primary: rgb(96 165 250);
+  --sx-color-on-primary: rgb(15 23 42);
+  --sx-color-primary-container: rgb(30 58 138);
+  --sx-color-on-primary-container: rgb(219 234 254);
 }
 
 .sx__calendar * {
@@ -36,21 +36,7 @@ html:not(.dark) .sx__calendar {
   background-color: var(--background);
 }
 
-/* Today header: blue instead of violet */
-.sx__week-grid__date--is-today .sx__week-grid__day-name {
-  color: rgb(59 130 246) !important;
-}
-
-/* Light theme: today date-number - blue bg, white text (no violet) */
-.sx__week-grid__date--is-today .sx__week-grid__date-number {
-  background-color: rgb(59 130 246) !important;
-  color: white !important;
-}
-
-.dark .sx__week-grid__date--is-today .sx__week-grid__day-name {
-  color: rgb(96 165 250) !important;
-}
-
+/* Today highlight follows --sx-color-primary (now blue in both themes) */
 .dark .sx__week-grid__date--is-today .sx__week-grid__date-number {
   color: white !important;
 }

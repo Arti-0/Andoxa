@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
@@ -15,6 +16,9 @@ import {
   Users,
   RefreshCw,
   FileText,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,6 +46,7 @@ interface CampaignJob {
   batch_size: number;
   delay_ms: number;
   message_template: string | null;
+  metadata?: Record<string, unknown> | null;
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
@@ -69,6 +74,10 @@ export default function CampaignDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
+
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   const { data: job, isLoading } = useQuery({
     queryKey: ["campaign-job", id],
@@ -101,6 +110,29 @@ export default function CampaignDetailPage() {
     },
     onError: () => toast.error("Échec de la mise à jour du statut"),
   });
+
+  const nameMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await fetch(`/api/campaigns/jobs/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["campaign-job", id] }),
+    onError: () => toast.error("Impossible de renommer la campagne"),
+  });
+
+  const commitNameEdit = () => {
+    const trimmed = nameDraft.trim();
+    setEditingName(false);
+    if (!trimmed) return;
+    const current = (job?.metadata?.name as string | undefined) ?? "";
+    if (trimmed === current) return;
+    nameMutation.mutate(trimmed);
+  };
 
   const processMutation = useMutation({
     mutationFn: async () => {
@@ -209,9 +241,42 @@ export default function CampaignDetailPage() {
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-bold">
-            Campagne {campaignLabel(configFromJobType(job.type))}
-          </h1>
+          {editingName ? (
+            <div className="flex items-center gap-2">
+              <input
+                ref={nameInputRef}
+                autoFocus
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitNameEdit();
+                  if (e.key === "Escape") setEditingName(false);
+                }}
+                onBlur={commitNameEdit}
+                className="text-xl font-bold rounded border bg-background px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <button type="button" onMouseDown={(e) => { e.preventDefault(); commitNameEdit(); }} className="text-green-600 hover:text-green-700">
+                <Check className="h-4 w-4" />
+              </button>
+              <button type="button" onMouseDown={(e) => { e.preventDefault(); setEditingName(false); }} className="text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="group flex items-center gap-2">
+              <h1 className="text-xl font-bold">
+                {(job.metadata?.name as string | undefined) ?? campaignLabel(configFromJobType(job.type))}
+              </h1>
+              <button
+                type="button"
+                onClick={() => { setNameDraft((job.metadata?.name as string | undefined) ?? ""); setEditingName(true); }}
+                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+                aria-label="Renommer la campagne"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
           <p className="text-sm text-muted-foreground">
             Créée le{" "}
             {new Date(job.created_at).toLocaleDateString("fr-FR", {

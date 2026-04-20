@@ -90,6 +90,8 @@ function activityTitle(action: string, d: Record<string, unknown>): string {
       return "Suivi WhatsApp";
     case "workflow_run_completed":
       return "Suivi WhatsApp";
+    case "prospect_restored":
+      return "Prospect restauré";
     default:
       return action;
   }
@@ -119,6 +121,10 @@ function activityDescription(action: string, d: Record<string, unknown>): string
       return typeof d.error === "string" ? `Échec : ${d.error.slice(0, 200)}` : "Échec d’étape";
     case "workflow_run_completed":
       return wn ? `Parcours « ${wn} » terminé` : "Parcours terminé";
+    case "prospect_restored": {
+      const list = typeof d.bdd_name === "string" ? d.bdd_name : null;
+      return list ? `Restauré depuis la corbeille — ajouté à « ${list} »` : "Restauré depuis la corbeille";
+    }
     default:
       return JSON.stringify(d).slice(0, 200);
   }

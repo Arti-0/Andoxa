@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useCalendarApp, ScheduleXCalendar } from "@schedule-x/react";
-import { createViewWeek } from "@schedule-x/calendar";
+import { useNextCalendarApp, ScheduleXCalendar } from "@schedule-x/react";
+import { createViewDay, createViewWeek } from "@schedule-x/calendar";
 import { createEventsServicePlugin } from "@schedule-x/events-service";
 import { createCalendarControlsPlugin } from "@schedule-x/calendar-controls";
 import { createDragAndDropPlugin } from "@schedule-x/drag-and-drop";
@@ -28,8 +28,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Link2 } from "lucide-react";
+import {
+  CalendarPlus,
+  Copy,
+  Check,
+  Link2,
+  CalendarDays,
+  Clock,
+  BookMarked,
+} from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface EventItem {
   id: string;
@@ -57,8 +66,7 @@ function formatDateForScheduleX(isoString: string): string {
 }
 
 function scheduleXToIso(scheduleXStr: string): string {
-  const normalized = scheduleXStr.replace(" ", "T");
-  return new Date(normalized).toISOString();
+  return new Date(scheduleXStr.replace(" ", "T")).toISOString();
 }
 
 function isoToDatetimeLocal(iso: string): string {
@@ -76,6 +84,16 @@ function addMinutes(scheduleXStr: string, minutes: number): string {
   d.setMinutes(d.getMinutes() + minutes);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function isToday(isoString: string): boolean {
+  const d = new Date(isoString);
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
 }
 
 export default function CalendarPage() {
@@ -96,6 +114,39 @@ export default function CalendarPage() {
   useEffect(() => {
     eventsRef.current = events;
   }, [events]);
+
+  const todayCount = useMemo(
+    () => events.filter((e) => isToday(e.start_time)).length,
+    [events]
+  );
+
+  const [allTimeStats, setAllTimeStats] = useState<{
+    past: number;
+    upcoming: number;
+    loaded: boolean;
+  }>({ past: 0, upcoming: 0, loaded: false });
+
+  useEffect(() => {
+    async function loadAllTimeStats() {
+      try {
+        const now = new Date().toISOString();
+        const [pastRes, upcomingRes] = await Promise.all([
+          fetch(`/api/events?end=${encodeURIComponent(now)}&pageSize=1`),
+          fetch(`/api/events?start=${encodeURIComponent(now)}&pageSize=1`),
+        ]);
+        const [pastJson, upcomingJson] = await Promise.all([
+          pastRes.json(),
+          upcomingRes.json(),
+        ]);
+        const past = (pastJson?.data ?? pastJson)?.total ?? 0;
+        const upcoming = (upcomingJson?.data ?? upcomingJson)?.total ?? 0;
+        setAllTimeStats({ past, upcoming, loaded: true });
+      } catch {
+        setAllTimeStats((s) => ({ ...s, loaded: true }));
+      }
+    }
+    loadAllTimeStats();
+  }, []);
 
   const eventsServicePlugin = useMemo(() => createEventsServicePlugin(), []);
   const controlsPlugin = useMemo(() => createCalendarControlsPlugin(), []);
@@ -189,14 +240,27 @@ export default function CalendarPage() {
     loadMembers();
   }, [loadMembers]);
 
+  useEffect(() => {
+    if (!userLoading && profile?.booking_slug) {
+      setBookingSlug(profile.booking_slug);
+    }
+  }, [userLoading, profile?.booking_slug]);
+
   const memoizedViews = useMemo(
-    () => [createViewWeek()] as [ReturnType<typeof createViewWeek>, ...ReturnType<typeof createViewWeek>[]],
+    () =>
+      [createViewDay(), createViewWeek()] as [
+        ReturnType<typeof createViewDay>,
+        ReturnType<typeof createViewWeek>,
+      ],
     []
   );
 
-  const calendar = useCalendarApp({
+  const calendar = useNextCalendarApp({
     views: memoizedViews,
     events: [],
+    locale: "fr-FR",
+    firstDayOfWeek: 1,
+    isResponsive: true,
     defaultView: "week",
     dayBoundaries: { start: "06:00", end: "22:00" },
     calendars: {
@@ -216,10 +280,20 @@ export default function CalendarPage() {
       onRangeUpdate: ({ start, end }: { start: string; end: string }) => {
         loadEvents(start, end);
       },
-      onEventUpdate: async (updated: { id: string | number; start: string; end: string; title?: string }) => {
+      onEventUpdate: async (updated: {
+        id: string | number;
+        start: string;
+        end: string;
+        title?: string;
+      }) => {
         const id = String(updated.id);
         const ev = eventsRef.current.find((e) => e.id === id);
-        const orig = ev ? { start: formatDateForScheduleX(ev.start_time), end: formatDateForScheduleX(ev.end_time) } : null;
+        const orig = ev
+          ? {
+              start: formatDateForScheduleX(ev.start_time),
+              end: formatDateForScheduleX(ev.end_time),
+            }
+          : null;
         originalEventRef.current = orig;
         try {
           const res = await fetch(`/api/events/${id}`, {
@@ -232,18 +306,45 @@ export default function CalendarPage() {
             }),
           });
           if (!res.ok) {
-            if (orig) eventsServicePlugin.update({ id, start: orig.start, end: orig.end, title: updated.title });
+            if (orig)
+              eventsServicePlugin.update({
+                id,
+                start: orig.start,
+                end: orig.end,
+                title: updated.title,
+              });
           } else {
-            const ev = eventsRef.current.find((e) => e.id === id);
-            if (ev) setEvents((prev) => prev.map((e) => (e.id === id ? { ...ev, start_time: scheduleXToIso(updated.start), end_time: scheduleXToIso(updated.end) } : e)));
+            setEvents((prev) =>
+              prev.map((e) =>
+                e.id === id
+                  ? {
+                      ...e,
+                      start_time: scheduleXToIso(updated.start),
+                      end_time: scheduleXToIso(updated.end),
+                    }
+                  : e
+              )
+            );
           }
         } catch {
-          if (orig) eventsServicePlugin.update({ id, start: orig.start, end: orig.end, title: updated.title });
+          if (orig)
+            eventsServicePlugin.update({
+              id,
+              start: orig.start,
+              end: orig.end,
+              title: updated.title,
+            });
         }
         originalEventRef.current = null;
       },
     },
   });
+
+  // Force French locale on the controls plugin once the calendar instance is ready
+  useEffect(() => {
+    if (!calendar) return;
+    controlsPlugin.setLocale("fr-FR");
+  }, [calendar, controlsPlugin]);
 
   useEffect(() => {
     const now = new Date();
@@ -256,11 +357,10 @@ export default function CalendarPage() {
 
   const handleCopyLink = useCallback(async () => {
     const slug = bookingSlug ?? (await ensureBookingSlug());
-    if (!slug) {
-      setCopySuccess(false);
-      return;
-    }
-    const base = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "");
+    if (!slug) return;
+    const base =
+      process.env.NEXT_PUBLIC_APP_URL ??
+      (typeof window !== "undefined" ? window.location.origin : "");
     const url = `${base}/booking/${slug}`;
     try {
       await navigator.clipboard.writeText(url);
@@ -271,50 +371,151 @@ export default function CalendarPage() {
     }
   }, [bookingSlug, ensureBookingSlug]);
 
+  const bookingUrl = useMemo(() => {
+    if (!bookingSlug) return null;
+    const base =
+      process.env.NEXT_PUBLIC_APP_URL ??
+      (typeof window !== "undefined" ? window.location.origin : "");
+    return `${base}/booking/${bookingSlug}`;
+  }, [bookingSlug]);
+
   return (
-    <div className="flex flex-col gap-6 p-6 lg:p-8 h-full">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex-1">
-          <p className="text-muted-foreground">
-            Vue semaine : créez, déplacez et redimensionnez vos RDV ; les réservations publiques apparaissent ici.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Select value={selectedMemberId} onValueChange={setSelectedMemberId}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Filtrer par membre" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tout le monde</SelectItem>
-              {members.map((m) => (
-                <SelectItem key={m.id} value={m.id}>
-                  {m.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+    <div className="flex flex-col min-h-full bg-zinc-50 dark:bg-zinc-950">
+      {/* Page header */}
+      <div className="border-b border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900/50">
+        <div className="flex items-start justify-between gap-4 px-6 py-5 lg:px-8">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+              Calendrier
+            </h1>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
+              Gérez vos rendez-vous et suivez vos réservations.
+            </p>
+          </div>
           <Button
-            variant="outline"
-            onClick={handleCopyLink}
-            disabled={userLoading}
-            className="gap-2"
+            onClick={() => {
+              setPendingCreateStart(null);
+              setCreateOpen(true);
+            }}
+            className="gap-2 shrink-0"
           >
-            <Link2 className="h-4 w-4" />
-            {copySuccess ? "Copié !" : "Copier mon lien de prise de RDV"}
+            <CalendarPlus className="h-4 w-4" />
+            <span className="hidden sm:inline">Créer un événement</span>
+            <span className="sm:hidden">Créer</span>
           </Button>
         </div>
       </div>
 
-      <section className="flex-1 min-h-0 rounded-lg border bg-card overflow-hidden">
-        <div className="h-[var(--calendar-page-height,70vh)] sx__calendar">
-          <ScheduleXCalendar calendarApp={calendar} />
-        </div>
-        {loading && (
-          <div className="absolute inset-0 bg-background/50 flex items-center justify-center pointer-events-none">
-            <span className="text-sm text-muted-foreground">Chargement...</span>
+      <div className="flex flex-col gap-5 p-6 lg:p-8">
+        {/* Booking link card */}
+        <div className="rounded-2xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900/50 p-5 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-100 dark:bg-zinc-800">
+                <Link2 className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                  Lien de prise de rendez-vous
+                </p>
+                {bookingUrl ? (
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
+                    {bookingUrl}
+                  </p>
+                ) : (
+                  <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
+                    Partagez ce lien pour recevoir des réservations automatiquement.
+                  </p>
+                )}
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCopyLink}
+              disabled={userLoading}
+              className={cn(
+                "gap-2 shrink-0 transition-colors",
+                copySuccess &&
+                  "border-green-500 text-green-600 dark:border-green-500 dark:text-green-400"
+              )}
+            >
+              {copySuccess ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+              {copySuccess ? "Copié !" : "Copier le lien"}
+            </Button>
           </div>
-        )}
-      </section>
+        </div>
+
+        {/* Quick stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <StatCard
+            label="À venir"
+            value={!allTimeStats.loaded ? "…" : String(allTimeStats.upcoming)}
+            suffix={allTimeStats.upcoming === 1 ? "événement" : "événements"}
+            icon={CalendarDays}
+            tone="upcoming"
+          />
+          <StatCard
+            label="Passés"
+            value={!allTimeStats.loaded ? "…" : String(allTimeStats.past)}
+            suffix={allTimeStats.past === 1 ? "événement" : "événements"}
+            icon={Clock}
+            tone="past"
+          />
+          <StatCard
+            label="Aujourd'hui"
+            value={loading ? "…" : String(todayCount)}
+            suffix={todayCount === 1 ? "événement" : "événements"}
+            icon={BookMarked}
+            className="col-span-2 sm:col-span-1"
+          />
+        </div>
+
+        {/* Calendar section */}
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Vue semaine
+              </h2>
+              {loading && (
+                <span className="text-xs text-zinc-400 dark:text-zinc-500">
+                  Chargement…
+                </span>
+              )}
+            </div>
+            {members.length > 0 && (
+              <Select value={selectedMemberId} onValueChange={setSelectedMemberId}>
+                <SelectTrigger className="h-8 w-[180px] text-sm bg-white dark:bg-zinc-900/50">
+                  <SelectValue placeholder="Tous les membres" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les membres</SelectItem>
+                  {members.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900/50 overflow-hidden shadow-sm">
+            <div className="sx__calendar h-[65vh] min-h-[420px]">
+              <ScheduleXCalendar calendarApp={calendar} />
+            </div>
+          </div>
+
+          <p className="text-xs text-zinc-400 dark:text-zinc-500 text-center">
+            Double-cliquez sur un créneau pour créer · Glissez-déposez pour déplacer · Cliquez pour modifier
+          </p>
+        </div>
+      </div>
 
       <EventCreateModal
         open={createOpen}
@@ -348,6 +549,61 @@ export default function CalendarPage() {
   );
 }
 
+function StatCard({
+  label,
+  value,
+  suffix,
+  icon: Icon,
+  tone,
+  className,
+}: {
+  label: string;
+  value: string;
+  suffix: string;
+  icon: React.ComponentType<{ className?: string }>;
+  tone?: "upcoming" | "past";
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border bg-white dark:bg-zinc-900/50 p-4 shadow-sm",
+        tone === "upcoming"
+          ? "border-blue-200 dark:border-blue-900/60"
+          : tone === "past"
+            ? "border-zinc-200 dark:border-white/10"
+            : "border-zinc-200 dark:border-white/10",
+        className
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 leading-tight">
+          {label}
+        </p>
+        <Icon
+          className={cn(
+            "h-4 w-4 shrink-0",
+            tone === "upcoming"
+              ? "text-blue-400 dark:text-blue-500"
+              : "text-zinc-400 dark:text-zinc-500"
+          )}
+        />
+      </div>
+      <p
+        className={cn(
+          "mt-2 text-2xl font-semibold tracking-tight",
+          tone === "upcoming"
+            ? "text-blue-600 dark:text-blue-400"
+            : "text-zinc-900 dark:text-zinc-50"
+        )}
+      >
+        {value}
+      </p>
+      <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">{suffix}</p>
+    </div>
+  );
+}
+
 function EventCreateModal({
   open,
   onOpenChange,
@@ -360,7 +616,9 @@ function EventCreateModal({
   onOpenChange: (o: boolean) => void;
   initialStart: string | null;
   onSuccess: () => void;
-  eventsServicePlugin: ReturnType<typeof import("@schedule-x/events-service").createEventsServicePlugin>;
+  eventsServicePlugin: ReturnType<
+    typeof import("@schedule-x/events-service").createEventsServicePlugin
+  >;
   formatDateForScheduleX: (iso: string) => string;
 }) {
   const [title, setTitle] = useState("");
@@ -372,9 +630,20 @@ function EventCreateModal({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open && initialStart) {
-      setStart(isoToDatetimeLocal(scheduleXToIso(initialStart)));
-      setEnd(isoToDatetimeLocal(scheduleXToIso(addMinutes(initialStart, 30))));
+    if (open) {
+      if (initialStart) {
+        setStart(isoToDatetimeLocal(scheduleXToIso(initialStart)));
+        setEnd(isoToDatetimeLocal(scheduleXToIso(addMinutes(initialStart, 30))));
+      } else {
+        const now = new Date();
+        const pad = (n: number) => String(n).padStart(2, "0");
+        const local = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+        setStart(local);
+        const later = new Date(now.getTime() + 30 * 60000);
+        setEnd(
+          `${later.getFullYear()}-${pad(later.getMonth() + 1)}-${pad(later.getDate())}T${pad(later.getHours())}:${pad(later.getMinutes())}`
+        );
+      }
       setTitle("");
       setDescription("");
       setLocation("");
@@ -407,9 +676,10 @@ function EventCreateModal({
       const json = await res.json();
       const data = json?.data ?? json;
       if (!res.ok) {
-        const detailsStr = json?.error?.details && typeof json.error.details === "object"
-          ? Object.values(json.error.details).filter(Boolean).join(", ")
-          : "";
+        const detailsStr =
+          json?.error?.details && typeof json.error.details === "object"
+            ? Object.values(json.error.details).filter(Boolean).join(", ")
+            : "";
         const errMsg = json?.error?.message ?? (detailsStr || "Erreur lors de la création");
         setError(errMsg);
         toast.error(errMsg);
@@ -435,30 +705,59 @@ function EventCreateModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Nouvel événement</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label htmlFor="create-title">Titre *</Label>
-            <Input id="create-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titre" required />
+        <form onSubmit={handleSubmit} className="space-y-4 pt-1">
+          <div className="space-y-1.5">
+            <Label htmlFor="cv2-title">Titre *</Label>
+            <Input
+              id="cv2-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Ex : Appel découverte"
+              required
+              autoFocus
+            />
           </div>
-          <div>
-            <Label htmlFor="create-start">Début</Label>
-            <Input id="create-start" type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="cv2-start">Début</Label>
+              <Input
+                id="cv2-start"
+                type="datetime-local"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="cv2-end">Fin</Label>
+              <Input
+                id="cv2-end"
+                type="datetime-local"
+                value={end}
+                onChange={(e) => setEnd(e.target.value)}
+              />
+            </div>
           </div>
-          <div>
-            <Label htmlFor="create-end">Fin</Label>
-            <Input id="create-end" type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} />
+          <div className="space-y-1.5">
+            <Label htmlFor="cv2-location">Lieu</Label>
+            <Input
+              id="cv2-location"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="Ex : Visio, Paris 8e…"
+            />
           </div>
-          <div>
-            <Label htmlFor="create-location">Lieu</Label>
-            <Input id="create-location" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Lieu" />
-          </div>
-          <div>
-            <Label htmlFor="create-description">Description</Label>
-            <Input id="create-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" />
+          <div className="space-y-1.5">
+            <Label htmlFor="cv2-description">Description</Label>
+            <Input
+              id="cv2-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Optionnel"
+            />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
@@ -466,7 +765,7 @@ function EventCreateModal({
               Annuler
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? "Création..." : "Créer"}
+              {submitting ? "Création…" : "Créer"}
             </Button>
           </DialogFooter>
         </form>
@@ -584,49 +883,94 @@ function EventEditModal({
 
   return (
     <Dialog open={!!event} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Modifier l'événement</DialogTitle>
+          <DialogTitle>Modifier l&apos;événement</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSave} className="space-y-4">
+        <form onSubmit={handleSave} className="space-y-4 pt-1">
           {event.source === "booking" && (event.guest_name || event.guest_email) && (
-            <div className="rounded-lg border bg-muted/50 p-3 text-sm">
-              <p className="font-medium text-muted-foreground mb-1">Informations du rendez-vous</p>
-              {event.guest_name && <p><strong>Nom :</strong> {event.guest_name}</p>}
-              {event.guest_email && <p><strong>Email :</strong> {event.guest_email}</p>}
+            <div className="rounded-xl border border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-zinc-800/50 p-3 text-sm">
+              <p className="font-medium text-zinc-500 dark:text-zinc-400 mb-1.5 text-xs uppercase tracking-wider">
+                Infos du rendez-vous
+              </p>
+              {event.guest_name && (
+                <p className="text-zinc-800 dark:text-zinc-200">
+                  <span className="text-zinc-500 dark:text-zinc-400">Nom ·</span>{" "}
+                  {event.guest_name}
+                </p>
+              )}
+              {event.guest_email && (
+                <p className="text-zinc-800 dark:text-zinc-200 mt-0.5">
+                  <span className="text-zinc-500 dark:text-zinc-400">Email ·</span>{" "}
+                  {event.guest_email}
+                </p>
+              )}
             </div>
           )}
-          <div>
-            <Label htmlFor="edit-title">Titre *</Label>
-            <Input id="edit-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titre" required />
+          <div className="space-y-1.5">
+            <Label htmlFor="ev2-title">Titre *</Label>
+            <Input
+              id="ev2-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Titre"
+              required
+            />
           </div>
-          <div>
-            <Label htmlFor="edit-start">Début</Label>
-            <Input id="edit-start" type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="ev2-start">Début</Label>
+              <Input
+                id="ev2-start"
+                type="datetime-local"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ev2-end">Fin</Label>
+              <Input
+                id="ev2-end"
+                type="datetime-local"
+                value={end}
+                onChange={(e) => setEnd(e.target.value)}
+              />
+            </div>
           </div>
-          <div>
-            <Label htmlFor="edit-end">Fin</Label>
-            <Input id="edit-end" type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} />
+          <div className="space-y-1.5">
+            <Label htmlFor="ev2-location">Lieu</Label>
+            <Input
+              id="ev2-location"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="Lieu"
+            />
           </div>
-          <div>
-            <Label htmlFor="edit-location">Lieu</Label>
-            <Input id="edit-location" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Lieu" />
-          </div>
-          <div>
-            <Label htmlFor="edit-description">Description</Label>
-            <Input id="edit-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" />
+          <div className="space-y-1.5">
+            <Label htmlFor="ev2-description">Description</Label>
+            <Input
+              id="ev2-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Optionnel"
+            />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <DialogFooter>
-            <Button type="button" variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? "Suppression..." : "Supprimer"}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="sm:mr-auto"
+            >
+              {deleting ? "Suppression…" : "Supprimer"}
             </Button>
-            <div className="flex-1" />
             <Button type="button" variant="outline" onClick={onClose}>
               Annuler
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? "Enregistrement..." : "Enregistrer"}
+              {submitting ? "Enregistrement…" : "Enregistrer"}
             </Button>
           </DialogFooter>
         </form>

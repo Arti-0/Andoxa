@@ -156,7 +156,8 @@ export function CampaignModal({
     const queryClient = useQueryClient();
     const [message, setMessage] = useState('');
     const [sending, setSending] = useState(false);
-    const [step, setStep] = useState<'compose' | 'gaps' | 'preview'>('compose');
+    const [step, setStep] = useState<'name' | 'compose' | 'gaps' | 'preview'>('name');
+    const [campaignName, setCampaignName] = useState('');
     const [linkedInAction, setLinkedInAction] =
         useState<LinkedInAction>('contact');
     const [saveAsTemplate, setSaveAsTemplate] = useState(false);
@@ -348,6 +349,8 @@ export function CampaignModal({
             else setStep('compose');
         } else if (step === 'gaps') {
             setStep('compose');
+        } else if (step === 'compose') {
+            setStep('name');
         }
     };
 
@@ -360,7 +363,7 @@ export function CampaignModal({
         return out;
     };
 
-    const handleSave = async () => {
+    const handleSave = async (launchNow = false) => {
         if (count === 0 || !config) return;
         if (isWhatsApp && !message.trim()) {
             toast.error('Le message WhatsApp est obligatoire.');
@@ -380,11 +383,13 @@ export function CampaignModal({
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 body: JSON.stringify({
+                    name: campaignName.trim() || undefined,
                     type: jobType,
                     prospect_ids: prospects.map((p) => p.id),
                     message_template: templateText,
                     batch_size: BATCH_SIZE,
                     delay_ms: DELAY_MS,
+                    launch_now: launchNow,
                     message_overrides:
                         Object.keys(messageByProspect).length > 0
                             ? messageByProspect
@@ -414,7 +419,9 @@ export function CampaignModal({
                 }
             }
             toast.success(
-                'Campagne sauvegardée — lancez-la depuis la liste des campagnes.'
+                launchNow
+                    ? 'Campagne créée et lancée !'
+                    : 'Brouillon enregistré — lancez-la depuis la liste des campagnes.'
             );
             if (jobId) onSuccess?.(jobId);
             onOpenChange(false);
@@ -428,7 +435,8 @@ export function CampaignModal({
 
     const resetState = () => {
         setMessage('');
-        setStep('compose');
+        setStep('name');
+        setCampaignName('');
         setSaveAsTemplate(false);
         setTemplateName('');
         setGapDefaults({});
@@ -503,6 +511,26 @@ export function CampaignModal({
                         </DialogDescription>
                     )}
                 </DialogHeader>
+
+                {step === 'name' && (
+                    <div className="flex flex-col gap-4 py-4">
+                        <div className="space-y-1.5">
+                            <label htmlFor="campaign-name" className="text-sm font-medium">
+                                Nom de la campagne <span className="text-destructive">*</span>
+                            </label>
+                            <input
+                                id="campaign-name"
+                                type="text"
+                                autoFocus
+                                value={campaignName}
+                                onChange={(e) => setCampaignName(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' && campaignName.trim()) setStep('compose'); }}
+                                placeholder="Ex : Prospection Q2 2026"
+                                className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                            />
+                        </div>
+                    </div>
+                )}
 
                 {step === 'compose' && (
                     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-2">
@@ -584,6 +612,7 @@ export function CampaignModal({
                                     checked={saveAsTemplate}
                                     onCheckedChange={setSaveAsTemplate}
                                     disabled={isLinkedIn && isInvitePlain}
+                                    className="border-input"
                                 />
                             </div>
                         </div>
@@ -791,7 +820,23 @@ export function CampaignModal({
                 )}
 
                 <DialogFooter className="shrink-0 border-t pt-4">
-                    {step === 'compose' ? (
+                    {step === 'name' ? (
+                        <>
+                            <Button
+                                variant="outline"
+                                onClick={() => handleClose(false)}
+                            >
+                                Annuler
+                            </Button>
+                            <Button
+                                onClick={() => setStep('compose')}
+                                disabled={!campaignName.trim()}
+                            >
+                                Suivant
+                                <ArrowRight className="ml-2 h-4 w-4" />
+                            </Button>
+                        </>
+                    ) : step === 'compose' ? (
                         <>
                             <Button
                                 variant="outline"
@@ -839,13 +884,20 @@ export function CampaignModal({
                                 Retour
                             </Button>
                             <Button
-                                onClick={() => void handleSave()}
+                                variant="outline"
+                                onClick={() => void handleSave(false)}
+                                disabled={sending}
+                            >
+                                Enregistrer en brouillon
+                            </Button>
+                            <Button
+                                onClick={() => void handleSave(true)}
                                 disabled={sending}
                             >
                                 {sending ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                 ) : (
-                                    'Sauvegarder la campagne'
+                                    'Créer et lancer'
                                 )}
                             </Button>
                         </>

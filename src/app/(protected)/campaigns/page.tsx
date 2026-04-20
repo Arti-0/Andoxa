@@ -24,7 +24,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useLinkedInAccount } from '@/hooks/use-linkedin-account';
-import { ConnectionGate } from '@/components/unipile/connection-gate';
+import { isAnyUnipileMessagingConnected } from '@/components/unipile/connection-gate';
+import Link from 'next/link';
 import type {
     CampaignConfig,
     CampaignJobStatus,
@@ -408,9 +409,15 @@ export default function CampaignsPage() {
             minute: '2-digit',
         });
 
+    const isConnected = isAnyUnipileMessagingConnected(linkedInAccount);
+
     return (
-        <ConnectionGate acceptEitherLinkedInOrWhatsApp pageName="Campagnes & Appels">
         <div className="flex flex-col gap-6 p-6 lg:p-8">
+        {!isConnected && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+                <span>Connecte LinkedIn ou WhatsApp dans les <Link href="/settings" className="font-medium underline underline-offset-2">paramètres</Link> pour envoyer des messages.</span>
+            </div>
+        )}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-wrap rounded-lg border bg-muted/30 p-1">
                     <button
@@ -461,7 +468,7 @@ export default function CampaignsPage() {
                         }}
                     >
                         <Megaphone className="h-4 w-4" />
-                        Démarrer une campagne
+                        Créer une campagne
                     </Button>
 
                     <Button
@@ -664,7 +671,7 @@ export default function CampaignsPage() {
                         <DialogTitle>
                             {listPickerMode === 'call_session'
                                 ? 'Sélectionner une liste pour une session'
-                                : 'Démarrer une campagne'}
+                                : 'Créer une campagne'}
                         </DialogTitle>
                         <DialogDescription>
                             {listPickerMode === 'call_session'
@@ -781,6 +788,5 @@ export default function CampaignsPage() {
                 isPremium={isPremium}
             />
         </div>
-        </ConnectionGate>
     );
 }

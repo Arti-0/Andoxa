@@ -11,6 +11,7 @@
     "deploy:prod": "node scripts/deploy.js prod",
     "deploy:status": "node scripts/deploy.js status",
     "test:e2e": "playwright test",
+    "test:e2e:flows": "playwright test --project=flows",
     "test:e2e:security": "playwright test tests/security",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
