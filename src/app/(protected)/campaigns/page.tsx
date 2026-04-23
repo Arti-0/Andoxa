@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Megaphone, Loader2, Phone, MessageCircle, Play } from 'lucide-react';
+import { Megaphone, Loader2, Phone, MessageCircle, Play, Pause, Trash2 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useWorkspace } from '@/lib/workspace';
 import { EmptyState } from '@/components/design';
@@ -45,6 +45,7 @@ interface CampaignJob {
     message_template?: string | null;
     batch_size?: number | null;
     delay_ms?: number | null;
+    metadata?: Record<string, unknown> | null;
 }
 
 interface CallSession {
@@ -141,6 +142,7 @@ export default function CampaignsPage() {
     const [preparingCampaign, setPreparingCampaign] = useState(false);
     const [preparingCallSession, setPreparingCallSession] = useState(false);
     const [launchingId, setLaunchingId] = useState<string | null>(null);
+    const [actionPending, setActionPending] = useState<{ id: string; action: string } | null>(null);
 
     const { data: linkedInAccount } = useLinkedInAccount();
     const isPremium = linkedInAccount?.linkedin_is_premium ?? false;
@@ -188,7 +190,7 @@ export default function CampaignsPage() {
                 date: j.created_at,
                 status: j.status,
                 prospectCount: j.total_count,
-                label: campaignLabel(configFromJobType(j.type)),
+                label: (j.metadata?.name as string | undefined) ?? campaignLabel(configFromJobType(j.type)),
                 href: `/campaigns/${j.id}`,
                 messageSnippet: formatMessageSnippet(
                     j.message_template ?? null
@@ -397,6 +399,64 @@ export default function CampaignsPage() {
             toast.error('Erreur réseau');
         } finally {
             setLaunchingId(null);
+        }
+    };
+
+    const optimisticallyUpdateJobStatus = (jobId: string, newStatus: CampaignJobStatus) => {
+        queryClient.setQueryData<CampaignJob[]>(['campaign-jobs', workspaceId], (old) =>
+            old?.map((j) => j.id === jobId ? { ...j, status: newStatus } : j)
+        );
+    };
+
+    const handlePatchStatus = async (jobId: string, newStatus: CampaignJobStatus, label: string) => {
+        setActionPending({ id: jobId, action: newStatus });
+        optimisticallyUpdateJobStatus(jobId, newStatus);
+        try {
+            const res = await fetch(`/api/campaigns/jobs/${jobId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ status: newStatus }),
+            });
+            if (!res.ok) {
+                const json = await res.json().catch(() => ({}));
+                toast.error(json?.error?.message ?? `Impossible de ${label} la campagne`);
+                // Revert optimistic update
+                void queryClient.invalidateQueries({ queryKey: ['campaign-jobs', workspaceId] });
+                return;
+            }
+            void queryClient.invalidateQueries({ queryKey: ['campaign-jobs', workspaceId] });
+        } catch {
+            toast.error('Erreur réseau');
+            void queryClient.invalidateQueries({ queryKey: ['campaign-jobs', workspaceId] });
+        } finally {
+            setActionPending(null);
+        }
+    };
+
+    const handleCancelJob = async (jobId: string) => {
+        setActionPending({ id: jobId, action: 'cancel' });
+        optimisticallyUpdateJobStatus(jobId, 'failed');
+        try {
+            const res = await fetch(`/api/campaigns/jobs/${jobId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ status: 'failed' }),
+            });
+            if (!res.ok) {
+                const json = await res.json().catch(() => ({}));
+                toast.error(json?.error?.message ?? 'Impossible d\'annuler la campagne');
+                void queryClient.invalidateQueries({ queryKey: ['campaign-jobs', workspaceId] });
+                return;
+            }
+            toast.success('Campagne annulée');
+            void queryClient.invalidateQueries({ queryKey: ['campaign-jobs', workspaceId] });
+        } catch {
+            toast.error('Erreur réseau');
+            void queryClient.invalidateQueries({ queryKey: ['campaign-jobs', workspaceId] });
+        } finally {
+            setActionPending(null);
         }
     };
 
@@ -636,27 +696,65 @@ export default function CampaignsPage() {
                                         className="px-4 py-3"
                                         onClick={(e) => e.stopPropagation()}
                                     >
-                                        {row.type === 'campaign' &&
-                                        row.status === 'draft' ? (
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                disabled={
-                                                    launchingId === row.id
-                                                }
-                                                onClick={() =>
-                                                    void handleLaunch(row.id)
-                                                }
-                                                className="gap-1.5 text-xs"
-                                            >
-                                                {launchingId === row.id ? (
-                                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                                ) : (
-                                                    <Play className="h-3 w-3" />
+                                        {row.type === 'campaign' && (
+                                            <div className="flex items-center gap-1">
+                                                {/* Play: draft → launch, paused → resume */}
+                                                {(row.status === 'draft' || row.status === 'paused') && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        disabled={launchingId === row.id || actionPending?.id === row.id}
+                                                        onClick={() =>
+                                                            row.status === 'draft'
+                                                                ? void handleLaunch(row.id)
+                                                                : void handlePatchStatus(row.id as string, 'pending', 'reprendre')
+                                                        }
+                                                        className="h-7 w-7 p-0"
+                                                        title={row.status === 'draft' ? 'Lancer' : 'Reprendre'}
+                                                    >
+                                                        {launchingId === row.id || (actionPending?.id === row.id && actionPending.action === 'pending') ? (
+                                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                                        ) : (
+                                                            <Play className="h-3 w-3" />
+                                                        )}
+                                                    </Button>
                                                 )}
-                                                Lancer
-                                            </Button>
-                                        ) : null}
+                                                {/* Pause: pending/running */}
+                                                {(row.status === 'pending' || row.status === 'running') && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        disabled={actionPending?.id === row.id}
+                                                        onClick={() => void handlePatchStatus(row.id as string, 'paused', 'mettre en pause')}
+                                                        className="h-7 w-7 p-0"
+                                                        title="Mettre en pause"
+                                                    >
+                                                        {actionPending?.id === row.id && actionPending.action === 'paused' ? (
+                                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                                        ) : (
+                                                            <Pause className="h-3 w-3" />
+                                                        )}
+                                                    </Button>
+                                                )}
+                                                {/* Cancel/Delete: draft, pending, paused, running */}
+                                                {['draft', 'pending', 'paused', 'running'].includes(row.status) && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        disabled={actionPending?.id === row.id}
+                                                        onClick={() => void handleCancelJob(row.id)}
+                                                        className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                        title="Annuler"
+                                                    >
+                                                        {actionPending?.id === row.id && actionPending.action === 'cancel' ? (
+                                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                                        ) : (
+                                                            <Trash2 className="h-3 w-3" />
+                                                        )}
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        )}
                                     </td>
                                 </tr>
                             ))}

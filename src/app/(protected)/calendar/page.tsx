@@ -28,6 +28,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   CalendarPlus,
   Copy,
@@ -36,6 +37,7 @@ import {
   CalendarDays,
   Clock,
   BookMarked,
+  Video,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -110,6 +112,7 @@ export default function CalendarPage() {
   const [lastRange, setLastRange] = useState<{ start: string; end: string } | null>(null);
   const originalEventRef = useRef<{ start: string; end: string } | null>(null);
   const eventsRef = useRef<EventItem[]>([]);
+  const [googleConnected, setGoogleConnected] = useState<boolean | null>(null);
 
   useEffect(() => {
     eventsRef.current = events;
@@ -177,24 +180,49 @@ export default function CalendarPage() {
         if (selectedMemberId && selectedMemberId !== "all") {
           params.set("created_by", selectedMemberId);
         }
-        const res = await fetch(`/api/events?${params}`);
-        if (!res.ok) {
+        const googleParams = new URLSearchParams({ start: startIso, end: endIso });
+        const [res, googleRes] = await Promise.allSettled([
+          fetch(`/api/events?${params}`),
+          fetch(`/api/google/calendar/events?${googleParams}`),
+        ]);
+
+        if (res.status === "rejected" || (res.status === "fulfilled" && !res.value.ok)) {
           setEvents([]);
           return;
         }
-        const json = await res.json();
+
+        const json = await res.value.json();
         const data = json?.data ?? json;
         const items = (data?.items ?? []) as EventItem[];
         setEvents(Array.isArray(items) ? items : []);
-        eventsServicePlugin.set(
-          items.map((e) => ({
+
+        // Google Calendar events
+        let googleItems: { id: string; title: string; start: string; end: string; source: "google" }[] = [];
+        if (googleRes.status === "fulfilled" && googleRes.value.ok) {
+          const gJson = await googleRes.value.json();
+          const gData = gJson?.data ?? gJson;
+          if (typeof gData?.connected === "boolean") {
+            setGoogleConnected(gData.connected);
+          }
+          googleItems = Array.isArray(gData?.items) ? gData.items : [];
+        }
+
+        eventsServicePlugin.set([
+          ...items.map((e) => ({
             id: e.id,
             title: e.title,
             start: formatDateForScheduleX(e.start_time),
             end: formatDateForScheduleX(e.end_time),
             calendarId: e.source === "booking" ? "bookings" : "default",
-          }))
-        );
+          })),
+          ...googleItems.map((g) => ({
+            id: g.id,
+            title: g.title,
+            start: formatDateForScheduleX(g.start),
+            end: formatDateForScheduleX(g.end),
+            calendarId: "google" as const,
+          })),
+        ]);
         setLastRange({ start: startIso, end: endIso });
       } catch {
         setEvents([]);
@@ -266,6 +294,19 @@ export default function CalendarPage() {
     calendars: {
       default: { colorName: "primary" },
       bookings: { colorName: "blue" },
+      google: {
+        colorName: "slate",
+        lightColors: {
+          main: "#64748b",
+          container: "#f1f5f9",
+          onContainer: "#0f172a",
+        },
+        darkColors: {
+          main: "#94a3b8",
+          container: "#1e293b",
+          onContainer: "#e2e8f0",
+        },
+      },
     },
     plugins: [eventsServicePlugin, controlsPlugin, dragPlugin, resizePlugin],
     callbacks: {
@@ -407,6 +448,19 @@ export default function CalendarPage() {
       </div>
 
       <div className="flex flex-col gap-5 p-6 lg:p-8">
+        {/* Google Calendar connection banner */}
+        {googleConnected === false && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+            <span>Connecter Google Agenda pour voir vos événements Google dans ce calendrier.</span>
+            <a
+              href="/api/google/auth"
+              className="shrink-0 font-medium underline underline-offset-2 hover:no-underline"
+            >
+              Connecter
+            </a>
+          </div>
+        )}
+
         {/* Booking link card */}
         <div className="rounded-2xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900/50 p-5 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -626,6 +680,8 @@ function EventCreateModal({
   const [location, setLocation] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
+  const [googleMeet, setGoogleMeet] = useState(false);
+  const [attendeeEmails, setAttendeeEmails] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -647,6 +703,8 @@ function EventCreateModal({
       setTitle("");
       setDescription("");
       setLocation("");
+      setGoogleMeet(false);
+      setAttendeeEmails("");
       setError(null);
     }
   }, [open, initialStart]);
@@ -662,6 +720,11 @@ function EventCreateModal({
     setSubmitting(true);
     setError(null);
     try {
+      const parsedEmails = attendeeEmails
+        .split(/[,;\s]+/)
+        .map((e) => e.trim())
+        .filter((e) => e.includes("@"));
+
       const res = await fetch("/api/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -671,6 +734,8 @@ function EventCreateModal({
           location: location.trim() || undefined,
           start_time: new Date(start).toISOString(),
           end_time: new Date(end).toISOString(),
+          google_meet: googleMeet,
+          attendee_emails: parsedEmails.length > 0 ? parsedEmails : undefined,
         }),
       });
       const json = await res.json();
@@ -757,6 +822,28 @@ function EventCreateModal({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optionnel"
+            />
+          </div>
+          {/* Attendees */}
+          <div className="space-y-1.5">
+            <Label htmlFor="cv2-attendees">Invités (e-mails, séparés par virgule)</Label>
+            <Input
+              id="cv2-attendees"
+              type="text"
+              value={attendeeEmails}
+              onChange={(e) => setAttendeeEmails(e.target.value)}
+              placeholder="jean@example.com, marie@example.com"
+            />
+          </div>
+          {/* Google Meet toggle */}
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <div className="flex items-center gap-2">
+              <Video className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Créer une visio Google Meet</span>
+            </div>
+            <Switch
+              checked={googleMeet}
+              onCheckedChange={setGoogleMeet}
             />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}

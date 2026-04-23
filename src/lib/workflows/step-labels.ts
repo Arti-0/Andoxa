@@ -1,6 +1,7 @@
 import {
   Clock,
   CornerDownLeft,
+  GitBranch,
   MessageCircle,
   MessageSquare,
   Smartphone,
@@ -13,6 +14,7 @@ import {
 export type StepLabelIconName =
   | "Clock"
   | "CornerDownLeft"
+  | "GitBranch"
   | "MessageCircle"
   | "MessageSquare"
   | "Smartphone"
@@ -28,6 +30,7 @@ export type StepTypeDisplay = {
 const ICON_BY_NAME: Record<StepLabelIconName, LucideIcon> = {
   Clock,
   CornerDownLeft,
+  GitBranch,
   MessageCircle,
   MessageSquare,
   Smartphone,
@@ -37,6 +40,11 @@ const ICON_BY_NAME: Record<StepLabelIconName, LucideIcon> = {
 
 /** Human-readable French labels (canonical types from `WorkflowStepType`). */
 export const STEP_TYPE_LABELS: Record<string, StepTypeDisplay> = {
+  condition: {
+    label: "Condition",
+    description: "Bifurquer selon la réponse du prospect",
+    icon: "GitBranch",
+  },
   linkedin_invite: {
     label: "Invitation LinkedIn",
     description: "Envoyer une demande de connexion",

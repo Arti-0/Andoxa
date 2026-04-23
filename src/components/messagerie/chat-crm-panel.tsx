@@ -519,14 +519,14 @@ function LinkedCrmSidebar({
                 type="button"
                 variant="secondary"
                 size="sm"
-                className="h-7 w-full text-xs"
+                className="h-7 w-full truncate text-xs"
                 disabled={processStepMutation.isPending}
                 onClick={() => processStepMutation.mutate()}
               >
                 {processStepMutation.isPending ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
                 ) : (
-                  "Envoyer la prochaine étape maintenant"
+                  "Envoyer la prochaine étape"
                 )}
               </Button>
             )}

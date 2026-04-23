@@ -23,13 +23,108 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ChevronRight, GripVertical, Trash2 } from "lucide-react";
+import { ChevronRight, GitBranch, GripVertical, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { WorkflowStep } from "@/lib/workflows/schema";
 import { getStepLabel, getStepTypeLucideIcon } from "@/lib/workflows";
 import { cn } from "@/lib/utils";
 
 const PREVIEW_LEN = 60;
+
+// ─── Graph traversal helpers ─────────────────────────────────────────────────
+
+type ConditionStep = WorkflowStep & {
+  type: "condition";
+  on_true_id?: string;
+  on_false_id?: string;
+  next_id?: string;
+};
+
+type AnyStepWithNext = WorkflowStep & { next_id?: string };
+
+type TimelineNode =
+  | { kind: "step"; step: WorkflowStep; index: number }
+  | {
+      kind: "condition";
+      step: ConditionStep;
+      trueChain: WorkflowStep[];
+      falseChain: WorkflowStep[];
+      index: number;
+    };
+
+/** Follow next_id from startId, collecting steps NOT already in mainPathIds. */
+function collectBranchChain(
+  stepMap: Map<string, WorkflowStep>,
+  startId: string | undefined,
+  mainPathIds: Set<string>
+): WorkflowStep[] {
+  const chain: WorkflowStep[] = [];
+  const visited = new Set<string>();
+  let current = startId ? stepMap.get(startId) : undefined;
+  while (current && !mainPathIds.has(current.id) && !visited.has(current.id)) {
+    visited.add(current.id);
+    chain.push(current);
+    current = (current as AnyStepWithNext).next_id
+      ? stepMap.get((current as AnyStepWithNext).next_id!)
+      : undefined;
+  }
+  return chain;
+}
+
+function buildTimelineNodes(
+  steps: WorkflowStep[],
+  entryStepId?: string
+): TimelineNode[] {
+  if (!steps.length) return [];
+
+  // Linear mode — no entry_step_id
+  if (!entryStepId) {
+    return steps.map((s, i) => ({ kind: "step", step: s, index: i }));
+  }
+
+  const stepMap = new Map<string, WorkflowStep>(steps.map((s) => [s.id, s]));
+
+  // Collect main-path IDs (the spine: entry → next_id chain at top level)
+  const mainPathIds = new Set<string>();
+  let cur: WorkflowStep | undefined = stepMap.get(entryStepId);
+  while (cur && !mainPathIds.has(cur.id)) {
+    mainPathIds.add(cur.id);
+    cur = (cur as AnyStepWithNext).next_id
+      ? stepMap.get((cur as AnyStepWithNext).next_id!)
+      : undefined;
+  }
+
+  // Walk main path and build nodes
+  const nodes: TimelineNode[] = [];
+  let idx = 0;
+  cur = stepMap.get(entryStepId);
+  const visited = new Set<string>();
+
+  while (cur && !visited.has(cur.id)) {
+    visited.add(cur.id);
+
+    if (cur.type === "condition") {
+      const condStep = cur as ConditionStep;
+      nodes.push({
+        kind: "condition",
+        step: condStep,
+        trueChain: collectBranchChain(stepMap, condStep.on_true_id, mainPathIds),
+        falseChain: collectBranchChain(stepMap, condStep.on_false_id, mainPathIds),
+        index: idx++,
+      });
+      cur = condStep.next_id ? stepMap.get(condStep.next_id) : undefined;
+    } else {
+      nodes.push({ kind: "step", step: cur, index: idx++ });
+      cur = (cur as AnyStepWithNext).next_id
+        ? stepMap.get((cur as AnyStepWithNext).next_id!)
+        : undefined;
+    }
+  }
+
+  return nodes;
+}
+
+// ─── Step card helpers ───────────────────────────────────────────────────────
 
 function afterStepConnectorCopy(step: WorkflowStep): string | null {
   if (step.type !== "wait") return null;
@@ -57,10 +152,11 @@ function stepCardSecondaryLine(step: WorkflowStep): string {
     );
     return onlyIfNoReply ? "Condition : pas de réponse" : " ";
   }
+  if (step.type === "condition") return "Le prospect a répondu ?";
   const t = (step.config as { messageTemplate?: string }).messageTemplate ?? "";
   const s = t.replace(/\s+/g, " ").trim();
   if (!s) {
-    if (step.type === "linkedin_invite") return "Sans note d’invitation";
+    if (step.type === "linkedin_invite") return "Sans note d'invitation";
     return "Configurer le message…";
   }
   return s.length > PREVIEW_LEN ? `${s.slice(0, PREVIEW_LEN)}…` : s;
@@ -140,7 +236,7 @@ function TimelineStepCard({
           size="icon"
           className="h-9 w-9 shrink-0"
           onClick={onActivate}
-          aria-label="Modifier l’étape"
+          aria-label="Modifier l'étape"
         >
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </Button>
@@ -209,8 +305,145 @@ function Connector({ text, reduceMotion }: { text: string | null; reduceMotion: 
   );
 }
 
-export function WorkflowParcoursReadOnlyTimeline({ steps }: { steps: WorkflowStep[] }) {
+/** Mini branch step card used inside the OUI/NON panels. */
+function BranchStepMini({ step, index }: { step: WorkflowStep; index: number }) {
+  const Icon = getStepTypeLucideIcon(step.type);
+  const label = getStepLabel(step.type).label;
+  const secondary = stepCardSecondaryLine(step);
+  return (
+    <div className="flex items-start gap-2 rounded-lg border bg-card p-3 shadow-xs">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted/40 text-muted-foreground">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium leading-none">
+          <span className="tabular-nums text-muted-foreground">{index + 1}.&nbsp;</span>
+          {label}
+        </p>
+        {secondary.trim() ? (
+          <p className="mt-1 truncate text-xs text-muted-foreground">{secondary}</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Condition node rendered in the read-only timeline: shows OUI and NON branch columns. */
+function ConditionTimelineNode({
+  node,
+  reduceMotion,
+  isLast,
+}: {
+  node: Extract<TimelineNode, { kind: "condition" }>;
+  reduceMotion: boolean;
+  isLast: boolean;
+}) {
+  return (
+    <>
+      {/* Condition header card */}
+      <motion.div
+        initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={
+          reduceMotion ? { duration: 0 } : { duration: 0.2, delay: node.index * 0.05 }
+        }
+        className="relative flex gap-0"
+      >
+        <div className="relative flex w-10 shrink-0 flex-col items-center pt-1">
+          <div className="z-[1] h-3 w-3 shrink-0 rounded-full border-2 border-primary bg-background" />
+          <div className="min-h-[2rem] w-px flex-1 bg-border" aria-hidden />
+        </div>
+        <div className="min-w-0 flex-1 pb-2">
+          <div className="flex items-start gap-3 rounded-xl border bg-card p-4 shadow-xs ring-1 ring-border/60">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted/40 text-muted-foreground ring-2 ring-background">
+              <GitBranch className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-2">
+                <span className="text-xs font-medium tabular-nums text-muted-foreground">
+                  {node.index + 1}.
+                </span>
+                <span className="font-medium leading-none">Condition</span>
+              </div>
+              <p className="mt-1.5 text-sm text-muted-foreground">Le prospect a répondu ?</p>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Branch columns */}
+      <motion.div
+        initial={reduceMotion ? false : { opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={reduceMotion ? { duration: 0 } : { duration: 0.2, delay: node.index * 0.05 + 0.1 }}
+        className="relative flex gap-0"
+      >
+        {/* Vertical spine */}
+        <div className="relative flex w-10 shrink-0 flex-col items-center">
+          <div className="w-px flex-1 bg-border" aria-hidden />
+        </div>
+        <div className="min-w-0 flex-1 pb-4 pl-4">
+          <div className="grid grid-cols-2 gap-3">
+            {/* OUI branch */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">✓ OUI</p>
+              {node.trueChain.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Aucune étape.</p>
+              ) : (
+                <div className="space-y-2">
+                  {node.trueChain.map((s, i) => (
+                    <BranchStepMini key={s.id} step={s} index={i} />
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* NON branch */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-rose-700 dark:text-rose-400">✗ NON</p>
+              {node.falseChain.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Aucune étape.</p>
+              ) : (
+                <div className="space-y-2">
+                  {node.falseChain.map((s, i) => (
+                    <BranchStepMini key={s.id} step={s} index={i} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Spine continuation / end dot */}
+      {isLast ? (
+        <div className="flex gap-0">
+          <div className="relative flex w-10 shrink-0 flex-col items-center">
+            <div className="z-[1] h-3 w-3 shrink-0 rounded-full border-2 border-primary bg-background" />
+          </div>
+          <div className="pb-2 pl-4">
+            <p className="text-xs text-muted-foreground">Fin du parcours</p>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+// ─── Public components ────────────────────────────────────────────────────────
+
+export function WorkflowParcoursReadOnlyTimeline({
+  steps,
+  entryStepId,
+}: {
+  steps: WorkflowStep[];
+  entryStepId?: string;
+}) {
   const reduceMotion = useReducedMotion() ?? false;
+
+  const nodes = useMemo(
+    () => buildTimelineNodes(steps, entryStepId),
+    [steps, entryStepId]
+  );
 
   if (!steps.length) {
     return <p className="text-sm text-muted-foreground">Aucune étape.</p>;
@@ -218,36 +451,56 @@ export function WorkflowParcoursReadOnlyTimeline({ steps }: { steps: WorkflowSte
 
   return (
     <div className="mx-auto w-full max-w-xl">
-      {steps.map((step, i) => (
-        <Fragment key={step.id}>
-          <motion.div
-            initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={
-              reduceMotion ? { duration: 0 } : { duration: 0.2, delay: i * 0.05 }
-            }
-            className="relative flex gap-0"
-          >
-            <div className="relative flex w-10 shrink-0 flex-col items-center pt-1">
-              <div className="z-[1] h-3 w-3 shrink-0 rounded-full border-2 border-primary bg-background" />
-              {i < steps.length - 1 ? (
-                <div className="min-h-[2rem] w-px flex-1 bg-border" aria-hidden />
-              ) : null}
-            </div>
-            <div className="min-w-0 flex-1 pb-6">
-              <TimelineStepCard
-                step={step}
-                index={i}
+      {nodes.map((node, ni) => {
+        const isLast = ni === nodes.length - 1;
+
+        if (node.kind === "condition") {
+          return (
+            <Fragment key={node.step.id}>
+              <ConditionTimelineNode
+                node={node}
                 reduceMotion={reduceMotion}
-                variant="readonly"
+                isLast={isLast}
               />
-            </div>
-          </motion.div>
-          {i < steps.length - 1 ? (
-            <Connector text={afterStepConnectorCopy(step)} reduceMotion={reduceMotion} />
-          ) : null}
-        </Fragment>
-      ))}
+              {!isLast ? (
+                <Connector text={null} reduceMotion={reduceMotion} />
+              ) : null}
+            </Fragment>
+          );
+        }
+
+        const step = node.step;
+        return (
+          <Fragment key={step.id}>
+            <motion.div
+              initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={
+                reduceMotion ? { duration: 0 } : { duration: 0.2, delay: ni * 0.05 }
+              }
+              className="relative flex gap-0"
+            >
+              <div className="relative flex w-10 shrink-0 flex-col items-center pt-1">
+                <div className="z-[1] h-3 w-3 shrink-0 rounded-full border-2 border-primary bg-background" />
+                {!isLast ? (
+                  <div className="min-h-[2rem] w-px flex-1 bg-border" aria-hidden />
+                ) : null}
+              </div>
+              <div className="min-w-0 flex-1 pb-6">
+                <TimelineStepCard
+                  step={step}
+                  index={node.index}
+                  reduceMotion={reduceMotion}
+                  variant="readonly"
+                />
+              </div>
+            </motion.div>
+            {!isLast ? (
+              <Connector text={afterStepConnectorCopy(step)} reduceMotion={reduceMotion} />
+            ) : null}
+          </Fragment>
+        );
+      })}
     </div>
   );
 }
@@ -323,7 +576,7 @@ function SortableStepRow({
                   e.stopPropagation();
                   onRemove();
                 }}
-                aria-label="Supprimer l’étape"
+                aria-label="Supprimer l'étape"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -394,7 +647,7 @@ export function WorkflowParcoursEditTimeline({
 
   const activeStep = activeId ? steps.find((s) => s.id === activeId) : null;
 
-  /** Ligne d’insertion au-dessus de la ligne survolée (cible de dépôt). */
+  /** Ligne d'insertion au-dessus de la ligne survolée (cible de dépôt). */
   const showLineBefore = (index: number) => {
     if (!activeId || overIndex < 0 || activeIndex < 0 || activeIndex === overIndex) return false;
     return overIndex === index;

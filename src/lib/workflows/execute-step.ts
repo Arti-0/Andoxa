@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureLinkedInRelationFromUnipileProfile } from "@/lib/linkedin/ensure-relation-from-unipile-profile";
 import { env } from "@/lib/config/environment";
+import { normalizePhoneForWhatsApp } from "@/lib/utils/phone";
 import {
   getLinkedInAccountIdForUserId,
   getWhatsAppAccountIdForUserId,
@@ -18,7 +19,7 @@ import {
   logWorkflowStepCompleted,
   logWorkflowStepFailed,
 } from "@/lib/prospect-activity";
-import { enqueueNextStep } from "./enqueue";
+import { enqueueNextStep, enqueueStepById } from "./enqueue";
 import {
   parseWorkflowDefinition,
   type WorkflowDefinition,
@@ -103,6 +104,8 @@ type StepHandlerResult = {
   awaitingConnection: boolean;
   /** Si défini, remplace le délai avant l’étape suivante (ex. wait immédiat). */
   delayOverrideMs?: number;
+  /** Résultat d’une étape condition: true = OUI (a répondu), false = NON */
+  conditionResult?: boolean;
 };
 
 async function handleWait(ctx: HandlerContext): Promise<StepHandlerResult> {
@@ -300,10 +303,11 @@ async function handleWhatsAppMessage(ctx: HandlerContext): Promise<void> {
   if (!accountId) {
     throw new Error("Aucun compte WhatsApp connecté pour l’utilisateur ayant lancé le workflow");
   }
-  const phone = (ctx.prospect.phone ?? "").trim();
-  if (!phone) {
+  const rawPhone = (ctx.prospect.phone ?? "").trim();
+  if (!rawPhone) {
     throw new Error("Numéro de téléphone manquant pour ce prospect");
   }
+  const phone = normalizePhoneForWhatsApp(rawPhone);
   const template =
     typeof ctx.config.messageTemplate === "string" ? ctx.config.messageTemplate : "";
   if (!template.trim()) {
@@ -311,14 +315,34 @@ async function handleWhatsAppMessage(ctx: HandlerContext): Promise<void> {
   }
   const text = applyMessageVariables(template, ctx.prospect, {});
 
-  await unipileFetch("/chats", {
-    method: "POST",
-    body: JSON.stringify({
-      account_id: accountId,
-      attendees_ids: [phone],
-      text,
-    }),
-  });
+  try {
+    await unipileFetch("/chats", {
+      method: "POST",
+      body: JSON.stringify({
+        account_id: accountId,
+        attendees_ids: [phone],
+        text,
+      }),
+    });
+  } catch (err) {
+    console.error("Unipile WA error (workflow):", err);
+    throw err;
+  }
+}
+
+/**
+ * Condition step: "Le prospect a-t-il répondu ?"
+ * Checks unipile_chat_prospects.last_inbound_at to see if the prospect sent an
+ * inbound message after the current run was started.
+ */
+async function handleCondition(ctx: HandlerContext): Promise<StepHandlerResult> {
+  const replied = await prospectHasInboundReplyAfter(
+    ctx.supabase,
+    ctx.prospect.id,
+    ctx.prospect.organization_id,
+    ctx.run.created_at ?? new Date(0).toISOString()
+  );
+  return { awaitingConnection: false, conditionResult: replied };
 }
 
 const HANDLERS: Record<
@@ -335,6 +359,7 @@ const HANDLERS: Record<
     await handleWhatsAppMessage(ctx);
     return { awaitingConnection: false };
   },
+  condition: handleCondition,
 };
 
 export type ProcessExecutionResult =
@@ -460,6 +485,7 @@ export async function processWorkflowStepExecution(
 
   let awaitingConnection = false;
   let delayOverrideMs: number | undefined;
+  let conditionResult: boolean | undefined;
   try {
     const result = await handler({
       supabase,
@@ -472,6 +498,7 @@ export async function processWorkflowStepExecution(
     });
     awaitingConnection = result.awaitingConnection;
     delayOverrideMs = result.delayOverrideMs;
+    conditionResult = result.conditionResult;
   } catch (err) {
     const msg = err instanceof UnipileApiError ? err.message : String(err);
     const attempts = (execution.attempts ?? 0) + 1;
@@ -569,13 +596,35 @@ export async function processWorkflowStepExecution(
     delayBeforeNextMs = delayOverrideMs;
   }
 
-  const next = await enqueueNextStep(
-    supabase,
-    runRow.id,
-    definition,
-    execution.step_index,
-    delayBeforeNextMs
-  );
+  // ── Graph-based traversal (new workflows with entry_step_id) ────────────────
+  let next: { ok: true; done: boolean } | { ok: false; error: string };
+
+  if (definition.entry_step_id) {
+    // Determine next step ID from graph
+    let nextStepId: string | undefined;
+
+    if (step.type === "condition") {
+      const condStep = step as (typeof step & { on_true_id?: string; on_false_id?: string });
+      nextStepId = conditionResult ? condStep.on_true_id : condStep.on_false_id;
+    } else {
+      nextStepId = (step as (typeof step & { next_id?: string })).next_id;
+    }
+
+    if (!nextStepId) {
+      next = { ok: true, done: true };
+    } else {
+      next = await enqueueStepById(supabase, runRow.id, definition, nextStepId, delayBeforeNextMs);
+    }
+  } else {
+    // ── Legacy linear traversal ───────────────────────────────────────────────
+    next = await enqueueNextStep(
+      supabase,
+      runRow.id,
+      definition,
+      execution.step_index,
+      delayBeforeNextMs
+    );
+  }
 
   if (!next.ok) {
     await supabase

@@ -11,6 +11,7 @@ export const PATCH = createApiHandler(
       full_name?: string;
       onboarding_step?: string | null;
       linkedin_auto_enrich?: boolean;
+      metadata?: Record<string, unknown>;
     }>(req);
 
     const hasFullName = typeof body.full_name === "string";
@@ -22,10 +23,11 @@ export const PATCH = createApiHandler(
       body,
       "linkedin_auto_enrich"
     );
+    const hasMetadata = body.metadata !== undefined && body.metadata !== null && typeof body.metadata === "object";
 
-    if (!hasFullName && !hasOnboardingStep && !hasLinkedInAutoEnrich) {
+    if (!hasFullName && !hasOnboardingStep && !hasLinkedInAutoEnrich && !hasMetadata) {
       throw Errors.badRequest(
-        "full_name, onboarding_step and/or linkedin_auto_enrich is required"
+        "full_name, onboarding_step, linkedin_auto_enrich and/or metadata is required"
       );
     }
 
@@ -57,6 +59,16 @@ export const PATCH = createApiHandler(
     }
     if (hasLinkedInAutoEnrich) {
       patch.linkedin_auto_enrich = body.linkedin_auto_enrich;
+    }
+    if (hasMetadata) {
+      // Merge incoming metadata keys into existing metadata (shallow merge)
+      const { data: currentProfile } = await ctx.supabase
+        .from("profiles")
+        .select("metadata")
+        .eq("id", ctx.userId)
+        .single();
+      const existing = (currentProfile?.metadata as Record<string, unknown> | null) ?? {};
+      patch.metadata = { ...existing, ...body.metadata };
     }
 
     const { error } = await ctx.supabase

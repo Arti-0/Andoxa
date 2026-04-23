@@ -114,7 +114,8 @@ export const GET = createApiHandler(async (req, ctx) => {
       allItems = await fetchChatsForAccount(accountId, acType);
     }
 
-    const enriched = await enrichChatsWithInterlocutorNames(allItems);
+    // Enrich only the 10 most-recent (visible) chats to reduce Unipile round-trips
+    const enriched = await enrichChatsWithInterlocutorNames(allItems, 10);
     return { items: enriched };
   } catch (err) {
     if (err instanceof UnipileApiError) {

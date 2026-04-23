@@ -110,6 +110,7 @@ export function MessageTemplatesPanel({ embedded, templateChannelFilter }: Messa
       const json = await res.json();
       return (json.data?.items ?? []) as MessageTemplate[];
     },
+    staleTime: 10 * 60 * 1000, // 10 minutes — templates rarely change mid-session
   });
 
   useEffect(() => {

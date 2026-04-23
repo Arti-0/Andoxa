@@ -369,7 +369,7 @@ export function CrmToolbar({
                   <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-[280px] p-3" align="start">
+              <PopoverContent className="w-[320px] max-w-[calc(100vw-2rem)] p-3" align="start">
                 <div className="space-y-4">
                   {view === "listes" ? (
                     <>
@@ -394,10 +394,10 @@ export function CrmToolbar({
                       </div>
                       <div>
                         <label className="mb-2 block text-xs font-medium text-muted-foreground">Date de création</label>
-                        <div className="flex gap-2">
-                          <input type="date" value={listesFilters.dateFrom ?? ""} onChange={(e) => onListesFiltersChange({ ...listesFilters, dateFrom: e.target.value || null })} className="rounded border bg-background px-2 py-1 text-xs" />
-                          <span className="self-center text-muted-foreground">→</span>
-                          <input type="date" value={listesFilters.dateTo ?? ""} onChange={(e) => onListesFiltersChange({ ...listesFilters, dateTo: e.target.value || null })} className="rounded border bg-background px-2 py-1 text-xs" />
+                        <div className="flex min-w-0 flex-col gap-2 xs:flex-row">
+                          <input type="date" value={listesFilters.dateFrom ?? ""} onChange={(e) => onListesFiltersChange({ ...listesFilters, dateFrom: e.target.value || null })} className="min-w-0 rounded border bg-background px-2 py-1 text-xs" />
+                          <span className="hidden self-center text-muted-foreground xs:inline">→</span>
+                          <input type="date" value={listesFilters.dateTo ?? ""} onChange={(e) => onListesFiltersChange({ ...listesFilters, dateTo: e.target.value || null })} className="min-w-0 rounded border bg-background px-2 py-1 text-xs" />
                         </div>
                       </div>
                     </>
@@ -435,10 +435,10 @@ export function CrmToolbar({
                       </div>
                       <div>
                         <label className="mb-2 block text-xs font-medium text-muted-foreground">Date de création</label>
-                        <div className="flex gap-2">
-                          <input type="date" value={filters.dateRange?.from ? filters.dateRange.from.toISOString().slice(0, 10) : ""} onChange={(e) => { const val = e.target.value; const from = val ? new Date(val) : null; const to = filters.dateRange?.to ?? null; onFiltersChange({ ...filters, dateRange: from ? { from, to: to ?? from } : null }); }} className="rounded border bg-background px-2 py-1 text-xs" />
-                          <span className="self-center text-muted-foreground">→</span>
-                          <input type="date" value={filters.dateRange?.to ? filters.dateRange.to.toISOString().slice(0, 10) : ""} onChange={(e) => { const val = e.target.value; const to = val ? new Date(val) : null; const from = filters.dateRange?.from ?? null; onFiltersChange({ ...filters, dateRange: to && from ? { from, to } : null }); }} className="rounded border bg-background px-2 py-1 text-xs" />
+                        <div className="flex min-w-0 flex-col gap-2 xs:flex-row">
+                          <input type="date" value={filters.dateRange?.from ? filters.dateRange.from.toISOString().slice(0, 10) : ""} onChange={(e) => { const val = e.target.value; const from = val ? new Date(val) : null; const to = filters.dateRange?.to ?? null; onFiltersChange({ ...filters, dateRange: from ? { from, to: to ?? from } : null }); }} className="min-w-0 rounded border bg-background px-2 py-1 text-xs" />
+                          <span className="hidden self-center text-muted-foreground xs:inline">→</span>
+                          <input type="date" value={filters.dateRange?.to ? filters.dateRange.to.toISOString().slice(0, 10) : ""} onChange={(e) => { const val = e.target.value; const to = val ? new Date(val) : null; const from = filters.dateRange?.from ?? null; onFiltersChange({ ...filters, dateRange: to && from ? { from, to } : null }); }} className="min-w-0 rounded border bg-background px-2 py-1 text-xs" />
                         </div>
                       </div>
                     </>

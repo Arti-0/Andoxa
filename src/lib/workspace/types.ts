@@ -47,6 +47,7 @@ export interface Profile {
   linkedin_url?: string | null;
   linkedin_auto_enrich?: boolean;
   active_organization_id: string | null;
+  metadata?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }

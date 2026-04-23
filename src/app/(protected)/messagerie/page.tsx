@@ -6,7 +6,7 @@ import { MessagingInbox } from "@/components/linkedin/messaging-inbox";
 import { MessageTemplatesPanel } from "@/components/messagerie/message-templates-panel";
 import { ConnectionGate } from "@/components/unipile/connection-gate";
 import { useMessagingRealtime } from "@/hooks/use-messaging-realtime";
-import { Loader2 } from "lucide-react";
+import { Filter, Loader2 } from "lucide-react";
 
 function tabClass(active: boolean) {
   return `rounded-md px-3 py-1.5 text-sm font-medium transition-colors border ${
@@ -44,9 +44,14 @@ function MessagerieContent() {
               setHideHorsCrm((v) => !v);
               if (templatesOpen) setTemplatesOpen(false);
             }}
-            className={tabClass(!hideHorsCrm && !templatesOpen)}
+            className={`${tabClass(!hideHorsCrm && !templatesOpen)} flex items-center gap-1.5`}
+            title={hideHorsCrm ? "Afficher les contacts hors CRM" : "Masquer les contacts hors CRM"}
           >
-            {hideHorsCrm ? "Afficher contacts hors CRM" : "Masquer contacts hors CRM"}
+            <Filter className="h-3.5 w-3.5" />
+            <span>Hors CRM</span>
+            {!hideHorsCrm && (
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+            )}
           </button>
         </div>
         <button
@@ -59,11 +64,13 @@ function MessagerieContent() {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card shadow-xs">
-        {templatesOpen ? (
-          <MessageTemplatesPanel embedded templateChannelFilter="all" />
-        ) : (
+        {/* Keep both panels mounted — only toggle visibility to avoid re-fetch on tab switch */}
+        <div className={templatesOpen ? "hidden" : "contents"}>
           <MessagingInbox focusChatId={focusChatId} hideHorsCrm={hideHorsCrm} />
-        )}
+        </div>
+        <div className={templatesOpen ? "contents" : "hidden"}>
+          <MessageTemplatesPanel embedded templateChannelFilter="all" />
+        </div>
       </div>
     </div>
   );

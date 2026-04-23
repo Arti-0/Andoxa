@@ -231,6 +231,9 @@ export default function BookingPage() {
                     placeholder="+33 6 12 34 56 78"
                     disabled={!selectedSlot}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Recevez un message WhatsApp pour confirmer votre rendez-vous et en recevoir les détails.
+                  </p>
                 </div>
                 {error && <p className="text-sm text-destructive">{error}</p>}
                 <Button

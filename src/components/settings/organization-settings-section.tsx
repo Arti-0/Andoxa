@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useWorkspace } from "@/lib/workspace";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,8 @@ import {
     ShieldCheck,
     Crown,
     Mail,
+    Building2,
+    Camera,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -26,6 +28,7 @@ import {
 } from "@/components/settings/settings-card";
 import { PLAN_DISPLAY, STATUS_DISPLAY } from "@/lib/billing/display";
 import { cn } from "@/lib/utils";
+import { uploadOrgLogo } from "@/lib/organizations/upload-logo";
 
 interface Member {
     id: string;
@@ -105,6 +108,8 @@ export function OrganizationSettingsSection({
 
     const [billingLoading, setBillingLoading] = useState(false);
     const [billingError, setBillingError] = useState<string | null>(null);
+    const [logoUploading, setLogoUploading] = useState(false);
+    const logoInputRef = useRef<HTMLInputElement>(null);
 
     const loadOrgs = useCallback(async () => {
         if (!user?.id) return;
@@ -312,6 +317,36 @@ export function OrganizationSettingsSection({
         }
     };
 
+    const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !workspaceId || !isOwner) return;
+        setLogoUploading(true);
+        try {
+            const logoUrl = await uploadOrgLogo(file, workspaceId);
+            if (!logoUrl) {
+                toast.error("Impossible de télécharger l'image (taille max 2 Mo)");
+                return;
+            }
+            const res = await fetch(`/api/organizations/${workspaceId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ logo_url: logoUrl }),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error ?? "Erreur lors de la mise à jour du logo");
+            }
+            toast.success("Logo mis à jour");
+            refresh?.();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Erreur");
+        } finally {
+            setLogoUploading(false);
+            if (logoInputRef.current) logoInputRef.current.value = "";
+        }
+    };
+
     const handleManageBilling = async () => {
         setBillingLoading(true);
         setBillingError(null);
@@ -364,9 +399,54 @@ export function OrganizationSettingsSection({
             description="Organisation, membres, invitations et abonnement"
         >
             {workspaceId && (
-                <div className="space-y-2">
+                <div className="space-y-4">
+                    {/* Logo upload */}
+                    <div className="flex items-center gap-4">
+                        <div className="relative">
+                            <Avatar className="h-16 w-16 rounded-xl border">
+                                <AvatarImage
+                                    src={workspace?.logo_url ?? undefined}
+                                    alt={workspace?.name ?? "Logo"}
+                                />
+                                <AvatarFallback className="rounded-xl bg-muted">
+                                    <Building2 className="h-7 w-7 text-muted-foreground" />
+                                </AvatarFallback>
+                            </Avatar>
+                            {isOwner && (
+                                <button
+                                    type="button"
+                                    disabled={logoUploading}
+                                    onClick={() => logoInputRef.current?.click()}
+                                    className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border bg-background shadow-sm hover:bg-muted disabled:opacity-50"
+                                    title="Changer le logo"
+                                >
+                                    {logoUploading ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                        <Camera className="h-3 w-3" />
+                                    )}
+                                </button>
+                            )}
+                        </div>
+                        <div>
+                            <p className="text-sm font-medium">{workspace?.name}</p>
+                            {isOwner && (
+                                <p className="text-xs text-muted-foreground">
+                                    Cliquez sur l&apos;icône pour changer le logo
+                                </p>
+                            )}
+                        </div>
+                        <input
+                            ref={logoInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => void handleLogoChange(e)}
+                        />
+                    </div>
+
                     <Label className={settingsLabelClass}>
-                        Organisation active
+                        Nom de l&apos;organisation
                     </Label>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <Input

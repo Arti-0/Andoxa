@@ -138,7 +138,8 @@ export const POST = createApiHandler(async (req, ctx) => {
     .single();
 
   if (sessionError || !session) {
-    throw Errors.internal("Failed to create call session");
+    console.error("call-sessions insert error:", sessionError);
+    throw Errors.internal("Impossible de créer la session d'appels");
   }
 
   const rows = prospectIds.map((prospect_id) => ({
@@ -151,8 +152,9 @@ export const POST = createApiHandler(async (req, ctx) => {
     .insert(rows);
 
   if (linkError) {
+    console.error("call-sessions link error:", linkError);
     await ctx.supabase.from("call_sessions").delete().eq("id", session.id);
-    throw Errors.internal("Failed to link prospects to session");
+    throw Errors.internal("Impossible d'associer les prospects à la session");
   }
 
   return session;

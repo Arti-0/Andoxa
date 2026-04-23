@@ -2,6 +2,7 @@ import { createApiHandler, Errors, parseBody } from "@/lib/api";
 import { getWhatsAppAccountIdForUserId } from "@/lib/unipile/account";
 import { unipileFetch } from "@/lib/unipile/client";
 import { applyMessageVariables } from "@/lib/unipile/campaign";
+import { normalizePhoneForWhatsApp } from "@/lib/utils/phone";
 import {
   randomDelay,
   THROTTLE_MS,
@@ -58,7 +59,7 @@ export const POST = createApiHandler(
         continue;
       }
 
-      const phone = prospect.phone.replace(/[\s\-().]/g, "").replace(/^00/, "");
+      const phone = normalizePhoneForWhatsApp(prospect.phone);
       const override = body.message_by_prospect?.[prospectId]?.trim();
       const text =
         override && override.length > 0

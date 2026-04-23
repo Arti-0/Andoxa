@@ -1,5 +1,6 @@
 import { createApiHandler, Errors, parseBody } from "../../../../lib/api";
 import { NextRequest } from "next/server";
+import { createNotification } from "@/lib/notifications/create-notification";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -109,6 +110,20 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
       action: "status_change",
       details: { from: previousStatus, to: body.status },
     });
+
+    // Notification: prospect converted to client
+    if (body.status === "closed") {
+      const prospectName = (data as { full_name?: string | null }).full_name?.trim() || "Ce prospect";
+      await createNotification(ctx.supabase, {
+        title: "Prospect converti 🎉",
+        message: `${prospectName} a été marqué comme client`,
+        category: "prospect",
+        action_type: "prospect_updated",
+        actor_id: ctx.userId ?? null,
+        organization_id: ctx.workspaceId,
+        target_url: `/prospect/${id}`,
+      });
+    }
   }
 
   return data;

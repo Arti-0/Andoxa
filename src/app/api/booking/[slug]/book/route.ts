@@ -5,6 +5,10 @@ import { getValidGoogleAccessToken, createGoogleMeetEvent } from "@/lib/google/c
 import { sendBookingOwnerConfirmationEmail } from "@/lib/email/send-booking-owner-confirmation";
 import { sendBookingGuestConfirmationEmail } from "@/lib/email/send-booking-guest-confirmation";
 import { captureRouteError } from "@/lib/sentry/route-error";
+import { createNotification } from "@/lib/notifications/create-notification";
+import { normalizePhoneForWhatsApp } from "@/lib/utils/phone";
+import { getWhatsAppAccountIdForUserId } from "@/lib/unipile/account";
+import { unipileFetch } from "@/lib/unipile/client";
 
 function looksLikeEmail(s: string): boolean {
   const t = s.trim();
@@ -363,6 +367,56 @@ export async function POST(
         extra: { slug, step: "guest_confirmation_email", eventId },
       });
     }
+
+    // Post-booking WhatsApp confirmation to the guest (best-effort, must NOT block)
+    if (phone) {
+      try {
+        const normalizedPhone = normalizePhoneForWhatsApp(phone);
+        const waAccountId = await getWhatsAppAccountIdForUserId(supabase, profile.id);
+        if (waAccountId && normalizedPhone) {
+          const dateStr = new Intl.DateTimeFormat("fr-FR", {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            timeZone: "Europe/Paris",
+          }).format(slotStartDate);
+          const hostName = profile.full_name?.trim() || "votre interlocuteur";
+          const waLines = [
+            `✅ Votre rendez-vous avec ${hostName} est confirmé !`,
+            `📅 ${dateStr}`,
+          ];
+          if (meetUrl) waLines.push(`🔗 Lien de visio : ${meetUrl}`);
+          await unipileFetch("/chats", {
+            method: "POST",
+            body: JSON.stringify({
+              account_id: waAccountId,
+              attendees_ids: [normalizedPhone],
+              text: waLines.join("\n"),
+            }),
+          });
+        }
+      } catch (e) {
+        // WA failure must not block booking confirmation
+        captureRouteError(route, e, {
+          extra: { slug, step: "whatsapp_confirmation", eventId },
+        }, "warn");
+      }
+    }
+
+    // Trigger "Nouveau rendez-vous" notification for all org members
+    const ownerName = profile.full_name?.trim() || "vous";
+    await createNotification(supabase, {
+      title: "Nouveau rendez-vous",
+      message: `${name} a réservé un créneau avec ${ownerName}`,
+      category: "event",
+      action_type: "event_created",
+      actor_id: null,
+      organization_id: orgId,
+      target_url: "/calendar",
+    });
 
     return NextResponse.json({
       success: true,

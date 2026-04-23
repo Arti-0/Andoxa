@@ -1,5 +1,6 @@
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
 import { NextRequest } from "next/server";
+import { createNotification } from "@/lib/notifications/create-notification";
 
 function extractUserId(req: NextRequest) {
   return new URL(req.url).pathname.split("/").pop();
@@ -66,6 +67,13 @@ export const DELETE = createApiHandler(async (req, ctx) => {
     throw Errors.forbidden();
   }
 
+  // Fetch member + org info before deletion (for notification message)
+  const { data: targetProfile } = await ctx.supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", targetUserId)
+    .single();
+
   const { data: targetMember } = await ctx.supabase
     .from("organization_members")
     .select("role")
@@ -77,6 +85,12 @@ export const DELETE = createApiHandler(async (req, ctx) => {
     throw Errors.badRequest("Impossible de retirer le propriétaire de l'organisation");
   }
 
+  const { data: org } = await ctx.supabase
+    .from("organizations")
+    .select("name")
+    .eq("id", ctx.workspaceId)
+    .single();
+
   const { error } = await ctx.supabase
     .from("organization_members")
     .delete()
@@ -84,5 +98,18 @@ export const DELETE = createApiHandler(async (req, ctx) => {
     .eq("user_id", targetUserId);
 
   if (error) throw Errors.internal("Failed to remove member");
+
+  const memberName = (targetProfile as { full_name?: string | null } | null)?.full_name?.trim() || "Un membre";
+  const orgName = (org as { name?: string | null } | null)?.name?.trim() || "l'organisation";
+  await createNotification(ctx.supabase, {
+    title: "Membre retiré de l'organisation",
+    message: `${memberName} ne fait plus partie de ${orgName}`,
+    category: "user",
+    action_type: "user_left",
+    actor_id: ctx.userId ?? null,
+    organization_id: ctx.workspaceId,
+    target_url: "/settings",
+  });
+
   return { removed: true };
 });

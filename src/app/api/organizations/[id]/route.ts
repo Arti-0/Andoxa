@@ -45,11 +45,14 @@ export async function PATCH(
     }
 
     const body = await request.json().catch(() => ({}));
-    const updates: { name?: string; updated_at: string } = {
+    const updates: { name?: string; logo_url?: string | null; updated_at: string } = {
       updated_at: new Date().toISOString(),
     };
     if (typeof body.name === "string" && body.name.trim()) {
       updates.name = body.name.trim();
+    }
+    if (typeof body.logo_url === "string" || body.logo_url === null) {
+      updates.logo_url = body.logo_url ?? null;
     }
 
     if (Object.keys(updates).length <= 1) {

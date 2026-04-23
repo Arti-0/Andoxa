@@ -199,6 +199,14 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
     return Array.isArray(draft?.steps) ? draft.steps : [];
   }, [workflow]);
 
+  const entryStepIdForView = useMemo((): string | undefined => {
+    if (!workflow) return undefined;
+    const pub = workflow.published_definition as { entry_step_id?: string } | null;
+    if (pub?.entry_step_id) return pub.entry_step_id;
+    const draft = workflow.draft_definition as { entry_step_id?: string } | null;
+    return draft?.entry_step_id ?? undefined;
+  }, [workflow]);
+
   const headerUi = workflow ? parseWorkflowUi(workflow.metadata) : parseWorkflowUi(null);
 
   const { data: wfStats, isLoading: statsLoading } = useQuery({
@@ -608,7 +616,7 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
               </CardHeader>
               <CardContent className="space-y-6">
                 {!editMode ? (
-                  <WorkflowParcoursReadOnlyTimeline steps={stepsForView} />
+                  <WorkflowParcoursReadOnlyTimeline steps={stepsForView} entryStepId={entryStepIdForView} />
                 ) : (
                   <>
                     <div className="space-y-2">

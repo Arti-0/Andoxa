@@ -5,6 +5,7 @@ import {
   getPagination,
   getSearchParams,
 } from "../../../lib/api";
+import { getValidGoogleAccessToken, createGoogleMeetEvent } from "@/lib/google/calendar";
 
 /**
  * GET /api/events
@@ -66,6 +67,8 @@ export const POST = createApiHandler(async (req, ctx) => {
     prospect_id?: string;
     location?: string;
     is_all_day?: boolean;
+    google_meet?: boolean;
+    attendee_emails?: string[];
   }>(req);
 
   // Validation
@@ -77,6 +80,33 @@ export const POST = createApiHandler(async (req, ctx) => {
       start_time: "Les dates sont requises",
       end_time: "Les dates sont requises",
     });
+  }
+
+  // Optionally create a Google Meet event
+  let meetUrl: string | null = null;
+  let googleEventId: string | null = null;
+
+  if (body.google_meet && ctx.userId) {
+    try {
+      const accessToken = await getValidGoogleAccessToken(ctx.supabase, ctx.userId);
+      if (accessToken) {
+        const attendeeEmails = Array.isArray(body.attendee_emails)
+          ? body.attendee_emails.filter((e) => typeof e === "string" && e.includes("@"))
+          : [];
+        const cal = await createGoogleMeetEvent(accessToken, {
+          summary: body.title,
+          description: body.description,
+          startIso: body.start_time,
+          endIso: body.end_time,
+          attendeeEmails: attendeeEmails.length > 0 ? attendeeEmails : undefined,
+        });
+        meetUrl = cal.meetUrl;
+        googleEventId = cal.eventId || null;
+      }
+    } catch (e) {
+      console.error("[api/events POST] Google Meet creation failed:", e);
+      // Non-fatal: continue without Meet link
+    }
   }
 
   const { data, error } = await ctx.supabase
@@ -91,6 +121,8 @@ export const POST = createApiHandler(async (req, ctx) => {
       location: body.location ?? null,
       is_all_day: body.is_all_day ?? false,
       created_by: ctx.userId,
+      google_meet_url: meetUrl,
+      google_event_id: googleEventId,
     })
     .select()
     .single();
