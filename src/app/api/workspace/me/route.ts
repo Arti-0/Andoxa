@@ -19,21 +19,30 @@ export async function GET() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "id, email, full_name, avatar_url, linkedin_url, linkedin_auto_enrich, active_organization_id, metadata, created_at, updated_at"
+      "id, email, full_name, avatar_url, linkedin_url, linkedin_auto_enrich, active_organization_id, metadata"
     )
     .eq("id", user.id)
     .maybeSingle();
 
   const userWithIdentities = { ...user, identities: user.identities ?? [] };
 
+  // Per-user browser cache: workspace memberships rarely change inside 30s.
+  // `private` ensures no shared/CDN caching of authenticated content.
+  const cacheHeaders = {
+    "Cache-Control": "private, max-age=30, stale-while-revalidate=60",
+  } as const;
+
   if (!profile?.active_organization_id) {
-    return NextResponse.json({
-      user: userWithIdentities,
-      profile: profile ?? null,
-      workspace: null,
-      members: [],
-      subscription: null,
-    });
+    return NextResponse.json(
+      {
+        user: userWithIdentities,
+        profile: profile ?? null,
+        workspace: null,
+        members: [],
+        subscription: null,
+      },
+      { headers: cacheHeaders }
+    );
   }
 
   const [workspaceRes, membersRes, subscriptionRes] = await Promise.all([
@@ -58,11 +67,14 @@ export async function GET() {
       .maybeSingle(),
   ]);
 
-  return NextResponse.json({
-    user: userWithIdentities,
-    profile,
-    workspace: workspaceRes.data ?? null,
-    members: membersRes.data ?? [],
-    subscription: subscriptionRes.data ?? null,
-  });
+  return NextResponse.json(
+    {
+      user: userWithIdentities,
+      profile,
+      workspace: workspaceRes.data ?? null,
+      members: membersRes.data ?? [],
+      subscription: subscriptionRes.data ?? null,
+    },
+    { headers: cacheHeaders }
+  );
 }

@@ -92,7 +92,7 @@ export const POST = createApiHandler(
       name?: string;
       draft_definition?: unknown;
       pending_enrollment_bdd_ids?: string[];
-      ui?: { icon?: string; color?: string };
+      ui?: { icon?: string; color?: string; trigger?: string };
     }>(req);
     const name = (body.name ?? "").trim();
     if (!name) throw Errors.validation({ name: "Nom requis" });
@@ -117,6 +117,9 @@ export const POST = createApiHandler(
     const uiPatch: Partial<WorkflowUiState> = {};
     if (body.ui?.icon && isWorkflowIconKey(body.ui.icon)) uiPatch.icon = body.ui.icon;
     if (body.ui?.color && isWorkflowColorKey(body.ui.color)) uiPatch.color = body.ui.color;
+    if (typeof body.ui?.trigger === "string" && body.ui.trigger.length > 0) {
+      uiPatch.trigger = body.ui.trigger;
+    }
 
     let meta = mergeWorkflowMetadata(
       {},

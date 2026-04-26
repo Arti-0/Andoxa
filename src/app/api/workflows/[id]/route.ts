@@ -71,7 +71,12 @@ export const PATCH = createApiHandler(async (req, ctx) => {
     is_active?: boolean;
     draft_definition?: unknown;
     pending_enrollment_bdd_ids?: string[];
-    ui?: { icon?: string; color?: string };
+    ui?: {
+      icon?: string;
+      color?: string;
+      trigger?: string;
+      canvas?: Record<string, { x: number; y: number }>;
+    };
   }>(req);
 
   const { data: existing } = await ctx.supabase
@@ -142,6 +147,24 @@ export const PATCH = createApiHandler(async (req, ctx) => {
     }
     if (body.ui.color !== undefined && isWorkflowColorKey(body.ui.color)) {
       uiPatch.color = body.ui.color;
+    }
+    if (typeof body.ui.trigger === "string" && body.ui.trigger.length > 0) {
+      uiPatch.trigger = body.ui.trigger;
+    }
+    if (body.ui.canvas !== undefined) {
+      // Accept any record of step id → {x,y}; deeper validation in parseWorkflowUi at read time.
+      const sanitized: Record<string, { x: number; y: number }> = {};
+      for (const [k, v] of Object.entries(body.ui.canvas)) {
+        if (
+          v &&
+          typeof v === "object" &&
+          typeof (v as { x?: unknown }).x === "number" &&
+          typeof (v as { y?: unknown }).y === "number"
+        ) {
+          sanitized[k] = { x: (v as { x: number }).x, y: (v as { y: number }).y };
+        }
+      }
+      uiPatch.canvas = sanitized;
     }
     const prevMeta =
       (updates.metadata as Record<string, unknown> | undefined) ??

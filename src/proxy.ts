@@ -198,25 +198,27 @@ export async function proxy(request: NextRequest) {
     }
 
     const activeOrganizationId = profileOrgId;
-    let organization: OrgRow | null = null;
 
-    if (activeOrganizationId) {
-        const { data: org } = await supabase
-            .from('organizations')
-            .select(
-                'id, status, subscription_status, trial_ends_at, deleted_at'
-            )
-            .eq('id', activeOrganizationId)
-            .maybeSingle();
-        organization = org as OrgRow | null;
-    }
+    const [orgResult, subscriptionResult] = await Promise.all([
+        activeOrganizationId
+            ? supabase
+                  .from('organizations')
+                  .select(
+                      'id, status, subscription_status, trial_ends_at, deleted_at'
+                  )
+                  .eq('id', activeOrganizationId)
+                  .maybeSingle()
+            : Promise.resolve({ data: null }),
+        supabase
+            .from('user_subscriptions')
+            .select('plan_id, status')
+            .eq('user_id', user.id)
+            .in('status', ['active', 'trialing'])
+            .maybeSingle(),
+    ]);
 
-    const { data: subscription } = await supabase
-        .from('user_subscriptions')
-        .select('plan_id, status')
-        .eq('user_id', user.id)
-        .in('status', ['active', 'trialing'])
-        .maybeSingle();
+    const organization = (orgResult.data ?? null) as OrgRow | null;
+    const subscription = subscriptionResult.data;
 
     const orgGate: OrgDashboardGateRow | null = organization
         ? {

@@ -4,12 +4,11 @@ import {
   createContext,
   useContext,
   useEffect,
-  useState,
   useCallback,
   useMemo,
-  useRef,
   type ReactNode,
 } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "../supabase/client";
 import type {
   User,
@@ -49,6 +48,23 @@ type MemberApiRow = {
   profiles?: Profile | Profile[] | null;
 };
 
+type WorkspaceMeData = {
+  user: User | null;
+  profile: Profile | null;
+  workspace: Workspace | null;
+  members: WorkspaceMember[];
+  subscription: Subscription | null;
+};
+
+const WORKSPACE_ME_QUERY_KEY = ["workspace-me"] as const;
+const EMPTY_WORKSPACE_ME: WorkspaceMeData = {
+  user: null,
+  profile: null,
+  workspace: null,
+  members: [],
+  subscription: null,
+};
+
 function normalizeWorkspaceFromApi(workspaceData: OrgRowForWorkspace): Workspace {
   const subscriptionStatus =
     workspaceData.subscription_status as Workspace["subscription_status"] | null;
@@ -85,6 +101,42 @@ function mapMembersFromApi(rows: MemberApiRow[] | null | undefined): WorkspaceMe
       profile: profileNested,
     };
   });
+}
+
+async function fetchWorkspaceMe(): Promise<WorkspaceMeData> {
+  const res = await fetch("/api/workspace/me", { credentials: "include" });
+
+  if (res.status === 401) {
+    return EMPTY_WORKSPACE_ME;
+  }
+
+  if (!res.ok) {
+    throw new Error(`/api/workspace/me HTTP ${res.status}`);
+  }
+
+  const data = (await res.json()) as {
+    user: { id: string; email?: string | null; created_at: string } | null;
+    profile: Profile | null;
+    workspace: OrgRowForWorkspace | null;
+    members: MemberApiRow[];
+    subscription: unknown | null;
+  };
+
+  return {
+    user: data.user
+      ? {
+          id: data.user.id,
+          email: data.user.email ?? "",
+          created_at: data.user.created_at,
+        }
+      : null,
+    profile: data.profile,
+    workspace: data.workspace ? normalizeWorkspaceFromApi(data.workspace) : null,
+    members: mapMembersFromApi(data.members),
+    subscription: data.subscription
+      ? (data.subscription as unknown as Subscription)
+      : null,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,175 +181,61 @@ export function WorkspaceProvider({
   children,
   initialData,
 }: WorkspaceProviderProps) {
-  const [user, setUser] = useState<User | null>(initialData?.user ?? null);
-  const [profile, setProfile] = useState<Profile | null>(
-    initialData?.profile ?? null
-  );
-  const [workspace, setWorkspace] = useState<Workspace | null>(
-    initialData?.workspace ?? null
-  );
-  const [subscription, setSubscription] = useState<Subscription | null>(
-    initialData?.subscription ?? null
-  );
-  const [members, setMembers] = useState<WorkspaceMember[]>(
-    initialData?.members ?? []
-  );
-  const [isLoading, setIsLoading] = useState(!initialData);
-  const [isInitialized, setIsInitialized] = useState(!!initialData);
-  const [isSyncing, setIsSyncing] = useState(false);
-
-  // Create supabase client once and memoize it
   const supabase = useMemo(() => createClient(), []);
+  const queryClient = useQueryClient();
 
-  // Verrous pour éviter les race conditions
-  const isInitializing = useRef(false);
-  const mountedRef = useRef(true);
+  const initialQueryData = useMemo<WorkspaceMeData | undefined>(() => {
+    if (!initialData) return undefined;
+    return {
+      user: initialData.user ?? null,
+      profile: initialData.profile ?? null,
+      workspace: initialData.workspace ?? null,
+      members: initialData.members ?? [],
+      subscription: initialData.subscription ?? null,
+    };
+  }, [initialData]);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Load workspace data (single optimized query)
-  // ─────────────────────────────────────────────────────────────────────────
-
-  const fetchWorkspaceMe = useCallback(async (isRefresh = false) => {
-    if (isRefresh && mountedRef.current) {
-      setIsSyncing(true);
-    }
-
-    try {
-      const res = await fetch("/api/workspace/me", {
-        credentials: "include",
-      });
-
-      if (!mountedRef.current) {
-        return null;
-      }
-
-      if (res.status === 401) {
-        setUser(null);
-        setProfile(null);
-        setWorkspace(null);
-        setMembers([]);
-        setSubscription(null);
-        return null;
-      }
-
-      if (!res.ok) {
-        console.error("[Workspace] /api/workspace/me HTTP", res.status);
-        return null;
-      }
-
-      const data = (await res.json()) as {
-        user: { id: string; email?: string | null; created_at: string } | null;
-        profile: Profile | null;
-        workspace: OrgRowForWorkspace | null;
-        members: MemberApiRow[];
-        subscription: unknown | null;
-      };
-
-      if (!mountedRef.current) {
-        return null;
-      }
-
-      if (data.user) {
-        setUser({
-          id: data.user.id,
-          email: data.user.email ?? "",
-          created_at: data.user.created_at,
-        });
-      }
-
-      setProfile(data.profile);
-
-      if (data.workspace) {
-        setWorkspace(normalizeWorkspaceFromApi(data.workspace));
-      } else {
-        setWorkspace(null);
-      }
-
-      setMembers(mapMembersFromApi(data.members));
-      setSubscription(
-        data.subscription
-          ? (data.subscription as unknown as Subscription)
-          : null
-      );
-
-      return data;
-    } catch (error) {
-      console.error("[Workspace] Init error:", error);
-      return null;
-    } finally {
-      if (isRefresh && mountedRef.current) {
-        setIsSyncing(false);
-      }
-    }
-  }, []);
+  const query = useQuery<WorkspaceMeData>({
+    queryKey: WORKSPACE_ME_QUERY_KEY,
+    queryFn: fetchWorkspaceMe,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    initialData: initialQueryData,
+  });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Initialize
+  // Auth listener — drive cache invalidation, not local state
   // ─────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    mountedRef.current = true;
-
-    const initialize = async () => {
-      if (isInitializing.current) return;
-
-      isInitializing.current = true;
-
-      try {
-        if (mountedRef.current) {
-          setIsLoading(true);
-        }
-
-        // Fetch brut vers route API serveur — évite AbortError du SDK browser (getSession)
-        await fetchWorkspaceMe(false);
-      } catch (error) {
-        console.error("[Workspace] Init error:", error);
-      } finally {
-        if (mountedRef.current) {
-          setIsLoading(false);
-          setIsInitialized(true);
-        }
-        isInitializing.current = false;
-      }
-    };
-
-    initialize();
-
-    // Listen for auth changes - ne recharger QUE sur SIGNED_IN (pas sur TOKEN_REFRESHED)
     const {
       data: { subscription: authSubscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mountedRef.current) return;
-
-      // Ne recharger QUE sur SIGNED_IN (pas sur TOKEN_REFRESHED ou INITIAL_SESSION)
-      if (event === "SIGNED_IN" && session?.user && !isInitializing.current) {
-        isInitializing.current = true;
-        if (mountedRef.current) {
-          setIsLoading(true);
-        }
-        await fetchWorkspaceMe(false);
-        if (mountedRef.current) {
-          setIsLoading(false);
-          setIsInitialized(true);
-        }
-        isInitializing.current = false;
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN") {
+        queryClient.invalidateQueries({ queryKey: WORKSPACE_ME_QUERY_KEY });
       } else if (event === "SIGNED_OUT") {
-        setUser(null);
-        setProfile(null);
-        setWorkspace(null);
-        setSubscription(null);
-        setIsLoading(false);
-        setIsInitialized(false);
-        setMembers([]);
-        isInitializing.current = false;
+        queryClient.removeQueries({ queryKey: WORKSPACE_ME_QUERY_KEY });
       }
     });
 
     return () => {
-      mountedRef.current = false;
       authSubscription.unsubscribe();
     };
-  }, [supabase, fetchWorkspaceMe]);
+  }, [supabase, queryClient]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Derived state from query.data
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const user = query.data?.user ?? null;
+  const profile = query.data?.profile ?? null;
+  const workspace = query.data?.workspace ?? null;
+  const members = query.data?.members ?? [];
+  const subscription = query.data?.subscription ?? null;
+
+  const isLoading = query.isPending;
+  const isInitialized = query.isSuccess || query.isError;
+  const isSyncing = query.isFetching && !query.isPending;
 
   // ─────────────────────────────────────────────────────────────────────────
   // Actions
@@ -307,7 +245,6 @@ export function WorkspaceProvider({
     async (workspaceId: string) => {
       if (!user) return;
 
-      // Update profile's active organization
       const { error } = await supabase
         .from("profiles")
         .update({ active_organization_id: workspaceId })
@@ -348,24 +285,20 @@ export function WorkspaceProvider({
         throw metaErr;
       }
 
-      await fetchWorkspaceMe(true);
+      await queryClient.invalidateQueries({ queryKey: WORKSPACE_ME_QUERY_KEY });
     },
-    [user, supabase, fetchWorkspaceMe]
+    [user, supabase, queryClient]
   );
 
   const refresh = useCallback(async () => {
     if (!user) return;
-    await fetchWorkspaceMe(true);
-  }, [user, fetchWorkspaceMe]);
+    await queryClient.invalidateQueries({ queryKey: WORKSPACE_ME_QUERY_KEY });
+  }, [user, queryClient]);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
-    setUser(null);
-    setProfile(null);
-    setWorkspace(null);
-    setSubscription(null);
-    setMembers([]);
-  }, [supabase]);
+    queryClient.removeQueries({ queryKey: WORKSPACE_ME_QUERY_KEY });
+  }, [supabase, queryClient]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Computed values
@@ -386,7 +319,6 @@ export function WorkspaceProvider({
       )
     : null;
 
-  // Get user's role in current workspace
   const currentMember = members.find((m) => m.user_id === user?.id);
   const userRole: MemberRole =
     currentMember?.role || (workspace?.owner_id === user?.id ? "owner" : "member");

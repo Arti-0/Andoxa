@@ -798,6 +798,30 @@ export interface Database {
                 };
                 Relationships: [];
             };
+            unipile_attendee_cache: {
+                Row: {
+                    id: string;
+                    organization_id: string;
+                    chat_id: string;
+                    interlocutor_name: string | null;
+                    picture_url: string | null;
+                    cached_at: string;
+                };
+                Insert: {
+                    id?: string;
+                    organization_id: string;
+                    chat_id: string;
+                    interlocutor_name?: string | null;
+                    picture_url?: string | null;
+                    cached_at?: string;
+                };
+                Update: {
+                    interlocutor_name?: string | null;
+                    picture_url?: string | null;
+                    cached_at?: string;
+                };
+                Relationships: [];
+            };
             unipile_chat_prospects: {
                 Row: {
                     id: string;
@@ -1040,31 +1064,27 @@ export interface Database {
                     id: string;
                     organization_id: string;
                     created_by: string;
-                    created_at: string | null;
+                    created_at: string;
                     ended_at: string | null;
                     title: string | null;
-                    total_duration_s: number;
-                    status: string;
+                    total_duration_s: number | null;
+                    status: 'active' | 'running' | 'paused' | 'completed';
                 };
                 Insert: {
                     id?: string;
                     organization_id: string;
                     created_by: string;
-                    created_at?: string | null;
+                    created_at?: string;
                     ended_at?: string | null;
                     title?: string | null;
-                    total_duration_s?: number;
-                    status?: string;
+                    total_duration_s?: number | null;
+                    status?: 'active' | 'running' | 'paused' | 'completed';
                 };
                 Update: {
-                    id?: string;
-                    organization_id?: string;
-                    created_by?: string;
-                    created_at?: string | null;
                     ended_at?: string | null;
                     title?: string | null;
-                    total_duration_s?: number;
-                    status?: string;
+                    total_duration_s?: number | null;
+                    status?: 'active' | 'running' | 'paused' | 'completed';
                 };
                 Relationships: [];
             };

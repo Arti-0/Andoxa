@@ -34,19 +34,18 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="fr" suppressHydrationWarning>
       <body className="min-h-screen bg-background font-sans antialiased">
-        <SentryClientInit>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
-            <QueryProvider>
-              {children}
-              <Toaster richColors position="bottom-right" />
-            </QueryProvider>
-          </ThemeProvider>
-        </SentryClientInit>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <QueryProvider>
+            {children}
+            <Toaster richColors position="bottom-right" />
+            <SentryClientInit />
+          </QueryProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

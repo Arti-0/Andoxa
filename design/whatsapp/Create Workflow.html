@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Andoxa — Créer un workflow</title>
+  <link rel="stylesheet" href="colors_and_type.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-sans); background: var(--background); color: var(--foreground); height: 100vh; overflow: hidden; }
+    button, input, select, textarea { font-family: var(--font-sans); }
+    ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+    input:focus, textarea:focus { outline: none; border-color: #0052D9 !important; box-shadow: 0 0 0 3px rgba(0,82,217,0.1) !important; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-up { animation: fadeUp 0.3s ease forwards; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.5; } }
+  </style>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+/* ============================================================ ICONS */
+function Icon({ d, size = 16, color = 'currentColor', fill = false }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24"
+      fill={fill ? color : 'none'} stroke={fill ? 'none' : color}
+      strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"
+      style={{ display: 'block', flexShrink: 0 }}>
+      <path d={d} />
+    </svg>
+  );
+}
+
+const ico = {
+  arrow_left:  'M19 12H5M12 19l-7-7 7-7',
+  arrow_right: 'M5 12h14M12 5l7 7-7 7',
+  check:       'M20 6L9 17l-5-5',
+  lightning:   'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
+  calendar:    'M8 2v4M16 2v4M3 10h18M21 8a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2h14a2 2 0 002-2V8z',
+  linkedin:    'M16 8a6 6 0 016 6v7h-4v-7a2 2 0 00-2-2 2 2 0 00-2 2v7h-4v-7a6 6 0 016-6zM2 9h4v12H2zM4 6a2 2 0 100-4 2 2 0 000 4z',
+  whatsapp:    'M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z',
+  clock:       'M12 22a10 10 0 110-20 10 10 0 010 20zm0-14v4l3 3',
+  database:    'M12 2C6.48 2 2 4.24 2 7s4.48 5 10 5 10-2.24 10-5-4.48-5-10-5zM2 7v5c0 2.76 4.48 5 10 5s10-2.24 10-5V7M2 12v5c0 2.76 4.48 5 10 5s10-2.24 10-5v-5',
+  plus_circle: 'M12 22a10 10 0 110-20 10 10 0 010 20zm0-6v-4m0 0V8m0 4H8m4 0h4',
+  user_plus:   'M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M12 7a4 4 0 110-8 4 4 0 010 8m9 4v6m3-3h-6',
+  bell:        'M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0',
+  zap:         'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
+  cursor:      'M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z',
+  sparkle:     'M12 3v1m9 8h-1M12 21v-1M4 12H3m3.22-5.78L5.5 5.5m13.28.72l-.72.72M5.5 18.5l.72-.72m12.56.72l-.72-.72M12 8a4 4 0 100 8 4 4 0 000-8z',
+  template:    'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z',
+  x:           'M18 6L6 18M6 6l12 12',
+  info:        'M12 22a10 10 0 110-20 10 10 0 010 20zm0-10v4m0-8v.01',
+};
+
+/* ============================================================ SIDEBAR */
+const NAV = [
+  { id: 'dashboard', label: 'Dashboard',   d: 'M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z' },
+  { id: 'campaigns', label: 'Campagnes',   d: 'M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8a19.79 19.79 0 01-3.07-8.67A2 2 0 012 .84h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.63a16 16 0 006.29 6.29l1.95-1.95a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z' },
+  { id: 'workflows', label: 'Workflows',   d: 'M22 12h-4l-3 9L9 3l-3 9H2', active: true },
+  { id: 'prospects', label: 'Prospects',   d: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zm8 4v6m3-3h-6' },
+  { id: 'crm',       label: 'Pipeline CRM',d: 'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z' },
+  { id: 'analytics', label: 'Analytiques', d: 'M18 20V10M12 20V4M6 20v-6' },
+  { id: 'settings',  label: 'Paramètres',  d: 'M12 15a3 3 0 100-6 3 3 0 000 6zm0 0v6m0-18v3M6 6l1.5 1.5m9-1.5L15 7.5M3 12H6m15 0h-3m-1.5 6L15 16.5m-7.5 1.5L9 16.5' },
+];
+
+function Sidebar() {
+  return (
+    <div style={{ width: 220, height: '100vh', background: '#FAFAFA', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      <div style={{ padding: '14px 14px 12px', borderBottom: '1px solid #E2E8F0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px' }}>
+          <img src="assets/logo-mark.jpg" alt="Andoxa" style={{ width: 26, height: 26, borderRadius: 6, objectFit: 'cover' }} />
+          <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: '-0.02em', color: '#0F172A' }}>Andoxa</span>
+        </div>
+      </div>
+      <div style={{ flex: 1, padding: '8px 8px', overflowY: 'auto' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#94A3B8', padding: '6px 8px 6px', marginBottom: 2 }}>Plateforme</div>
+        {NAV.map(item => (
+          <a key={item.id} href={item.id === 'workflows' ? 'Workflows.html' : '#'}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, marginBottom: 1, cursor: 'pointer', background: item.active ? '#E8F0FD' : 'transparent', color: item.active ? '#0052D9' : '#374151', fontWeight: item.active ? 600 : 400, fontSize: 13.5, transition: 'all 100ms', userSelect: 'none', textDecoration: 'none' }}>
+            <Icon d={item.d} size={15} color={item.active ? '#0052D9' : '#64748B'} />
+            {item.label}
+          </a>
+        ))}
+      </div>
+      <div style={{ padding: '10px 12px', borderTop: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#0052D9', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>JP</div>
+        <div><div style={{ fontSize: 12.5, fontWeight: 600, color: '#0F172A' }}>Jean-Pierre</div><div style={{ fontSize: 11, color: '#64748B' }}>jp@andoxa.fr</div></div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================ STEP INDICATOR */
+const STEPS = [
+  { n: 1, label: 'Point de départ' },
+  { n: 2, label: 'Déclencheur' },
+  { n: 3, label: 'Informations' },
+];
+
+function StepIndicator({ current }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 40 }}>
+      {STEPS.map((s, i) => {
+        const done = s.n < current, active = s.n === current;
+        return (
+          <React.Fragment key={s.n}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, background: done ? '#0052D9' : active ? '#0052D9' : '#F1F5F9', color: done || active ? 'white' : '#94A3B8', border: done || active ? 'none' : '2px solid #E2E8F0', transition: 'all 200ms', flexShrink: 0 }}>
+                {done ? <Icon d={ico.check} size={14} color="white" /> : s.n}
+              </div>
+              <span style={{ fontSize: 13.5, fontWeight: active ? 600 : 400, color: active ? '#0F172A' : done ? '#64748B' : '#94A3B8', whiteSpace: 'nowrap' }}>{s.label}</span>
+            </div>
+            {i < STEPS.length - 1 && (
+              <div style={{ flex: 1, height: 1, background: s.n < current ? '#0052D9' : '#E2E8F0', margin: '0 16px', minWidth: 32, maxWidth: 80, transition: 'background 300ms' }}></div>
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ============================================================ STEP 1 — POINT DE DÉPART */
+const TEMPLATES = [
+  { id: 'meeting', name: 'Séquence post-réunion WhatsApp', desc: 'Confirmation automatique, rappel J-0, suivi post-meeting et mise à jour CRM.', tags: ['WhatsApp', 'CRM'], popular: true },
+  { id: 'linkedin', name: 'LinkedIn → Bienvenue + Suivi', desc: 'Message de bienvenue après acceptation d\'invitation, relance si pas de réponse après 3 jours.', tags: ['LinkedIn'], popular: false },
+  { id: 'noshow', name: 'Récupération no-show', desc: 'Détecte les absences à une réunion et déclenche une relance WhatsApp avec création de tâche.', tags: ['WhatsApp', 'CRM'], popular: false },
+  { id: 'proposal', name: 'Suivi post-proposition', desc: 'Nurturing après envoi d\'une proposition. Analyse IA de l\'intention + suivi multi-canal.', tags: ['IA', 'CRM'], popular: false },
+  { id: 'reengagement', name: 'Réengager les prospects silencieux', desc: 'Identifie les prospects inactifs depuis 30+ jours et lance une séquence de réactivation.', tags: ['IA', 'WhatsApp'], popular: false },
+  { id: 'scratch', name: 'Partir de zéro', desc: 'Créez votre workflow entièrement depuis un canvas vide, bloc par bloc.', tags: [], popular: false, scratch: true },
+];
+
+const TAG_COLOR = { WhatsApp: ['#ECFDF5','#065F46'], LinkedIn: ['#EFF6FF','#0A66C2'], CRM: ['#EFF6FF','#1E3A8A'], IA: ['#F0FDF4','#047857'] };
+
+function Step1({ selected, onSelect }) {
+  return (
+    <div className="fade-up">
+      <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.03em', color: '#0F172A', marginBottom: 6 }}>Comment souhaitez-vous commencer ?</h2>
+      <p style={{ fontSize: 14.5, color: '#64748B', marginBottom: 28, lineHeight: 1.6 }}>Choisissez un modèle prêt à l'emploi ou créez un workflow personnalisé depuis zéro.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+        {TEMPLATES.map(t => {
+          const sel = selected === t.id;
+          return (
+            <div key={t.id} onClick={() => onSelect(t.id)}
+              style={{ padding: '16px 18px', borderRadius: 14, border: `2px solid ${sel ? '#0052D9' : '#E2E8F0'}`, background: sel ? '#E8F0FD' : t.scratch ? '#F8FAFC' : 'white', cursor: 'pointer', transition: 'all 150ms', position: 'relative', boxShadow: sel ? '0 0 0 1px rgba(0,82,217,0.15)' : 'none' }}
+              onMouseEnter={e => { if (!sel) e.currentTarget.style.borderColor = '#93C5FD'; }}
+              onMouseLeave={e => { if (!sel) e.currentTarget.style.borderColor = '#E2E8F0'; }}>
+              {t.popular && <div style={{ position: 'absolute', top: 10, right: 10, fontSize: 10, fontWeight: 700, background: '#FF6700', color: 'white', padding: '2px 7px', borderRadius: 10 }}>Populaire</div>}
+              {sel && <div style={{ position: 'absolute', top: 10, right: 10, width: 20, height: 20, borderRadius: '50%', background: '#0052D9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon d={ico.check} size={11} color="white" /></div>}
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: t.scratch ? '#F1F5F9' : '#E8F0FD', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+                <Icon d={t.scratch ? ico.plus_circle : ico.template} size={18} color={t.scratch ? '#64748B' : '#0052D9'} />
+              </div>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0F172A', marginBottom: 5, lineHeight: 1.3, paddingRight: t.popular ? 60 : 0 }}>{t.name}</div>
+              <div style={{ fontSize: 12, color: '#64748B', lineHeight: 1.5, marginBottom: 10 }}>{t.desc}</div>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                {t.tags.map(tag => {
+                  const [bg, color] = TAG_COLOR[tag] || ['#F1F5F9','#64748B'];
+                  return <span key={tag} style={{ fontSize: 10.5, fontWeight: 600, padding: '2px 7px', borderRadius: 5, background: bg, color }}>{tag}</span>;
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================ STEP 2 — DÉCLENCHEUR */
+const TRIGGERS = [
+  { id: 'meeting_booked',  label: 'Réunion réservée',              desc: 'Quand un prospect réserve un créneau via Calendly ou le module Andoxa Booking.', icon: ico.calendar, color: '#0052D9', bg: '#E8F0FD' },
+  { id: 'linkedin_accepted',label: 'Invitation LinkedIn acceptée',  desc: 'Quand un prospect accepte une demande de connexion LinkedIn.', icon: ico.linkedin, color: '#0A66C2', bg: '#EFF6FF' },
+  { id: 'whatsapp_reply',  label: 'Réponse WhatsApp reçue',        desc: 'Quand un prospect envoie un message WhatsApp en réponse à une campagne.', icon: ico.whatsapp, color: '#10B981', bg: '#ECFDF5' },
+  { id: 'no_reply',        label: 'Aucune réponse après X jours',   desc: 'Quand aucune réponse n\'est reçue dans un délai défini après un premier contact.', icon: ico.clock, color: '#7C3AED', bg: '#F5F3FF' },
+  { id: 'crm_change',      label: 'Statut CRM modifié',            desc: 'Quand le statut d\'un prospect change dans le pipeline CRM.', icon: ico.database, color: '#0052D9', bg: '#EFF6FF' },
+  { id: 'prospect_added',  label: 'Nouveau prospect dans une liste',desc: 'Quand un prospect est ajouté à une liste de prospects cible.', icon: ico.user_plus, color: '#FF6700', bg: '#FFF7ED' },
+  { id: 'noshow',          label: 'No-show à une réunion',         desc: 'Quand un prospect ne s\'est pas présenté à une réunion réservée.', icon: ico.bell, color: '#DC2626', bg: '#FFF1F2' },
+  { id: 'manual',          label: 'Déclencheur manuel',            desc: 'Lancez ce workflow manuellement depuis une fiche prospect ou une campagne.', icon: ico.cursor, color: '#64748B', bg: '#F1F5F9' },
+];
+
+function Step2({ selected, onSelect }) {
+  return (
+    <div className="fade-up">
+      <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.03em', color: '#0F172A', marginBottom: 6 }}>Quel est le déclencheur ?</h2>
+      <p style={{ fontSize: 14.5, color: '#64748B', marginBottom: 28, lineHeight: 1.6 }}>Sélectionnez l'événement qui démarrera automatiquement ce workflow.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+        {TRIGGERS.map(t => {
+          const sel = selected === t.id;
+          return (
+            <div key={t.id} onClick={() => onSelect(t.id)}
+              style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 16px', borderRadius: 12, border: `2px solid ${sel ? '#0052D9' : '#E2E8F0'}`, background: sel ? '#E8F0FD' : 'white', cursor: 'pointer', transition: 'all 150ms' }}
+              onMouseEnter={e => { if (!sel) e.currentTarget.style.borderColor = '#93C5FD'; }}
+              onMouseLeave={e => { if (!sel) e.currentTarget.style.borderColor = '#E2E8F0'; }}>
+              <div style={{ width: 38, height: 38, borderRadius: 10, background: sel ? t.bg : '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `1px solid ${sel ? t.color + '33' : '#E2E8F0'}`, transition: 'all 150ms' }}>
+                <Icon d={t.icon} size={18} color={sel ? t.color : '#94A3B8'} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: sel ? '#0052D9' : '#0F172A', marginBottom: 3 }}>{t.label}</div>
+                <div style={{ fontSize: 12, color: '#64748B', lineHeight: 1.5 }}>{t.desc}</div>
+              </div>
+              {sel && <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#0052D9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon d={ico.check} size={11} color="white" /></div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================ STEP 3 — INFORMATIONS */
+function Step3({ name, setName, desc, setDesc, trigger, template }) {
+  const trig = TRIGGERS.find(t => t.id === trigger);
+  const tmpl = TEMPLATES.find(t => t.id === template);
+  return (
+    <div className="fade-up" style={{ maxWidth: 600 }}>
+      <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.03em', color: '#0F172A', marginBottom: 6 }}>Nommez votre workflow</h2>
+      <p style={{ fontSize: 14.5, color: '#64748B', marginBottom: 28, lineHeight: 1.6 }}>Donnez un nom clair à votre workflow pour le retrouver facilement dans la liste.</p>
+
+      <div style={{ marginBottom: 20 }}>
+        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Nom du workflow <span style={{ color: '#EF4444' }}>*</span></label>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="ex : Séquence post-réunion — Q3 2025"
+          style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1.5px solid #E2E8F0', fontSize: 14, color: '#0F172A', background: 'white', transition: 'all 150ms' }} />
+      </div>
+      <div style={{ marginBottom: 28 }}>
+        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Description <span style={{ fontSize: 12, fontWeight: 400, color: '#94A3B8' }}>(optionnel)</span></label>
+        <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={3} placeholder="Décrivez l'objectif de ce workflow..."
+          style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1.5px solid #E2E8F0', fontSize: 14, color: '#0F172A', background: 'white', resize: 'vertical', transition: 'all 150ms', lineHeight: 1.5 }} />
+      </div>
+
+      {/* Summary card */}
+      <div style={{ background: '#F8FAFC', borderRadius: 14, border: '1px solid #E2E8F0', padding: '18px 20px' }}>
+        <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#94A3B8', marginBottom: 14 }}>Récapitulatif</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <SummaryRow label="Point de départ" value={tmpl ? tmpl.name : '—'} color="#0052D9" />
+          <SummaryRow label="Déclencheur" value={trig ? trig.label : '—'} color={trig ? trig.color : '#94A3B8'} />
+          <SummaryRow label="Nom" value={name || <span style={{ color: '#CBD5E1', fontStyle: 'italic' }}>Non renseigné</span>} />
+          <div style={{ height: 1, background: '#E2E8F0', margin: '4px 0' }}></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#94A3B8' }}></div>
+            <span style={{ fontSize: 12.5, color: '#64748B' }}>Statut initial : <strong style={{ color: '#0F172A' }}>Brouillon</strong></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value, color }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span style={{ fontSize: 12.5, color: '#94A3B8', minWidth: 120 }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: color || '#0F172A' }}>{value}</span>
+    </div>
+  );
+}
+
+/* ============================================================ SUCCESS SCREEN */
+function SuccessScreen({ name }) {
+  useEffect(() => {
+    const t = setTimeout(() => { window.location.href = 'Workflows.html'; }, 2800);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center', padding: '0 40px' }}>
+      <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#ECFDF5', border: '2px solid #10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+        <Icon d={ico.check} size={32} color="#10B981" />
+      </div>
+      <h2 style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.03em', color: '#0F172A', marginBottom: 8 }}>Workflow créé !</h2>
+      <p style={{ fontSize: 15, color: '#64748B', marginBottom: 6, maxWidth: 400, lineHeight: 1.6 }}>
+        <strong style={{ color: '#0F172A' }}>"{name}"</strong> a été créé en mode Brouillon. Vous allez être redirigé vers le canvas.
+      </p>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+        <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#0052D9', animation: 'pulse 1s infinite' }}></div>
+        <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#0052D9', animation: 'pulse 1s infinite 0.2s' }}></div>
+        <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#0052D9', animation: 'pulse 1s infinite 0.4s' }}></div>
+      </div>
+      <a href="Workflows.html" style={{ marginTop: 28, padding: '10px 24px', borderRadius: 10, background: '#0052D9', color: 'white', fontSize: 14, fontWeight: 600, textDecoration: 'none', display: 'inline-block' }}>
+        Ouvrir le canvas maintenant →
+      </a>
+    </div>
+  );
+}
+
+/* ============================================================ MAIN APP */
+function App() {
+  const [step, setStep]         = useState(1);
+  const [template, setTemplate] = useState(null);
+  const [trigger, setTrigger]   = useState(null);
+  const [name, setName]         = useState('');
+  const [desc, setDesc]         = useState('');
+  const [done, setDone]         = useState(false);
+
+  // Pre-fill name when template changes
+  useEffect(() => {
+    const t = TEMPLATES.find(t => t.id === template);
+    if (t && !t.scratch && !name) setName(t.name);
+    if (t && t.scratch) setName('');
+  }, [template]);
+
+  // Pre-select trigger from template
+  useEffect(() => {
+    if (template === 'meeting') setTrigger('meeting_booked');
+    else if (template === 'linkedin') setTrigger('linkedin_accepted');
+    else if (template === 'noshow') setTrigger('noshow');
+    else if (template === 'reengagement') setTrigger('no_reply');
+    else if (template === 'proposal') setTrigger('crm_change');
+    else setTrigger(null);
+  }, [template]);
+
+  const canNext = step === 1 ? !!template : step === 2 ? !!trigger : !!name.trim();
+
+  const handleNext = () => {
+    if (step < 3) setStep(s => s + 1);
+    else setDone(true);
+  };
+
+  if (done) {
+    return (
+      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+        <Sidebar />
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <SuccessScreen name={name} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', fontFamily: 'var(--font-sans)' }}>
+      <Sidebar />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'white' }}>
+        {/* Top bar */}
+        <div style={{ height: 56, borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', padding: '0 28px', gap: 14, flexShrink: 0 }}>
+          <a href="Workflows.html" style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#64748B', fontSize: 13, textDecoration: 'none', fontWeight: 500, transition: 'color 120ms' }}
+            onMouseEnter={e => e.currentTarget.style.color = '#0052D9'}
+            onMouseLeave={e => e.currentTarget.style.color = '#64748B'}>
+            <Icon d={ico.arrow_left} size={14} color="currentColor" /> Retour aux workflows
+          </a>
+          <div style={{ width: 1, height: 20, background: '#E2E8F0' }}></div>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>Créer un workflow</span>
+        </div>
+
+        {/* Content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '40px 48px' }}>
+          <div style={{ maxWidth: 900, margin: '0 auto' }}>
+            <StepIndicator current={step} />
+            {step === 1 && <Step1 selected={template} onSelect={setTemplate} />}
+            {step === 2 && <Step2 selected={trigger} onSelect={setTrigger} />}
+            {step === 3 && <Step3 name={name} setName={setName} desc={desc} setDesc={setDesc} trigger={trigger} template={template} />}
+          </div>
+        </div>
+
+        {/* Bottom navigation */}
+        <div style={{ height: 68, borderTop: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 48px', flexShrink: 0, background: 'white' }}>
+          <button onClick={() => step > 1 ? setStep(s => s - 1) : window.location.href = 'Workflows.html'}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: 10, border: '1px solid #E2E8F0', background: 'white', fontSize: 13.5, fontWeight: 500, color: '#374151', cursor: 'pointer' }}>
+            <Icon d={ico.arrow_left} size={14} color="#374151" /> {step === 1 ? 'Annuler' : 'Retour'}
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 12.5, color: '#94A3B8' }}>{step} / {STEPS.length}</span>
+            <button onClick={handleNext} disabled={!canNext}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 22px', borderRadius: 10, border: 'none', background: canNext ? '#0052D9' : '#CBD5E1', fontSize: 13.5, fontWeight: 600, color: 'white', cursor: canNext ? 'pointer' : 'not-allowed', transition: 'all 150ms' }}>
+              {step === 3 ? 'Créer le workflow' : 'Continuer'} {step < 3 && <Icon d={ico.arrow_right} size={14} color="white" />}
+              {step === 3 && <Icon d={ico.lightning} size={14} color="white" />}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

@@ -28,7 +28,16 @@ export {
   type WorkflowUiState,
   type WorkflowIconKey,
   type WorkflowColorKey,
+  type WorkflowCanvasPosition,
+  type WorkflowCanvasPositions,
 } from "./workflow-ui";
+export {
+  WORKFLOW_TEMPLATES,
+  WORKFLOW_TRIGGERS,
+  findTemplate,
+  type WorkflowTemplate,
+  type WorkflowTemplateTrigger,
+} from "./templates";
 export {
   STEP_TYPE_LABELS,
   getStepLabel,

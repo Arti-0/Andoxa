@@ -40,10 +40,37 @@ export function isWorkflowColorKey(s: string): s is WorkflowColorKey {
   return (WORKFLOW_COLOR_KEYS as readonly string[]).includes(s);
 }
 
+export type WorkflowCanvasPosition = { x: number; y: number };
+export type WorkflowCanvasPositions = Record<string, WorkflowCanvasPosition>;
+
 export type WorkflowUiState = {
   icon: WorkflowIconKey;
   color: WorkflowColorKey;
+  /** Optional persisted node positions for the editor canvas, keyed by step id. */
+  canvas?: WorkflowCanvasPositions;
+  /** Optional wizard trigger choice (display-only metadata). */
+  trigger?: string;
 };
+
+function parseCanvasPositions(raw: unknown): WorkflowCanvasPositions | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: WorkflowCanvasPositions = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (
+      v &&
+      typeof v === "object" &&
+      !Array.isArray(v) &&
+      typeof (v as { x?: unknown }).x === "number" &&
+      typeof (v as { y?: unknown }).y === "number"
+    ) {
+      out[k] = {
+        x: (v as { x: number }).x,
+        y: (v as { y: number }).y,
+      };
+    }
+  }
+  return Object.keys(out).length ? out : undefined;
+}
 
 export function parseWorkflowUi(metadata: unknown): WorkflowUiState {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
@@ -59,6 +86,8 @@ export function parseWorkflowUi(metadata: unknown): WorkflowUiState {
   return {
     icon: isWorkflowIconKey(iconRaw) ? iconRaw : (DEFAULT_WORKFLOW_ICON_KEY as WorkflowIconKey),
     color: isWorkflowColorKey(colorRaw) ? colorRaw : (DEFAULT_WORKFLOW_COLOR_KEY as WorkflowColorKey),
+    canvas: parseCanvasPositions(ui.canvas),
+    trigger: typeof ui.trigger === "string" ? ui.trigger : undefined,
   };
 }
 
@@ -78,6 +107,8 @@ export function mergeWorkflowMetadata(
         : {};
     if (patch.ui.icon !== undefined) curUi.icon = patch.ui.icon;
     if (patch.ui.color !== undefined) curUi.color = patch.ui.color;
+    if (patch.ui.canvas !== undefined) curUi.canvas = patch.ui.canvas;
+    if (patch.ui.trigger !== undefined) curUi.trigger = patch.ui.trigger;
     base.ui = curUi;
   }
   if (patch.pending_enrollment_bdd_ids !== undefined) {

@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   CalendarPlus,
   Copy,
@@ -508,21 +509,24 @@ export default function CalendarPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <StatCard
             label="À venir"
-            value={!allTimeStats.loaded ? "…" : String(allTimeStats.upcoming)}
+            value={String(allTimeStats.upcoming)}
+            loading={!allTimeStats.loaded}
             suffix={allTimeStats.upcoming === 1 ? "événement" : "événements"}
             icon={CalendarDays}
             tone="upcoming"
           />
           <StatCard
             label="Passés"
-            value={!allTimeStats.loaded ? "…" : String(allTimeStats.past)}
+            value={String(allTimeStats.past)}
+            loading={!allTimeStats.loaded}
             suffix={allTimeStats.past === 1 ? "événement" : "événements"}
             icon={Clock}
             tone="past"
           />
           <StatCard
             label="Aujourd'hui"
-            value={loading ? "…" : String(todayCount)}
+            value={String(todayCount)}
+            loading={loading}
             suffix={todayCount === 1 ? "événement" : "événements"}
             icon={BookMarked}
             className="col-span-2 sm:col-span-1"
@@ -610,6 +614,7 @@ function StatCard({
   icon: Icon,
   tone,
   className,
+  loading,
 }: {
   label: string;
   value: string;
@@ -617,6 +622,7 @@ function StatCard({
   icon: React.ComponentType<{ className?: string }>;
   tone?: "upcoming" | "past";
   className?: string;
+  loading?: boolean;
 }) {
   return (
     <div
@@ -643,16 +649,20 @@ function StatCard({
           )}
         />
       </div>
-      <p
-        className={cn(
-          "mt-2 text-2xl font-semibold tracking-tight",
-          tone === "upcoming"
-            ? "text-blue-600 dark:text-blue-400"
-            : "text-zinc-900 dark:text-zinc-50"
-        )}
-      >
-        {value}
-      </p>
+      {loading ? (
+        <Skeleton className="mt-2 h-8 w-16" />
+      ) : (
+        <p
+          className={cn(
+            "mt-2 text-2xl font-semibold tracking-tight",
+            tone === "upcoming"
+              ? "text-blue-600 dark:text-blue-400"
+              : "text-zinc-900 dark:text-zinc-50"
+          )}
+        >
+          {value}
+        </p>
+      )}
       <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">{suffix}</p>
     </div>
   );

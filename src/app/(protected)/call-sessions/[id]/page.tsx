@@ -17,6 +17,7 @@ import {
   Pause,
   CheckCircle2,
   Play,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -181,31 +182,9 @@ export default function CallSessionPage() {
 
     const channel = supabase
       .channel(`call-session-${sessionId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "call_sessions", filter: filterSession },
-        invalidate
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "call_session_prospects",
-          filter: filterBySessionId,
-        },
-        invalidate
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "call_session_notes",
-          filter: filterBySessionId,
-        },
-        invalidate
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "call_sessions", filter: filterSession }, invalidate)
+      .on("postgres_changes", { event: "*", schema: "public", table: "call_session_prospects", filter: filterBySessionId }, invalidate)
+      .on("postgres_changes", { event: "*", schema: "public", table: "call_session_notes", filter: filterBySessionId }, invalidate)
       .subscribe();
 
     return () => {
@@ -213,13 +192,12 @@ export default function CallSessionPage() {
     };
   }, [sessionId, queryClient]);
 
+  // Auto-select first prospect for preview (active/paused) or first pending (running)
   useEffect(() => {
     if (!session?.prospects?.length) return;
     if (activeProspectId) return;
     if (session.status === "completed") return;
-    // Ne pas sélectionner de prospect tant que la session n’est pas démarrée explicitement.
-    if (session.status !== "in_progress") return;
-    const next = getNextPendingProspectId(session.prospects, null);
+    const next = getNextPendingProspectId(session.prospects, null) ?? session.prospects[0]?.id ?? null;
     if (next) setActiveProspectId(next);
   }, [session, activeProspectId]);
 
@@ -235,49 +213,49 @@ export default function CallSessionPage() {
     currentItemRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [activeProspectId]);
 
-  const endSessionMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/call-sessions/${sessionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          status: "completed",
-          total_duration_s: session?.total_duration_s ?? 0,
-        }),
-      });
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json?.error?.message ?? `Erreur ${res.status}`);
-      }
+  // ─── Mutations ───────────────────────────────────────────────────────────
+
+  const patchSession = useCallback(async (body: Record<string, unknown>) => {
+    const res = await fetch(`/api/call-sessions/${sessionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error((json as { error?: { message?: string } })?.error?.message ?? `Erreur ${res.status}`);
+    }
+    return res;
+  }, [sessionId]);
+
+  const startSessionMutation = useMutation({
+    mutationFn: () => patchSession({ status: "running" }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["call-session", sessionId] });
+      await queryClient.refetchQueries({ queryKey: ["call-session", sessionId] });
     },
+    onError: (err: Error) => toast.error(err.message || "Impossible de démarrer la session"),
+  });
+
+  const resumeSessionMutation = useMutation({
+    mutationFn: () => patchSession({ status: "running" }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["call-session", sessionId] });
+      await queryClient.refetchQueries({ queryKey: ["call-session", sessionId] });
+    },
+    onError: (err: Error) => toast.error(err.message || "Impossible de reprendre la session"),
+  });
+
+  const endSessionMutation = useMutation({
+    mutationFn: () =>
+      patchSession({ status: "completed", total_duration_s: session?.total_duration_s ?? 0 }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["call-session", sessionId] });
       await queryClient.refetchQueries({ queryKey: ["call-session", sessionId] });
       router.refresh();
     },
     onError: (err: Error) => toast.error(err.message || "Impossible de terminer la session"),
-  });
-
-  const startSessionMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/call-sessions/${sessionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ status: "in_progress" }),
-      });
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json?.error?.message ?? `Erreur ${res.status}`);
-      }
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["call-session", sessionId] });
-      await queryClient.refetchQueries({ queryKey: ["call-session", sessionId] });
-    },
-    onError: (err: Error) =>
-      toast.error(err.message || "Impossible de démarrer la session"),
   });
 
   const allProspectsProcessed =
@@ -287,13 +265,12 @@ export default function CallSessionPage() {
 
   useEffect(() => {
     if (!session || session.status === "completed" || !allProspectsProcessed || autoCompletedRef.current) return;
-    // N’auto-compléter que lorsque la session a bien été démarrée (sinon pas de flux prospect côté UI).
-    if (session.status !== "in_progress") return;
+    if (session.status !== "running") return;
     autoCompletedRef.current = true;
     void endSessionMutation.mutateAsync().catch(() => {
       autoCompletedRef.current = false;
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mutate identity changes every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id, session?.status, allProspectsProcessed]);
 
   const patchProspectStatusMutation = useMutation({
@@ -306,7 +283,7 @@ export default function CallSessionPage() {
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        throw new Error(json?.error?.message ?? `Erreur ${res.status}`);
+        throw new Error((json as { error?: { message?: string } })?.error?.message ?? `Erreur ${res.status}`);
       }
       return res.json() as Promise<SessionProspect>;
     },
@@ -366,15 +343,12 @@ export default function CallSessionPage() {
         },
       };
 
-      const res = await fetch(
-        `/api/call-sessions/${sessionId}/prospects/${prospectId}/complete-step`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify(body),
-        }
-      );
+      const res = await fetch(`/api/call-sessions/${sessionId}/prospects/${prospectId}/complete-step`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
         toast.error((json as { error?: { message?: string } })?.error?.message ?? `Erreur ${res.status}`);
@@ -396,32 +370,22 @@ export default function CallSessionPage() {
     [queryClient, sessionId]
   );
 
-  const skipAndNext = useCallback(
-    async (currentId: string) => {
-      setStepFlushPending(true);
-      try {
-        const ok = await flushForProspect(currentId, { statusOverride: "skipped" });
-        if (!ok) return;
-        advanceAfterStep(currentId);
-      } finally {
-        setStepFlushPending(false);
-      }
-    },
-    [flushForProspect, advanceAfterStep]
-  );
-
-  const completeAndNext = useCallback(
-    async (currentId: string) => {
+  const nextProspect = useCallback(
+    async (currentId: string, isLast: boolean) => {
       setStepFlushPending(true);
       try {
         const ok = await flushForProspect(currentId, { statusOverride: "completed" });
         if (!ok) return;
-        advanceAfterStep(currentId);
+        if (isLast) {
+          await endSessionMutation.mutateAsync();
+        } else {
+          advanceAfterStep(currentId);
+        }
       } finally {
         setStepFlushPending(false);
       }
     },
-    [flushForProspect, advanceAfterStep]
+    [flushForProspect, advanceAfterStep, endSessionMutation]
   );
 
   const requestJumpTo = useCallback(
@@ -430,9 +394,7 @@ export default function CallSessionPage() {
       const currentId = activeProspectIdRef.current;
       const nextId = currentId ? getNextPendingProspectId(session.prospects, currentId) : null;
       if (targetId !== nextId && nextId != null) {
-        const ok = window.confirm(
-          "Ce prospect n'est pas le suivant dans l'ordre de la session. Voulez-vous quand même l'afficher ?"
-        );
+        const ok = window.confirm("Ce prospect n'est pas le suivant dans l'ordre. Voulez-vous quand même l'afficher ?");
         if (!ok) return;
       }
       setActiveProspectId(targetId);
@@ -440,14 +402,21 @@ export default function CallSessionPage() {
     [session]
   );
 
-  const pauseSession = useCallback(() => {
-    const ok = window.confirm("Mettre la session en pause ? Vous pourrez y revenir plus tard depuis la liste des sessions.");
+  const pauseSession = useCallback(async () => {
+    const ok = window.confirm("Mettre la session en pause ? Vous pourrez la reprendre depuis la liste des sessions.");
     if (!ok) return;
+    try {
+      await patchSession({ status: "paused" });
+      await queryClient.invalidateQueries({ queryKey: ["call-session", sessionId] });
+    } catch {
+      // ignore — still navigate away
+    }
     router.push("/call-sessions");
-  }, [router]);
+  }, [router, patchSession, queryClient, sessionId]);
 
+  // Keyboard shortcuts (only when running)
   useEffect(() => {
-    if (!session || session.status === "completed" || session.status !== "in_progress") return;
+    if (!session || session.status !== "running") return;
 
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -456,25 +425,24 @@ export default function CallSessionPage() {
       const currentId = activeProspectIdRef.current;
       if (!currentId) return;
 
-      if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        void completeAndNext(currentId);
-        return;
-      }
-      if (e.key === "ArrowRight" || (e.key === "n" || e.key === "N") && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        void skipAndNext(currentId);
+      if ((e.key === "Enter" || e.key === "ArrowRight" || e.key === "n" || e.key === "N") && !e.ctrlKey && !e.metaKey) {
+        if (e.key === "Enter") e.preventDefault();
+        const sess = queryClient.getQueryData<SessionData>(["call-session", sessionId]);
+        const pendingAfter = sess ? getNextPendingProspectId(sess.prospects, currentId) : null;
+        void nextProspect(currentId, pendingAfter === null);
         return;
       }
       if (e.key === "p" || e.key === "P" || e.key === "Escape") {
         e.preventDefault();
-        pauseSession();
+        void pauseSession();
       }
     };
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [session, completeAndNext, skipAndNext, pauseSession]);
+  }, [session, nextProspect, pauseSession, queryClient, sessionId]);
+
+  // ─── Render ──────────────────────────────────────────────────────────────
 
   if (isLoading) {
     return (
@@ -495,68 +463,18 @@ export default function CallSessionPage() {
     );
   }
 
-  const needsExplicitStart =
-    session.status !== "in_progress" && session.status !== "completed";
-
-  if (needsExplicitStart) {
-    const prospectCount = session.prospects.length;
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        <header className="flex shrink-0 items-center gap-3 border-b px-4 py-3 lg:px-6">
-          <button type="button" onClick={() => router.push("/call-sessions")} className="rounded p-1 hover:bg-accent" aria-label="Retour">
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate font-semibold">{session.title ?? "Session d'appels"}</h1>
-            <p className="text-xs text-muted-foreground">
-              {new Date(session.created_at).toLocaleDateString("fr-FR", {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              })}
-              <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
-                En attente
-              </span>
-            </p>
-          </div>
-        </header>
-        <div className="flex flex-1 flex-col items-center justify-center gap-8 p-6">
-          <div className="mx-auto max-w-md space-y-3 text-center">
-            <p className="text-sm text-muted-foreground">Session d&apos;appels</p>
-            <h2 className="text-2xl font-semibold tracking-tight">
-              {session.title ?? "Session d'appels"}
-            </h2>
-            <p className="text-muted-foreground">
-              {prospectCount} prospect{prospectCount > 1 ? "s" : ""} avec numéro de téléphone
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void startSessionMutation.mutateAsync()}
-            disabled={startSessionMutation.isPending}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-8 py-4 text-base font-semibold text-primary-foreground shadow-md transition-colors hover:bg-primary/90 disabled:opacity-60"
-          >
-            {startSessionMutation.isPending ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Play className="h-5 w-5 fill-current" />
-            )}
-            Démarrer la session
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const activeProspect = session.prospects.find((p) => p.id === activeProspectId);
+  const isActive = session.status === "active";
+  const isRunning = session.status === "running";
+  const isPaused = session.status === "paused";
   const isSessionCompleted = session.status === "completed";
 
+  const activeProspect = session.prospects.find((p) => p.id === activeProspectId);
   const processedCount = session.prospects.filter(isDoneCall).length;
   const total = session.prospects.length;
 
   const doneList = session.prospects.filter(isDoneCall);
-  const upcomingList = session.prospects.filter((p) => isPendingCall(p) && p.id !== activeProspectId);
+  const pendingList = session.prospects.filter((p) => isPendingCall(p) && p.id !== activeProspectId);
+  const isLastProspect = pendingList.length === 0 && activeProspect != null;
 
   const { preview: notesPreview, truncated: notesTruncated } = lastNoteLines(activeProspect?.notes ?? null, 3);
 
@@ -571,17 +489,14 @@ export default function CallSessionPage() {
     const appendedBlock = `[Appel ${day}] ${text}`;
     setNoteSavePending(true);
     appendNoteMutation.mutate(
-      {
-        prospectId: activeProspect.id,
-        appendedBlock,
-        previousNotes: activeProspect.notes ?? "",
-      },
+      { prospectId: activeProspect.id, appendedBlock, previousNotes: activeProspect.notes ?? "" },
       { onSettled: () => setNoteSavePending(false) }
     );
   };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {/* Header */}
       <header className="flex shrink-0 items-center gap-3 border-b px-4 py-3 lg:px-6">
         <button type="button" onClick={() => router.push("/call-sessions")} className="rounded p-1 hover:bg-accent" aria-label="Retour">
           <ArrowLeft className="h-4 w-4" />
@@ -595,30 +510,60 @@ export default function CallSessionPage() {
               month: "long",
               year: "numeric",
             })}
-            {isSessionCompleted ? (
-              <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-green-800 dark:bg-green-900/40 dark:text-green-300">
-                Terminée
-              </span>
-            ) : (
+            {isActive && (
+              <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">Prête</span>
+            )}
+            {isRunning && (
               <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
-                En cours
+                En cours · {processedCount}/{total}
               </span>
+            )}
+            {isPaused && (
+              <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">En pause</span>
+            )}
+            {isSessionCompleted && (
+              <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-green-800 dark:bg-green-900/40 dark:text-green-300">Terminée</span>
             )}
           </p>
         </div>
+
+        {/* Header action button */}
+        {isActive && (
+          <button
+            type="button"
+            onClick={() => void startSessionMutation.mutateAsync()}
+            disabled={startSessionMutation.isPending}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+          >
+            {startSessionMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}
+            Démarrer
+          </button>
+        )}
+        {isPaused && (
+          <button
+            type="button"
+            onClick={() => void resumeSessionMutation.mutateAsync()}
+            disabled={resumeSessionMutation.isPending}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+          >
+            {resumeSessionMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+            Reprendre
+          </button>
+        )}
       </header>
 
+      {/* Body */}
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        {/* Left panel */}
+        {/* Left panel — prospect list */}
         <aside className="flex w-full shrink-0 flex-col border-b bg-card md:h-auto md:w-72 md:border-b-0 md:border-r">
           <div className="shrink-0 border-b px-4 py-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Session d&apos;appels</p>
-            <p className="truncate text-sm font-semibold">{session.title ?? "Sans titre"}</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">{processedCount}</span> / {total} prospects traités
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Prospects</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{processedCount}</span> / {total} traités
             </p>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
+            {/* Done */}
             {doneList.map((p) => {
               const done = p.call_status === "completed";
               return (
@@ -644,6 +589,7 @@ export default function CallSessionPage() {
               );
             })}
 
+            {/* Active prospect */}
             {activeProspect && !isSessionCompleted && (
               <div
                 ref={currentItemRef}
@@ -662,12 +608,19 @@ export default function CallSessionPage() {
               </div>
             )}
 
+            {/* Upcoming */}
             {!isSessionCompleted &&
-              upcomingList.map((p) => (
+              pendingList.map((p) => (
                 <button
                   key={p.id}
                   type="button"
-                  onClick={() => requestJumpTo(p.id)}
+                  onClick={() => {
+                    if (isRunning) {
+                      requestJumpTo(p.id);
+                    } else {
+                      setActiveProspectId(p.id);
+                    }
+                  }}
                   className="flex w-full items-center gap-3 border-b px-3 py-2.5 text-left transition-colors hover:bg-accent/50"
                 >
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
@@ -685,20 +638,38 @@ export default function CallSessionPage() {
           </div>
         </aside>
 
-        {/* Right panel */}
+        {/* Right panel — prospect detail */}
         <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-4 pb-8 md:p-6 lg:p-8">
             {isSessionCompleted ? (
               <CompletedSessionSummary session={session} />
-            ) : allProspectsProcessed ? (
+            ) : allProspectsProcessed && isRunning ? (
               <div className="flex flex-1 flex-col items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 <p className="mt-3 text-sm text-muted-foreground">Enregistrement de la session…</p>
               </div>
             ) : !activeProspect ? (
-              <p className="py-12 text-center text-muted-foreground">Aucun prospect en attente.</p>
+              <p className="py-12 text-center text-muted-foreground">Aucun prospect disponible.</p>
             ) : (
               <>
+                {/* Pre-start banner */}
+                {isActive && (
+                  <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+                    <Play className="h-4 w-4 shrink-0 text-primary" />
+                    <p className="text-sm text-primary">
+                      Consultez les fiches, puis cliquez sur <strong>Démarrer</strong> pour lancer les appels.
+                    </p>
+                  </div>
+                )}
+                {isPaused && (
+                  <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
+                    <Pause className="h-4 w-4 shrink-0 text-amber-600" />
+                    <p className="text-sm text-amber-700 dark:text-amber-300">
+                      Session en pause. Cliquez sur <strong>Reprendre</strong> pour continuer.
+                    </p>
+                  </div>
+                )}
+
                 {/* Prospect card */}
                 <section className="space-y-3 rounded-xl border bg-card p-4 shadow-sm">
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -718,8 +689,7 @@ export default function CallSessionPage() {
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 rounded-md border bg-background px-2.5 py-1 text-xs font-medium hover:bg-accent"
                       >
-                        Ouvrir la fiche complète
-                        <ExternalLink className="h-3 w-3" />
+                        Ouvrir la fiche <ExternalLink className="h-3 w-3" />
                       </a>
                       {activeProspect.linkedin && (
                         <a
@@ -728,33 +698,40 @@ export default function CallSessionPage() {
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 rounded-md border bg-background px-2.5 py-1 text-xs font-medium hover:bg-accent"
                         >
-                          <Linkedin className="h-3 w-3" />
-                          Voir sur LinkedIn
-                          <ExternalLink className="h-3 w-3" />
+                          <Linkedin className="h-3 w-3" /> LinkedIn <ExternalLink className="h-3 w-3" />
                         </a>
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-2 text-sm">
-                    {activeProspect.phone && (
-                      <a
-                        href={`tel:${activeProspect.phone.replace(/\s/g, "")}`}
-                        className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 hover:bg-accent"
-                      >
-                        <Phone className="h-3.5 w-3.5" />
-                        {activeProspect.phone}
-                      </a>
-                    )}
-                    {activeProspect.email && (
+                  {/* Phone — prominent call action */}
+                  {activeProspect.phone && (
+                    <a
+                      href={`tel:${activeProspect.phone.replace(/\s/g, "")}`}
+                      className="flex items-center gap-3 rounded-xl border-2 border-green-500 bg-green-50 px-4 py-3 transition-colors hover:bg-green-100 dark:bg-green-950/30 dark:hover:bg-green-950/50"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-green-500 text-white shadow-sm">
+                        <Phone className="h-4 w-4" />
+                      </span>
+                      <div>
+                        <p className="text-xs font-medium text-green-700 dark:text-green-400">Appeler</p>
+                        <p className="text-lg font-bold tracking-wide text-green-800 dark:text-green-200">
+                          {activeProspect.phone}
+                        </p>
+                      </div>
+                    </a>
+                  )}
+                  {/* Email */}
+                  {activeProspect.email && (
+                    <div className="flex flex-wrap gap-2 text-sm">
                       <a
                         href={`mailto:${activeProspect.email}`}
-                        className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 hover:bg-accent"
+                        className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-muted-foreground hover:bg-accent"
                       >
                         <Mail className="h-3.5 w-3.5" />
                         {activeProspect.email}
                       </a>
-                    )}
-                  </div>
+                    </div>
+                  )}
                   {notesPreview && (
                     <div className="border-t pt-3">
                       <p className="mb-1 text-xs font-medium text-muted-foreground">Notes</p>
@@ -768,7 +745,7 @@ export default function CallSessionPage() {
                   )}
                 </section>
 
-                {/* Qualification */}
+                {/* Qualification — always visible */}
                 <section className="space-y-3 rounded-xl border bg-card p-4 shadow-sm">
                   <h3 className="text-sm font-semibold">Qualifier ce prospect</h3>
                   <p className="text-xs text-muted-foreground">
@@ -786,9 +763,7 @@ export default function CallSessionPage() {
                           key={st}
                           type="button"
                           disabled={patchProspectStatusMutation.isPending}
-                          onClick={() =>
-                            patchProspectStatusMutation.mutate({ prospectId: activeProspect.id, status: st })
-                          }
+                          onClick={() => patchProspectStatusMutation.mutate({ prospectId: activeProspect.id, status: st })}
                           className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                             selected
                               ? `${PROSPECT_STATUS_COLORS[st]} border-transparent ring-2 ring-primary`
@@ -824,38 +799,43 @@ export default function CallSessionPage() {
                   </div>
                 </section>
 
-                {/* Session controls */}
-                <section className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm">
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <button
-                      type="button"
-                      onClick={() => void skipAndNext(activeProspect.id)}
-                      disabled={stepFlushPending}
-                      className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                    >
-                      <span>⏭</span> Prospect suivant
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void completeAndNext(activeProspect.id)}
-                      disabled={stepFlushPending}
-                      className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border-2 border-green-600 bg-green-600 px-3 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                    >
-                      <span>✓</span> Terminer &amp; suivant
-                    </button>
-                    <button
-                      type="button"
-                      onClick={pauseSession}
-                      className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium hover:bg-accent"
-                    >
-                      <Pause className="h-4 w-4" />
-                      Pause
-                    </button>
-                  </div>
-                  <p className="text-center text-xs text-muted-foreground">
-                    Raccourcis : ↵ Terminer · → ou N Suivant · P ou Échap Pause
-                  </p>
-                </section>
+                {/* Session call controls — only when running */}
+                {isRunning && (
+                  <section className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm">
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <button
+                        type="button"
+                        onClick={() => void nextProspect(activeProspect.id, isLastProspect)}
+                        disabled={stepFlushPending || endSessionMutation.isPending}
+                        className={`inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition-colors disabled:opacity-50 ${
+                          isLastProspect
+                            ? "border-2 border-green-600 bg-green-600 text-white hover:bg-green-700"
+                            : "bg-primary text-primary-foreground hover:bg-primary/90"
+                        }`}
+                      >
+                        {stepFlushPending || endSessionMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : isLastProspect ? (
+                          <><CheckCircle2 className="h-4 w-4" /> Terminer la session</>
+                        ) : (
+                          <><SkipForward className="h-4 w-4" /> Prospect suivant</>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void pauseSession()}
+                        disabled={stepFlushPending}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium hover:bg-accent disabled:opacity-50"
+                      >
+                        <Pause className="h-4 w-4" />
+                        Pause
+                      </button>
+                    </div>
+                    <p className="text-center text-xs text-muted-foreground">
+                      Raccourcis : ↵ ou → Suivant · P ou Échap Pause
+                    </p>
+                  </section>
+                )}
               </>
             )}
           </div>

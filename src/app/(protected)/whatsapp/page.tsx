@@ -4,12 +4,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Copy, Loader2, ListPlus, Plus, Trash2 } from 'lucide-react';
+import { Copy, ListPlus, Loader2, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import {
+    CardGridSkeleton,
+    PageHeaderSkeleton,
+} from '@/components/skeletons/page-skeleton';
 import { useWorkspace } from '@/lib/workspace';
 import { getStepLabel } from '@/lib/workflows';
 import {
@@ -173,8 +177,9 @@ export default function WorkflowsPage() {
 
     if (!workspaceId) {
         return (
-            <div className="flex min-h-[40vh] items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <div className="p-6 space-y-6">
+                <PageHeaderSkeleton />
+                <CardGridSkeleton count={6} />
             </div>
         );
     }
@@ -205,9 +210,7 @@ export default function WorkflowsPage() {
 
                     <div className="flex-1 min-h-0 overflow-y-auto">
                         {loading && items.length === 0 ? (
-                            <div className="flex min-h-[30vh] items-center justify-center">
-                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                            </div>
+                            <CardGridSkeleton count={6} />
                         ) : items.length === 0 ? (
                             <p className="py-12 text-center text-sm text-muted-foreground">
                                 Aucun parcours WhatsApp. Créez-en un pour commencer.

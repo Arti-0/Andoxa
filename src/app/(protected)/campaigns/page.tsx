@@ -434,6 +434,28 @@ export default function CampaignsPage() {
         }
     };
 
+    const handleDeleteSession = async (sessionId: string) => {
+        if (!window.confirm("Supprimer cette session d'appels ? Cette action est irréversible.")) return;
+        setActionPending({ id: sessionId, action: 'delete' });
+        try {
+            const res = await fetch(`/api/call-sessions/${sessionId}`, {
+                method: 'DELETE',
+                credentials: 'include',
+            });
+            if (!res.ok) {
+                const json = await res.json().catch(() => ({}));
+                toast.error(json?.error?.message ?? 'Impossible de supprimer la session');
+                return;
+            }
+            toast.success('Session supprimée');
+            void queryClient.invalidateQueries({ queryKey: ['call-sessions', workspaceId] });
+        } catch {
+            toast.error('Erreur réseau');
+        } finally {
+            setActionPending(null);
+        }
+    };
+
     const handleCancelJob = async (jobId: string) => {
         setActionPending({ id: jobId, action: 'cancel' });
         optimisticallyUpdateJobStatus(jobId, 'failed');
@@ -696,6 +718,24 @@ export default function CampaignsPage() {
                                         className="px-4 py-3"
                                         onClick={(e) => e.stopPropagation()}
                                     >
+                                        {row.type === 'call_session' && (
+                                            <div className="flex items-center gap-1">
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    disabled={actionPending?.id === row.id}
+                                                    onClick={() => void handleDeleteSession(row.id)}
+                                                    className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                    title="Supprimer la session"
+                                                >
+                                                    {actionPending?.id === row.id && actionPending.action === 'delete' ? (
+                                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                                    ) : (
+                                                        <Trash2 className="h-3 w-3" />
+                                                    )}
+                                                </Button>
+                                            </div>
+                                        )}
                                         {row.type === 'campaign' && (
                                             <div className="flex items-center gap-1">
                                                 {/* Play: draft → launch, paused → resume */}

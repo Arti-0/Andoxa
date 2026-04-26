@@ -79,6 +79,25 @@ export const GET = createApiHandler(async (req: NextRequest, ctx) => {
 });
 
 /**
+ * DELETE /api/call-sessions/[id]
+ * Permanently delete a call session and its associated prospects/notes.
+ */
+export const DELETE = createApiHandler(async (req: NextRequest, ctx) => {
+  const sessionId = getSessionId(req);
+  if (!sessionId || !ctx.workspaceId) throw Errors.notFound("Call session");
+
+  const { error } = await ctx.supabase
+    .from("call_sessions")
+    .delete()
+    .eq("id", sessionId)
+    .eq("organization_id", ctx.workspaceId);
+
+  if (error) throw Errors.internal("Impossible de supprimer la session");
+
+  return { success: true };
+});
+
+/**
  * PATCH /api/call-sessions/[id]
  * Update session: end, pause, set total_duration_s, etc.
  */
@@ -102,7 +121,7 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
 
   const { data, error } = await ctx.supabase
     .from("call_sessions")
-    .update(updates as { status?: string; total_duration_s?: number; ended_at?: string })
+    .update(updates as { status?: "active" | "running" | "paused" | "completed"; total_duration_s?: number | null; ended_at?: string | null })
     .eq("id", sessionId)
     .eq("organization_id", ctx.workspaceId)
     .select()

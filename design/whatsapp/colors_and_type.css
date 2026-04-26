@@ -1,0 +1,317 @@
+/*
+ * Andoxa Design System — Colors & Typography
+ * Source: Arti-0/andoxatest globals.css + codebase conventions
+ * Font: Geist Sans / Geist Mono (Google Fonts approximation: see note below)
+ *
+ * NOTE: The production app uses Vercel's Geist font via next/font.
+ * This file uses Google Fonts' "Geist" which is the same family, publicly available.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@400;500;700&display=swap');
+
+/* ============================================================
+   BRAND COLOR PRIMITIVES
+   ============================================================ */
+:root {
+  /* Brand signature colors */
+  --brand-blue:         #0052D9;   /* Primary — Andoxa Blue */
+  --brand-blue-light:   #1A6AFF;   /* Hover state */
+  --brand-blue-dark:    #003EA3;   /* Pressed state */
+  --brand-blue-tint:    #E8F0FD;   /* Background tint */
+  --brand-orange:       #FF6700;   /* Secondary — Andoxa Orange */
+  --brand-orange-light: #FF8533;   /* Hover state */
+  --brand-orange-dark:  #CC5200;   /* Pressed state */
+  --brand-orange-tint:  #FFF0E5;   /* Background tint */
+
+  /* Neutrals (light mode) */
+  --neutral-0:    oklch(1 0 0);           /* Pure white */
+  --neutral-50:   oklch(0.985 0 0);       /* Off-white — sidebar bg */
+  --neutral-100:  oklch(0.97 0 0);        /* Very light — muted/accent bg */
+  --neutral-200:  oklch(0.922 0 0);       /* Light gray — borders, inputs */
+  --neutral-400:  oklch(0.708 0 0);       /* Medium gray — ring */
+  --neutral-600:  oklch(0.556 0 0);       /* Muted foreground */
+  --neutral-800:  oklch(0.269 0 0);       /* Dark gray — dark mode secondary */
+  --neutral-900:  oklch(0.205 0 0);       /* Near black — dark mode cards */
+  --neutral-950:  oklch(0.145 0 0);       /* Near black — dark bg */
+
+  /* Semantic chart colors */
+  --chart-1:  oklch(0.646 0.222 41.116);  /* Orange */
+  --chart-2:  oklch(0.6 0.118 184.704);   /* Teal */
+  --chart-3:  oklch(0.398 0.07 227.392);  /* Slate blue */
+  --chart-4:  oklch(0.828 0.189 84.429);  /* Yellow-green */
+  --chart-5:  oklch(0.769 0.188 70.08);   /* Warm yellow */
+
+  /* Status */
+  --color-destructive:  oklch(0.577 0.245 27.325);  /* Red — errors/delete */
+  --color-success:      oklch(0.65 0.2 145);         /* Green — success states */
+  --color-warning:      oklch(0.82 0.2 80);          /* Amber — warnings */
+}
+
+/* ============================================================
+   SEMANTIC CSS CUSTOM PROPERTIES — LIGHT MODE
+   ============================================================ */
+:root {
+  --radius: 0.625rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Surfaces */
+  --background:         var(--neutral-0);
+  --foreground:         var(--neutral-950);
+  --card:               var(--neutral-0);
+  --card-foreground:    var(--neutral-950);
+  --popover:            var(--neutral-0);
+  --popover-foreground: var(--neutral-950);
+
+  /* Interactive */
+  --primary:            var(--neutral-950);
+  --primary-foreground: var(--neutral-50);
+  --secondary:          var(--neutral-100);
+  --secondary-foreground: var(--neutral-950);
+  --muted:              var(--neutral-100);
+  --muted-foreground:   var(--neutral-600);
+  --accent:             var(--neutral-100);
+  --accent-foreground:  var(--neutral-950);
+
+  /* Borders & inputs */
+  --border:  var(--neutral-200);
+  --input:   var(--neutral-200);
+  --ring:    var(--neutral-400);
+
+  /* Destructive */
+  --destructive: var(--color-destructive);
+
+  /* Sidebar */
+  --sidebar:                    var(--neutral-50);
+  --sidebar-foreground:         var(--neutral-950);
+  --sidebar-primary:            var(--neutral-950);
+  --sidebar-primary-foreground: var(--neutral-50);
+  --sidebar-accent:             var(--neutral-100);
+  --sidebar-accent-foreground:  var(--neutral-950);
+  --sidebar-border:             var(--neutral-200);
+  --sidebar-ring:               var(--neutral-400);
+
+  /* Brand accents */
+  --custom-color:   var(--brand-blue);
+  --custom-color-2: var(--brand-orange);
+}
+
+/* ============================================================
+   DARK MODE
+   ============================================================ */
+.dark {
+  --background:         var(--neutral-950);
+  --foreground:         var(--neutral-50);
+  --card:               var(--neutral-900);
+  --card-foreground:    var(--neutral-50);
+  --popover:            var(--neutral-900);
+  --popover-foreground: var(--neutral-50);
+
+  --primary:            var(--neutral-200);
+  --primary-foreground: var(--neutral-900);
+  --secondary:          var(--neutral-800);
+  --secondary-foreground: var(--neutral-50);
+  --muted:              var(--neutral-800);
+  --muted-foreground:   var(--neutral-400);
+  --accent:             var(--neutral-800);
+  --accent-foreground:  var(--neutral-50);
+
+  --border: oklch(1 0 0 / 10%);
+  --input:  oklch(1 0 0 / 15%);
+  --ring:   var(--neutral-600);
+
+  --destructive: oklch(0.704 0.191 22.216);
+
+  --sidebar:                    var(--neutral-900);
+  --sidebar-foreground:         var(--neutral-50);
+  --sidebar-primary:            oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: var(--neutral-50);
+  --sidebar-accent:             var(--neutral-800);
+  --sidebar-accent-foreground:  var(--neutral-50);
+  --sidebar-border:             oklch(1 0 0 / 10%);
+  --sidebar-ring:               var(--neutral-600);
+}
+
+/* ============================================================
+   GRADIENT UTILITIES
+   (gradient-primary referenced in codebase but not defined — defined here)
+   ============================================================ */
+.gradient-primary {
+  background: #0052D9;
+}
+
+.gradient-primary-hover:hover {
+  background: #1A6AFF;
+}
+
+/* ============================================================
+   TYPOGRAPHY TOKENS
+   ============================================================ */
+:root {
+  /* Font families */
+  --font-sans:    'Geist', 'Geist Variable', system-ui, sans-serif;
+  --font-mono:    'Geist Mono', 'Geist Mono Variable', ui-monospace, monospace;
+
+  /* Type scale */
+  --text-xs:   0.75rem;    /* 12px */
+  --text-sm:   0.875rem;   /* 14px */
+  --text-base: 1rem;       /* 16px */
+  --text-lg:   1.125rem;   /* 18px */
+  --text-xl:   1.25rem;    /* 20px */
+  --text-2xl:  1.5rem;     /* 24px */
+  --text-3xl:  1.875rem;   /* 30px */
+  --text-4xl:  2.25rem;    /* 36px */
+  --text-5xl:  3rem;       /* 48px */
+  --text-6xl:  3.75rem;    /* 60px */
+  --text-7xl:  4.5rem;     /* 72px */
+
+  /* Line heights */
+  --leading-tight:  1.25;
+  --leading-snug:   1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  --leading-loose:  2;
+  --leading-7:      1.75rem; /* Tailwind's leading-7 */
+
+  /* Letter spacing */
+  --tracking-tight:  -0.025em;
+  --tracking-normal:  0;
+  --tracking-wide:    0.025em;
+
+  /* Font weights */
+  --font-normal:    400;
+  --font-medium:    500;
+  --font-semibold:  600;
+  --font-bold:      700;
+  --font-extrabold: 800;
+}
+
+/* ============================================================
+   SEMANTIC TYPOGRAPHY ROLES
+   ============================================================ */
+
+/* Hero headline (landing page h1) */
+.t-hero {
+  font-family: var(--font-sans);
+  font-size: var(--text-7xl);
+  font-weight: var(--font-bold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+}
+
+/* Page / section heading */
+.t-h1 {
+  font-family: var(--font-sans);
+  font-size: var(--text-4xl);
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+}
+
+/* Sub-section heading */
+.t-h2 {
+  font-family: var(--font-sans);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+}
+
+/* Card title */
+.t-h3 {
+  font-family: var(--font-sans);
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-snug);
+  letter-spacing: var(--tracking-tight);
+}
+
+/* Subtitle / lead text */
+.t-lead {
+  font-family: var(--font-sans);
+  font-size: var(--text-xl);
+  font-weight: var(--font-normal);
+  line-height: var(--leading-7);
+  color: var(--muted-foreground);
+}
+
+/* Body / paragraph */
+.t-body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--font-normal);
+  line-height: var(--leading-7);
+}
+
+/* Small / caption */
+.t-small {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--font-normal);
+  line-height: var(--leading-normal);
+}
+
+/* Label */
+.t-label {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  line-height: var(--leading-normal);
+}
+
+/* Nav link */
+.t-nav {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--font-normal);
+  color: var(--foreground);
+  transition: color 150ms ease;
+}
+
+.t-nav:hover {
+  color: var(--primary);
+}
+
+/* Sidebar group label */
+.t-sidebar-label {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  letter-spacing: var(--tracking-wide);
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+}
+
+/* Code / mono */
+.t-code {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: var(--font-normal);
+  line-height: var(--leading-relaxed);
+}
+
+/* Badge text */
+.t-badge {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+/* ============================================================
+   BASE RESETS
+   ============================================================ */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--font-sans);
+  color: var(--foreground);
+  background-color: var(--background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

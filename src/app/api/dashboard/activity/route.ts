@@ -230,7 +230,7 @@ export const GET = createApiHandler(async (_req, ctx): Promise<Activity[]> => {
 
   for (const s of sessionsRes.data ?? []) {
     const dur =
-      s.total_duration_s > 0 ? `${Math.floor(s.total_duration_s / 60)} min` : "";
+      (s.total_duration_s ?? 0) > 0 ? `${Math.floor((s.total_duration_s ?? 0) / 60)} min` : "";
     activities.push({
       id: `session-${s.id}`,
       type: "call_session_completed",
