@@ -39,6 +39,11 @@ export interface User {
   created_at: string;
 }
 
+export interface CalendarPreferences {
+  hidden_calendar_ids?: string[];
+  hidden_member_ids?: string[];
+}
+
 export interface Profile {
   id: string;
   email: string;
@@ -48,6 +53,7 @@ export interface Profile {
   linkedin_auto_enrich?: boolean;
   active_organization_id: string | null;
   metadata?: Record<string, unknown> | null;
+  calendar_preferences?: CalendarPreferences | null;
   created_at: string;
   updated_at: string;
 }

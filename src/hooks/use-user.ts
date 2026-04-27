@@ -13,6 +13,10 @@ interface UserProfile {
   active_organization_id?: string | null;
   stripe_customer_id?: string;
   booking_slug?: string | null;
+  calendar_preferences?: {
+    hidden_calendar_ids?: string[];
+    hidden_member_ids?: string[];
+  } | null;
 }
 
 /**

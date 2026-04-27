@@ -7,6 +7,7 @@ import { createEventsServicePlugin } from "@schedule-x/events-service";
 import { createCalendarControlsPlugin } from "@schedule-x/calendar-controls";
 import { createDragAndDropPlugin } from "@schedule-x/drag-and-drop";
 import { createResizePlugin } from "@schedule-x/resize";
+import { createCurrentTimePlugin } from "@schedule-x/current-time";
 import "@schedule-x/theme-default/dist/index.css";
 import "./schedule-x-styles.css";
 
@@ -30,6 +31,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AttendeeCombobox,
+  type Attendee,
+} from "@/components/calendar/attendee-combobox";
+import {
+  CalendarVisibilityPanel,
+  type CalendarVisibilityMember,
+} from "@/components/calendar/calendar-visibility-panel";
+import { AvailabilityPanel } from "@/components/calendar/availability-panel";
+import type { CalendarPreferences } from "@/lib/workspace/types";
+import type { AvailabilityConfig } from "@/lib/booking/slots";
 import {
   CalendarPlus,
   Copy,
@@ -60,6 +72,7 @@ interface EventItem {
 interface Member {
   id: string;
   name: string;
+  email?: string;
 }
 
 function formatDateForScheduleX(isoString: string): string {
@@ -104,6 +117,8 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState<string>("all");
+  const [calendarPrefs, setCalendarPrefs] = useState<CalendarPreferences>({});
+  const [availabilityConfig, setAvailabilityConfig] = useState<AvailabilityConfig | undefined>(undefined);
   const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [pendingCreateStart, setPendingCreateStart] = useState<string | null>(null);
@@ -156,6 +171,10 @@ export default function CalendarPage() {
   const controlsPlugin = useMemo(() => createCalendarControlsPlugin(), []);
   const dragPlugin = useMemo(() => createDragAndDropPlugin(), []);
   const resizePlugin = useMemo(() => createResizePlugin(), []);
+  const currentTimePlugin = useMemo(
+    () => createCurrentTimePlugin({ fullWeekWidth: true }),
+    []
+  );
 
   const loadMembers = useCallback(async () => {
     try {
@@ -208,15 +227,27 @@ export default function CalendarPage() {
           googleItems = Array.isArray(gData?.items) ? gData.items : [];
         }
 
+        // Apply user's per-calendar / per-colleague visibility prefs.
+        const hiddenCals = new Set(calendarPrefs.hidden_calendar_ids ?? []);
+        const hiddenMembers = new Set(calendarPrefs.hidden_member_ids ?? []);
+
+        const visibleAndoxaEvents = items.filter((e) => {
+          const calId = e.source === "booking" ? "bookings" : "default";
+          if (hiddenCals.has(calId)) return false;
+          if (e.created_by && hiddenMembers.has(e.created_by)) return false;
+          return true;
+        });
+        const visibleGoogle = hiddenCals.has("google") ? [] : googleItems;
+
         eventsServicePlugin.set([
-          ...items.map((e) => ({
+          ...visibleAndoxaEvents.map((e) => ({
             id: e.id,
             title: e.title,
             start: formatDateForScheduleX(e.start_time),
             end: formatDateForScheduleX(e.end_time),
             calendarId: e.source === "booking" ? "bookings" : "default",
           })),
-          ...googleItems.map((g) => ({
+          ...visibleGoogle.map((g) => ({
             id: g.id,
             title: g.title,
             start: formatDateForScheduleX(g.start),
@@ -231,7 +262,7 @@ export default function CalendarPage() {
         setLoading(false);
       }
     },
-    [selectedMemberId, eventsServicePlugin]
+    [selectedMemberId, eventsServicePlugin, calendarPrefs]
   );
 
   const refetch = useCallback(() => {
@@ -275,6 +306,48 @@ export default function CalendarPage() {
     }
   }, [userLoading, profile?.booking_slug]);
 
+  useEffect(() => {
+    if (userLoading) return;
+    const prefs = profile?.calendar_preferences;
+    if (prefs && typeof prefs === "object") {
+      setCalendarPrefs(prefs);
+    }
+    const meta = (profile as unknown as { metadata?: Record<string, unknown> | null } | null)?.metadata;
+    const avail = meta?.availability as AvailabilityConfig | undefined;
+    if (avail) setAvailabilityConfig(avail);
+  }, [userLoading, profile]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Persist prefs to the server. Optimistic — UI already updated by setCalendarPrefs. */
+  const persistCalendarPrefs = useCallback(
+    async (next: CalendarPreferences) => {
+      setCalendarPrefs(next);
+      try {
+        const res = await fetch("/api/profile/calendar-preferences", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(next),
+        });
+        if (!res.ok) {
+          toast.error("Préférences non enregistrées");
+        }
+      } catch {
+        toast.error("Préférences non enregistrées");
+      }
+    },
+    []
+  );
+
+  const visibilityMembers: CalendarVisibilityMember[] = useMemo(
+    () =>
+      members.map((m) => ({
+        id: m.id,
+        name: m.name,
+        email: m.email ?? "",
+      })),
+    [members]
+  );
+
   const memoizedViews = useMemo(
     () =>
       [createViewDay(), createViewWeek()] as [
@@ -291,7 +364,7 @@ export default function CalendarPage() {
     firstDayOfWeek: 1,
     isResponsive: true,
     defaultView: "week",
-    dayBoundaries: { start: "06:00", end: "22:00" },
+    dayBoundaries: { start: "00:00", end: "24:00" },
     calendars: {
       default: { colorName: "primary" },
       bookings: { colorName: "blue" },
@@ -309,7 +382,13 @@ export default function CalendarPage() {
         },
       },
     },
-    plugins: [eventsServicePlugin, controlsPlugin, dragPlugin, resizePlugin],
+    plugins: [
+      eventsServicePlugin,
+      controlsPlugin,
+      dragPlugin,
+      resizePlugin,
+      currentTimePlugin,
+    ],
     callbacks: {
       onEventClick: (event: { id: string | number }) => {
         const ev = eventsRef.current.find((e) => e.id === String(event.id));
@@ -355,7 +434,19 @@ export default function CalendarPage() {
                 end: orig.end,
                 title: updated.title,
               });
+            toast.error("Modification impossible — événement restauré");
           } else {
+            // The PATCH handler returns googleSyncFailed when an Andoxa-mirrored
+            // Google Calendar event couldn't be updated upstream. We keep the
+            // local Andoxa change but warn the user it's not in Google yet.
+            let googleSyncFailed = false;
+            try {
+              const json = await res.json();
+              const data = json?.data ?? json;
+              googleSyncFailed = Boolean(data?.googleSyncFailed);
+            } catch {
+              googleSyncFailed = false;
+            }
             setEvents((prev) =>
               prev.map((e) =>
                 e.id === id
@@ -367,6 +458,11 @@ export default function CalendarPage() {
                   : e
               )
             );
+            if (googleSyncFailed) {
+              toast.warning(
+                "Modification enregistrée, synchronisation Google échouée"
+              );
+            }
           }
         } catch {
           if (orig)
@@ -376,6 +472,7 @@ export default function CalendarPage() {
               end: orig.end,
               title: updated.title,
             });
+          toast.error("Modification impossible — événement restauré");
         }
         originalEventRef.current = null;
       },
@@ -546,21 +643,32 @@ export default function CalendarPage() {
                 </span>
               )}
             </div>
-            {members.length > 0 && (
-              <Select value={selectedMemberId} onValueChange={setSelectedMemberId}>
-                <SelectTrigger className="h-8 w-[180px] text-sm bg-white dark:bg-zinc-900/50">
-                  <SelectValue placeholder="Tous les membres" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tous les membres</SelectItem>
-                  {members.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <div className="flex items-center gap-2">
+              {members.length > 0 && (
+                <Select value={selectedMemberId} onValueChange={setSelectedMemberId}>
+                  <SelectTrigger className="h-8 w-[180px] text-sm bg-white dark:bg-zinc-900/50">
+                    <SelectValue placeholder="Tous les membres" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les membres</SelectItem>
+                    {members.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <AvailabilityPanel
+                config={availabilityConfig}
+                onSaved={setAvailabilityConfig}
+              />
+              <CalendarVisibilityPanel
+                preferences={calendarPrefs}
+                onChange={persistCalendarPrefs}
+                members={visibilityMembers}
+              />
+            </div>
           </div>
 
           <div className="rounded-2xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900/50 overflow-hidden shadow-sm">
@@ -582,6 +690,14 @@ export default function CalendarPage() {
           if (!o) setPendingCreateStart(null);
         }}
         initialStart={pendingCreateStart}
+        creator={
+          profile?.email
+            ? {
+                email: profile.email,
+                name: profile.full_name ?? profile.email,
+              }
+            : null
+        }
         onSuccess={() => {
           setCreateOpen(false);
           setPendingCreateStart(null);
@@ -672,6 +788,7 @@ function EventCreateModal({
   open,
   onOpenChange,
   initialStart,
+  creator,
   onSuccess,
   eventsServicePlugin,
   formatDateForScheduleX,
@@ -679,6 +796,7 @@ function EventCreateModal({
   open: boolean;
   onOpenChange: (o: boolean) => void;
   initialStart: string | null;
+  creator: { email: string; name: string } | null;
   onSuccess: () => void;
   eventsServicePlugin: ReturnType<
     typeof import("@schedule-x/events-service").createEventsServicePlugin
@@ -691,7 +809,7 @@ function EventCreateModal({
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [googleMeet, setGoogleMeet] = useState(false);
-  const [attendeeEmails, setAttendeeEmails] = useState("");
+  const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -714,10 +832,23 @@ function EventCreateModal({
       setDescription("");
       setLocation("");
       setGoogleMeet(false);
-      setAttendeeEmails("");
+      // Pre-add the current user as a removable attendee chip so they can hand
+      // off ownership / create events for colleagues by removing themselves.
+      setAttendees(
+        creator
+          ? [
+              {
+                email: creator.email,
+                label: creator.name,
+                source: "creator",
+                removable: true,
+              },
+            ]
+          : []
+      );
       setError(null);
     }
-  }, [open, initialStart]);
+  }, [open, initialStart, creator]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -730,10 +861,9 @@ function EventCreateModal({
     setSubmitting(true);
     setError(null);
     try {
-      const parsedEmails = attendeeEmails
-        .split(/[,;\s]+/)
-        .map((e) => e.trim())
-        .filter((e) => e.includes("@"));
+      const parsedEmails = attendees
+        .map((a) => a.email.trim())
+        .filter((e) => e.length > 0 && e.includes("@"));
 
       const res = await fetch("/api/events", {
         method: "POST",
@@ -836,14 +966,8 @@ function EventCreateModal({
           </div>
           {/* Attendees */}
           <div className="space-y-1.5">
-            <Label htmlFor="cv2-attendees">Invités (e-mails, séparés par virgule)</Label>
-            <Input
-              id="cv2-attendees"
-              type="text"
-              value={attendeeEmails}
-              onChange={(e) => setAttendeeEmails(e.target.value)}
-              placeholder="jean@example.com, marie@example.com"
-            />
+            <Label>Invités</Label>
+            <AttendeeCombobox value={attendees} onChange={setAttendees} />
           </div>
           {/* Google Meet toggle */}
           <div className="flex items-center justify-between rounded-lg border p-3">

@@ -83,6 +83,17 @@ function buildNodes(
   });
 }
 
+function defHasGraphPointers(def: WorkflowDefinition): boolean {
+  if (def.entry_step_id) return true;
+  return def.steps.some(
+    (s) =>
+      s.next_id !== undefined ||
+      (s.type === "condition" &&
+        ((s as { on_true_id?: string }).on_true_id !== undefined ||
+          (s as { on_false_id?: string }).on_false_id !== undefined))
+  );
+}
+
 function buildEdges(def: WorkflowDefinition): Edge[] {
   const edges: Edge[] = [];
   const marker: EdgeMarker = {
@@ -90,6 +101,24 @@ function buildEdges(def: WorkflowDefinition): Edge[] {
     width: 18,
     height: 18,
   };
+
+  // Linear fallback: connect step[i] → step[i+1] when no pointers are wired.
+  if (!defHasGraphPointers(def)) {
+    for (let i = 0; i < def.steps.length - 1; i++) {
+      const from = def.steps[i]!;
+      const to = def.steps[i + 1]!;
+      edges.push({
+        id: `${from.id}-seq-${to.id}`,
+        source: from.id,
+        target: to.id,
+        style: { stroke: "rgb(148 163 184)", strokeWidth: 1.5 },
+        markerEnd: marker,
+        type: "smoothstep",
+      });
+    }
+    return edges;
+  }
+
   for (const step of def.steps) {
     if (step.type === "condition") {
       if (step.on_true_id) {

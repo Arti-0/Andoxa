@@ -1,5 +1,10 @@
 import { createApiHandler, Errors, parseBody } from "../../../../lib/api";
 import { NextRequest } from "next/server";
+import {
+  getValidGoogleAccessToken,
+  updateGoogleCalendarEvent,
+} from "@/lib/google/calendar";
+import * as Sentry from "@sentry/nextjs";
 
 type EventUpdateBody = {
   title?: string;
@@ -56,7 +61,36 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
     throw Errors.internal("Failed to update event");
   }
 
-  return data;
+  // Push the change to Google Calendar if this event is mirrored there.
+  // Purely additive: we never block the Andoxa-side success on Google sync.
+  let googleSyncFailed = false;
+  const googleEventId =
+    typeof (data as { google_event_id?: string | null }).google_event_id === "string"
+      ? (data as { google_event_id: string }).google_event_id
+      : null;
+  if (googleEventId && ctx.userId) {
+    try {
+      const token = await getValidGoogleAccessToken(ctx.supabase, ctx.userId);
+      if (token) {
+        await updateGoogleCalendarEvent(token, {
+          eventId: googleEventId,
+          summary: body.title,
+          description: body.description,
+          location: body.location,
+          startIso: body.start_time,
+          endIso: body.end_time,
+        });
+      }
+    } catch (e) {
+      googleSyncFailed = true;
+      Sentry.captureException(e, {
+        tags: { feature: "calendar", action: "google_event_patch" },
+        extra: { eventId: id, googleEventId },
+      });
+    }
+  }
+
+  return { ...data, googleSyncFailed };
 });
 
 /**

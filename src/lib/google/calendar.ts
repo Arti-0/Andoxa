@@ -134,3 +134,66 @@ export async function createGoogleMeetEvent(
 
   return { meetUrl, eventId };
 }
+
+export type UpdateGoogleEventInput = {
+  /** Google Calendar event id (NOT the Andoxa events.id). */
+  eventId: string;
+  summary?: string;
+  description?: string;
+  startIso?: string;
+  endIso?: string;
+  location?: string;
+  /** Replaces the attendee list when provided. */
+  attendeeEmails?: string[];
+};
+
+/**
+ * PATCH a Google Calendar event in the user's primary calendar. Used to
+ * propagate Andoxa-side edits (title/time/attendees) back to Google so the
+ * event doesn't "snap" back on next refresh of the calendar grid. Idempotent
+ * and safe to call repeatedly.
+ *
+ * The caller is responsible for passing only the fields it wants to update —
+ * undefined keys are stripped before being sent to Google so they don't
+ * overwrite existing values with empty strings.
+ */
+export async function updateGoogleCalendarEvent(
+  accessToken: string,
+  input: UpdateGoogleEventInput
+): Promise<void> {
+  const body: Record<string, unknown> = {};
+  if (input.summary !== undefined) body.summary = input.summary;
+  if (input.description !== undefined) body.description = input.description;
+  if (input.location !== undefined) body.location = input.location;
+  if (input.startIso !== undefined) body.start = { dateTime: input.startIso };
+  if (input.endIso !== undefined) body.end = { dateTime: input.endIso };
+  if (input.attendeeEmails !== undefined) {
+    body.attendees = input.attendeeEmails
+      .filter((e) => e && e.includes("@"))
+      .map((email) => ({ email }));
+  }
+
+  if (Object.keys(body).length === 0) return;
+
+  const url = new URL(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(input.eventId)}`
+  );
+
+  const res = await fetch(url.toString(), {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const err =
+      typeof json.error === "object" && json.error !== null
+        ? JSON.stringify((json.error as { message?: string }).message ?? json.error)
+        : JSON.stringify(json);
+    throw new Error(`Google Calendar API error (PATCH): ${err}`);
+  }
+}

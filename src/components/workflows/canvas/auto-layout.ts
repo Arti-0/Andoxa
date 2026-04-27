@@ -48,6 +48,16 @@ export function autoLayoutWorkflow(
 
   if (!entry) return out;
 
+  // Linear case: no graph pointers anywhere → just stack steps vertically.
+  if (!hasGraphPointers(def)) {
+    let y = 0;
+    for (const s of def.steps) {
+      if (!out[s.id]) out[s.id] = { x: 0, y };
+      y += VERTICAL_GAP;
+    }
+    return out;
+  }
+
   const visited = new Set<string>();
 
   function place(id: string, x: number, y: number) {

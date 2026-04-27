@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -61,11 +61,11 @@ import { WorkflowListIcon } from "./workflow-list-icon";
 import { WorkflowStepWaitModal } from "./workflow-step-wait-modal";
 import { WorkflowStepMessageModal } from "./workflow-step-message-modal";
 import { WorkflowListEnrollModal } from "./workflow-list-enroll-modal";
-import {
-  WorkflowParcoursEditTimeline,
-  WorkflowParcoursReadOnlyTimeline,
-} from "./workflow-parcours-timeline";
+import { WorkflowCanvas } from "./canvas/workflow-canvas";
 import { useLinkedInAccount } from "@/hooks/use-linkedin-account";
+import { CanvasSkeleton } from "@/components/skeletons/page-skeleton";
+import type { WorkflowCanvasPositions } from "@/lib/workflows";
+import { Trash2 } from "lucide-react";
 
 type WorkflowStatsPayload = {
   runs_total: number;
@@ -152,6 +152,8 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
 
   const [editWaitIndex, setEditWaitIndex] = useState<number | null>(null);
   const [editMsgIndex, setEditMsgIndex] = useState<number | null>(null);
+  const [canvasPositions, setCanvasPositions] = useState<WorkflowCanvasPositions>({});
+  const canvasCommitTimer = useRef<number | null>(null);
   const { data: linkedInAccount } = useLinkedInAccount();
   const linkedinIsPremium = linkedInAccount?.linkedin_is_premium ?? false;
 
@@ -263,6 +265,8 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
       );
       const def = w.draft_definition as { schemaVersion?: number; steps?: WorkflowStep[] };
       setSteps(Array.isArray(def?.steps) ? def.steps : []);
+      const ui = parseWorkflowUi(w.metadata);
+      setCanvasPositions(ui.canvas ?? {});
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Chargement impossible");
       setWorkflow(null);
@@ -406,6 +410,50 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
     );
   };
 
+  // Canvas → click step opens its config modal (wait or message).
+  const openStepFromCanvas = useCallback(
+    (stepId: string) => {
+      const idx = steps.findIndex((s) => s.id === stepId);
+      if (idx < 0) return;
+      const s = steps[idx];
+      if (!s) return;
+      if (s.type === "condition") return; // no config modal for condition (v1)
+      if (s.type === "wait") setEditWaitIndex(idx);
+      else setEditMsgIndex(idx);
+    },
+    [steps]
+  );
+
+  // Persist canvas node positions in workflow metadata. Debounced upstream by the canvas itself.
+  const commitCanvasPositions = useCallback(
+    (positions: WorkflowCanvasPositions) => {
+      // Optimistically update local state so the canvas doesn't snap back.
+      setCanvasPositions(positions);
+      if (canvasCommitTimer.current) {
+        window.clearTimeout(canvasCommitTimer.current);
+      }
+      canvasCommitTimer.current = window.setTimeout(async () => {
+        try {
+          await fetch(`/api/workflows/${workflowId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ ui: { canvas: positions } }),
+          });
+        } catch {
+          // Position persistence is non-critical; silently swallow.
+        }
+      }, 400);
+    },
+    [workflowId]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (canvasCommitTimer.current) window.clearTimeout(canvasCommitTimer.current);
+    };
+  }, []);
+
   const openRunSheet = async (runId: string) => {
     setSheetRunId(runId);
     setSheetLoading(true);
@@ -461,8 +509,12 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
 
   if (loading) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="p-6 space-y-6">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-md bg-muted animate-pulse" />
+          <div className="h-7 w-56 rounded-md bg-muted animate-pulse" />
+        </div>
+        <CanvasSkeleton />
       </div>
     );
   }
@@ -616,7 +668,25 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
               </CardHeader>
               <CardContent className="space-y-6">
                 {!editMode ? (
-                  <WorkflowParcoursReadOnlyTimeline steps={stepsForView} entryStepId={entryStepIdForView} />
+                  stepsForView.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground">
+                      Aucune étape dans ce parcours.
+                    </p>
+                  ) : (
+                    <div className="h-[560px] rounded-xl border bg-muted/20">
+                      <WorkflowCanvas
+                        readOnly
+                        definition={{
+                          schemaVersion: 1,
+                          steps: stepsForView,
+                          entry_step_id: entryStepIdForView,
+                        }}
+                        positions={canvasPositions}
+                        onSelectStep={openStepFromCanvas}
+                        className="h-full w-full"
+                      />
+                    </div>
+                  )
                 ) : (
                   <>
                     <div className="space-y-2">
@@ -711,17 +781,49 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
                           </motion.div>
                         </AnimatePresence>
                       ) : (
-                        <WorkflowParcoursEditTimeline
-                          steps={steps}
-                          onReorder={setSteps}
-                          onEditStep={(index) => {
-                            const s = steps[index];
-                            if (!s) return;
-                            if (s.type === "wait") setEditWaitIndex(index);
-                            else setEditMsgIndex(index);
-                          }}
-                          onRemoveStep={removeStep}
-                        />
+                        <div className="space-y-2">
+                          <div className="h-[560px] rounded-xl border bg-muted/20">
+                            <WorkflowCanvas
+                              definition={{ schemaVersion: 1, steps }}
+                              positions={canvasPositions}
+                              onPositionsChange={commitCanvasPositions}
+                              onSelectStep={openStepFromCanvas}
+                              className="h-full w-full"
+                            />
+                          </div>
+                          <details className="rounded-md border bg-background/40 px-3 py-2 text-xs text-muted-foreground">
+                            <summary className="cursor-pointer select-none font-medium">
+                              Liste des étapes ({steps.length})
+                            </summary>
+                            <ul className="mt-2 space-y-1">
+                              {steps.map((s, i) => (
+                                <li
+                                  key={s.id}
+                                  className="flex items-center justify-between gap-2 rounded border bg-card px-2 py-1"
+                                >
+                                  <span className="truncate">
+                                    <span className="tabular-nums text-muted-foreground">
+                                      {i + 1}.
+                                    </span>{" "}
+                                    <span className="text-foreground">
+                                      {getStepLabel(s.type).label}
+                                    </span>
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-7 w-7 text-destructive"
+                                    onClick={() => removeStep(i)}
+                                    aria-label="Supprimer l'étape"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        </div>
                       )}
                     </div>
                     <div className="flex flex-wrap gap-2 border-t pt-4">

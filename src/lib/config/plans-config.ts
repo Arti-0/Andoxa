@@ -97,12 +97,13 @@ const CORE_APP_ROUTES: string[] = [
   "/calendar",
   "/calendar-2",
   "/settings",
+  "/whatsapp",
   "/design-1",
   "/design-2",
   "/design-3",
 ];
 
-const PRO_PLUS_EXTRA = ["/messagerie", "/whatsapp"];
+const PRO_PLUS_EXTRA = ["/messagerie"];
 
 export const PLAN_ROUTES: Record<PlanId, string[]> = {
   trial: [...CORE_APP_ROUTES],
