@@ -49,6 +49,7 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { href: "/crm", label: "CRM", icon: Users },
   { href: "/campaigns", label: "Campagnes & Appels", icon: Megaphone },
   { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
+  { href: "/whatsapp2", label: "WhatsApp v2", icon: MessageCircle },
   { href: "/messagerie", label: "Messagerie", icon: MessageSquare },
   { href: "/calendar", label: "Calendrier", icon: Calendar },
 ];

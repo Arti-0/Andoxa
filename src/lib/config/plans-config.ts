@@ -98,6 +98,7 @@ const CORE_APP_ROUTES: string[] = [
   "/calendar-2",
   "/settings",
   "/whatsapp",
+  "/whatsapp2",
   "/design-1",
   "/design-2",
   "/design-3",
