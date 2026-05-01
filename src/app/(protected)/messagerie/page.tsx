@@ -1,95 +1,192 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
-import { Suspense, useState, useEffect } from "react";
-import { MessagingInbox } from "@/components/linkedin/messaging-inbox";
-import { MessageTemplatesPanel } from "@/components/messagerie/message-templates-panel";
-import { ConnectionGate } from "@/components/unipile/connection-gate";
-import { useMessagingRealtime } from "@/hooks/use-messaging-realtime";
-import { Filter, Loader2 } from "lucide-react";
+import "./styles.css";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { FileText } from "lucide-react";
+import { ConvList } from "./conv-list";
+import { Thread } from "./thread";
+import { Cockpit } from "./cockpit";
+import {
+  useConversations,
+  useThread,
+  useMarkChatSeen,
+} from "./queries";
+import type { ThreadEntry } from "./data";
 
-function tabClass(active: boolean) {
-  return `rounded-md px-3 py-1.5 text-sm font-medium transition-colors border ${
-    active
-      ? "bg-primary/10 text-primary border-primary/20"
-      : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"
-  }`;
-}
-
-function MessagerieContent() {
-  const searchParams = useSearchParams();
-  const focusChatId = searchParams?.get("chat") ?? null;
-  const { markAllSeen } = useMessagingRealtime();
-
-  const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [hideHorsCrm, setHideHorsCrm] = useState(true);
-
-  useEffect(() => {
-    void markAllSeen();
-  }, [markAllSeen]);
-
-  useEffect(() => {
-    if (searchParams?.get("view") === "templates") {
-      setTemplatesOpen(true);
-    }
-  }, [searchParams]);
-
+function ThreadSkeleton() {
   return (
-    <div className="flex h-full flex-col gap-4 p-6 lg:p-8">
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/20 p-1">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => {
-              setHideHorsCrm((v) => !v);
-              if (templatesOpen) setTemplatesOpen(false);
-            }}
-            className={`${tabClass(!hideHorsCrm && !templatesOpen)} flex items-center gap-1.5`}
-            title={hideHorsCrm ? "Afficher les contacts hors CRM" : "Masquer les contacts hors CRM"}
-          >
-            <Filter className="h-3.5 w-3.5" />
-            <span>Hors CRM</span>
-            {!hideHorsCrm && (
-              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-            )}
-          </button>
-        </div>
-        <button
-          type="button"
-          onClick={() => setTemplatesOpen((v) => !v)}
-          className={tabClass(templatesOpen)}
-        >
-          Templates
-        </button>
-      </div>
-
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card shadow-xs">
-        {/* Keep both panels mounted — only toggle visibility to avoid re-fetch on tab switch */}
-        <div className={templatesOpen ? "hidden" : "contents"}>
-          <MessagingInbox focusChatId={focusChatId} hideHorsCrm={hideHorsCrm} />
-        </div>
-        <div className={templatesOpen ? "contents" : "hidden"}>
-          <MessageTemplatesPanel embedded templateChannelFilter="all" />
-        </div>
-      </div>
+    <div
+      style={{
+        flex: 1,
+        background: "#FCFCFD",
+        borderRight: "1px solid var(--m2-slate-200)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <span style={{ fontSize: 13, color: "var(--m2-slate-400)" }}>
+        Chargement…
+      </span>
     </div>
   );
 }
 
-export default function MessageriePage() {
+function CockpitSkeleton() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex flex-col gap-6 p-6 lg:p-8">
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        </div>
-      }
-    >
-      <ConnectionGate acceptEitherLinkedInOrWhatsApp pageName="Messagerie">
-        <MessagerieContent />
-      </ConnectionGate>
-    </Suspense>
+    <aside
+      style={{
+        width: 300,
+        minWidth: 260,
+        background: "white",
+        borderLeft: "1px solid var(--m2-slate-200)",
+      }}
+    />
+  );
+}
+
+// Persist the last opened chat ID across page loads so useThread starts
+// fetching in parallel with the conversations list on the next visit.
+function readLastChatId(): string | null {
+  try {
+    return typeof window !== "undefined"
+      ? localStorage.getItem("m2_lastChatId")
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function readArchivedIds(): Set<string> {
+  try {
+    if (typeof window === "undefined") return new Set();
+    return new Set(JSON.parse(localStorage.getItem("m2_archived") ?? "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+export default function Messagerie2Page() {
+  // Initialise from localStorage so useThread fires immediately on mount,
+  // before the conversations list resolves (~4-7s).
+  const [activeId, setActiveId] = useState<string | null>(readLastChatId);
+  const [archivedIds, setArchivedIds] = useState<Set<string>>(readArchivedIds);
+  const [filter, setFilter] = useState<"all" | "unread" | "relance" | "rdv">(
+    "all",
+  );
+  const [channel, setChannel] = useState<"all" | "li" | "wa">("all");
+
+  const { data: conversations } = useConversations();
+  const markSeen = useMarkChatSeen();
+
+  // Visible list — exclude archived conversations.
+  const visibleConvs = (conversations ?? []).filter(
+    (c) => !archivedIds.has(c.id),
+  );
+
+  // Effective chat: use persisted/active ID if present; otherwise first
+  // visible conversation once the list loads.
+  const effectiveId =
+    activeId ??
+    (visibleConvs.length > 0 ? visibleConvs[0].id : null);
+
+  // Start loading the thread immediately with the last-known chat ID.
+  const { data: thread } = useThread(effectiveId);
+
+  const conv =
+    visibleConvs.find((c) => c.id === effectiveId) ?? visibleConvs[0] ?? null;
+
+  // When the active conversation changes, mark it as seen.
+  useEffect(() => {
+    if (effectiveId) {
+      markSeen.mutate(effectiveId);
+    }
+    // markSeen.mutate is stable; effectiveId is the real dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveId]);
+
+  const handleSelect = (id: string) => {
+    setActiveId(id);
+    try {
+      localStorage.setItem("m2_lastChatId", id);
+    } catch {
+      // storage might be disabled
+    }
+  };
+
+  const handleArchive = (chatId: string) => {
+    setArchivedIds((prev) => {
+      const next = new Set(prev);
+      next.add(chatId);
+      try {
+        localStorage.setItem("m2_archived", JSON.stringify([...next]));
+      } catch {}
+      return next;
+    });
+    // If we just archived the active conversation, move to the next one.
+    if (chatId === effectiveId) {
+      const next = visibleConvs.find((c) => c.id !== chatId);
+      if (next) handleSelect(next.id);
+      else setActiveId(null);
+    }
+  };
+
+  return (
+    <div className="m2-root flex h-full min-w-[1180px] flex-col">
+      {/* Page-scoped action bar */}
+      <div
+        style={{
+          height: 48,
+          borderBottom: "1px solid var(--m2-slate-200)",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "0 22px",
+          background: "white",
+          flexShrink: 0,
+        }}
+      >
+        <Link
+          href="/messagerie/templates"
+          className="m2-btn"
+          style={{ padding: "6px 11px", textDecoration: "none" }}
+        >
+          <FileText size={14} />
+          Templates
+        </Link>
+      </div>
+
+      {/* 3-column workspace — always rendered so the layout is stable on load. */}
+      <div className="flex min-h-0 flex-1">
+        {/* ConvList renders immediately — empty list while conversations load. */}
+        <ConvList
+          conversations={visibleConvs}
+          activeId={effectiveId ?? ""}
+          onSelect={handleSelect}
+          filter={filter}
+          setFilter={setFilter}
+          channel={channel}
+          setChannel={setChannel}
+        />
+
+        {/* Thread + Cockpit need a resolved conv object. */}
+        {conv ? (
+          <>
+            <Thread
+              conv={conv}
+              thread={(thread ?? []) as ThreadEntry[]}
+              onArchive={handleArchive}
+            />
+            <Cockpit conv={conv} />
+          </>
+        ) : (
+          <>
+            <ThreadSkeleton />
+            <CockpitSkeleton />
+          </>
+        )}
+      </div>
+    </div>
   );
 }

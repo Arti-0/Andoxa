@@ -10,9 +10,11 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 
 export function PlanRouteGuard({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
-  const { workspace, isInitialized } = useWorkspace();
+  const { workspace, isInitialized, isLoading } = useWorkspace();
 
-  if (!isInitialized) {
+  // Only show cold-start fallback. Once we have any workspace data, render
+  // children even during background refetches — gate decisions stay valid.
+  if (!isInitialized && isLoading && !workspace) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
         <LoadingSpinner text="Chargement..." />

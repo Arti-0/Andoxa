@@ -22,7 +22,7 @@ function hasGraphPointers(def: WorkflowDefinition): boolean {
   if (def.entry_step_id) return true;
   return def.steps.some(
     (s) =>
-      s.next_id !== undefined ||
+      ("next_id" in s && s.next_id !== undefined) ||
       (s.type === "condition" &&
         ((s as { on_true_id?: string }).on_true_id !== undefined ||
           (s as { on_false_id?: string }).on_false_id !== undefined))
@@ -82,11 +82,11 @@ export function autoLayoutWorkflow(
         place(falseId, x, childY);
       }
       // The "after-condition" merge step (if any) goes below both branches
-      if (step.next_id) {
+      if ("next_id" in step && step.next_id) {
         place(step.next_id, x, y + VERTICAL_GAP * 3);
       }
     } else {
-      if (step.next_id) {
+      if ("next_id" in step && step.next_id) {
         place(step.next_id, x, y + VERTICAL_GAP);
       }
     }

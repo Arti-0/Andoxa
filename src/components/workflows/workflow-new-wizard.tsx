@@ -125,7 +125,7 @@ export function WorkflowNewPageClient() {
       }
       const id = json.data.id as string;
       toast.success("Parcours enregistré");
-      router.push(`/whatsapp/${id}`);
+      router.push(`/workflows/${id}`);
     } catch (e) {
       toastFromApiError(e, "Enregistrement impossible");
     } finally {
@@ -140,7 +140,7 @@ export function WorkflowNewPageClient() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <Button variant="ghost" size="icon" asChild className="shrink-0">
-              <Link href="/whatsapp" aria-label="Retour">
+              <Link href="/workflows" aria-label="Retour">
                 <ArrowLeft className="h-4 w-4" />
               </Link>
             </Button>

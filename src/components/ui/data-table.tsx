@@ -49,6 +49,11 @@ export interface DataTableLayoutProps<TData> {
   disabledRowClick?: (row: Row<TData>) => boolean;
   /** "design2" applies rounded-xl border bg-card shadow-xs, thead bg-muted/40, row hover/selected styles */
   variant?: "default" | "design2";
+  /**
+   * When true the component stretches to fill its flex parent instead of sizing
+   * to content. The parent must be a flex column with min-h-0.
+   */
+  fillHeight?: boolean;
 }
 
 const DEFAULT_ESTIMATE_SIZE = 68;
@@ -71,6 +76,7 @@ function DataTableComponent<TData>(
     onRowClick,
     disabledRowClick,
     variant = "default",
+    fillHeight = false,
   }: DataTableLayoutProps<TData>,
   ref: ForwardedRef<HTMLDivElement>
 ) {
@@ -195,21 +201,26 @@ function DataTableComponent<TData>(
     return (
       <div
         ref={ref}
-        className={cn("flex w-full min-w-0 max-w-full flex-col gap-4", className)}
+        className={cn(
+          "flex w-full min-w-0 max-w-full flex-col gap-4",
+          fillHeight && "flex-1 min-h-0",
+          className
+        )}
       >
         {toolbar}
 
         <div
           className={cn(
             "relative min-w-0 overflow-clip",
-            isDesign2 ? "rounded-xl border bg-card shadow-xs" : "rounded-md border"
+            isDesign2 ? "rounded-xl border bg-card shadow-xs" : "rounded-md border",
+            fillHeight && "flex flex-col flex-1 min-h-0"
           )}
         >
           <div
             ref={scrollRef}
             className={cn(
               "w-full min-w-0 overflow-y-auto overflow-x-auto",
-              maxTableHeightClassName,
+              fillHeight ? "flex-1" : maxTableHeightClassName,
               tableContainerClassName
             )}
           >

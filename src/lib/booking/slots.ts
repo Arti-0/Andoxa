@@ -23,12 +23,23 @@ export interface EventRow {
   end_time: string;
 }
 
+export interface DaySchedule {
+  enabled: boolean;
+  startHour: number;
+  endHour: number;
+}
+
 export interface AvailabilityConfig {
   startHour?: number;
   endHour?: number;
   slotMinutes?: number;
   workingDays?: number[];
   daysAhead?: number;
+  /**
+   * Per-day schedules keyed by JS getDay() (0=Sun..6=Sat).
+   * When present, overrides startHour/endHour/workingDays.
+   */
+  daySchedules?: Record<number, DaySchedule>;
 }
 
 /** Paris offset: UTC+1 winter, UTC+2 summer (approx Mar-Oct) */
@@ -47,17 +58,29 @@ function getParisOffsetHours(date: Date): number {
  */
 export function getDefaultSlotsForDateRange(from: Date, config?: AvailabilityConfig): Slot[] {
   const slotMinutes = config?.slotMinutes ?? DEFAULT_SLOT_MINUTES;
-  const startHour = config?.startHour ?? DEFAULT_START_HOUR;
-  const endHour = config?.endHour ?? DEFAULT_END_HOUR;
+  const fallbackStartHour = config?.startHour ?? DEFAULT_START_HOUR;
+  const fallbackEndHour = config?.endHour ?? DEFAULT_END_HOUR;
   const workingDays = config?.workingDays ?? DEFAULT_WORKING_DAYS;
   const daysAhead = config?.daysAhead ?? DEFAULT_DAYS_AHEAD;
+  const daySchedules = config?.daySchedules;
 
   const slots: Slot[] = [];
 
   for (let d = 0; d < daysAhead; d++) {
     const day = addDays(from, d);
     const dow = day.getUTCDay();
-    if (!workingDays.includes(dow)) continue;
+
+    // Per-day schedule takes precedence; otherwise legacy single-window applies.
+    let startHour = fallbackStartHour;
+    let endHour = fallbackEndHour;
+    if (daySchedules && daySchedules[dow]) {
+      const sched = daySchedules[dow];
+      if (!sched.enabled) continue;
+      startHour = sched.startHour;
+      endHour = sched.endHour;
+    } else if (!workingDays.includes(dow)) {
+      continue;
+    }
 
     const offset = getParisOffsetHours(day);
     const utcStartHour = startHour - offset;

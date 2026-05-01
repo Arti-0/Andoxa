@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { ThemeProvider } from "next-themes";
 import QueryProvider from "@/components/QueryProvider";
+import { WorkspaceProvider } from "@/lib/workspace";
 import { SentryClientInit } from "@/components/SentryClientInit";
 import { Toaster } from "@/components/ui/sonner";
 import "@/app/globals.css";
@@ -41,9 +42,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           disableTransitionOnChange
         >
           <QueryProvider>
-            {children}
-            <Toaster richColors position="bottom-right" />
-            <SentryClientInit />
+            <WorkspaceProvider>
+              {children}
+              <Toaster richColors position="bottom-right" />
+              <SentryClientInit />
+            </WorkspaceProvider>
           </QueryProvider>
         </ThemeProvider>
       </body>

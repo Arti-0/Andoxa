@@ -16,25 +16,13 @@ export async function GET() {
     );
   }
 
-  type ProfileRow = {
-    id: string;
-    email: string | null;
-    full_name: string | null;
-    avatar_url: string | null;
-    linkedin_url: string | null;
-    linkedin_auto_enrich: boolean | null;
-    active_organization_id: string | null;
-    metadata: Record<string, unknown> | null;
-    calendar_preferences: Record<string, unknown> | null;
-  };
-
-  const { data: profile, error: profileErr } = await (supabase
+  const { data: profile, error: profileErr } = await supabase
     .from("profiles")
     .select(
       "id, email, full_name, avatar_url, linkedin_url, linkedin_auto_enrich, active_organization_id, metadata, calendar_preferences"
     )
     .eq("id", user.id)
-    .maybeSingle() as unknown as Promise<{ data: ProfileRow | null; error: unknown }>);
+    .maybeSingle();
 
   const userWithIdentities = { ...user, identities: user.identities ?? [] };
 

@@ -38,7 +38,7 @@ async function getFirstProspect(request: APIRequestContext) {
 
 test.describe('Workflow detail — runs tab', () => {
   test('navigates to a workflow and sees the Exécutions tab', async ({ page }) => {
-    await page.goto('/whatsapp');
+    await page.goto('/workflows');
     await page.waitForLoadState('networkidle');
 
     // Click the first workflow card / row
@@ -59,7 +59,7 @@ test.describe('Workflow detail — runs tab', () => {
     }
 
     await firstWorkflow.click();
-    await page.waitForURL(/\/whatsapp\/.+/, { timeout: 10_000 });
+    await page.waitForURL(/\/workflows\/.+/, { timeout: 10_000 });
 
     // Should see the Exécutions tab (runs)
     await expect(
@@ -74,7 +74,7 @@ test.describe('Workflow detail — runs tab', () => {
       return;
     }
 
-    await page.goto(`/whatsapp/${wf.id}`);
+    await page.goto(`/workflows/${wf.id}`);
     await page.waitForLoadState('networkidle');
 
     const runsTab = page.getByRole('tab', { name: /exécutions|runs/i });

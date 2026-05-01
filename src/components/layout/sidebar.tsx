@@ -14,7 +14,7 @@ import {
   ChevronDown,
   Check,
   Building2,
-  MessageCircle,
+  Workflow,
   Lock,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -48,8 +48,7 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
   { href: "/crm", label: "CRM", icon: Users },
   { href: "/campaigns", label: "Campagnes & Appels", icon: Megaphone },
-  { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
-  { href: "/whatsapp2", label: "WhatsApp v2", icon: MessageCircle },
+  { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/messagerie", label: "Messagerie", icon: MessageSquare },
   { href: "/calendar", label: "Calendrier", icon: Calendar },
 ];
@@ -304,7 +303,7 @@ export function Sidebar() {
                         {showUnipileNavLock &&
                           (item.href === "/messagerie" ||
                             item.href === "/campaigns" ||
-                            item.href === "/whatsapp") && (
+                            item.href === "/workflows") && (
                             <Lock
                               className={cn(
                                 "h-3 w-3 shrink-0",

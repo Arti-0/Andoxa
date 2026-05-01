@@ -1,31 +1,7 @@
 "use client";
 
-import { Suspense } from "react";
-import { useWorkspace } from "../../../lib/workspace";
-import { DashboardGrid } from "../../../components/dashboard/dashboard-grid";
-import { DashboardHeader } from "../../../components/dashboard/dashboard-header";
-import { QuickStats } from "../../../components/dashboard/quick-stats";
-import { RecentActivity } from "../../../components/dashboard/recent-activity";
-import { UsageQuotas } from "../../../components/dashboard/usage-quotas";
+import { Dashboard2Content } from "@/components/dashboard2/dashboard2-content";
 
-export default function DashboardPage() {
-  const { workspace } = useWorkspace();
-
-  return (
-    <div className="flex flex-col gap-8 p-6 lg:p-8">
-      <DashboardHeader workspace={workspace} />
-
-      <QuickStats workspaceId={workspace?.id} />
-
-      <Suspense fallback={null}>
-        <UsageQuotas workspaceId={workspace?.id} />
-      </Suspense>
-
-      <DashboardGrid workspaceId={workspace?.id} />
-
-      <section>
-        <RecentActivity workspaceId={workspace?.id} />
-      </section>
-    </div>
-  );
+export default function Dashboard2Page() {
+  return <Dashboard2Content />;
 }

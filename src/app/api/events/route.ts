@@ -21,7 +21,7 @@ export const GET = createApiHandler(async (req, ctx) => {
 
   let query = ctx.supabase
     .from("events")
-    .select("*", { count: "exact" })
+    .select("*, prospect:prospect_id(id,full_name,company)", { count: "exact" })
     .eq("organization_id", ctx.workspaceId)
     .order("start_time", { ascending: true });
 
@@ -69,6 +69,12 @@ export const POST = createApiHandler(async (req, ctx) => {
     is_all_day?: boolean;
     google_meet?: boolean;
     attendee_emails?: string[];
+    event_type?: string;
+    status?: string;
+    meeting_kind?: string;
+    wa_workflow?: boolean;
+    pipeline_stage?: string;
+    attendee_user_ids?: string[];
   }>(req);
 
   // Validation
@@ -123,8 +129,14 @@ export const POST = createApiHandler(async (req, ctx) => {
       created_by: ctx.userId,
       google_meet_url: meetUrl,
       google_event_id: googleEventId,
+      event_type: body.event_type ?? null,
+      status: body.status ?? "confirmed",
+      meeting_kind: body.meeting_kind ?? "meet",
+      wa_workflow: body.wa_workflow ?? false,
+      pipeline_stage: body.pipeline_stage ?? null,
+      attendee_user_ids: body.attendee_user_ids ?? [],
     })
-    .select()
+    .select("*, prospect:prospect_id(id,full_name,company)")
     .single();
 
   if (error) {

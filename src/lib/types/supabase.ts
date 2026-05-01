@@ -194,6 +194,7 @@ export interface Database {
                     onboarding_step: string | null;
                     linkedin_auto_enrich: boolean;
                     metadata: Json | null;
+                    calendar_preferences: Json;
                     created_at: string | null;
                     updated_at: string | null;
                 };
@@ -211,6 +212,7 @@ export interface Database {
                     onboarding_step?: string | null;
                     linkedin_auto_enrich?: boolean;
                     metadata?: Json | null;
+                    calendar_preferences?: Json;
                     created_at?: string | null;
                     updated_at?: string | null;
                 };
@@ -228,6 +230,7 @@ export interface Database {
                     onboarding_step?: string | null;
                     linkedin_auto_enrich?: boolean;
                     metadata?: Json | null;
+                    calendar_preferences?: Json;
                     created_at?: string | null;
                     updated_at?: string | null;
                 };
@@ -1029,6 +1032,8 @@ export interface Database {
                     id: string;
                     organization_id: string;
                     name: string;
+                    description: string | null;
+                    is_template: boolean;
                     is_active: boolean;
                     created_by: string;
                     draft_definition: Json;
@@ -1041,6 +1046,8 @@ export interface Database {
                     id?: string;
                     organization_id: string;
                     name: string;
+                    description?: string | null;
+                    is_template?: boolean;
                     is_active?: boolean;
                     created_by: string;
                     draft_definition?: Json;
@@ -1051,6 +1058,8 @@ export interface Database {
                 };
                 Update: {
                     name?: string;
+                    description?: string | null;
+                    is_template?: boolean;
                     is_active?: boolean;
                     draft_definition?: Json;
                     published_definition?: Json | null;

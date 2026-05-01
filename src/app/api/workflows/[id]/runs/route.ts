@@ -9,7 +9,15 @@ import {
   parseEnrollmentBddIdsFromContext,
   parseWorkflowDefinition,
 } from "@/lib/workflows";
+import {
+  definitionRequiresLinkedIn,
+  definitionRequiresWhatsApp,
+} from "@/lib/workflows/schema";
 import { getWorkflowPublishedDefinition } from "@/lib/workflows/queries";
+import {
+  getLinkedInAccountIdForUserId,
+  getWhatsAppAccountIdForUserId,
+} from "@/lib/unipile/account";
 
 function getWorkflowIdFromUrl(req: Request): string {
   const segments = new URL(req.url).pathname.split("/").filter(Boolean);
@@ -216,15 +224,62 @@ export const POST = createApiHandler(
       );
     }
 
+    // Pre-flight account checks: hard-block if the workflow needs a channel
+    // account that isn't linked. Avoids creating runs that would just fail at
+    // executor time after 5 retries.
+    const needsWhatsApp = definitionRequiresWhatsApp(definition);
+    const needsLinkedIn = definitionRequiresLinkedIn(definition);
+
+    if (needsWhatsApp) {
+      const accountId = await getWhatsAppAccountIdForUserId(
+        ctx.supabase,
+        ctx.userId!
+      );
+      if (!accountId) {
+        throw Errors.badRequest(
+          "Connectez votre compte WhatsApp depuis les paramètres pour lancer ce parcours."
+        );
+      }
+    }
+    if (needsLinkedIn) {
+      const accountId = await getLinkedInAccountIdForUserId(
+        ctx.supabase,
+        ctx.userId!
+      );
+      if (!accountId) {
+        throw Errors.badRequest(
+          "Connectez votre compte LinkedIn depuis les paramètres pour lancer ce parcours."
+        );
+      }
+    }
+
+    // Pull phone alongside id so we can pre-skip prospects without numbers
+    // when the workflow contains a WhatsApp step.
     const { data: prospects, error: pErr } = await ctx.supabase
       .from("prospects")
-      .select("id")
+      .select("id, phone")
       .eq("organization_id", ctx.workspaceId)
       .in("id", prospectIds);
 
     if (pErr) throw Errors.internal("Erreur vérification prospects");
 
     const validIds = new Set((prospects ?? []).map((p) => p.id));
+    const phoneById = new Map<string, string | null>();
+    for (const p of prospects ?? []) {
+      phoneById.set(p.id, (p.phone as string | null) ?? null);
+    }
+
+    if (needsWhatsApp) {
+      const haveAtLeastOnePhone = Array.from(phoneById.values()).some(
+        (p) => typeof p === "string" && p.trim().length > 0
+      );
+      if (!haveAtLeastOnePhone) {
+        throw Errors.badRequest(
+          "Aucun prospect sélectionné n'a de numéro de téléphone."
+        );
+      }
+    }
+
     const created: string[] = [];
     const skipped: { prospect_id: string; reason: string }[] = [];
 
@@ -232,6 +287,13 @@ export const POST = createApiHandler(
       if (!validIds.has(prospectId)) {
         skipped.push({ prospect_id: prospectId, reason: "not_in_workspace" });
         continue;
+      }
+      if (needsWhatsApp) {
+        const phone = phoneById.get(prospectId);
+        if (!phone || !phone.trim()) {
+          skipped.push({ prospect_id: prospectId, reason: "missing_phone" });
+          continue;
+        }
       }
 
       const runContext: Record<string, unknown> =

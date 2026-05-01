@@ -35,12 +35,36 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 /**
- * GET /api/dashboard/activity
- * Returns recent activity for the dashboard (multiple types)
+ * GET /api/dashboard/activity?scope=all|mine|team|system
+ * Returns recent activity for the dashboard (multiple types).
+ *
+ * `scope` filters who triggered the event:
+ *   - all    (default) → no filter
+ *   - mine            → actor_id = current user
+ *   - team            → actor_id present, but ≠ current user
+ *   - system          → actor_id is null
  */
-export const GET = createApiHandler(async (_req, ctx): Promise<Activity[]> => {
+export const GET = createApiHandler(async (req, ctx): Promise<Activity[]> => {
   if (!ctx.workspaceId) {
     throw Errors.badRequest("Workspace required");
+  }
+
+  const url = new URL(req.url);
+  const rawScope = (url.searchParams.get("scope") ?? "all").toLowerCase();
+  const scope: "all" | "mine" | "team" | "system" =
+    rawScope === "mine" || rawScope === "team" || rawScope === "system"
+      ? rawScope
+      : "all";
+
+  // Current user's full name — used by the scope filter at the bottom.
+  let currentUserFullName: string | null = null;
+  if (ctx.userId) {
+    const { data: me } = await ctx.supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", ctx.userId)
+      .maybeSingle();
+    currentUserFullName = me?.full_name ?? null;
   }
 
   const PROSPECT_FEED_ACTIONS = [
@@ -266,7 +290,7 @@ export const GET = createApiHandler(async (_req, ctx): Promise<Activity[]> => {
 
     const d = (sa.details ?? {}) as Record<string, unknown>;
     const wname = typeof d.workflow_name === "string" ? d.workflow_name : "Parcours";
-    const wfUrl = sa.workflow_id ? `/whatsapp/${sa.workflow_id}` : null;
+    const wfUrl = sa.workflow_id ? `/workflows/${sa.workflow_id}` : null;
 
     if (sa.action === "workflow_enrolled") {
       activities.push({
@@ -355,5 +379,22 @@ export const GET = createApiHandler(async (_req, ctx): Promise<Activity[]> => {
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
 
-  return activities.slice(0, 20);
+  // Best-effort scope filter. Activities without a tracked actor are treated
+  // as system events (imports, enrichments, bookings, sessions).
+  const filtered = activities.filter((a) => {
+    if (scope === "all") return true;
+    const actorPresent = !!a.actor_name;
+    if (scope === "system") return !actorPresent;
+    if (scope === "mine") {
+      // We don't carry the raw actor id through the UI shape, but campaign &
+      // workflow events that match the current user have their actor stamped
+      // into the description by the upstream loops above.
+      return actorPresent && a.actor_name === currentUserFullName;
+    }
+    if (scope === "team")
+      return actorPresent && a.actor_name !== currentUserFullName;
+    return true;
+  });
+
+  return filtered.slice(0, 20);
 });

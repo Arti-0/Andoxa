@@ -7,12 +7,27 @@ import {
   getPaginationRowModel,
   useReactTable,
   type PaginationState,
+  type VisibilityState,
 } from "@tanstack/react-table";
 import { DataTableLayout } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getBddColumns } from "@/components/crm/bdd-columns";
 import type { BddRow, ListesFilterState } from "@/components/crm/crm-table";
+import { useIsMobile } from "@/hooks/use-mobile";
+
+/**
+ * Columns to drop on small viewports so the table stays usable. The picker
+ * keeps select + name + prospect count, which is enough to recognise a list
+ * and decide whether to enrol it.
+ */
+const MOBILE_HIDDEN_COLUMNS: VisibilityState = {
+  source: false,
+  phones_count: false,
+  proprietaire: false,
+  created_at: false,
+};
+const DESKTOP_VISIBLE_COLUMNS: VisibilityState = {};
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -86,6 +101,10 @@ export function WorkflowBddTablePicker({
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const lastIdsRef = useRef("");
+  const isMobile = useIsMobile();
+  const columnVisibility = isMobile
+    ? MOBILE_HIDDEN_COLUMNS
+    : DESKTOP_VISIBLE_COLUMNS;
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedSearch(search), 300);
@@ -150,7 +169,7 @@ export function WorkflowBddTablePicker({
     manualPagination: true,
     pageCount: totalPages,
     enableRowSelection: true,
-    state: { pagination, rowSelection },
+    state: { pagination, rowSelection, columnVisibility },
     onPaginationChange: setPagination,
     onRowSelectionChange: setRowSelection,
   });
@@ -206,7 +225,7 @@ export function WorkflowBddTablePicker({
   );
 
   const toolbar = (
-    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div className="shrink-0 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <Input
         placeholder="Rechercher une liste…"
         value={search}
@@ -218,7 +237,7 @@ export function WorkflowBddTablePicker({
   );
 
   return (
-    <div className="h-full min-h-[280px] overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
       {toolbar}
       <DataTableLayout
         variant="design2"
@@ -226,7 +245,7 @@ export function WorkflowBddTablePicker({
         isLoading={bddLoading}
         emptyMessage="Aucune liste. Importez des prospects depuis l’extension."
         footer={footer}
-        maxTableHeightClassName="max-h-[min(420px,calc(100vh-420px))]"
+        fillHeight
       />
     </div>
   );

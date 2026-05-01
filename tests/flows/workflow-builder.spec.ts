@@ -20,7 +20,7 @@ async function selectOption(
 
 test.describe('Workflow builder', () => {
   test('renders new workflow page', async ({ page }) => {
-    await page.goto('/whatsapp/new');
+    await page.goto('/workflows/new');
 
     await expect(page.getByText('Nouveau parcours')).toBeVisible();
     await expect(page.getByLabel('Nom')).toBeVisible();
@@ -28,7 +28,7 @@ test.describe('Workflow builder', () => {
   });
 
   test('blocks save without a name', async ({ page }) => {
-    await page.goto('/whatsapp/new');
+    await page.goto('/workflows/new');
 
     // Don't fill name, click save
     await page.getByRole('button', { name: 'Sauvegarder' }).click();
@@ -38,7 +38,7 @@ test.describe('Workflow builder', () => {
   });
 
   test('adds a WhatsApp message step and a wait step', async ({ page }) => {
-    await page.goto('/whatsapp/new');
+    await page.goto('/workflows/new');
 
     await page.getByLabel('Nom').fill('Test parcours e2e');
 
@@ -61,7 +61,7 @@ test.describe('Workflow builder', () => {
   });
 
   test('saves workflow and redirects to detail page', async ({ page }) => {
-    await page.goto('/whatsapp/new');
+    await page.goto('/workflows/new');
 
     await page.getByLabel('Nom').fill(`E2E workflow ${Date.now()}`);
 
@@ -72,12 +72,12 @@ test.describe('Workflow builder', () => {
 
     await page.getByRole('button', { name: 'Sauvegarder' }).click();
 
-    // Should redirect to /whatsapp/[id]
-    await expect(page).toHaveURL(/\/whatsapp\/[a-z0-9-]+$/, { timeout: 15_000 });
+    // Should redirect to /workflows/[id]
+    await expect(page).toHaveURL(/\/workflows\/[a-z0-9-]+$/, { timeout: 15_000 });
   });
 
   test('condition step shows OUI/NON branch editor when expanded', async ({ page }) => {
-    await page.goto('/whatsapp/new');
+    await page.goto('/workflows/new');
 
     await page.getByLabel('Nom').fill('Test condition');
 
@@ -99,7 +99,7 @@ test.describe('Workflow builder', () => {
   });
 
   test('can add steps inside OUI branch of a condition', async ({ page }) => {
-    await page.goto('/whatsapp/new');
+    await page.goto('/workflows/new');
     await page.getByLabel('Nom').fill('Test branches');
 
     // Add condition

@@ -14,6 +14,10 @@ const STEP_TYPE_LABELS: Record<WorkflowStepType, string> = {
   linkedin_message: "Message LinkedIn",
   whatsapp_message: "Message WhatsApp",
   condition: "Condition",
+  crm: "CRM",
+  notification: "Notification",
+  task: "Tâche",
+  end: "Fin",
 };
 
 function stepLabelFromDefinition(

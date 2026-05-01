@@ -90,12 +90,19 @@ export const POST = createApiHandler(
 
     const body = await parseBody<{
       name?: string;
+      description?: string | null;
+      is_template?: boolean;
       draft_definition?: unknown;
       pending_enrollment_bdd_ids?: string[];
       ui?: { icon?: string; color?: string; trigger?: string };
     }>(req);
     const name = (body.name ?? "").trim();
     if (!name) throw Errors.validation({ name: "Nom requis" });
+    const description =
+      typeof body.description === "string"
+        ? body.description.trim() || null
+        : null;
+    const isTemplate = Boolean(body.is_template);
 
     let draft: WorkflowDefinition = DEFAULT_DRAFT;
     if (body.draft_definition !== undefined) {
@@ -140,6 +147,8 @@ export const POST = createApiHandler(
       .insert({
         organization_id: ctx.workspaceId,
         name,
+        description,
+        is_template: isTemplate,
         created_by: ctx.userId!,
         is_active: false,
         draft_definition: draft,
@@ -149,7 +158,21 @@ export const POST = createApiHandler(
       .select()
       .single();
 
-    if (error || !row) throw Errors.internal("Création du workflow impossible");
+    if (error || !row) {
+      // Surface the real Postgres error so missing-column / RLS issues are
+      // visible instead of swallowed as a generic 500.
+      console.error("[POST /api/workflows] insert failed", {
+        code: (error as { code?: string } | null)?.code,
+        message: error?.message,
+        details: (error as { details?: string } | null)?.details,
+        hint: (error as { hint?: string } | null)?.hint,
+      });
+      throw Errors.internal(
+        error?.message
+          ? `Création du workflow impossible : ${error.message}`
+          : "Création du workflow impossible"
+      );
+    }
 
     return row;
   },

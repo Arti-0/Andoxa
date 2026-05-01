@@ -94,7 +94,7 @@ function LinkedCrmSidebar({
     workspace?.plan,
     workspace?.subscription_status
   ) as PlanId;
-  const canUseWorkflows = canAccessRoute(routePlan, "/whatsapp");
+  const canUseWorkflows = canAccessRoute(routePlan, "/workflows");
 
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");

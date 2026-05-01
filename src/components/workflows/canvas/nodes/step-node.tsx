@@ -7,6 +7,10 @@ import {
   MessageCircle,
   Linkedin,
   UserPlus,
+  Users,
+  Bell,
+  ClipboardList,
+  Flag,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -58,6 +62,34 @@ const TYPE_STYLES: Record<
     iconBg: "bg-blue-50 dark:bg-blue-950/60",
     iconColor: "text-blue-600 dark:text-blue-400",
   },
+  crm: {
+    icon: Users,
+    chip: "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-950/40 dark:text-slate-300 dark:border-slate-900",
+    ring: "ring-slate-200/60 dark:ring-slate-900/40",
+    iconBg: "bg-slate-50 dark:bg-slate-950/60",
+    iconColor: "text-slate-600 dark:text-slate-400",
+  },
+  notification: {
+    icon: Bell,
+    chip: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-900",
+    ring: "ring-sky-200/60 dark:ring-sky-900/40",
+    iconBg: "bg-sky-50 dark:bg-sky-950/60",
+    iconColor: "text-sky-600 dark:text-sky-400",
+  },
+  task: {
+    icon: ClipboardList,
+    chip: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-900",
+    ring: "ring-orange-200/60 dark:ring-orange-900/40",
+    iconBg: "bg-orange-50 dark:bg-orange-950/60",
+    iconColor: "text-orange-600 dark:text-orange-400",
+  },
+  end: {
+    icon: Flag,
+    chip: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900",
+    ring: "ring-rose-200/60 dark:ring-rose-900/40",
+    iconBg: "bg-rose-50 dark:bg-rose-950/60",
+    iconColor: "text-rose-600 dark:text-rose-400",
+  },
 };
 
 const TYPE_LABEL: Record<WorkflowStepType, string> = {
@@ -66,6 +98,10 @@ const TYPE_LABEL: Record<WorkflowStepType, string> = {
   condition: "Condition",
   linkedin_invite: "LinkedIn",
   linkedin_message: "LinkedIn",
+  crm: "CRM",
+  notification: "Notification",
+  task: "Tâche",
+  end: "Fin",
 };
 
 export function StepNode({ data, selected }: NodeProps) {

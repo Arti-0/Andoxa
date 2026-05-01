@@ -383,7 +383,7 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
       return;
     }
     toast.success("Parcours supprimé");
-    router.push("/whatsapp");
+    router.push("/workflows");
   };
 
   const addStep = (type: WorkflowStepType) => {
@@ -524,7 +524,7 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
       <div className="p-6">
         <p className="text-muted-foreground">Parcours introuvable.</p>
         <Button asChild variant="outline" className="mt-4">
-          <Link href="/whatsapp">Retour</Link>
+          <Link href="/workflows">Retour</Link>
         </Button>
       </div>
     );
@@ -536,7 +536,7 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-3">
             <Button variant="ghost" size="icon" asChild className="shrink-0">
-              <Link href="/whatsapp" aria-label="Retour">
+              <Link href="/workflows" aria-label="Retour">
                 <ArrowLeft className="h-4 w-4" />
               </Link>
             </Button>

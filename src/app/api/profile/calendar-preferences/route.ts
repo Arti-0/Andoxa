@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
+import type { Json } from "@/lib/types/supabase";
 
 type CalendarPreferences = {
   hidden_calendar_ids?: string[];
@@ -34,7 +35,7 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
   const { data, error } = await ctx.supabase
     .from("profiles")
     .update({
-      calendar_preferences: next as unknown as never,
+      calendar_preferences: next as unknown as Json,
       updated_at: new Date().toISOString(),
     })
     .eq("id", ctx.userId)
@@ -45,6 +46,9 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
     throw Errors.internal("Préférences de calendrier non enregistrées");
   }
 
-  const row = data as unknown as { calendar_preferences?: CalendarPreferences } | null;
-  return { calendar_preferences: row?.calendar_preferences ?? next };
+  const stored = data?.calendar_preferences as
+    | CalendarPreferences
+    | null
+    | undefined;
+  return { calendar_preferences: stored ?? next };
 });

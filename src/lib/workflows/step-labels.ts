@@ -1,10 +1,15 @@
 import {
+  Bell,
+  CheckCircle2,
   Clock,
   CornerDownLeft,
+  Database,
   GitBranch,
   MessageCircle,
   MessageSquare,
   Smartphone,
+  Sparkles,
+  Square,
   UserPlus,
   Zap,
   type LucideIcon,
@@ -12,12 +17,17 @@ import {
 
 /** Lucide icon name for serialization / mapping */
 export type StepLabelIconName =
+  | "Bell"
+  | "CheckCircle2"
   | "Clock"
   | "CornerDownLeft"
+  | "Database"
   | "GitBranch"
   | "MessageCircle"
   | "MessageSquare"
   | "Smartphone"
+  | "Sparkles"
+  | "Square"
   | "UserPlus"
   | "Zap";
 
@@ -28,12 +38,17 @@ export type StepTypeDisplay = {
 };
 
 const ICON_BY_NAME: Record<StepLabelIconName, LucideIcon> = {
+  Bell,
+  CheckCircle2,
   Clock,
   CornerDownLeft,
+  Database,
   GitBranch,
   MessageCircle,
   MessageSquare,
   Smartphone,
+  Sparkles,
+  Square,
   UserPlus,
   Zap,
 };
@@ -64,6 +79,26 @@ export const STEP_TYPE_LABELS: Record<string, StepTypeDisplay> = {
     label: "Délai d'attente",
     description: "Attendre avant l'étape suivante",
     icon: "Clock",
+  },
+  crm: {
+    label: "Mise à jour CRM",
+    description: "Modifier le statut ou la priorité du prospect",
+    icon: "Database",
+  },
+  notification: {
+    label: "Notification interne",
+    description: "Envoyer une notification à l'équipe",
+    icon: "Bell",
+  },
+  task: {
+    label: "Créer une tâche",
+    description: "Créer un rappel pour un membre de l'équipe",
+    icon: "CheckCircle2",
+  },
+  end: {
+    label: "Fin",
+    description: "Terminer le parcours pour ce prospect",
+    icon: "Square",
   },
   /** Alias / future — kept for API strings or older data */
   send_invite: {

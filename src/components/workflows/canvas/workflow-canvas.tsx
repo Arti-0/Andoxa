@@ -87,7 +87,7 @@ function defHasGraphPointers(def: WorkflowDefinition): boolean {
   if (def.entry_step_id) return true;
   return def.steps.some(
     (s) =>
-      s.next_id !== undefined ||
+      ("next_id" in s && s.next_id !== undefined) ||
       (s.type === "condition" &&
         ((s as { on_true_id?: string }).on_true_id !== undefined ||
           (s as { on_false_id?: string }).on_false_id !== undefined))
@@ -153,7 +153,7 @@ function buildEdges(def: WorkflowDefinition): Edge[] {
           type: "smoothstep",
         });
       }
-    } else if (step.next_id) {
+    } else if ("next_id" in step && step.next_id) {
       edges.push({
         id: `${step.id}-next`,
         source: step.id,

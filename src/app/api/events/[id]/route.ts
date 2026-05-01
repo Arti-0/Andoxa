@@ -13,6 +13,12 @@ type EventUpdateBody = {
   end_time?: string;
   location?: string;
   prospect_id?: string;
+  status?: string;
+  event_type?: string | null;
+  meeting_kind?: string;
+  wa_workflow?: boolean;
+  pipeline_stage?: string | null;
+  attendee_user_ids?: string[];
 };
 
 function getIdFromRequest(req: NextRequest): string | null {
@@ -43,6 +49,12 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
   if (body.end_time !== undefined) updates.end_time = body.end_time;
   if (body.location !== undefined) updates.location = body.location;
   if (body.prospect_id !== undefined) updates.prospect_id = body.prospect_id;
+  if (body.status !== undefined) updates.status = body.status;
+  if (body.event_type !== undefined) updates.event_type = body.event_type;
+  if (body.meeting_kind !== undefined) updates.meeting_kind = body.meeting_kind;
+  if (body.wa_workflow !== undefined) updates.wa_workflow = body.wa_workflow;
+  if (body.pipeline_stage !== undefined) updates.pipeline_stage = body.pipeline_stage;
+  if (body.attendee_user_ids !== undefined) updates.attendee_user_ids = body.attendee_user_ids;
 
   if (Object.keys(updates).length === 0) {
     throw Errors.validation({ _: "Aucune modification fournie" });
@@ -53,7 +65,7 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq("id", id)
     .eq("organization_id", ctx.workspaceId)
-    .select()
+    .select("*, prospect:prospect_id(id,full_name,company)")
     .single();
 
   if (error) {

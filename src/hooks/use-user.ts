@@ -73,7 +73,7 @@ export function useUser() {
             logger.error("Error getting profile", profileError);
           }
 
-          setProfile(profileData || null);
+          setProfile((profileData as unknown as UserProfile) || null);
         } else {
           setUser(null);
           setProfile(null);
@@ -111,7 +111,7 @@ export function useUser() {
             );
           }
 
-          setProfile(profileData || null);
+          setProfile((profileData as unknown as UserProfile) || null);
         }, 300);
       } else if (event === "SIGNED_OUT" || !session) {
         setUser(null);

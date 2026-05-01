@@ -71,7 +71,7 @@ export const GET = createApiHandler(async (req, ctx) => {
       workflow_name: r.workflow_id ? workflowMap.get(r.workflow_id) ?? null : null,
       title: activityTitle(r.action, d),
       description: activityDescription(r.action, d),
-      target_url: r.workflow_id ? `/whatsapp/${r.workflow_id}` : undefined,
+      target_url: r.workflow_id ? `/workflows/${r.workflow_id}` : undefined,
     };
   });
 

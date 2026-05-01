@@ -68,6 +68,8 @@ export const PATCH = createApiHandler(async (req, ctx) => {
 
   const body = await parseBody<{
     name?: string;
+    description?: string | null;
+    is_template?: boolean;
     is_active?: boolean;
     draft_definition?: unknown;
     pending_enrollment_bdd_ids?: string[];
@@ -98,6 +100,19 @@ export const PATCH = createApiHandler(async (req, ctx) => {
     updates.name = name;
   }
 
+  if (body.description !== undefined) {
+    if (body.description === null) {
+      updates.description = null;
+    } else {
+      const trimmed = String(body.description).trim();
+      updates.description = trimmed.length ? trimmed : null;
+    }
+  }
+
+  if (body.is_template !== undefined) {
+    updates.is_template = Boolean(body.is_template);
+  }
+
   if (body.is_active !== undefined) {
     const on = Boolean(body.is_active);
     if (on) {
@@ -110,6 +125,12 @@ export const PATCH = createApiHandler(async (req, ctx) => {
     }
     updates.is_active = on;
   }
+
+  // When a draft was sent but `tryBuildPublishedDefinition` rejects it
+  // (validation issue or missing channel account), we keep the save successful
+  // but surface the reason so the client can warn the user the workflow can
+  // neither be activated nor launched until they fix it.
+  let publishWarning: { reason: string; message: string } | null = null;
 
   if (body.draft_definition !== undefined) {
     if (existing.is_active) {
@@ -126,6 +147,11 @@ export const PATCH = createApiHandler(async (req, ctx) => {
     const built = await tryBuildPublishedDefinition(ctx.supabase, ctx.userId, parsed.data);
     if (built.ok) {
       updates.published_definition = built.definition as Json;
+    } else {
+      // Wipe any stale published_definition so the canvas/list correctly
+      // reflect that the workflow can't be launched.
+      updates.published_definition = null;
+      publishWarning = { reason: built.reason, message: built.message };
     }
   }
 
@@ -184,7 +210,7 @@ export const PATCH = createApiHandler(async (req, ctx) => {
 
   if (error || !wf) throw Errors.internal("Mise à jour impossible");
 
-  return { workflow: wf };
+  return { workflow: wf, publish_warning: publishWarning };
 });
 
 /**

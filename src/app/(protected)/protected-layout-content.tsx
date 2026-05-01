@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { WorkspaceProvider } from "../../lib/workspace";
 import { Sidebar } from "../../components/layout/sidebar";
 import { Header } from "../../components/layout/header";
 import { useWorkspace } from "../../lib/workspace";
@@ -46,12 +45,19 @@ function BillingExpiredGate({ children }: { children: ReactNode }) {
 }
 
 /**
- * ProtectedLayoutContent — workspace context + app chrome. Entitlement redirects are in src/proxy.ts.
+ * ProtectedLayoutContent — app chrome. WorkspaceProvider lives at the root so it
+ * survives every navigation; this component only renders the spinner on a true
+ * cold start (no cached data AND no ongoing fetch result yet). Subsequent
+ * background refetches keep the chrome visible — no flash.
  */
 function ProtectedLayoutContentInner({ children }: { children: ReactNode }) {
-  const { isInitialized, isSyncing } = useWorkspace();
+  const { isInitialized, isLoading, workspace, isSyncing } = useWorkspace();
 
-  if (!isInitialized) {
+  // Block only when we have no data AND we're loading for the first time.
+  // After first success, isInitialized stays true even during background refetches.
+  const showColdStartSpinner = !isInitialized && isLoading && !workspace;
+
+  if (showColdStartSpinner) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <LoadingSpinner text="Initialisation..." />
@@ -89,9 +95,5 @@ function ProtectedLayoutContentInner({ children }: { children: ReactNode }) {
 }
 
 export function ProtectedLayoutContent({ children }: { children: ReactNode }) {
-  return (
-    <WorkspaceProvider>
-      <ProtectedLayoutContentInner>{children}</ProtectedLayoutContentInner>
-    </WorkspaceProvider>
-  );
+  return <ProtectedLayoutContentInner>{children}</ProtectedLayoutContentInner>;
 }

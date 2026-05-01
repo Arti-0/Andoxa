@@ -345,6 +345,115 @@ async function handleCondition(ctx: HandlerContext): Promise<StepHandlerResult> 
   return { awaitingConnection: false, conditionResult: replied };
 }
 
+async function handleCrmUpdate(ctx: HandlerContext): Promise<void> {
+  const field =
+    typeof ctx.config.field === "string" ? ctx.config.field : "status";
+  const value = typeof ctx.config.value === "string" ? ctx.config.value : "";
+  if (!value.trim()) {
+    throw new Error("Valeur CRM manquante");
+  }
+  const allowed = new Set(["status", "priority"]);
+  if (!allowed.has(field)) {
+    throw new Error(`Champ CRM non supporté: ${field}`);
+  }
+  const update: Record<string, unknown> = {};
+  update[field] = value;
+  const { error } = await ctx.supabase
+    .from("prospects")
+    .update(update as never)
+    .eq("id", ctx.prospect.id);
+  if (error) {
+    throw new Error(`Mise à jour CRM impossible: ${error.message}`);
+  }
+
+  if (ctx.config.notifyOwner === true && ctx.run.organization_id) {
+    await ctx.supabase
+      .from("notifications")
+      .insert({
+        title: "Mise à jour CRM",
+        message: `Le prospect ${ctx.prospect.full_name ?? ctx.prospect.id.slice(0, 8)} : ${field} → ${value}`,
+        type: "internal",
+        category: "prospect",
+        actor_id: ctx.startedByUserId,
+        organization_id: ctx.run.organization_id,
+        metadata: {
+          prospect_id: ctx.prospect.id,
+          workflow_id: ctx.run.workflow_id,
+        },
+      } as never);
+  }
+}
+
+async function handleNotificationStep(ctx: HandlerContext): Promise<void> {
+  if (!ctx.run.organization_id) {
+    throw new Error("Organisation manquante pour la notification");
+  }
+  const message =
+    typeof ctx.config.message === "string" ? ctx.config.message.trim() : "";
+  if (!message) {
+    throw new Error("Message de notification vide");
+  }
+  const priority =
+    typeof ctx.config.priority === "string" ? ctx.config.priority : "normal";
+  const resolved = applyMessageVariables(message, ctx.prospect, {});
+  const { error } = await ctx.supabase.from("notifications").insert({
+    title: "Notification de workflow",
+    message: resolved,
+    type: "internal",
+    category: "prospect",
+    actor_id: ctx.startedByUserId,
+    organization_id: ctx.run.organization_id,
+    metadata: {
+      prospect_id: ctx.prospect.id,
+      workflow_id: ctx.run.workflow_id,
+      priority,
+    },
+  } as never);
+  if (error) {
+    throw new Error(`Notification non envoyée: ${error.message}`);
+  }
+}
+
+async function handleTaskStep(ctx: HandlerContext): Promise<void> {
+  // Tasks are surfaced via the existing notifications system with action_type='task'
+  // until a dedicated tasks table lands.
+  if (!ctx.run.organization_id) {
+    throw new Error("Organisation manquante pour la tâche");
+  }
+  const title =
+    typeof ctx.config.title === "string" ? ctx.config.title.trim() : "";
+  if (!title) {
+    throw new Error("Titre de tâche manquant");
+  }
+  const dueInHours = Number(ctx.config.dueInHours ?? 48);
+  const dueAt = new Date(
+    Date.now() + Math.max(0, dueInHours) * 60 * 60 * 1000
+  ).toISOString();
+  const resolved = applyMessageVariables(title, ctx.prospect, {});
+  const { error } = await ctx.supabase.from("notifications").insert({
+    title: "Nouvelle tâche",
+    message: resolved,
+    type: "internal",
+    category: "prospect",
+    action_type: "task",
+    actor_id: ctx.startedByUserId,
+    organization_id: ctx.run.organization_id,
+    target_url: `/prospect/${ctx.prospect.id}`,
+    metadata: {
+      prospect_id: ctx.prospect.id,
+      workflow_id: ctx.run.workflow_id,
+      due_at: dueAt,
+    },
+  } as never);
+  if (error) {
+    throw new Error(`Tâche non créée: ${error.message}`);
+  }
+}
+
+async function handleEndStep(): Promise<void> {
+  // No-op — terminal step. The graph traversal sees no next_id and completes the run.
+}
+
 const HANDLERS: Record<
   WorkflowStepType,
   (ctx: HandlerContext) => Promise<StepHandlerResult>
@@ -360,6 +469,22 @@ const HANDLERS: Record<
     return { awaitingConnection: false };
   },
   condition: handleCondition,
+  crm: async (ctx) => {
+    await handleCrmUpdate(ctx);
+    return { awaitingConnection: false };
+  },
+  notification: async (ctx) => {
+    await handleNotificationStep(ctx);
+    return { awaitingConnection: false };
+  },
+  task: async (ctx) => {
+    await handleTaskStep(ctx);
+    return { awaitingConnection: false };
+  },
+  end: async () => {
+    await handleEndStep();
+    return { awaitingConnection: false };
+  },
 };
 
 export type ProcessExecutionResult =

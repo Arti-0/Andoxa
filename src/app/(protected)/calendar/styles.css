@@ -1,0 +1,74 @@
+/* Andoxa Calendrier — scoped styles (.cal2-*) */
+
+@keyframes cal2-slide-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes cal2-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.cal2-panel-slide-in {
+  animation: cal2-slide-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.cal2-fade-in {
+  animation: cal2-fade-in 180ms ease both;
+}
+
+/* Burger button — only visible on mobile */
+.cal2-burger-btn { display: none; }
+.cal2-sidebar-overlay { display: none; }
+
+/* ─── Mobile ─── */
+
+@media (max-width: 768px) {
+  /* Sidebar becomes a slide-in drawer */
+  .cal2-sidebar {
+    position: fixed !important;
+    top: 0; left: 0; bottom: 0;
+    width: 260px !important;
+    z-index: 150;
+    background: #FAFBFC;
+    transform: translateX(-100%);
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    box-shadow: 0 0 0 transparent;
+  }
+  .cal2-sidebar.open {
+    transform: translateX(0);
+    box-shadow: 6px 0 24px rgba(15, 23, 42, 0.12);
+  }
+  .cal2-sidebar-overlay.open {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.4);
+    z-index: 140;
+    animation: cal2-fade-in 180ms ease both;
+  }
+
+  .cal2-burger-btn   { display: flex !important; }
+  .cal2-hdr-pills    { display: none !important; }
+  .cal2-hdr-search   { display: none !important; }
+  .cal2-booking      { display: none !important; }
+  .cal2-kpi          { grid-template-columns: 1fr !important; }
+
+  /* Event panel slides up from bottom on mobile */
+  .cal2-panel-slide-in {
+    animation: cal2-panel-up 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .cal2-panel {
+    width: 100% !important;
+    top: 12% !important;
+    border-radius: 20px 20px 0 0 !important;
+    bottom: 0 !important;
+    height: auto !important;
+  }
+}
+
+@keyframes cal2-panel-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}

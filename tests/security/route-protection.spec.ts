@@ -11,7 +11,7 @@ const PROTECTED_ROUTES = [
   '/crm',
   '/campaigns',
   '/calendar',
-  '/whatsapp',
+  '/workflows',
   '/settings',
   '/messagerie',
   '/prospect',

@@ -6,14 +6,14 @@ export const WORKFLOW_STEP_TYPES = [
   "linkedin_message",
   "whatsapp_message",
   "condition",
+  "crm",
+  "notification",
+  "task",
+  "end",
 ] as const;
 
-// TODO: LinkedIn steps hidden — repositioning to WhatsApp-only workflows
-// Re-enable when LinkedIn outreach is reintroduced as a separate feature
-/** Types shown in the builder "Ajouter une étape" selector (published runs may still contain LinkedIn steps). */
-export const WORKFLOW_STEP_TYPES_BUILDER_UI = WORKFLOW_STEP_TYPES.filter(
-  (t) => t !== "linkedin_invite" && t !== "linkedin_message"
-);
+/** Types shown in the builder "Ajouter une étape" selector. */
+export const WORKFLOW_STEP_TYPES_BUILDER_UI = WORKFLOW_STEP_TYPES;
 
 export type WorkflowStepType = (typeof WORKFLOW_STEP_TYPES)[number];
 
@@ -38,6 +38,24 @@ const whatsappMessageConfigSchema = z.object({
 const conditionConfigSchema = z.object({
   conditionType: z.literal("prospect_replied"),
 });
+
+const crmConfigSchema = z.object({
+  field: z.enum(["status", "priority"]).default("status"),
+  value: z.string().min(1, "Valeur requise"),
+  notifyOwner: z.boolean().optional().default(false),
+});
+
+const notificationConfigSchema = z.object({
+  message: z.string().min(1, "Message requis"),
+  priority: z.enum(["normal", "high", "urgent"]).optional().default("normal"),
+});
+
+const taskConfigSchema = z.object({
+  title: z.string().min(1, "Titre requis"),
+  dueInHours: z.number().nonnegative().optional().default(48),
+});
+
+const endConfigSchema = z.object({}).strict();
 
 export const workflowStepSchema = z.discriminatedUnion("type", [
   z.object({
@@ -71,6 +89,29 @@ export const workflowStepSchema = z.discriminatedUnion("type", [
     on_true_id: z.string().optional(),
     on_false_id: z.string().optional(),
     next_id: z.string().optional(),
+  }),
+  z.object({
+    id: z.string().min(1),
+    type: z.literal("crm"),
+    config: crmConfigSchema,
+    next_id: z.string().optional(),
+  }),
+  z.object({
+    id: z.string().min(1),
+    type: z.literal("notification"),
+    config: notificationConfigSchema,
+    next_id: z.string().optional(),
+  }),
+  z.object({
+    id: z.string().min(1),
+    type: z.literal("task"),
+    config: taskConfigSchema,
+    next_id: z.string().optional(),
+  }),
+  z.object({
+    id: z.string().min(1),
+    type: z.literal("end"),
+    config: endConfigSchema,
   }),
 ]);
 

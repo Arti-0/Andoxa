@@ -137,7 +137,7 @@ export function getWorkflowListColumns(
               </Button>
             ) : (
               <Button type="button" variant="secondary" size="sm" className="h-8" asChild>
-                <Link href={`/whatsapp/${row.original.id}`} title="Finaliser le parcours sur la fiche">
+                <Link href={`/workflows/${row.original.id}`} title="Finaliser le parcours sur la fiche">
                   Configurer
                 </Link>
               </Button>

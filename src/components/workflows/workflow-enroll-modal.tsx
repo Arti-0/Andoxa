@@ -161,7 +161,7 @@ export function WorkflowEnrollModal({
             ) : list.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Aucun parcours prêt à lancer.{" "}
-                <Link href="/whatsapp" className="text-primary underline">
+                <Link href="/workflows" className="text-primary underline">
                   Créer ou finaliser un parcours
                 </Link>
               </p>

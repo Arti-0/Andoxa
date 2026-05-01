@@ -47,15 +47,16 @@ export async function sendLinkedInInviteForProspect(
     bookingLink = `${appUrl}/booking/${profile.booking_slug}`;
   }
 
-  const template =
-    (messageTemplate ?? "").trim() ||
-    "Bonjour, j'aimerais vous ajouter à mon réseau.";
+  // No silent default — when the caller passes nothing, send the invite
+  // without any note. Callers that want a default (campaigns) set it
+  // themselves before invoking this helper.
+  const template = (messageTemplate ?? "").trim();
   const personalizedMessage =
     messageOverride != null && String(messageOverride).trim() !== ""
       ? String(messageOverride).trim()
-      : applyMessageVariables(template, prospect, {
-          bookingLink,
-        });
+      : template
+        ? applyMessageVariables(template, prospect, { bookingLink })
+        : "";
 
   const { providerId, isFirstDegree } = await ensureLinkedInRelationFromUnipileProfile(
     ctx.supabase,

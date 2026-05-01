@@ -97,7 +97,7 @@ export function ProspectProfileContent({
     workspace?.plan,
     workspace?.subscription_status
   ) as PlanId;
-  const canUseWorkflows = canAccessRoute(routePlan, "/whatsapp");
+  const canUseWorkflows = canAccessRoute(routePlan, "/workflows");
 
   const queryClient = useQueryClient();
   const activityRef = useRef<HTMLDivElement>(null);
@@ -318,7 +318,7 @@ export function ProspectProfileContent({
         </Button>
         {canUseWorkflows && (
           <Button variant="outline" size="sm" asChild>
-            <Link href="/whatsapp" className="inline-flex items-center">
+            <Link href="/workflows" className="inline-flex items-center">
               <Workflow className="h-4 w-4" />
               <span className="ml-2">Parcours WhatsApp</span>
             </Link>
