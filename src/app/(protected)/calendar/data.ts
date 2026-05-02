@@ -63,6 +63,7 @@ export type GcalAttendee = {
   email: string | null;
   name: string | null;
   responseStatus: string | null;
+  self?: boolean;
 };
 
 // ─── Calendar color map ───────────────────────────────────────────────────────

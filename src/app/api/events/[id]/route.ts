@@ -102,7 +102,7 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
     }
   }
 
-  return { ...data, googleSyncFailed };
+  return { ...(data as Record<string, unknown>), googleSyncFailed };
 });
 
 /**

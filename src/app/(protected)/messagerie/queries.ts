@@ -115,33 +115,31 @@ function mergeConversations(
   chatToProspect: Record<string, string>,
   prospects: Map<string, Prospect>,
 ): Conversation[] {
-  return chats
-    .map((c) => {
-      const prospectId = chatToProspect[c.id] ?? null;
-      const p = prospectId ? (prospects.get(prospectId) ?? null) : null;
-      // Hide conversations that have no linked prospect (hors CRM)
-      if (!prospectId) return null;
-      const name = p?.full_name?.trim() || c.name?.trim() || "Inconnu";
-      const enrichedPicture =
-        (p?.enrichment_metadata as { profile_picture_url?: string | null } | undefined)
-          ?.profile_picture_url ?? null;
-      return {
-        id: c.id,
-        prospectId,
-        name,
-        role: p?.job_title ?? null,
-        company: p?.company ?? null,
-        linkedinUrl: p?.linkedin ?? null,
-        channel: accountTypeToChannel(c.account_type),
-        stage: statusToStage(p?.status),
-        lastTime: formatChatTimestamp(c.timestamp),
-        unread: c.unread_count ?? 0,
-        silentDays: silentDaysFrom(c.timestamp),
-        // Prefer enriched profile picture; fall back to Unipile attendee picture.
-        pictureUrl: enrichedPicture ?? c.picture_url ?? null,
-      };
-    })
-    .filter((c): c is Conversation => c !== null);
+  return chats.flatMap<Conversation>((c) => {
+    const prospectId = chatToProspect[c.id] ?? null;
+    // Hide conversations that have no linked prospect (hors CRM)
+    if (!prospectId) return [];
+    const p = prospects.get(prospectId) ?? null;
+    const name = p?.full_name?.trim() || c.name?.trim() || "Inconnu";
+    const enrichedPicture =
+      (p?.enrichment_metadata as { profile_picture_url?: string | null } | undefined)
+        ?.profile_picture_url ?? null;
+    return [{
+      id: c.id,
+      prospectId,
+      name,
+      role: p?.job_title ?? null,
+      company: p?.company ?? null,
+      linkedinUrl: p?.linkedin ?? null,
+      channel: accountTypeToChannel(c.account_type),
+      stage: statusToStage(p?.status),
+      lastTime: formatChatTimestamp(c.timestamp),
+      unread: c.unread_count ?? 0,
+      silentDays: silentDaysFrom(c.timestamp),
+      // Prefer enriched profile picture; fall back to Unipile attendee picture.
+      pictureUrl: enrichedPicture ?? c.picture_url ?? null,
+    }];
+  });
 }
 
 export function useConversations(): UseQueryResult<Conversation[]> {

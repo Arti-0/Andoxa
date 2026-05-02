@@ -1,4 +1,5 @@
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
+import type { Json } from "@/lib/types/supabase";
 
 /**
  * GET /api/booking/settings
@@ -93,7 +94,7 @@ export const PATCH = createApiHandler(
 
     const { error: updateError } = await ctx.supabase
       .from("profiles")
-      .update({ metadata: nextMeta, updated_at: new Date().toISOString() })
+      .update({ metadata: nextMeta as Json, updated_at: new Date().toISOString() })
       .eq("id", ctx.userId);
 
     if (updateError) throw Errors.internal("Échec de la mise à jour");

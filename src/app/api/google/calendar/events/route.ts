@@ -99,6 +99,7 @@ export const GET = createApiHandler(async (req, ctx) => {
           email: a.email ?? null,
           name: a.displayName ?? null,
           responseStatus: a.responseStatus ?? null,
+          self: a.self ?? false,
         }));
         return {
           id: `google_${e.id ?? Math.random()}`,

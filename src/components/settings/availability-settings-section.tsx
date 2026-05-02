@@ -10,7 +10,13 @@ import type { AvailabilityConfig } from "@/lib/booking/slots";
 import { useWorkspace } from "@/lib/workspace";
 
 const DAY_LABELS = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
-const DEFAULT_CONFIG: Required<AvailabilityConfig> = {
+
+// Legacy single-window config used by this section. The newer per-day
+// scheduling (daySchedules) is configured elsewhere; this section keeps
+// the simple workingDays + start/end hour model.
+type LegacyAvailabilityConfig = Required<Omit<AvailabilityConfig, "daySchedules">>;
+
+const DEFAULT_CONFIG: LegacyAvailabilityConfig = {
   startHour: 9,
   endHour: 18,
   slotMinutes: 30,
@@ -22,7 +28,7 @@ export function AvailabilitySettingsSection() {
   const { profile } = useWorkspace();
   const initialConfig = (profile?.metadata as Record<string, unknown> | null)?.availability as AvailabilityConfig | undefined;
 
-  const [config, setConfig] = useState<Required<AvailabilityConfig>>({
+  const [config, setConfig] = useState<LegacyAvailabilityConfig>({
     ...DEFAULT_CONFIG,
     ...(initialConfig ?? {}),
   });

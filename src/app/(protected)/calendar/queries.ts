@@ -359,8 +359,10 @@ async function fetchKpi(): Promise<KpiData> {
       .lt("start_time", thirtyAgo.toISOString()),
   ]);
 
-  const todayEvents = (todayRes.data ?? []) as { status: string }[];
-  const weekEvents = (weekRes.data ?? []) as { status: string }[];
+  // Generated supabase types are stale (status column was added in migration 021).
+  // Cast through `unknown` until types are regenerated.
+  const todayEvents = (todayRes.data ?? []) as unknown as { status: string }[];
+  const weekEvents = (weekRes.data ?? []) as unknown as { status: string }[];
 
   return {
     todayTotal: todayEvents.length,

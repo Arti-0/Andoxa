@@ -659,7 +659,7 @@ export default function TemplatesPage() {
                 </div>
                 <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "grid", gridTemplateColumns: view === "compact" ? "repeat(auto-fill, minmax(280px, 1fr))" : "1fr", gap: 14, alignContent: "flex-start" }}>
                   {filtered.map((t) => (
-                    <TemplateCard key={t.id} tpl={t} categories={categories} onEdit={() => setEditing(t)} onDuplicate={() => dup(t)} onDelete={() => del(t.id)} />
+                    <TemplateCard key={t.id} tpl={t} categories={categories} onEdit={() => setEditing({ ...t, tags: t.tags ?? [] })} onDuplicate={() => dup(t)} onDelete={() => del(t.id)} />
                   ))}
                   {filtered.length === 0 && (
                     <div style={{ padding: 40, textAlign: "center", color: "var(--m2-slate-500)", fontSize: 13 }}>Aucun template ne correspond à votre recherche.</div>
