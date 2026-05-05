@@ -60,7 +60,7 @@ export function ConvList({
         borderRight: "1px solid var(--m2-slate-200)",
         display: "flex",
         flexDirection: "column",
-        background: "#FCFCFD",
+        background: "var(--m2-surface-muted)",
         flexShrink: 0,
       }}
     >
