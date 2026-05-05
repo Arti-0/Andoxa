@@ -102,7 +102,14 @@ export async function unipileFetch<T>(
 ): Promise<T> {
   const baseUrl = getV1BaseUrl();
   const url = path.startsWith("http") ? path : `${baseUrl}${path}`;
-  const headers = getUnipileHeaders();
+  const baseHeaders = getUnipileHeaders();
+  // Si le body est un FormData, on laisse fetch poser lui-même le Content-Type
+  // (avec la bonne boundary multipart). Forcer application/json casse l'upload.
+  const isFormData =
+    typeof FormData !== "undefined" && options?.body instanceof FormData;
+  const headers: Record<string, string> = isFormData
+    ? { "X-API-KEY": baseHeaders["X-API-KEY"] }
+    : baseHeaders;
 
   const res = await fetch(url, {
     ...options,

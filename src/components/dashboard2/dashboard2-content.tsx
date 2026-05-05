@@ -460,19 +460,27 @@ function PageHeader({
   firstName,
   period,
   setPeriod,
+  onExport,
+  exporting,
 }: {
   firstName: string;
   period: Period;
   setPeriod: (p: Period) => void;
+  onExport: (p: Period) => void;
+  exporting: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
+  const exportRef = useRef<HTMLDivElement | null>(null);
   const today = useMemo(() => new Date(), []);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node))
         setOpen(false);
+      if (exportRef.current && !exportRef.current.contains(e.target as Node))
+        setExportOpen(false);
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -532,15 +540,41 @@ function PageHeader({
           )}
         </div>
 
-        <button
-          type="button"
-          className="h-9 px-3 sm:px-3.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-800 rounded-md bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
-          title="Bientôt — export du tableau de bord"
-          disabled
-        >
-          <Download size={14} />
-          <span className="hidden sm:inline">Exporter</span>
-        </button>
+        <div className="relative" ref={exportRef}>
+          <button
+            type="button"
+            onClick={() => !exporting && setExportOpen((o) => !o)}
+            disabled={exporting}
+            className="h-9 px-3 sm:px-3.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-800 rounded-md bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            title="Exporter le tableau de bord en PDF"
+          >
+            <Download size={14} />
+            <span className="hidden sm:inline">{exporting ? "Génération…" : "Exporter"}</span>
+            <ChevronDown
+              size={13}
+              className={`text-slate-400 dark:text-zinc-500 transition-transform ${exportOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+          {exportOpen && !exporting && (
+            <div className="absolute right-0 mt-1.5 w-52 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-md shadow-lg p-1 z-30">
+              <div className="px-2.5 py-1.5 text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500 dark:text-zinc-400">
+                Choisir la période
+              </div>
+              {PERIODS.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => {
+                    setExportOpen(false);
+                    onExport(p);
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 text-[12.5px] rounded transition-colors flex items-center justify-between text-slate-700 hover:bg-slate-50 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <Link
           href="/campaigns"
@@ -1726,6 +1760,7 @@ function RecentActivityCard({
 export function Dashboard2Content() {
   const { workspace, user, profile } = useWorkspace();
   const [period, setPeriod] = useState<Period>("Ce mois");
+  const [exporting, setExporting] = useState(false);
   const apiPeriod = PERIOD_TO_API[period];
 
   const { data: stats, isLoading: statsLoading } = useQuery({
@@ -1748,6 +1783,33 @@ export function Dashboard2Content() {
     return "";
   }, [profile?.full_name, user?.email]);
 
+  const handleExport = async (chosenPeriod: Period) => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const { exportDashboardPDF } = await import("./dashboard-pdf");
+      const apiP = PERIOD_TO_API[chosenPeriod];
+      const [exportStats, exportFunnel, exportTopDeals] = await Promise.all([
+        fetchStatsV2(apiP),
+        fetchFunnel(apiP),
+        fetchTopDeals(),
+      ]);
+      await exportDashboardPDF({
+        periodLabel: chosenPeriod,
+        exportedAt: new Date(),
+        firstName,
+        stats: exportStats,
+        funnel: exportFunnel,
+        topDeals: exportTopDeals,
+      });
+    } catch (e) {
+      console.error("Dashboard PDF export failed", e);
+      alert("L'export a échoué. Réessaie dans un instant.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="min-h-full bg-[#FAFAFA] dark:bg-zinc-950">
       <style>{`
@@ -1761,6 +1823,8 @@ export function Dashboard2Content() {
           firstName={firstName || "Bonjour"}
           period={period}
           setPeriod={setPeriod}
+          onExport={handleExport}
+          exporting={exporting}
         />
         <PrioritiesBand workspaceId={workspace?.id} />
         <KpiGrid stats={stats} isLoading={statsLoading} />

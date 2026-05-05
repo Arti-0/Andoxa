@@ -65,9 +65,18 @@ export const GET = createApiHandler(async (req: NextRequest, ctx) => {
   }
 });
 
+// Limite de taille côté serveur (10 MB), miroir de la validation côté client.
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
 /**
  * POST /api/unipile/chats/[id]/messages
- * Send a message in a chat – proxy to Unipile API
+ * Send a message in a chat – proxy to Unipile API.
+ *
+ * Two payload shapes supported:
+ *  - JSON `{ text }` for a plain text message
+ *  - multipart/form-data with fields `text` (optional) and `attachments` (file)
+ *    when the user wants to send an attachment.
+ *
  * Requires user to have a connected Unipile account.
  */
 export const POST = createApiHandler(async (req: NextRequest, ctx) => {
@@ -84,9 +93,34 @@ export const POST = createApiHandler(async (req: NextRequest, ctx) => {
     throw Errors.badRequest("Chat ID required");
   }
 
-  const body = await parseBody<{ text: string }>(req);
-  if (!body?.text || typeof body.text !== "string") {
-    throw Errors.validation({ text: "Le texte du message est requis" });
+  const contentType = req.headers.get("content-type") ?? "";
+  const isMultipart = contentType.includes("multipart/form-data");
+
+  let upstreamBody: BodyInit;
+  if (isMultipart) {
+    const incoming = await req.formData();
+    const text = (incoming.get("text") ?? "").toString().trim();
+    const file = incoming.get("attachments");
+
+    if (!(file instanceof File) || file.size === 0) {
+      throw Errors.validation({ attachments: "Fichier manquant ou vide" });
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      throw Errors.validation({
+        attachments: "Le fichier dépasse la taille maximale autorisée (10 Mo).",
+      });
+    }
+
+    const outgoing = new FormData();
+    if (text) outgoing.append("text", text);
+    outgoing.append("attachments", file, file.name);
+    upstreamBody = outgoing;
+  } else {
+    const body = await parseBody<{ text: string }>(req);
+    if (!body?.text || typeof body.text !== "string") {
+      throw Errors.validation({ text: "Le texte du message est requis" });
+    }
+    upstreamBody = JSON.stringify({ text: body.text.trim() });
   }
 
   try {
@@ -94,7 +128,7 @@ export const POST = createApiHandler(async (req: NextRequest, ctx) => {
       `/chats/${chatId}/messages`,
       {
         method: "POST",
-        body: JSON.stringify({ text: body.text.trim() }),
+        body: upstreamBody,
       }
     );
     return data;

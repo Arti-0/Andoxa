@@ -24,6 +24,12 @@ import { resolveVars } from "./data";
 import { useSendMessage, useTemplates, useMarkChatUnread } from "./queries";
 import { Avatar, StagePill } from "./components";
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
 function DateSep({ label }: { label: string }) {
   return (
     <div
@@ -678,6 +684,8 @@ export function Thread({
     url: string;
     open: () => void;
   } | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const sendMutation = useSendMessage();
   const markUnread = useMarkChatUnread();
 
@@ -686,13 +694,39 @@ export function Thread({
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [conv.id, thread.length]);
 
+  // Reset la pièce jointe en attente quand on change de conversation,
+  // pour éviter qu'un fichier soit envoyé au mauvais prospect.
+  useEffect(() => {
+    setPendingFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [conv.id]);
+
+  const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10 Mo
+
+  const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      toast.error("Fichier trop volumineux (10 Mo max).");
+      e.target.value = "";
+      return;
+    }
+    setPendingFile(file);
+    e.target.value = ""; // permet de re-sélectionner le même fichier après suppression
+  };
+
   const handleSend = () => {
     const text = draft.trim();
-    if (!text || sendMutation.isPending) return;
+    if (sendMutation.isPending) return;
+    // L'envoi est autorisé si on a au moins du texte OU un fichier.
+    if (!text && !pendingFile) return;
     sendMutation.mutate(
-      { chatId: conv.id, text },
+      { chatId: conv.id, text, file: pendingFile },
       {
-        onSuccess: () => setDraft(""),
+        onSuccess: () => {
+          setDraft("");
+          setPendingFile(null);
+        },
         onError: (err) => {
           toast.error(err instanceof Error ? err.message : "Erreur d'envoi");
         },
@@ -832,6 +866,12 @@ export function Thread({
           background: "var(--m2-surface-elevated)",
         }}
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          style={{ display: "none" }}
+          onChange={handleFilePick}
+        />
         <div
           style={{
             border: "1px solid var(--m2-slate-200)",
@@ -839,6 +879,62 @@ export function Thread({
             background: "var(--m2-surface-elevated)",
           }}
         >
+          {pendingFile && (
+            <div
+              style={{
+                margin: "10px 12px 0",
+                padding: "8px 10px",
+                borderRadius: 8,
+                background: "var(--m2-slate-50)",
+                border: "1px solid var(--m2-slate-200)",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              <span
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 6,
+                  background: "var(--m2-blue-50)",
+                  color: "var(--m2-blue)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <Paperclip size={14} />
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 12.5,
+                    fontWeight: 500,
+                    color: "var(--m2-slate-900)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {pendingFile.name}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--m2-slate-500)" }}>
+                  {formatFileSize(pendingFile.size)}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="m2-icon-btn"
+                onClick={() => setPendingFile(null)}
+                title="Retirer la pièce jointe"
+                disabled={sendMutation.isPending}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -886,7 +982,9 @@ export function Thread({
             <button
               className="m2-btn m2-btn-ghost"
               style={{ padding: "5px 8px" }}
-              title="Pièce jointe"
+              title="Pièce jointe (10 Mo max)"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={sendMutation.isPending}
             >
               <Paperclip size={14} />
             </button>
@@ -896,7 +994,7 @@ export function Thread({
                 style={{ padding: "7px 14px" }}
                 title="Envoyer (⏎)"
                 onClick={handleSend}
-                disabled={!draft.trim() || sendMutation.isPending}
+                disabled={(!draft.trim() && !pendingFile) || sendMutation.isPending}
               >
                 {sendMutation.isPending ? (
                   <Loader2 size={13} className="animate-spin" />
