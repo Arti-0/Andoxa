@@ -806,7 +806,7 @@ export function Thread({
                   width: 22,
                   height: 22,
                   borderRadius: 5,
-                  background: "#EEF4FE",
+                  background: "color-mix(in srgb, #0A66C2 16%, var(--m2-surface-elevated))",
                   color: "#0A66C2",
                   textDecoration: "none",
                   transition: "background 120ms",
