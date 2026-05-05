@@ -6,6 +6,7 @@ import { Bell, CheckCheck } from "lucide-react";
 import { useWorkspace } from "../../lib/workspace";
 import { useNotifications } from "../../hooks/use-notifications";
 import { HeaderProspectSearch } from "./header-prospect-search";
+import { ThemeSwitcher } from "../theme-switcher";
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Tableau de bord",
@@ -61,6 +62,10 @@ export function Header() {
 
       <div className="ml-auto flex min-w-0 items-center justify-end gap-2 sm:gap-3">
         <HeaderProspectSearch />
+
+        <div className="shrink-0">
+          <ThemeSwitcher />
+        </div>
 
         <div className="relative shrink-0" ref={dropdownRef}>
           <button
