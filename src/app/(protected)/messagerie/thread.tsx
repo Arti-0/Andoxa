@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  CheckCheck,
+  Check,
   Zap,
   MoreHorizontal,
   Mail,
@@ -312,7 +312,7 @@ function Bubble({
           }}
         >
           <span>{m.time}</span>
-          {out && <CheckCheck size={12} style={{ color: "var(--m2-blue)" }} />}
+          {out && <Check size={12} style={{ color: "var(--m2-slate-400)" }} />}
         </div>
       </div>
     </div>
