@@ -77,7 +77,7 @@ export default function Calendar2Page() {
   };
 
   return (
-    <div style={{ height: "100%", display: "flex", overflow: "hidden", background: "#F5F7FA", position: "relative" }}>
+    <div className="cal2-root" style={{ height: "100%", display: "flex", overflow: "hidden", background: "var(--cal2-canvas)", position: "relative" }}>
 
       {/* Mobile overlay (only visible when drawer is open) */}
       <div
@@ -99,14 +99,14 @@ export default function Calendar2Page() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
 
         {/* Calendar header */}
-        <header style={{ padding: "14px 20px", background: "#fff", borderBottom: "1px solid #EDF1F5", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexShrink: 0, flexWrap: "wrap" }}>
+        <header style={{ padding: "14px 20px", background: "var(--cal2-surface)", borderBottom: "1px solid var(--cal2-border-faint)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexShrink: 0, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {/* Burger button — mobile only */}
             <button
               className="cal2-burger-btn"
               onClick={() => setSidebarOpen(true)}
               aria-label="Ouvrir le panneau des agendas"
-              style={{ width: 36, height: 36, border: "1px solid #E2E8F0", background: "#fff", borderRadius: 8, color: "#475569", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
+              style={{ width: 36, height: 36, border: "1px solid var(--cal2-border-soft)", background: "var(--cal2-surface)", borderRadius: 8, color: "var(--cal2-text-soft)", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <line x1="3" y1="6" x2="21" y2="6" />
@@ -115,16 +115,16 @@ export default function Calendar2Page() {
               </svg>
             </button>
             <div>
-              <h1 style={{ fontSize: 18, fontWeight: 600, color: "#0F172A", letterSpacing: "-0.01em", lineHeight: 1.2 }}>Calendrier</h1>
+              <h1 style={{ fontSize: 18, fontWeight: 600, color: "var(--cal2-text)", letterSpacing: "-0.01em", lineHeight: 1.2 }}>Calendrier</h1>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div className="cal2-hdr-pills" style={{ display: "flex", alignItems: "center", gap: 6 }}>
               {[
-                { value: kpi ? String(kpi.weekTotal) : "—", label: "cette semaine", vc: "#0F172A" },
+                { value: kpi ? String(kpi.weekTotal) : "—", label: "cette semaine", vc: "var(--cal2-text)" },
                 { value: kpi ? String(kpi.todayTotal) : "—", label: "aujourd'hui",   vc: "#0052D9" },
               ].map((f, i) => (
-                <button key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 11px", background: "#F5F7FA", border: "1px solid transparent", borderRadius: 999, fontSize: 12, color: "#64748B", cursor: "pointer", fontFamily: "inherit" }}>
+                <button key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 11px", background: "var(--cal2-canvas)", border: "1px solid transparent", borderRadius: 999, fontSize: 12, color: "var(--cal2-text-muted)", cursor: "pointer", fontFamily: "inherit" }}>
                   <span style={{ fontWeight: 600, color: f.vc, fontVariantNumeric: "tabular-nums" }}>{f.value}</span>
                   <span>{f.label}</span>
                 </button>
@@ -133,7 +133,7 @@ export default function Calendar2Page() {
 
             <button
               onClick={() => setCreating({})}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 13px", background: "#0052D9", color: "#fff", border: "none", borderRadius: 8, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 1px 2px rgba(0,82,217,0.28)", whiteSpace: "nowrap" }}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 13px", background: "#0052D9", color: "var(--cal2-surface)", border: "none", borderRadius: 8, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 1px 2px rgba(0,82,217,0.28)", whiteSpace: "nowrap" }}
               onMouseEnter={(e) => (e.currentTarget.style.background = "#1A6AFF")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "#0052D9")}
             >
@@ -190,7 +190,7 @@ export default function Calendar2Page() {
       <BookingModal open={bookingOpen} onClose={() => setBookingOpen(false)} />
 
       {toast && (
-        <div style={{ position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", background: "#0F172A", color: "#fff", padding: "10px 16px", borderRadius: 9, fontSize: 12.5, zIndex: 300, boxShadow: "0 6px 20px rgba(15,23,42,0.25)", display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}>
+        <div style={{ position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", background: "var(--cal2-text)", color: "var(--cal2-surface)", padding: "10px 16px", borderRadius: 9, fontSize: 12.5, zIndex: 300, boxShadow: "0 6px 20px rgba(15,23,42,0.25)", display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
           {toast}
         </div>
@@ -218,13 +218,13 @@ function BookingLink({ slug, onCustomize }: { slug: string | null; onCustomize: 
   };
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 14px", background: "rgba(248,250,252,0.8)", border: "1px solid #EDF1F5", borderRadius: 9, fontSize: 12.5, marginBottom: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 7, color: "#0F172A", fontWeight: 500, flexShrink: 0 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 14px", background: "var(--cal2-surface-3)", border: "1px solid var(--cal2-border-faint)", borderRadius: 9, fontSize: 12.5, marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, color: "var(--cal2-text)", fontWeight: 500, flexShrink: 0 }}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0052D9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
         <span>Lien de booking</span>
       </div>
-      <code style={{ fontFamily: "ui-monospace, monospace", fontSize: 11.5, color: "#475569", background: "#fff", border: "1px solid #EDF1F5", padding: "3px 9px", borderRadius: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, maxWidth: 340 }}>
-        {display ?? <span style={{ color: "#94A3B8" }}>Chargement…</span>}
+      <code style={{ fontFamily: "ui-monospace, monospace", fontSize: 11.5, color: "var(--cal2-text-soft)", background: "var(--cal2-surface)", border: "1px solid var(--cal2-border-faint)", padding: "3px 9px", borderRadius: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, maxWidth: 340 }}>
+        {display ?? <span style={{ color: "var(--cal2-text-faint)" }}>Chargement…</span>}
       </code>
       <button onClick={handleCopy} style={ghostBtnStyle} disabled={!fullUrl}>
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
@@ -232,9 +232,9 @@ function BookingLink({ slug, onCustomize }: { slug: string | null; onCustomize: 
       </button>
       <button
         onClick={onCustomize}
-        style={{ padding: "5px 10px", background: "#fff", color: "#475569", border: "1px solid #E2E8F0", borderRadius: 7, fontSize: 11.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}
+        style={{ padding: "5px 10px", background: "var(--cal2-surface)", color: "var(--cal2-text-soft)", border: "1px solid var(--cal2-border-soft)", borderRadius: 7, fontSize: 11.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}
         onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#0052D9"; e.currentTarget.style.color = "#0052D9"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#E2E8F0"; e.currentTarget.style.color = "#475569"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--cal2-border-soft)"; e.currentTarget.style.color = "var(--cal2-text-soft)"; }}
       >
         Personnaliser
       </button>
@@ -244,7 +244,7 @@ function BookingLink({ slug, onCustomize }: { slug: string | null; onCustomize: 
 
 const ghostBtnStyle: React.CSSProperties = {
   display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 9px",
-  background: "transparent", color: "#64748B", border: "none", borderRadius: 6,
+  background: "transparent", color: "var(--cal2-text-muted)", border: "none", borderRadius: 6,
   fontSize: 11.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit",
 };
 
@@ -296,11 +296,11 @@ function KpiCards({ kpi }: KpiProps) {
   return (
     <div className="cal2-kpi" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 12 }}>
       {cards.map((c, i) => (
-        <div key={i} style={{ background: "#fff", border: "1px solid #EDF1F5", borderRadius: 10, padding: "14px 16px" }}>
-          <div style={{ fontSize: 10.5, fontWeight: 600, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{c.label}</div>
+        <div key={i} style={{ background: "var(--cal2-surface)", border: "1px solid var(--cal2-border-faint)", borderRadius: 10, padding: "14px 16px" }}>
+          <div style={{ fontSize: 10.5, fontWeight: 600, color: "var(--cal2-text-faint)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{c.label}</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
-            <span style={{ fontSize: 26, fontWeight: 500, color: "#0F172A", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{c.value}</span>
-            <span style={{ fontSize: 12, color: "#64748B" }}>{c.sub}</span>
+            <span style={{ fontSize: 26, fontWeight: 500, color: "var(--cal2-text)", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{c.value}</span>
+            <span style={{ fontSize: 12, color: "var(--cal2-text-muted)" }}>{c.sub}</span>
           </div>
           <div style={{ fontSize: 11.5, color: c.detailColor, marginTop: 7, fontWeight: 500 }}>{c.detail}</div>
         </div>

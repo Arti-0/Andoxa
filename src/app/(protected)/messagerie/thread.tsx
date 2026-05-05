@@ -80,7 +80,7 @@ function ExternalLinkDialog({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "white",
+          background: "var(--m2-surface-elevated)",
           borderRadius: 14,
           boxShadow: "0 24px 60px rgba(15,23,42,0.22)",
           width: "100%",
@@ -362,7 +362,7 @@ function ContextMenu({
           top: 38,
           right: 0,
           zIndex: 51,
-          background: "white",
+          background: "var(--m2-surface-elevated)",
           border: "1px solid var(--m2-slate-200)",
           borderRadius: 10,
           boxShadow:
@@ -481,7 +481,7 @@ function QuickInsertModal({
           width: "100%",
           maxWidth: 480,
           maxHeight: 540,
-          background: "white",
+          background: "var(--m2-surface-elevated)",
           borderRadius: 14,
           boxShadow: "0 24px 60px rgba(15,23,42,0.25)",
           display: "flex",
@@ -606,7 +606,7 @@ function QuickInsertModal({
                 <span
                   className="m2-pill"
                   style={{
-                    background: ch.bg,
+                    background: `color-mix(in srgb, ${ch.fg} 16%, var(--m2-surface-elevated))`,
                     color: ch.fg,
                     fontSize: 10.5,
                     flexShrink: 0,
@@ -714,7 +714,7 @@ export function Thread({
         display: "flex",
         flexDirection: "column",
         minWidth: 0,
-        background: "#FCFCFD",
+        background: "var(--m2-surface-muted)",
       }}
     >
       {/* Thread header */}
@@ -725,7 +725,7 @@ export function Thread({
           display: "flex",
           alignItems: "center",
           gap: 14,
-          background: "white",
+          background: "var(--m2-surface-elevated)",
           boxShadow:
             "0 1px 0 rgba(15,23,42,0.04), 0 4px 8px -6px rgba(15,23,42,0.08)",
           position: "relative",
@@ -829,14 +829,14 @@ export function Thread({
         style={{
           padding: "14px 22px 18px",
           borderTop: "1px solid var(--m2-slate-150)",
-          background: "white",
+          background: "var(--m2-surface-elevated)",
         }}
       >
         <div
           style={{
             border: "1px solid var(--m2-slate-200)",
             borderRadius: 12,
-            background: "white",
+            background: "var(--m2-surface-elevated)",
           }}
         >
           <textarea

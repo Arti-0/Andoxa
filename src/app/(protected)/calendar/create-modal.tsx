@@ -129,7 +129,7 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
 
   // Calendar options: "Vous" + custom cals
   const calendarOptions: Array<{ id: string; label: string; color: string; accent: string }> = [
-    { id: "me", label: "Vous", color: "#0052D9", accent: "#E8F0FD" },
+    { id: "me", label: "Vous", color: "#0052D9", accent: "var(--cal2-blue-tint)" },
     ...customCals.map((c) => ({ id: c.id, label: c.name, color: c.color, accent: c.accent })),
   ];
   const selectedCal = calendarOptions.find((c) => c.id === calendarId) ?? calendarOptions[0];
@@ -201,16 +201,16 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
       <div onClick={onClose} className="cal2-fade-in" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)", zIndex: 200 }} />
       <div
         className="cal2-fade-in"
-        style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: "92%", maxWidth: 580, maxHeight: "88vh", background: "#fff", borderRadius: 12, zIndex: 201, boxShadow: "0 24px 60px rgba(15,23,42,0.22)", display: "flex", flexDirection: "column", overflow: "hidden" }}
+        style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: "92%", maxWidth: 580, maxHeight: "88vh", background: "var(--cal2-surface)", borderRadius: 12, zIndex: 201, boxShadow: "0 24px 60px rgba(15,23,42,0.22)", display: "flex", flexDirection: "column", overflow: "hidden" }}
       >
         {/* Solid accent — overflow:hidden on parent ensures it follows the rounded corners */}
         <div style={{ height: 4, background: selectedCal.color, flexShrink: 0 }} />
 
-        <div style={{ padding: "18px 22px 16px", borderBottom: "1px solid #EDF1F5", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: "#0F172A", letterSpacing: "-0.01em" }}>
+        <div style={{ padding: "18px 22px 16px", borderBottom: "1px solid var(--cal2-border-faint)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--cal2-text)", letterSpacing: "-0.01em" }}>
             {isEdit ? "Modifier le RDV" : "Nouveau RDV"}
           </h2>
-          <button onClick={onClose} style={{ width: 28, height: 28, border: "1px solid #E2E8F0", background: "#fff", borderRadius: 7, color: "#64748B", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+          <button onClick={onClose} style={{ width: 28, height: 28, border: "1px solid var(--cal2-border-soft)", background: "var(--cal2-surface)", borderRadius: 7, color: "var(--cal2-text-muted)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
         </div>
@@ -234,7 +234,7 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
                   <button
                     key={opt.id}
                     onClick={() => setCalendarId(opt.id)}
-                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 11px", background: active ? opt.accent : "#fff", color: active ? opt.color : "#64748B", border: `1px solid ${active ? opt.color : "#E2E8F0"}`, borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", transition: "all 100ms" }}
+                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 11px", background: active ? `color-mix(in srgb, ${opt.color} 14%, var(--cal2-surface))` : "var(--cal2-surface)", color: active ? opt.color : "var(--cal2-text-muted)", border: `1px solid ${active ? opt.color : "var(--cal2-border-soft)"}`, borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", transition: "all 100ms" }}
                   >
                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: opt.color, flexShrink: 0 }} />
                     {opt.label}
@@ -255,7 +255,7 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
                   onChange={(e) => setStartTime(e.target.value)}
                   style={{ ...inputStyle, width: 100, fontVariantNumeric: "tabular-nums" }}
                 />
-                <span style={{ color: "#94A3B8", fontSize: 12 }}>–</span>
+                <span style={{ color: "var(--cal2-text-faint)", fontSize: 12 }}>–</span>
                 <input
                   type="time" value={endTime}
                   onChange={(e) => setEndTime(e.target.value)}
@@ -265,9 +265,9 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
 
               <button
                 onClick={() => setAllDay(!allDay)}
-                style={{ background: "transparent", color: allDay ? "#0052D9" : "#64748B", border: "none", fontSize: 11.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", padding: "4px 6px", display: "flex", alignItems: "center", gap: 4 }}
+                style={{ background: "transparent", color: allDay ? "#0052D9" : "var(--cal2-text-muted)", border: "none", fontSize: 11.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", padding: "4px 6px", display: "flex", alignItems: "center", gap: 4 }}
               >
-                <span style={{ width: 14, height: 14, borderRadius: 3, background: allDay ? "#0052D9" : "#fff", border: allDay ? "1px solid #0052D9" : "1.5px solid #CBD5E1", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <span style={{ width: 14, height: 14, borderRadius: 3, background: allDay ? "#0052D9" : "var(--cal2-surface)", border: allDay ? "1px solid #0052D9" : "1.5px solid var(--cal2-border)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   {allDay && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>}
                 </span>
                 Toute la journée
@@ -279,15 +279,15 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
           <Field label="Prospect" hint="Optionnel">
             <div style={{ position: "relative" }}>
               {selectedProspect ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", background: "#F8FAFC", border: "1px solid #EDF1F5", borderRadius: 8 }}>
-                  <span style={{ width: 28, height: 28, borderRadius: "50%", background: avatarColor(selectedProspect.name), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, color: "#475569" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", background: "var(--cal2-surface-3)", border: "1px solid var(--cal2-border-faint)", borderRadius: 8 }}>
+                  <span style={{ width: 28, height: 28, borderRadius: "50%", background: `color-mix(in srgb, ${avatarColor(selectedProspect.name)} 35%, var(--cal2-surface-2))`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, color: "var(--cal2-text-soft)" }}>
                     {initials(selectedProspect.name)}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 500, color: "#0F172A" }}>{selectedProspect.name}</div>
-                    <div style={{ fontSize: 11, color: "#64748B" }}>{selectedProspect.company}</div>
+                    <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--cal2-text)" }}>{selectedProspect.name}</div>
+                    <div style={{ fontSize: 11, color: "var(--cal2-text-muted)" }}>{selectedProspect.company}</div>
                   </div>
-                  <button onClick={() => setSelectedProspect(null)} style={{ background: "transparent", border: "none", color: "#94A3B8", cursor: "pointer", padding: 4, display: "flex" }}>
+                  <button onClick={() => setSelectedProspect(null)} style={{ background: "transparent", border: "none", color: "var(--cal2-text-faint)", cursor: "pointer", padding: 4, display: "flex" }}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                   </button>
                 </div>
@@ -312,13 +312,13 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
                       key={p.id}
                       onMouseDown={() => { setSelectedProspect(p); setProspectQuery(""); setDebouncedQuery(""); }}
                       style={dropdownItemStyle}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#F8FAFC")}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--cal2-surface-3)")}
                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
-                      <span style={{ width: 24, height: 24, borderRadius: "50%", background: avatarColor(p.name), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, fontWeight: 600, color: "#475569", flexShrink: 0 }}>{initials(p.name)}</span>
+                      <span style={{ width: 24, height: 24, borderRadius: "50%", background: `color-mix(in srgb, ${avatarColor(p.name)} 35%, var(--cal2-surface-2))`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, fontWeight: 600, color: "var(--cal2-text-soft)", flexShrink: 0 }}>{initials(p.name)}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>{p.name}</div>
-                        <div style={{ fontSize: 10.5, color: "#64748B" }}>{p.company}</div>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--cal2-text)" }}>{p.name}</div>
+                        <div style={{ fontSize: 10.5, color: "var(--cal2-text-muted)" }}>{p.company}</div>
                       </div>
                     </button>
                   ))}
@@ -330,7 +330,7 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
           {/* Participants — search org members + free emails */}
           <Field label="Participants" hint="Collègues ou emails">
             <div style={{ position: "relative" }}>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, padding: 5, border: "1px solid #E2E8F0", borderRadius: 8, background: "#fff", minHeight: 36 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, padding: 5, border: "1px solid var(--cal2-border-soft)", borderRadius: 8, background: "var(--cal2-surface)", minHeight: 36 }}>
                 {selectedAttendees.map((a) => (
                   <AttendeeChip
                     key={a.id}
@@ -368,18 +368,18 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
                         setAttendeeQuery("");
                       }}
                       style={dropdownItemStyle}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#F8FAFC")}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--cal2-surface-3)")}
                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
                       {m.avatarUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={m.avatarUrl} alt={m.name} style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
                       ) : (
-                        <span style={{ width: 24, height: 24, borderRadius: "50%", background: m.accent, color: m.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, fontWeight: 700, flexShrink: 0 }}>{m.initials}</span>
+                        <span style={{ width: 24, height: 24, borderRadius: "50%", background: `color-mix(in srgb, ${m.color} 22%, var(--cal2-surface))`, color: m.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, fontWeight: 700, flexShrink: 0 }}>{m.initials}</span>
                       )}
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>{m.name}</div>
-                        <div style={{ fontSize: 10.5, color: "#64748B" }}>Collègue</div>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--cal2-text)" }}>{m.name}</div>
+                        <div style={{ fontSize: 10.5, color: "var(--cal2-text-muted)" }}>Collègue</div>
                       </div>
                     </button>
                   ))}
@@ -387,11 +387,11 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
                     <button
                       onMouseDown={addAttendeeFromQuery}
                       style={dropdownItemStyle}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#F8FAFC")}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--cal2-surface-3)")}
                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
-                      <span style={{ width: 24, height: 24, borderRadius: "50%", background: "#F1F5F9", color: "#475569", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>@</span>
-                      <div style={{ fontSize: 12, color: "#0F172A" }}>
+                      <span style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--cal2-surface-2)", color: "var(--cal2-text-soft)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>@</span>
+                      <div style={{ fontSize: 12, color: "var(--cal2-text)" }}>
                         Inviter <strong>{attendeeQuery}</strong>
                       </div>
                     </button>
@@ -409,7 +409,7 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
                 return (
                   <button
                     key={opt.id} onClick={() => setPlatform(opt.id)}
-                    style={{ padding: "6px 11px", background: active ? "#E8F0FD" : "#fff", color: active ? "#0052D9" : "#64748B", border: `1px solid ${active ? "#0052D9" : "#E2E8F0"}`, borderRadius: 7, fontSize: 11.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}
+                    style={{ padding: "6px 11px", background: active ? "var(--cal2-blue-tint)" : "var(--cal2-surface)", color: active ? "#0052D9" : "var(--cal2-text-muted)", border: `1px solid ${active ? "#0052D9" : "var(--cal2-border-soft)"}`, borderRadius: 7, fontSize: 11.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}
                   >
                     {opt.label}
                   </button>
@@ -429,11 +429,11 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
           <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginBottom: 4 }}>
             <span
               onClick={() => setSendEmailInvite(!sendEmailInvite)}
-              style={{ position: "relative", width: 32, height: 18, background: sendEmailInvite ? "#0052D9" : "#CBD5E1", borderRadius: 999, flexShrink: 0, transition: "background 140ms", cursor: "pointer" }}
+              style={{ position: "relative", width: 32, height: 18, background: sendEmailInvite ? "#0052D9" : "var(--cal2-border)", borderRadius: 999, flexShrink: 0, transition: "background 140ms", cursor: "pointer" }}
             >
-              <span style={{ position: "absolute", top: 2, left: sendEmailInvite ? 16 : 2, width: 14, height: 14, background: "#fff", borderRadius: "50%", transition: "left 140ms" }} />
+              <span style={{ position: "absolute", top: 2, left: sendEmailInvite ? 16 : 2, width: 14, height: 14, background: "var(--cal2-surface)", borderRadius: "50%", transition: "left 140ms" }} />
             </span>
-            <span style={{ fontSize: 12, color: "#475569" }}>Envoyer une invitation par email aux participants</span>
+            <span style={{ fontSize: 12, color: "var(--cal2-text-soft)" }}>Envoyer une invitation par email aux participants</span>
           </label>
 
           {error && (
@@ -443,12 +443,12 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
           )}
         </div>
 
-        <div style={{ padding: "12px 22px", borderTop: "1px solid #EDF1F5", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          <button onClick={onClose} style={{ background: "transparent", color: "#64748B", border: "none", fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", padding: "8px 4px" }}>Annuler</button>
+        <div style={{ padding: "12px 22px", borderTop: "1px solid var(--cal2-border-faint)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <button onClick={onClose} style={{ background: "transparent", color: "var(--cal2-text-muted)", border: "none", fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", padding: "8px 4px" }}>Annuler</button>
           <button
             onClick={handleSubmit}
             disabled={isPending}
-            style={{ padding: "9px 18px", background: selectedCal.color, color: "#fff", border: "none", borderRadius: 7, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 1px 2px ${selectedCal.color}44`, opacity: isPending ? 0.7 : 1, transition: "opacity 120ms" }}
+            style={{ padding: "9px 18px", background: selectedCal.color, color: "var(--cal2-surface)", border: "none", borderRadius: 7, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 1px 2px ${selectedCal.color}44`, opacity: isPending ? 0.7 : 1, transition: "opacity 120ms" }}
           >
             {isPending
               ? (isEdit ? "Mise à jour…" : "Création…")
@@ -463,12 +463,12 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
 function AttendeeChip({ attendee, onRemove }: { attendee: SelectedAttendee; onRemove: () => void }) {
   if (attendee.kind === "member") {
     return (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 4px 3px 4px", background: attendee.accent, color: attendee.color, borderRadius: 999, fontSize: 11.5, fontWeight: 500 }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 4px 3px 4px", background: `color-mix(in srgb, ${attendee.color} 22%, var(--cal2-surface))`, color: attendee.color, borderRadius: 999, fontSize: 11.5, fontWeight: 500 }}>
         {attendee.avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={attendee.avatarUrl} alt={attendee.name} style={{ width: 18, height: 18, borderRadius: "50%", objectFit: "cover" }} />
         ) : (
-          <span style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", color: attendee.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8.5, fontWeight: 700 }}>
+          <span style={{ width: 18, height: 18, borderRadius: "50%", background: "var(--cal2-surface)", color: attendee.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8.5, fontWeight: 700 }}>
             {attendee.name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()}
           </span>
         )}
@@ -483,11 +483,11 @@ function AttendeeChip({ attendee, onRemove }: { attendee: SelectedAttendee; onRe
     );
   }
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 4px 3px 8px", background: "#F1F5F9", color: "#475569", borderRadius: 999, fontSize: 11.5, fontWeight: 500 }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 4px 3px 8px", background: "var(--cal2-surface-2)", color: "var(--cal2-text-soft)", borderRadius: 999, fontSize: 11.5, fontWeight: 500 }}>
       {attendee.email}
       <button
         onClick={onRemove}
-        style={{ width: 16, height: 16, borderRadius: "50%", background: "rgba(71,85,105,0.15)", border: "none", color: "#475569", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+        style={{ width: 16, height: 16, borderRadius: "50%", background: "rgba(71,85,105,0.15)", border: "none", color: "var(--cal2-text-soft)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
       >
         <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
       </button>
@@ -497,14 +497,14 @@ function AttendeeChip({ attendee, onRemove }: { attendee: SelectedAttendee; onRe
 
 const inputStyle: React.CSSProperties = {
   width: "100%", padding: "8px 11px",
-  border: "1px solid #E2E8F0", borderRadius: 7,
-  fontSize: 12.5, color: "#0F172A",
-  fontFamily: "inherit", background: "#fff", outline: "none",
+  border: "1px solid var(--cal2-border-soft)", borderRadius: 7,
+  fontSize: 12.5, color: "var(--cal2-text)",
+  fontFamily: "inherit", background: "var(--cal2-surface)", outline: "none",
 };
 
 const dropdownStyle: React.CSSProperties = {
   position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0,
-  background: "#fff", border: "1px solid #E2E8F0", borderRadius: 8,
+  background: "var(--cal2-surface)", border: "1px solid var(--cal2-border-soft)", borderRadius: 8,
   boxShadow: "0 6px 18px rgba(15,23,42,0.08)", zIndex: 5,
   padding: 4, maxHeight: 220, overflowY: "auto",
 };
@@ -516,17 +516,17 @@ const dropdownItemStyle: React.CSSProperties = {
 };
 
 const emptyStyle: React.CSSProperties = {
-  padding: "8px 12px", fontSize: 12, color: "#94A3B8",
+  padding: "8px 12px", fontSize: 12, color: "var(--cal2-text-faint)",
 };
 
 function Field({ label, required, hint, children }: { label: string; required?: boolean; hint?: string; children: ReactNode }) {
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 6 }}>
-        <label style={{ fontSize: 11.5, fontWeight: 500, color: "#475569" }}>
+        <label style={{ fontSize: 11.5, fontWeight: 500, color: "var(--cal2-text-soft)" }}>
           {label}{required && <span style={{ color: "#EF4444" }}> *</span>}
         </label>
-        {hint && <span style={{ fontSize: 10.5, color: "#94A3B8" }}>{hint}</span>}
+        {hint && <span style={{ fontSize: 10.5, color: "var(--cal2-text-faint)" }}>{hint}</span>}
       </div>
       {children}
     </div>

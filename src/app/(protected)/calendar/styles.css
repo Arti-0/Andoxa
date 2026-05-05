@@ -1,5 +1,43 @@
 /* Andoxa Calendrier — scoped styles (.cal2-*) */
 
+.cal2-root {
+  /* Light values mirror the original hex codes used inline in the .tsx files.
+     Dark values invert the slate scale so all surfaces and text adapt. */
+  --cal2-surface: #ffffff;
+  --cal2-surface-2: #f1f5f9;
+  --cal2-surface-3: #f8fafc;
+  --cal2-canvas: #f5f7fa;
+  --cal2-canvas-soft: #fafbfc;
+  --cal2-border: #cbd5e1;
+  --cal2-border-soft: #e2e8f0;
+  --cal2-text: #0f172a;
+  --cal2-text-soft: #475569;
+  --cal2-text-muted: #64748b;
+  --cal2-text-faint: #94a3b8;
+  --cal2-blue-tint: #e8f0fd;
+  --cal2-border-faint: #edf1f5;
+  --cal2-lunch-tint: rgba(241, 245, 249, 0.5);
+  --cal2-event-gloss: rgba(255, 255, 255, 0.6);
+}
+
+.dark .cal2-root {
+  --cal2-surface: #18181b;
+  --cal2-surface-2: #27272a;
+  --cal2-surface-3: #1f1f23;
+  --cal2-canvas: #0a0a0a;
+  --cal2-canvas-soft: #141417;
+  --cal2-border: #3f3f46;
+  --cal2-border-soft: #27272a;
+  --cal2-text: #fafafa;
+  --cal2-text-soft: #d4d4d8;
+  --cal2-text-muted: #a1a1aa;
+  --cal2-text-faint: #71717a;
+  --cal2-blue-tint: rgba(59, 130, 246, 0.16);
+  --cal2-border-faint: #2a2a2e;
+  --cal2-lunch-tint: rgba(63, 63, 70, 0.4);
+  --cal2-event-gloss: rgba(255, 255, 255, 0.04);
+}
+
 @keyframes cal2-slide-in {
   from { transform: translateX(100%); opacity: 0; }
   to   { transform: translateX(0);    opacity: 1; }
@@ -31,7 +69,7 @@
     top: 0; left: 0; bottom: 0;
     width: 260px !important;
     z-index: 150;
-    background: #FAFBFC;
+    background: var(--cal2-canvas-soft);
     transform: translateX(-100%);
     transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
     box-shadow: 0 0 0 transparent;

@@ -226,13 +226,13 @@ type Tone =
   | "cyan";
 
 const PILL_TONES: Record<Tone, string> = {
-  slate: "bg-slate-100 text-slate-700",
-  blue: "bg-blue-50 text-blue-700",
-  violet: "bg-violet-50 text-violet-700",
-  amber: "bg-amber-50 text-amber-700",
-  green: "bg-emerald-50 text-emerald-700",
-  rose: "bg-rose-50 text-rose-700",
-  cyan: "bg-cyan-50 text-cyan-700",
+  slate: "bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300",
+  blue: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+  violet: "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300",
+  amber: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
+  green: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+  rose: "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300",
+  cyan: "bg-cyan-50 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300",
 };
 
 function Pill({
@@ -262,7 +262,7 @@ function Trend({
 }) {
   if (delta === 0) {
     return (
-      <span className="inline-flex items-center gap-0.5 text-[11.5px] font-medium text-slate-400">
+      <span className="inline-flex items-center gap-0.5 text-[11.5px] font-medium text-slate-400 dark:text-zinc-500">
         — {suffix}
       </span>
     );
@@ -361,21 +361,41 @@ const TONE_BG: Record<
   Tone,
   { bg: string; text: string; ring: string }
 > = {
-  slate: { bg: "bg-slate-100", text: "text-slate-600", ring: "ring-slate-200" },
-  blue: { bg: "bg-blue-50", text: "text-blue-600", ring: "ring-blue-100" },
-  amber: { bg: "bg-amber-50", text: "text-amber-600", ring: "ring-amber-100" },
+  slate: {
+    bg: "bg-slate-100 dark:bg-zinc-800",
+    text: "text-slate-600 dark:text-zinc-300",
+    ring: "ring-slate-200 dark:ring-zinc-700",
+  },
+  blue: {
+    bg: "bg-blue-50 dark:bg-blue-950/40",
+    text: "text-blue-600 dark:text-blue-300",
+    ring: "ring-blue-100 dark:ring-blue-900/40",
+  },
+  amber: {
+    bg: "bg-amber-50 dark:bg-amber-950/40",
+    text: "text-amber-600 dark:text-amber-300",
+    ring: "ring-amber-100 dark:ring-amber-900/40",
+  },
   violet: {
-    bg: "bg-violet-50",
-    text: "text-violet-600",
-    ring: "ring-violet-100",
+    bg: "bg-violet-50 dark:bg-violet-950/40",
+    text: "text-violet-600 dark:text-violet-300",
+    ring: "ring-violet-100 dark:ring-violet-900/40",
   },
   green: {
-    bg: "bg-emerald-50",
-    text: "text-emerald-600",
-    ring: "ring-emerald-100",
+    bg: "bg-emerald-50 dark:bg-emerald-950/40",
+    text: "text-emerald-600 dark:text-emerald-300",
+    ring: "ring-emerald-100 dark:ring-emerald-900/40",
   },
-  cyan: { bg: "bg-cyan-50", text: "text-cyan-600", ring: "ring-cyan-100" },
-  rose: { bg: "bg-rose-50", text: "text-rose-600", ring: "ring-rose-100" },
+  cyan: {
+    bg: "bg-cyan-50 dark:bg-cyan-950/40",
+    text: "text-cyan-600 dark:text-cyan-300",
+    ring: "ring-cyan-100 dark:ring-cyan-900/40",
+  },
+  rose: {
+    bg: "bg-rose-50 dark:bg-rose-950/40",
+    text: "text-rose-600 dark:text-rose-300",
+    ring: "ring-rose-100 dark:ring-rose-900/40",
+  },
 };
 
 const STAGE_TONE: Record<string, Tone> = {
@@ -461,17 +481,17 @@ function PageHeader({
   return (
     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6 mb-5 sm:mb-6">
       <div className="min-w-0">
-        <h1 className="text-[22px] sm:text-[28px] font-semibold tracking-tight text-slate-900 leading-tight">
+        <h1 className="text-[22px] sm:text-[28px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100 leading-tight">
           Tableau de bord
         </h1>
-        <div className="mt-1.5 text-[12.5px] sm:text-[13.5px] text-slate-500 flex items-center gap-1.5 flex-wrap">
+        <div className="mt-1.5 text-[12.5px] sm:text-[13.5px] text-slate-500 dark:text-zinc-400 flex items-center gap-1.5 flex-wrap">
           <span>
             Bonjour{" "}
-            <span className="text-slate-700 font-medium">{firstName}</span>
+            <span className="text-slate-700 dark:text-zinc-300 font-medium">{firstName}</span>
           </span>
-          <span className="text-slate-300">·</span>
+          <span className="text-slate-300 dark:text-zinc-600">·</span>
           <span>{formatLongDate(today)}</span>
-          <span className="text-slate-300">·</span>
+          <span className="text-slate-300 dark:text-zinc-600">·</span>
           <span>Semaine {getISOWeek(today)}</span>
         </div>
       </div>
@@ -480,17 +500,17 @@ function PageHeader({
         <div className="relative" ref={ref}>
           <button
             onClick={() => setOpen((o) => !o)}
-            className="h-9 px-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-700 border border-slate-200 rounded-md bg-white hover:bg-slate-50 transition-colors"
+            className="h-9 px-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-800 rounded-md bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
           >
-            <Calendar size={13} className="text-slate-400" />
+            <Calendar size={13} className="text-slate-400 dark:text-zinc-500" />
             {period}
             <ChevronDown
               size={13}
-              className={`text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}
+              className={`text-slate-400 dark:text-zinc-500 transition-transform ${open ? "rotate-180" : ""}`}
             />
           </button>
           {open && (
-            <div className="absolute right-0 mt-1.5 w-44 bg-white border border-slate-200 rounded-md shadow-lg p-1 z-30">
+            <div className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-md shadow-lg p-1 z-30">
               {PERIODS.map((p) => (
                 <button
                   key={p}
@@ -500,8 +520,8 @@ function PageHeader({
                   }}
                   className={`w-full text-left px-2.5 py-1.5 text-[12.5px] rounded transition-colors flex items-center justify-between ${
                     period === p
-                      ? "text-blue-700 bg-blue-50"
-                      : "text-slate-700 hover:bg-slate-50"
+                      ? "text-blue-700 bg-blue-50 dark:text-blue-300 dark:bg-blue-950/40"
+                      : "text-slate-700 hover:bg-slate-50 dark:text-zinc-300 dark:hover:bg-zinc-800"
                   }`}
                 >
                   {p}
@@ -514,7 +534,7 @@ function PageHeader({
 
         <button
           type="button"
-          className="h-9 px-3 sm:px-3.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-700 border border-slate-200 rounded-md bg-white hover:bg-slate-50 transition-colors"
+          className="h-9 px-3 sm:px-3.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-800 rounded-md bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
           title="Bientôt — export du tableau de bord"
           disabled
         >
@@ -579,11 +599,7 @@ function PrioritiesBand({ workspaceId }: { workspaceId: string | null | undefine
 
   return (
     <section
-      className="rounded-xl border border-blue-100 p-4 sm:p-5 mb-5 sm:mb-6"
-      style={{
-        background:
-          "linear-gradient(180deg, rgba(232,240,253,0.55) 0%, rgba(232,240,253,0.15) 100%)",
-      }}
+      className="rounded-xl border border-blue-100 dark:border-blue-900/40 p-4 sm:p-5 mb-5 sm:mb-6 bg-[linear-gradient(180deg,rgba(232,240,253,0.55)_0%,rgba(232,240,253,0.15)_100%)] dark:bg-[linear-gradient(180deg,rgba(30,58,138,0.18)_0%,rgba(30,58,138,0.05)_100%)]"
     >
       <div className="flex items-center justify-between mb-3 sm:mb-4">
         <div>
@@ -592,15 +608,15 @@ function PrioritiesBand({ workspaceId }: { workspaceId: string | null | undefine
               className="w-1.5 h-1.5 rounded-full"
               style={pulseDotStyle}
             />
-            <span className="text-[10.5px] font-semibold tracking-[0.08em] uppercase text-blue-700">
+            <span className="text-[10.5px] font-semibold tracking-[0.08em] uppercase text-blue-700 dark:text-blue-300">
               Cockpit du matin
             </span>
           </div>
-          <h2 className="mt-1 text-[16px] sm:text-[17px] font-semibold tracking-tight text-slate-900">
+          <h2 className="mt-1 text-[16px] sm:text-[17px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
             Mes priorités du jour
           </h2>
         </div>
-        <div className="text-[11.5px] sm:text-[12px] text-slate-500">
+        <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400">
           {data?.generated_at
             ? `Mis à jour ${relativeTimeFr(data.generated_at)}`
             : isLoading
@@ -624,11 +640,11 @@ function PrioritiesBand({ workspaceId }: { workspaceId: string | null | undefine
             return (
               <div
                 key={i}
-                className="bg-white border border-slate-200 rounded-lg p-3.5 animate-pulse"
+                className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg p-3.5 animate-pulse"
               >
-                <div className="w-8 h-8 rounded-lg bg-slate-100 mb-2.5" />
-                <div className="h-6 w-10 bg-slate-100 rounded mb-1.5" />
-                <div className="h-3 w-24 bg-slate-100 rounded" />
+                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-zinc-800 mb-2.5" />
+                <div className="h-6 w-10 bg-slate-100 dark:bg-zinc-800 rounded mb-1.5" />
+                <div className="h-3 w-24 bg-slate-100 dark:bg-zinc-800 rounded" />
               </div>
             );
           }
@@ -643,7 +659,7 @@ function PrioritiesBand({ workspaceId }: { workspaceId: string | null | undefine
             <a
               key={p.key as string}
               href={p.href}
-              className="text-left bg-white border border-slate-200 rounded-lg p-3 sm:p-3.5 hover:border-blue-200 hover:shadow-[0_2px_8px_rgba(0,82,217,0.08)] transition-all group block"
+              className="text-left bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg p-3 sm:p-3.5 hover:border-blue-200 dark:hover:border-blue-900/60 hover:shadow-[0_2px_8px_rgba(0,82,217,0.08)] transition-all group block"
             >
               <div className="flex items-start justify-between mb-2 sm:mb-2.5">
                 <div
@@ -653,16 +669,16 @@ function PrioritiesBand({ workspaceId }: { workspaceId: string | null | undefine
                 </div>
                 <ArrowRight
                   size={14}
-                  className="text-slate-300 group-hover:text-blue-600 transition-colors mt-1"
+                  className="text-slate-300 dark:text-zinc-600 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors mt-1"
                 />
               </div>
-              <div className="text-[22px] sm:text-[26px] font-semibold tracking-tight text-slate-900 leading-none mb-1 sm:mb-1.5">
+              <div className="text-[22px] sm:text-[26px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100 leading-none mb-1 sm:mb-1.5">
                 {p.count}
               </div>
-              <div className="text-[12px] sm:text-[12.5px] font-medium text-slate-800 leading-tight">
+              <div className="text-[12px] sm:text-[12.5px] font-medium text-slate-800 dark:text-zinc-200 leading-tight">
                 {p.label}
               </div>
-              <div className="mt-1 text-[11px] sm:text-[11.5px] text-slate-500 truncate">
+              <div className="mt-1 text-[11px] sm:text-[11.5px] text-slate-500 dark:text-zinc-400 truncate">
                 {p.sub}
               </div>
             </a>
@@ -692,28 +708,28 @@ interface KpiCardData {
 function KpiCard({ k, loading }: { k: KpiCardData | null; loading: boolean }) {
   if (loading || !k) {
     return (
-      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 animate-pulse">
-        <div className="h-3 w-24 bg-slate-100 rounded" />
-        <div className="mt-4 h-8 w-16 bg-slate-100 rounded" />
-        <div className="mt-3 h-3 w-32 bg-slate-100 rounded" />
-        <div className="mt-4 h-3 w-full bg-slate-100 rounded" />
+      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5 animate-pulse">
+        <div className="h-3 w-24 bg-slate-100 dark:bg-zinc-800 rounded" />
+        <div className="mt-4 h-8 w-16 bg-slate-100 dark:bg-zinc-800 rounded" />
+        <div className="mt-3 h-3 w-32 bg-slate-100 dark:bg-zinc-800 rounded" />
+        <div className="mt-4 h-3 w-full bg-slate-100 dark:bg-zinc-800 rounded" />
       </div>
     );
   }
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 hover:shadow-[0_2px_8px_rgba(15,23,42,0.05)] transition-all">
+    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5 hover:shadow-[0_2px_8px_rgba(15,23,42,0.05)] transition-all">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[10px] sm:text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500 truncate">
+        <div className="text-[10px] sm:text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500 dark:text-zinc-400 truncate">
           {k.label}
         </div>
         <Trend delta={k.trend} />
       </div>
       <div className="mt-3 flex items-end justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[26px] sm:text-[32px] font-semibold tracking-tight text-slate-900 leading-none">
+          <div className="text-[26px] sm:text-[32px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100 leading-none">
             {k.value}
           </div>
-          <div className="mt-1.5 text-[12px] sm:text-[12.5px] text-slate-600">
+          <div className="mt-1.5 text-[12px] sm:text-[12.5px] text-slate-600 dark:text-zinc-400">
             {k.sub}
           </div>
         </div>
@@ -723,7 +739,7 @@ function KpiCard({ k, loading }: { k: KpiCardData | null; loading: boolean }) {
       </div>
       {k.isProgress && (
         <div className="mt-3 sm:mt-4">
-          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+          <div className="h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
             <div
               className="h-full rounded-full"
               style={{
@@ -734,7 +750,7 @@ function KpiCard({ k, loading }: { k: KpiCardData | null; loading: boolean }) {
           </div>
         </div>
       )}
-      <div className="mt-3 pt-3 border-t border-slate-100 text-[11px] sm:text-[11.5px] text-slate-500">
+      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 text-[11px] sm:text-[11.5px] text-slate-500 dark:text-zinc-400">
         {k.side}
       </div>
     </div>
@@ -817,19 +833,19 @@ function FunnelCard({
   const MIN_W = 14;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5">
+    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
       <div className="flex items-center justify-between mb-1">
         <div>
-          <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900">
+          <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
             Funnel de conversion
           </h3>
-          <div className="text-[11.5px] sm:text-[12px] text-slate-500 mt-0.5">
+          <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400 mt-0.5">
             Du premier contact au closing
           </div>
         </div>
         <a
           href="/crm"
-          className="text-[12px] text-blue-600 font-medium hover:text-blue-700"
+          className="text-[12px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300"
         >
           Détails →
         </a>
@@ -842,8 +858,8 @@ function FunnelCard({
           if (!s) {
             return (
               <div key={i} className="space-y-1">
-                <div className="h-3 w-1/3 bg-slate-100 rounded animate-pulse" />
-                <div className="h-7 bg-slate-100 rounded-md animate-pulse" />
+                <div className="h-3 w-1/3 bg-slate-100 dark:bg-zinc-800 rounded animate-pulse" />
+                <div className="h-7 bg-slate-100 dark:bg-zinc-800 rounded-md animate-pulse" />
               </div>
             );
           }
@@ -853,10 +869,10 @@ function FunnelCard({
             <div key={s.key} className="group">
               <div className="flex items-center justify-between mb-1 gap-2">
                 <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-                  <span className="text-[11px] font-mono text-slate-400 w-3 tabular-nums shrink-0">
+                  <span className="text-[11px] font-mono text-slate-400 dark:text-zinc-500 w-3 tabular-nums shrink-0">
                     {i + 1}
                   </span>
-                  <span className="text-[12.5px] sm:text-[13px] text-slate-700 font-medium truncate">
+                  <span className="text-[12.5px] sm:text-[13px] text-slate-700 dark:text-zinc-300 font-medium truncate">
                     {s.label}
                   </span>
                   {s.conversion_pct_from_prev != null && (
@@ -867,15 +883,12 @@ function FunnelCard({
                 </div>
                 <div className="flex items-center gap-2 sm:gap-3 shrink-0">
                   <Trend delta={s.trend_pts} suffix="" />
-                  <span className="text-[13px] sm:text-[14px] font-semibold tabular-nums text-slate-900 w-10 sm:w-12 text-right">
+                  <span className="text-[13px] sm:text-[14px] font-semibold tabular-nums text-slate-900 dark:text-zinc-100 w-10 sm:w-12 text-right">
                     {s.count}
                   </span>
                 </div>
               </div>
-              <div
-                className="h-7 rounded-md relative overflow-hidden"
-                style={{ background: "rgba(232,240,253,0.5)" }}
-              >
+              <div className="h-7 rounded-md relative overflow-hidden bg-[rgba(232,240,253,0.5)] dark:bg-blue-950/30">
                 <div
                   className="h-full rounded-md transition-all group-hover:brightness-110"
                   style={{
@@ -889,7 +902,7 @@ function FunnelCard({
           );
         })}
       </div>
-      <div className="mt-4 sm:mt-5 pt-4 border-t border-slate-100 grid grid-cols-3 gap-3 sm:gap-4">
+      <div className="mt-4 sm:mt-5 pt-4 border-t border-slate-100 dark:border-zinc-800 grid grid-cols-3 gap-3 sm:gap-4">
         <FunnelStat
           label="Taux global"
           value={funnel ? `${funnel.global_rate_pct} %` : "—"}
@@ -927,13 +940,13 @@ function FunnelStat({
 }) {
   return (
     <div>
-      <div className="text-[10px] sm:text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500">
+      <div className="text-[10px] sm:text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500 dark:text-zinc-400">
         {label}
       </div>
-      <div className="mt-1 text-[16px] sm:text-[18px] font-semibold tracking-tight text-slate-900">
+      <div className="mt-1 text-[16px] sm:text-[18px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
         {value}
       </div>
-      <div className="text-[10.5px] sm:text-[11px] text-slate-500">{help}</div>
+      <div className="text-[10.5px] sm:text-[11px] text-slate-500 dark:text-zinc-400">{help}</div>
     </div>
   );
 }
@@ -958,10 +971,10 @@ function LegendStat({
         style={{ background: color }}
       />
       <div className="flex-1 min-w-0">
-        <div className="text-[10.5px] sm:text-[11px] text-slate-500 leading-tight">
+        <div className="text-[10.5px] sm:text-[11px] text-slate-500 dark:text-zinc-400 leading-tight">
           {label}
         </div>
-        <div className="text-[14px] sm:text-[15px] font-semibold tabular-nums text-slate-900 leading-tight">
+        <div className="text-[14px] sm:text-[15px] font-semibold tabular-nums text-slate-900 dark:text-zinc-100 leading-tight">
           {value}
         </div>
       </div>
@@ -984,13 +997,13 @@ function ActivityVolumeCard({
   const totalRdvs = data.reduce((s, a) => s + a.bookings, 0);
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5">
+    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
       <div className="flex items-start justify-between mb-1">
         <div>
-          <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900">
+          <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
             Volume d&apos;activité
           </h3>
-          <div className="text-[11.5px] sm:text-[12px] text-slate-500 mt-0.5">
+          <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400 mt-0.5">
             Messages, appels et RDV — 8 dernières semaines
           </div>
         </div>
@@ -999,7 +1012,7 @@ function ActivityVolumeCard({
       <div className="mt-5 sm:mt-6 flex items-end gap-2 sm:gap-3 h-40 sm:h-44 px-1">
         {data.length === 0
           ? (
-            <div className="w-full text-center text-[12px] text-slate-400 self-center">
+            <div className="w-full text-center text-[12px] text-slate-400 dark:text-zinc-500 self-center">
               Aucune donnée
             </div>
           )
@@ -1014,7 +1027,7 @@ function ActivityVolumeCard({
                   key={i}
                   className="flex-1 flex flex-col items-center group min-w-0"
                 >
-                  <div className="text-[10px] sm:text-[10.5px] font-medium text-slate-500 mb-1 sm:mb-1.5 tabular-nums opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="text-[10px] sm:text-[10.5px] font-medium text-slate-500 dark:text-zinc-400 mb-1 sm:mb-1.5 tabular-nums opacity-0 group-hover:opacity-100 transition-opacity">
                     {total}
                   </div>
                   <div
@@ -1034,7 +1047,7 @@ function ActivityVolumeCard({
                       style={{ height: `${calH}%`, background: "#93c5fd" }}
                     />
                   </div>
-                  <div className="mt-2 text-[10.5px] sm:text-[11px] text-slate-500 font-medium truncate w-full text-center">
+                  <div className="mt-2 text-[10.5px] sm:text-[11px] text-slate-500 dark:text-zinc-400 font-medium truncate w-full text-center">
                     {a.week.replace("Sem. ", "")}
                   </div>
                 </div>
@@ -1042,7 +1055,7 @@ function ActivityVolumeCard({
             })}
       </div>
 
-      <div className="mt-4 sm:mt-5 pt-4 border-t border-slate-100 grid grid-cols-3 gap-2 sm:gap-3">
+      <div className="mt-4 sm:mt-5 pt-4 border-t border-slate-100 dark:border-zinc-800 grid grid-cols-3 gap-2 sm:gap-3">
         <LegendStat color="#0052D9" label="Messages" value={totalMsgs} />
         <LegendStat color="#93c5fd" label="Appels" value={totalCalls} />
         <LegendStat color="#86efac" label="RDV" value={totalRdvs} />
@@ -1063,73 +1076,73 @@ function TopDealsCard({ workspaceId }: { workspaceId: string | null | undefined 
   });
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5">
+    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
       <div className="flex items-center justify-between mb-3 sm:mb-4">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300 flex items-center justify-center">
             <Flame size={15} />
           </div>
           <div>
-            <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900">
+            <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
               Top deals en cours
             </h3>
-            <div className="text-[11.5px] sm:text-[12px] text-slate-500">
+            <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400">
               5 prospects les plus chauds
             </div>
           </div>
         </div>
         <a
           href="/crm"
-          className="text-[12px] text-blue-600 font-medium hover:text-blue-700"
+          className="text-[12px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300"
         >
           Tout le pipeline →
         </a>
       </div>
-      <div className="divide-y divide-slate-100">
+      <div className="divide-y divide-slate-100 dark:divide-zinc-800">
         {isLoading
           ? Array.from({ length: 5 }).map((_, i) => (
               <div
                 key={i}
                 className="flex items-center gap-3 py-2.5 animate-pulse"
               >
-                <div className="w-8 h-8 rounded-full bg-slate-100" />
+                <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-zinc-800" />
                 <div className="flex-1 space-y-1.5">
-                  <div className="h-3 w-1/2 bg-slate-100 rounded" />
-                  <div className="h-3 w-1/3 bg-slate-100 rounded" />
+                  <div className="h-3 w-1/2 bg-slate-100 dark:bg-zinc-800 rounded" />
+                  <div className="h-3 w-1/3 bg-slate-100 dark:bg-zinc-800 rounded" />
                 </div>
               </div>
             ))
           : data.length === 0
-            ? <div className="py-8 text-center text-[12.5px] text-slate-500">
+            ? <div className="py-8 text-center text-[12.5px] text-slate-500 dark:text-zinc-400">
                 Aucun deal actif pour le moment.
               </div>
             : data.map((d) => (
                 <a
                   key={d.prospect_id}
                   href={d.href}
-                  className="flex items-center gap-3 py-2.5 hover:bg-slate-50/60 -mx-2 px-2 rounded transition-colors"
+                  className="flex items-center gap-3 py-2.5 hover:bg-slate-50/60 dark:hover:bg-zinc-800/60 -mx-2 px-2 rounded transition-colors"
                 >
                   <Avatar initials={d.initials} size={32} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 sm:gap-2">
-                      <span className="text-[12.5px] sm:text-[13px] font-medium text-slate-900 truncate">
+                      <span className="text-[12.5px] sm:text-[13px] font-medium text-slate-900 dark:text-zinc-100 truncate">
                         {d.name}
                       </span>
                       <Pill tone={STAGE_TONE[d.stage] ?? "slate"}>
                         {d.stage_label}
                       </Pill>
                     </div>
-                    <div className="flex items-center gap-1.5 text-[11px] sm:text-[11.5px] text-slate-500 mt-0.5">
+                    <div className="flex items-center gap-1.5 text-[11px] sm:text-[11.5px] text-slate-500 dark:text-zinc-400 mt-0.5">
                       {d.company && (
                         <>
                           <span className="truncate">{d.company}</span>
-                          <span className="text-slate-300">·</span>
+                          <span className="text-slate-300 dark:text-zinc-600">·</span>
                         </>
                       )}
                       <span className="truncate">{d.last_activity_label}</span>
                     </div>
                   </div>
-                  <span className="hidden sm:inline-flex text-[11.5px] font-medium text-blue-600 px-2 py-1 rounded items-center gap-1 flex-shrink-0">
+                  <span className="hidden sm:inline-flex text-[11.5px] font-medium text-blue-600 dark:text-blue-400 px-2 py-1 rounded items-center gap-1 flex-shrink-0">
                     Voir
                     <ArrowRight size={12} />
                   </span>
@@ -1152,63 +1165,63 @@ function AtRiskCard({ workspaceId }: { workspaceId: string | null | undefined })
   });
 
   const sevColor: Record<AtRiskRow["severity"], string> = {
-    high: "text-rose-600 bg-rose-50",
-    med: "text-amber-600 bg-amber-50",
-    low: "text-slate-500 bg-slate-100",
+    high: "text-rose-600 bg-rose-50 dark:text-rose-300 dark:bg-rose-950/40",
+    med: "text-amber-600 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/40",
+    low: "text-slate-500 bg-slate-100 dark:text-zinc-400 dark:bg-zinc-800",
   };
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5">
+    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
       <div className="flex items-center justify-between mb-3 sm:mb-4">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 flex items-center justify-center">
             <Snowflake size={15} />
           </div>
           <div>
-            <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900">
+            <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
               Deals à risque
             </h3>
-            <div className="text-[11.5px] sm:text-[12px] text-slate-500">
+            <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400">
               À relancer pour ne pas perdre le fil
             </div>
           </div>
         </div>
         <a
           href="/crm"
-          className="text-[12px] text-blue-600 font-medium hover:text-blue-700"
+          className="text-[12px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300"
         >
           Tout voir →
         </a>
       </div>
-      <div className="divide-y divide-slate-100">
+      <div className="divide-y divide-slate-100 dark:divide-zinc-800">
         {isLoading
           ? Array.from({ length: 5 }).map((_, i) => (
               <div
                 key={i}
                 className="flex items-center gap-3 py-2.5 animate-pulse"
               >
-                <div className="w-8 h-8 rounded-full bg-slate-100" />
+                <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-zinc-800" />
                 <div className="flex-1 space-y-1.5">
-                  <div className="h-3 w-1/2 bg-slate-100 rounded" />
-                  <div className="h-3 w-1/3 bg-slate-100 rounded" />
+                  <div className="h-3 w-1/2 bg-slate-100 dark:bg-zinc-800 rounded" />
+                  <div className="h-3 w-1/3 bg-slate-100 dark:bg-zinc-800 rounded" />
                 </div>
-                <div className="w-12 h-8 bg-slate-100 rounded" />
+                <div className="w-12 h-8 bg-slate-100 dark:bg-zinc-800 rounded" />
               </div>
             ))
           : data.length === 0
-            ? <div className="py-8 text-center text-[12.5px] text-slate-500">
+            ? <div className="py-8 text-center text-[12.5px] text-slate-500 dark:text-zinc-400">
                 Aucun deal silencieux détecté. 🎉
               </div>
             : data.map((d) => (
                 <a
                   key={d.prospect_id}
                   href={d.href}
-                  className="flex items-center gap-3 py-2.5 hover:bg-slate-50/60 -mx-2 px-2 rounded transition-colors"
+                  className="flex items-center gap-3 py-2.5 hover:bg-slate-50/60 dark:hover:bg-zinc-800/60 -mx-2 px-2 rounded transition-colors"
                 >
                   <Avatar initials={d.initials} size={32} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 sm:gap-2">
-                      <span className="text-[12.5px] sm:text-[13px] font-medium text-slate-900 truncate">
+                      <span className="text-[12.5px] sm:text-[13px] font-medium text-slate-900 dark:text-zinc-100 truncate">
                         {d.name}
                       </span>
                       <Pill tone={STAGE_TONE[d.stage] ?? "slate"}>
@@ -1216,7 +1229,7 @@ function AtRiskCard({ workspaceId }: { workspaceId: string | null | undefined })
                       </Pill>
                     </div>
                     {d.company && (
-                      <div className="text-[11px] sm:text-[11.5px] text-slate-500 truncate mt-0.5">
+                      <div className="text-[11px] sm:text-[11.5px] text-slate-500 dark:text-zinc-400 truncate mt-0.5">
                         {d.company}
                       </div>
                     )}
@@ -1258,13 +1271,13 @@ function LinkedInQuotasCard({
 
   if (liLoading) {
     return (
-      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5">
-        <div className="h-4 w-40 animate-pulse rounded bg-slate-100" />
+      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
+        <div className="h-4 w-40 animate-pulse rounded bg-slate-100 dark:bg-zinc-800" />
         <div className="mt-5 space-y-3">
           {[0, 1, 2].map((i) => (
             <div key={i} className="space-y-1.5">
-              <div className="h-3 w-32 animate-pulse rounded bg-slate-100" />
-              <div className="h-1.5 w-full animate-pulse rounded-full bg-slate-100" />
+              <div className="h-3 w-32 animate-pulse rounded bg-slate-100 dark:bg-zinc-800" />
+              <div className="h-1.5 w-full animate-pulse rounded-full bg-slate-100 dark:bg-zinc-800" />
             </div>
           ))}
         </div>
@@ -1274,21 +1287,21 @@ function LinkedInQuotasCard({
 
   if (!linkedIn?.connected) {
     return (
-      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5">
+      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
         <div className="flex items-center gap-2 mb-3.5">
-          <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 flex items-center justify-center">
             <Linkedin size={15} />
           </div>
           <div>
-            <h3 className="text-[14px] font-semibold tracking-tight text-slate-900">
+            <h3 className="text-[14px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
               Quotas LinkedIn
             </h3>
-            <div className="text-[11px] text-slate-500">
+            <div className="text-[11px] text-slate-500 dark:text-zinc-400">
               Compte non connecté
             </div>
           </div>
         </div>
-        <p className="text-[12px] text-slate-500 leading-relaxed">
+        <p className="text-[12px] text-slate-500 dark:text-zinc-400 leading-relaxed">
           Connectez votre compte LinkedIn pour suivre vos quotas en temps réel.
         </p>
       </div>
@@ -1349,14 +1362,14 @@ function LinkedInQuotasCard({
   const ui = statusUI[status];
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5">
+    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
       <div className="flex items-center justify-between mb-3 sm:mb-3.5">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 flex items-center justify-center">
             <Linkedin size={15} />
           </div>
           <div>
-            <h3 className="text-[14px] font-semibold tracking-tight text-slate-900">
+            <h3 className="text-[14px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
               Quotas LinkedIn
             </h3>
             <div className="flex items-center gap-1.5 mt-0.5">
@@ -1369,7 +1382,7 @@ function LinkedInQuotasCard({
         </div>
         <a
           href="/settings"
-          className="text-[11.5px] text-blue-600 font-medium hover:text-blue-700"
+          className="text-[11.5px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300"
         >
           Détails →
         </a>
@@ -1380,19 +1393,19 @@ function LinkedInQuotasCard({
           return (
             <div key={q.label}>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[12px] text-slate-700">{q.label}</span>
-                <span className="text-[11.5px] tabular-nums text-slate-500">
-                  {q.used} <span className="text-slate-300">/</span> {q.max}
+                <span className="text-[12px] text-slate-700 dark:text-zinc-300">{q.label}</span>
+                <span className="text-[11.5px] tabular-nums text-slate-500 dark:text-zinc-400">
+                  {q.used} <span className="text-slate-300 dark:text-zinc-600">/</span> {q.max}
                 </span>
               </div>
-              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all"
                   style={{ width: `${pct}%`, background: q.color }}
                 />
               </div>
               {q.footnote && (
-                <div className="mt-1 text-[10.5px] text-slate-400">
+                <div className="mt-1 text-[10.5px] text-slate-400 dark:text-zinc-500">
                   {q.footnote}
                 </div>
               )}
@@ -1400,12 +1413,12 @@ function LinkedInQuotasCard({
           );
         })}
       </div>
-      <div className="mt-4 pt-3 border-t border-slate-100 text-[10.5px] sm:text-[11px] text-slate-500 leading-relaxed">
+      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-zinc-800 text-[10.5px] sm:text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
         Réinitialisation à minuit (UTC). Andoxa lisse l&apos;envoi pour rester
         sous les seuils de sécurité.
       </div>
       {usageLoading && (
-        <div className="mt-2 text-[10.5px] text-slate-400">Actualisation…</div>
+        <div className="mt-2 text-[10.5px] text-slate-400 dark:text-zinc-500">Actualisation…</div>
       )}
     </div>
   );
@@ -1446,17 +1459,17 @@ function ActiveCampaignsCard({
   });
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5">
+    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
       <div className="flex items-center justify-between mb-3 sm:mb-3.5">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-lg bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-300 flex items-center justify-center">
             <Megaphone size={15} />
           </div>
           <div>
-            <h3 className="text-[14px] font-semibold tracking-tight text-slate-900">
+            <h3 className="text-[14px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
               Mes campagnes actives
             </h3>
-            <div className="text-[11px] text-slate-500">
+            <div className="text-[11px] text-slate-500 dark:text-zinc-400">
               {data.length}{" "}
               {data.length > 1 ? "séquences" : "séquence"} en orchestration
             </div>
@@ -1464,7 +1477,7 @@ function ActiveCampaignsCard({
         </div>
         <Link
           href="/workflows"
-          className="text-[11.5px] text-blue-600 font-medium hover:text-blue-700"
+          className="text-[11.5px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300"
         >
           Toutes →
         </Link>
@@ -1473,12 +1486,12 @@ function ActiveCampaignsCard({
         {isLoading
           ? Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="space-y-1.5 animate-pulse">
-                <div className="h-3 w-2/3 bg-slate-100 rounded" />
-                <div className="h-1.5 w-full bg-slate-100 rounded-full" />
+                <div className="h-3 w-2/3 bg-slate-100 dark:bg-zinc-800 rounded" />
+                <div className="h-1.5 w-full bg-slate-100 dark:bg-zinc-800 rounded-full" />
               </div>
             ))
           : data.length === 0
-            ? <div className="py-6 text-center text-[12px] text-slate-500">
+            ? <div className="py-6 text-center text-[12px] text-slate-500 dark:text-zinc-400">
                 Aucune campagne active. Lancez votre premier parcours.
               </div>
             : data.map((c) => {
@@ -1491,10 +1504,10 @@ function ActiveCampaignsCard({
                   >
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <div className="min-w-0">
-                        <div className="text-[12.5px] font-medium text-slate-900 truncate">
+                        <div className="text-[12.5px] font-medium text-slate-900 dark:text-zinc-100 truncate">
                           {c.name}
                         </div>
-                        <div className="text-[10.5px] text-slate-500 mt-0.5">
+                        <div className="text-[10.5px] text-slate-500 dark:text-zinc-400 mt-0.5">
                           {CHANNEL_LABEL[c.channel]}
                         </div>
                       </div>
@@ -1503,7 +1516,7 @@ function ActiveCampaignsCard({
                       </Pill>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="flex-1 h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                         <div
                           className="h-full rounded-full"
                           style={{
@@ -1513,7 +1526,7 @@ function ActiveCampaignsCard({
                           }}
                         />
                       </div>
-                      <span className="text-[11px] tabular-nums text-slate-500 flex-shrink-0">
+                      <span className="text-[11px] tabular-nums text-slate-500 dark:text-zinc-400 flex-shrink-0">
                         {c.done} / {c.total}
                       </span>
                     </div>
@@ -1523,7 +1536,7 @@ function ActiveCampaignsCard({
       </div>
       <Link
         href="/workflows"
-        className="mt-4 w-full block text-center text-[12px] text-blue-600 font-medium hover:text-blue-700 hover:bg-blue-50/50 py-1.5 rounded-md transition-colors"
+        className="mt-4 w-full block text-center text-[12px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 py-1.5 rounded-md transition-colors"
       >
         + Nouvelle campagne
       </Link>
@@ -1607,23 +1620,23 @@ function RecentActivityCard({
   });
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5">
+    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
       <div className="flex items-start sm:items-center justify-between gap-3 mb-3 sm:mb-4 flex-col sm:flex-row">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 flex items-center justify-center">
             <Activity size={15} />
           </div>
           <div>
-            <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900">
+            <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
               Activité récente
             </h3>
-            <div className="text-[11.5px] sm:text-[12px] text-slate-500">
+            <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400">
               Événements regroupés et filtrés
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto -mx-1 px-1 sm:mx-0 sm:px-0">
-          <div className="flex items-center bg-slate-100 rounded-md p-0.5">
+          <div className="flex items-center bg-slate-100 dark:bg-zinc-800 rounded-md p-0.5">
             {ACT_FILTER_LABELS.map((f) => (
               <button
                 key={f}
@@ -1631,8 +1644,8 @@ function RecentActivityCard({
                 type="button"
                 className={`px-2 sm:px-2.5 py-1 text-[11px] sm:text-[11.5px] rounded transition-all whitespace-nowrap ${
                   filter === f
-                    ? "bg-white text-slate-900 shadow-sm font-medium"
-                    : "text-slate-600"
+                    ? "bg-white text-slate-900 dark:bg-zinc-700 dark:text-zinc-100 shadow-sm font-medium"
+                    : "text-slate-600 dark:text-zinc-400"
                 }`}
               >
                 {f}
@@ -1642,7 +1655,7 @@ function RecentActivityCard({
           <button
             type="button"
             disabled
-            className="w-8 h-8 rounded-md border border-slate-200 bg-white text-slate-400 flex items-center justify-center shrink-0"
+            className="w-8 h-8 rounded-md border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-slate-400 dark:text-zinc-500 flex items-center justify-center shrink-0"
             title="Filtres avancés (bientôt)"
           >
             <Filter size={13} />
@@ -1655,18 +1668,18 @@ function RecentActivityCard({
           ? [0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="flex items-center gap-3 py-3 border-b border-slate-100 last:border-0"
+                className="flex items-center gap-3 py-3 border-b border-slate-100 dark:border-zinc-800 last:border-0"
               >
-                <div className="w-8 h-8 rounded-lg bg-slate-100 animate-pulse" />
+                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-zinc-800 animate-pulse" />
                 <div className="flex-1 space-y-1.5">
-                  <div className="h-3 w-1/2 bg-slate-100 rounded animate-pulse" />
-                  <div className="h-3 w-1/3 bg-slate-100 rounded animate-pulse" />
+                  <div className="h-3 w-1/2 bg-slate-100 dark:bg-zinc-800 rounded animate-pulse" />
+                  <div className="h-3 w-1/3 bg-slate-100 dark:bg-zinc-800 rounded animate-pulse" />
                 </div>
               </div>
             ))
           : rows.length === 0
             ? (
-              <div className="py-8 text-center text-[12.5px] text-slate-500">
+              <div className="py-8 text-center text-[12.5px] text-slate-500 dark:text-zinc-400">
                 Aucune activité récente.
               </div>
             )
@@ -1678,7 +1691,7 @@ function RecentActivityCard({
                   <Wrapper
                     key={e.id}
                     {...(e.target_url ? { href: e.target_url } : {})}
-                    className="flex items-start gap-3 py-3 border-b border-slate-100 last:border-0 hover:bg-slate-50/60 -mx-2 px-2 rounded transition-colors"
+                    className="flex items-start gap-3 py-3 border-b border-slate-100 dark:border-zinc-800 last:border-0 hover:bg-slate-50/60 dark:hover:bg-zinc-800/60 -mx-2 px-2 rounded transition-colors"
                   >
                     <div
                       className={`w-8 h-8 rounded-lg ${t.bg} ${t.text} flex items-center justify-center flex-shrink-0 mt-0.5`}
@@ -1687,15 +1700,15 @@ function RecentActivityCard({
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[12.5px] sm:text-[13px] font-medium text-slate-900">
+                        <span className="text-[12.5px] sm:text-[13px] font-medium text-slate-900 dark:text-zinc-100">
                           {e.title}
                         </span>
                       </div>
-                      <div className="text-[11px] sm:text-[11.5px] text-slate-500 mt-0.5">
+                      <div className="text-[11px] sm:text-[11.5px] text-slate-500 dark:text-zinc-400 mt-0.5">
                         {e.description}
                       </div>
                     </div>
-                    <div className="text-[10.5px] sm:text-[11px] text-slate-400 flex-shrink-0 mt-1 tabular-nums whitespace-nowrap">
+                    <div className="text-[10.5px] sm:text-[11px] text-slate-400 dark:text-zinc-500 flex-shrink-0 mt-1 tabular-nums whitespace-nowrap">
                       {formatActivityTime(e.timestamp)}
                     </div>
                   </Wrapper>
@@ -1736,7 +1749,7 @@ export function Dashboard2Content() {
   }, [profile?.full_name, user?.email]);
 
   return (
-    <div style={{ background: "#FAFAFA" }} className="min-h-full">
+    <div className="min-h-full bg-[#FAFAFA] dark:bg-zinc-950">
       <style>{`
         @keyframes andoxa-pulseDot {
           0%, 100% { opacity: 1; }

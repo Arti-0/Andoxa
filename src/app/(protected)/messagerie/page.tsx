@@ -19,7 +19,7 @@ function ThreadSkeleton() {
     <div
       style={{
         flex: 1,
-        background: "#FCFCFD",
+        background: "var(--m2-surface-muted)",
         borderRight: "1px solid var(--m2-slate-200)",
         display: "flex",
         alignItems: "center",
@@ -39,7 +39,7 @@ function CockpitSkeleton() {
       style={{
         width: 300,
         minWidth: 260,
-        background: "white",
+        background: "var(--m2-surface-elevated)",
         borderLeft: "1px solid var(--m2-slate-200)",
       }}
     />
@@ -143,7 +143,7 @@ export default function Messagerie2Page() {
           alignItems: "center",
           gap: 12,
           padding: "0 22px",
-          background: "white",
+          background: "var(--m2-surface-elevated)",
           flexShrink: 0,
         }}
       >

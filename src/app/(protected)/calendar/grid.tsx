@@ -30,7 +30,7 @@ export function CalendarGrid({ visible, onSelectEvent, onCreate, events, weekDay
   const rangeLabel = fmtWeekRange(weekStart);
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "#fff", border: "1px solid #EDF1F5", borderRadius: 10, overflow: "hidden" }}>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--cal2-surface)", border: "1px solid var(--cal2-border-faint)", borderRadius: 10, overflow: "hidden" }}>
       <ControlBar view={view} setView={setView} rangeLabel={rangeLabel} weekOffset={weekOffset} onWeekChange={onWeekChange} />
       <div style={{ flex: 1, minHeight: 0 }}>
         {view === "Semaine" && <WeekView visible={visible} onSelectEvent={onSelectEvent} onCreate={onCreate} events={events} weekDays={weekDays} weekOffset={weekOffset} calendarColors={calendarColors} />}
@@ -48,7 +48,7 @@ function ControlBar({ view, setView, rangeLabel, weekOffset, onWeekChange }: {
   rangeLabel: string; weekOffset: number; onWeekChange: (d: number) => void;
 }) {
   return (
-    <div style={{ padding: "12px 16px", borderBottom: "1px solid #EDF1F5", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#FAFBFC", flexShrink: 0 }}>
+    <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--cal2-border-faint)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--cal2-canvas-soft)", flexShrink: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <button onClick={() => onWeekChange(-1)} style={navBtnStyle}><Chevron dir="left" /></button>
         <button
@@ -58,11 +58,11 @@ function ControlBar({ view, setView, rangeLabel, weekOffset, onWeekChange }: {
           Aujourd&apos;hui
         </button>
         <button onClick={() => onWeekChange(1)} style={navBtnStyle}><Chevron dir="right" /></button>
-        <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 500, color: "#0F172A" }}>{rangeLabel}</span>
+        <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 500, color: "var(--cal2-text)" }}>{rangeLabel}</span>
       </div>
-      <div style={{ display: "flex", background: "#F1F5F9", borderRadius: 8, padding: 2 }}>
+      <div style={{ display: "flex", background: "var(--cal2-surface-2)", borderRadius: 8, padding: 2 }}>
         {(["Jour", "Semaine", "Mois"] as ViewKind[]).map((v) => (
-          <button key={v} onClick={() => setView(v)} style={{ padding: "5px 13px", background: view === v ? "#fff" : "transparent", color: view === v ? "#0052D9" : "#64748B", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", boxShadow: view === v ? "0 1px 2px rgba(15,23,42,0.06)" : "none" }}>
+          <button key={v} onClick={() => setView(v)} style={{ padding: "5px 13px", background: view === v ? "var(--cal2-surface)" : "transparent", color: view === v ? "#0052D9" : "var(--cal2-text-muted)", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", boxShadow: view === v ? "0 1px 2px rgba(15,23,42,0.06)" : "none" }}>
             {v}
           </button>
         ))}
@@ -72,8 +72,8 @@ function ControlBar({ view, setView, rangeLabel, weekOffset, onWeekChange }: {
 }
 
 const navBtnStyle: React.CSSProperties = {
-  width: 28, height: 28, border: "1px solid #E2E8F0", background: "#fff", borderRadius: 7,
-  color: "#475569", display: "flex", alignItems: "center", justifyContent: "center",
+  width: 28, height: 28, border: "1px solid var(--cal2-border-soft)", background: "var(--cal2-surface)", borderRadius: 7,
+  color: "var(--cal2-text-soft)", display: "flex", alignItems: "center", justifyContent: "center",
   cursor: "pointer", fontFamily: "inherit",
 };
 
@@ -100,7 +100,7 @@ function resolveEventColor(ev: CalEvent, calendarColors: CalendarColorMap) {
   const entry = calendarColors[ev.calendarId] ?? calendarColors[ev.owner];
   if (entry) return { color: entry.color, tint: entry.tint };
   const member = TEAM_BY_ID[ev.owner] ?? TEAM_BY_ID.me;
-  return { color: member?.color ?? "#0052D9", tint: member?.accent ?? "#E8F0FD" };
+  return { color: member?.color ?? "#0052D9", tint: member?.accent ?? "var(--cal2-blue-tint)" };
 }
 
 // Lay out overlapping events side-by-side. Returns each event with a column
@@ -154,15 +154,15 @@ function WeekView({ visible, onSelectEvent, onCreate, events, weekDays, weekOffs
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         {/* Sticky day-header row — same grid template as body, no scrollbar offset */}
-        <div style={{ position: "sticky", top: 0, zIndex: 10, display: "grid", gridTemplateColumns: cols, background: "#fff", borderBottom: "1px solid #EDF1F5" }}>
+        <div style={{ position: "sticky", top: 0, zIndex: 10, display: "grid", gridTemplateColumns: cols, background: "var(--cal2-surface)", borderBottom: "1px solid var(--cal2-border-faint)" }}>
           <div style={{ height: 52 }} />
           {weekDays.map((d, i) => (
-            <div key={i} style={{ padding: "10px 8px 12px", textAlign: "center", borderLeft: "1px solid #F1F5F9", background: d.weekend ? "#F1F5F9" : "#fff" }}>
-              <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: d.isToday ? "#0052D9" : "#94A3B8", textTransform: "uppercase", marginBottom: 4 }}>{d.short}</div>
+            <div key={i} style={{ padding: "10px 8px 12px", textAlign: "center", borderLeft: "1px solid var(--cal2-surface-2)", background: d.weekend ? "var(--cal2-surface-2)" : "var(--cal2-surface)" }}>
+              <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: d.isToday ? "#0052D9" : "var(--cal2-text-faint)", textTransform: "uppercase", marginBottom: 4 }}>{d.short}</div>
               {d.isToday ? (
-                <div style={{ width: 28, height: 28, margin: "0 auto", borderRadius: "50%", background: "#0052D9", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 500 }}>{d.num}</div>
+                <div style={{ width: 28, height: 28, margin: "0 auto", borderRadius: "50%", background: "#0052D9", color: "var(--cal2-surface)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 500 }}>{d.num}</div>
               ) : (
-                <div style={{ fontSize: 16, color: d.weekend ? "#94A3B8" : "#475569", lineHeight: "28px" }}>{d.num}</div>
+                <div style={{ fontSize: 16, color: d.weekend ? "var(--cal2-text-faint)" : "var(--cal2-text-soft)", lineHeight: "28px" }}>{d.num}</div>
               )}
             </div>
           ))}
@@ -173,7 +173,7 @@ function WeekView({ visible, onSelectEvent, onCreate, events, weekDays, weekOffs
           {/* Hour gutter */}
           <div style={{ position: "relative" }}>
             {HOURS.map((h, i) => (
-              <div key={h} style={{ height: HOUR_HEIGHT, borderBottom: "1px solid #F1F5F9", paddingRight: 8, paddingTop: 4, textAlign: "right", fontSize: 10, color: "#94A3B8", fontVariantNumeric: "tabular-nums" }}>
+              <div key={h} style={{ height: HOUR_HEIGHT, borderBottom: "1px solid var(--cal2-surface-2)", paddingRight: 8, paddingTop: 4, textAlign: "right", fontSize: 10, color: "var(--cal2-text-faint)", fontVariantNumeric: "tabular-nums" }}>
                 {i === 0 ? "" : `${String(h).padStart(2, "0")}:00`}
               </div>
             ))}
@@ -185,16 +185,16 @@ function WeekView({ visible, onSelectEvent, onCreate, events, weekDays, weekOffs
             const dayEvents = events.filter((e) => e.day === dIdx && visible[e.owner] !== false);
             const laidOut = layoutDayEvents(dayEvents);
             return (
-              <div key={dIdx} style={{ position: "relative", borderLeft: "1px solid #F1F5F9", background: day.weekend ? "#F1F5F9" : "transparent" }}>
+              <div key={dIdx} style={{ position: "relative", borderLeft: "1px solid var(--cal2-surface-2)", background: day.weekend ? "var(--cal2-surface-2)" : "transparent" }}>
                 {HOURS.map((h) => {
                   const isLunch = !day.weekend && (h === 12 || h === 13);
                   return (
                     <div
                       key={h}
                       onDoubleClick={() => onCreate({ day: dIdx, start: h, end: h + 1 })}
-                      style={{ height: HOUR_HEIGHT, borderBottom: "1px solid #F1F5F9", position: "relative", background: isLunch ? "rgba(241,245,249,0.5)" : "transparent", cursor: "pointer" }}
+                      style={{ height: HOUR_HEIGHT, borderBottom: "1px solid var(--cal2-surface-2)", position: "relative", background: isLunch ? "var(--cal2-lunch-tint)" : "transparent", cursor: "pointer" }}
                     >
-                      <div style={{ position: "absolute", top: HOUR_HEIGHT / 2, left: 0, right: 0, borderTop: "1px dashed #F8FAFC" }} />
+                      <div style={{ position: "absolute", top: HOUR_HEIGHT / 2, left: 0, right: 0, borderTop: "1px dashed var(--cal2-surface-3)" }} />
                     </div>
                   );
                 })}
@@ -216,7 +216,7 @@ function WeekView({ visible, onSelectEvent, onCreate, events, weekDays, weekOffs
 function NowBadge({ top, now }: { top: number; now: { hour: number; minute: number } }) {
   return (
     <div style={{ position: "absolute", top, right: 0, transform: "translateY(-50%)", display: "flex", alignItems: "center", gap: 4, pointerEvents: "none", zIndex: 5 }}>
-      <span style={{ fontSize: 10, fontWeight: 600, color: "#fff", background: "#EF4444", padding: "1px 5px", borderRadius: 3, fontVariantNumeric: "tabular-nums", lineHeight: 1.3 }}>
+      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--cal2-surface)", background: "#EF4444", padding: "1px 5px", borderRadius: 3, fontVariantNumeric: "tabular-nums", lineHeight: 1.3 }}>
         {fmtTime(now.hour + now.minute / 60)}
       </span>
       <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#EF4444", boxShadow: "0 0 0 2px rgba(239,68,68,0.2)", marginRight: -4 }} />
@@ -247,11 +247,11 @@ function EventCard({ ev, onClick, calendarColors, col, cols }: { ev: CalEvent; o
         left: `calc(${leftPct}% + 4px)`,
         width: `calc(${widthPct}% - ${cols > 1 ? 6 : 8}px)`,
         height: height - 2,
-        background: typeTok.tint,
+        background: `color-mix(in srgb, ${typeTok.color} 14%, var(--cal2-surface))`,
         borderRadius: 6,
         borderLeft: `3px solid ${typeTok.color}`,
         // Subtle outline to distinguish stacked same-color events
-        boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.6), 0 0 0 1px rgba(15,23,42,0.04)",
+        boxShadow: "inset 0 0 0 1px var(--cal2-event-gloss), 0 0 0 1px rgba(15,23,42,0.04)",
         padding: oneLine ? "0 6px" : "5px 8px",
         cursor: "pointer",
         overflow: "hidden",
@@ -263,22 +263,22 @@ function EventCard({ ev, onClick, calendarColors, col, cols }: { ev: CalEvent; o
         gap: oneLine ? 5 : 2,
       }}
       onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "0 4px 14px rgba(15,23,42,0.12), 0 0 0 1px rgba(15,23,42,0.06)"; e.currentTarget.style.zIndex = "20"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "inset 0 0 0 1px rgba(255,255,255,0.6), 0 0 0 1px rgba(15,23,42,0.04)"; e.currentTarget.style.zIndex = "2"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "inset 0 0 0 1px var(--cal2-event-gloss), 0 0 0 1px rgba(15,23,42,0.04)"; e.currentTarget.style.zIndex = "2"; }}
     >
       {oneLine ? (
         <>
-          <span style={{ fontSize: 9.5, color: "#94A3B8", fontVariantNumeric: "tabular-nums", flexShrink: 0, fontWeight: 500 }}>{fmtTime(ev.start)}</span>
-          {member && <span style={{ width: 14, height: 14, borderRadius: "50%", background: member.accent, color: member.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>{member.initials}</span>}
-          <span style={{ fontSize: 11, fontWeight: 500, color: "#0F172A", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{ev.title}</span>
+          <span style={{ fontSize: 9.5, color: "var(--cal2-text-faint)", fontVariantNumeric: "tabular-nums", flexShrink: 0, fontWeight: 500 }}>{fmtTime(ev.start)}</span>
+          {member && <span style={{ width: 14, height: 14, borderRadius: "50%", background: `color-mix(in srgb, ${member.color} 22%, var(--cal2-surface))`, color: member.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>{member.initials}</span>}
+          <span style={{ fontSize: 11, fontWeight: 500, color: "var(--cal2-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{ev.title}</span>
         </>
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {member && <span style={{ width: 16, height: 16, borderRadius: "50%", background: member.accent, color: member.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8.5, fontWeight: 700, flexShrink: 0 }}>{member.initials}</span>}
-            <span style={{ fontSize: 11.5, fontWeight: 500, color: "#0F172A", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{ev.title}</span>
-            {ev.type && <span style={{ fontSize: 9, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: "#fff", color: typeTok.color, flexShrink: 0, display: "none" }}>{ev.type}</span>}
+            {member && <span style={{ width: 16, height: 16, borderRadius: "50%", background: `color-mix(in srgb, ${member.color} 22%, var(--cal2-surface))`, color: member.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8.5, fontWeight: 700, flexShrink: 0 }}>{member.initials}</span>}
+            <span style={{ fontSize: 11.5, fontWeight: 500, color: "var(--cal2-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{ev.title}</span>
+            {ev.type && <span style={{ fontSize: 9, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: "var(--cal2-surface)", color: typeTok.color, flexShrink: 0, display: "none" }}>{ev.type}</span>}
           </div>
-          <div style={{ fontSize: 10.5, color: "#64748B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: 10.5, color: "var(--cal2-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {fmtTime(ev.start)} – {fmtTime(ev.end)}{ev.company ? ` · ${ev.company}` : ""}
           </div>
         </>
@@ -301,12 +301,12 @@ function DayView({ visible, onSelectEvent, onCreate, events, weekDays, weekOffse
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       {day && (
-        <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: cols, borderBottom: "1px solid #EDF1F5" }}>
+        <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: cols, borderBottom: "1px solid var(--cal2-border-faint)" }}>
           <div />
           <div style={{ padding: "12px 16px", display: "flex", alignItems: "baseline", gap: 8 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: "#0052D9", letterSpacing: "0.08em", textTransform: "uppercase" }}>{day.long}</span>
-            <span style={{ fontSize: 14, color: "#0F172A", fontWeight: 500 }}>{day.num} {day.monthFull} {new Date(day.date).getFullYear()}</span>
-            <span style={{ fontSize: 11.5, color: "#94A3B8", marginLeft: 8 }}>{dayEvents.length} événement{dayEvents.length > 1 ? "s" : ""}</span>
+            <span style={{ fontSize: 14, color: "var(--cal2-text)", fontWeight: 500 }}>{day.num} {day.monthFull} {new Date(day.date).getFullYear()}</span>
+            <span style={{ fontSize: 11.5, color: "var(--cal2-text-faint)", marginLeft: 8 }}>{dayEvents.length} événement{dayEvents.length > 1 ? "s" : ""}</span>
           </div>
         </div>
       )}
@@ -314,18 +314,18 @@ function DayView({ visible, onSelectEvent, onCreate, events, weekDays, weekOffse
         <div style={{ position: "relative", display: "grid", gridTemplateColumns: cols, minHeight: HOURS.length * HOUR_HEIGHT }}>
           <div style={{ position: "relative" }}>
             {HOURS.map((h, i) => (
-              <div key={h} style={{ height: HOUR_HEIGHT, borderBottom: "1px solid #F1F5F9", paddingRight: 8, paddingTop: 4, textAlign: "right", fontSize: 10, color: "#94A3B8", fontVariantNumeric: "tabular-nums" }}>
+              <div key={h} style={{ height: HOUR_HEIGHT, borderBottom: "1px solid var(--cal2-surface-2)", paddingRight: 8, paddingTop: 4, textAlign: "right", fontSize: 10, color: "var(--cal2-text-faint)", fontVariantNumeric: "tabular-nums" }}>
                 {i === 0 ? "" : `${String(h).padStart(2, "0")}:00`}
               </div>
             ))}
             {weekOffset === 0 && <NowBadge top={nowOffset} now={now} />}
           </div>
-          <div style={{ position: "relative", borderLeft: "1px solid #F1F5F9" }}>
+          <div style={{ position: "relative", borderLeft: "1px solid var(--cal2-surface-2)" }}>
             {HOURS.map((h) => {
               const isLunch = h === 12 || h === 13;
               return (
-                <div key={h} onDoubleClick={() => onCreate({ day: dayIdx, start: h, end: h + 1 })} style={{ height: HOUR_HEIGHT, borderBottom: "1px solid #F1F5F9", background: isLunch ? "rgba(241,245,249,0.5)" : "transparent", cursor: "pointer" }}>
-                  <div style={{ position: "absolute", borderTop: "1px dashed #F8FAFC", left: 0, right: 0, marginTop: HOUR_HEIGHT / 2 }} />
+                <div key={h} onDoubleClick={() => onCreate({ day: dayIdx, start: h, end: h + 1 })} style={{ height: HOUR_HEIGHT, borderBottom: "1px solid var(--cal2-surface-2)", background: isLunch ? "var(--cal2-lunch-tint)" : "transparent", cursor: "pointer" }}>
+                  <div style={{ position: "absolute", borderTop: "1px dashed var(--cal2-surface-3)", left: 0, right: 0, marginTop: HOUR_HEIGHT / 2 }} />
                 </div>
               );
             })}
@@ -356,10 +356,10 @@ function DayEventCard({ ev, onClick, calendarColors, col, cols }: { ev: CalEvent
         left: `calc(${leftPct}% + 6px)`,
         width: `calc(${widthPct}% - ${cols > 1 ? 8 : 12}px)`,
         height: height - 2,
-        background: typeTok.tint,
+        background: `color-mix(in srgb, ${typeTok.color} 14%, var(--cal2-surface))`,
         borderRadius: 7,
         borderLeft: `3px solid ${typeTok.color}`,
-        boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.6), 0 0 0 1px rgba(15,23,42,0.04)",
+        boxShadow: "inset 0 0 0 1px var(--cal2-event-gloss), 0 0 0 1px rgba(15,23,42,0.04)",
         padding: "8px 12px",
         cursor: "pointer",
         overflow: "hidden",
@@ -367,16 +367,16 @@ function DayEventCard({ ev, onClick, calendarColors, col, cols }: { ev: CalEvent
         transition: "box-shadow 140ms",
       }}
       onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "0 4px 14px rgba(15,23,42,0.12), 0 0 0 1px rgba(15,23,42,0.06)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "inset 0 0 0 1px rgba(255,255,255,0.6), 0 0 0 1px rgba(15,23,42,0.04)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "inset 0 0 0 1px var(--cal2-event-gloss), 0 0 0 1px rgba(15,23,42,0.04)"; }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-        {member && <span style={{ width: 18, height: 18, borderRadius: "50%", background: member.accent, color: member.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{member.initials}</span>}
-        <span style={{ fontSize: 13, fontWeight: 500, color: "#0F172A" }}>{ev.title}</span>
-        {ev.type && <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 6px", borderRadius: 4, background: "#fff", color: typeTok.color, display: "none" }}>{ev.type}</span>}
+        {member && <span style={{ width: 18, height: 18, borderRadius: "50%", background: `color-mix(in srgb, ${member.color} 22%, var(--cal2-surface))`, color: member.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{member.initials}</span>}
+        <span style={{ fontSize: 13, fontWeight: 500, color: "var(--cal2-text)" }}>{ev.title}</span>
+        {ev.type && <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 6px", borderRadius: 4, background: "var(--cal2-surface)", color: typeTok.color, display: "none" }}>{ev.type}</span>}
       </div>
-      <div style={{ fontSize: 11.5, color: "#64748B", display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ fontSize: 11.5, color: "var(--cal2-text-muted)", display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmtTime(ev.start)} – {fmtTime(ev.end)}</span>
-        {ev.company && <><span style={{ color: "#CBD5E1" }}>·</span><span>{ev.company}</span></>}
+        {ev.company && <><span style={{ color: "var(--cal2-border)" }}>·</span><span>{ev.company}</span></>}
       </div>
     </div>
   );
@@ -429,9 +429,9 @@ function MonthView({ visible, onSelectEvent, onSwitchView, events, calendarColor
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid #EDF1F5", background: "#fff", flexShrink: 0 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid var(--cal2-border-faint)", background: "var(--cal2-surface)", flexShrink: 0 }}>
         {dayLabels.map((d, i) => (
-          <div key={i} style={{ padding: "10px 12px", fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "#94A3B8", textTransform: "uppercase", background: i >= 5 ? "#F1F5F9" : "#fff", borderLeft: i === 0 ? "none" : "1px solid #F1F5F9", textAlign: "center" }}>{d}</div>
+          <div key={i} style={{ padding: "10px 12px", fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "var(--cal2-text-faint)", textTransform: "uppercase", background: i >= 5 ? "var(--cal2-surface-2)" : "var(--cal2-surface)", borderLeft: i === 0 ? "none" : "1px solid var(--cal2-surface-2)", textAlign: "center" }}>{d}</div>
         ))}
       </div>
       <div style={{
@@ -450,10 +450,10 @@ function MonthView({ visible, onSelectEvent, onSwitchView, events, calendarColor
               key={i}
               onClick={() => evs.length === 0 && onSwitchView("Jour")}
               style={{
-                borderLeft: dow === 0 ? "none" : "1px solid #F1F5F9",
-                borderTop: "1px solid #F1F5F9",
+                borderLeft: dow === 0 ? "none" : "1px solid var(--cal2-surface-2)",
+                borderTop: "1px solid var(--cal2-surface-2)",
                 padding: 6,
-                background: isWeekend && !c.muted ? "#F8FAFC" : c.muted ? "#FAFBFC" : "#fff",
+                background: isWeekend && !c.muted ? "var(--cal2-surface-3)" : c.muted ? "var(--cal2-canvas-soft)" : "var(--cal2-surface)",
                 cursor: "pointer",
                 overflow: "hidden",
                 display: "flex",
@@ -462,14 +462,14 @@ function MonthView({ visible, onSelectEvent, onSwitchView, events, calendarColor
               }}
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginBottom: 4, flexShrink: 0 }}>
-                {c.isToday ? <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#0052D9", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11.5, fontWeight: 600 }}>{c.num}</span>
-                : <span style={{ fontSize: 12, color: c.muted ? "#CBD5E1" : "#64748B", fontWeight: 500 }}>{c.num}</span>}
+                {c.isToday ? <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#0052D9", color: "var(--cal2-surface)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11.5, fontWeight: 600 }}>{c.num}</span>
+                : <span style={{ fontSize: 12, color: c.muted ? "var(--cal2-border)" : "var(--cal2-text-muted)", fontWeight: 500 }}>{c.num}</span>}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minHeight: 0, overflow: "hidden" }}>
                 {evs.slice(0, 3).map((ev) => {
                   const typeTok = resolveEventColor(ev, calendarColors);
                   return (
-                    <div key={ev.id} onClick={(e) => { e.stopPropagation(); onSelectEvent(ev); }} style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 5px", borderRadius: 4, background: typeTok.tint, borderLeft: `2px solid ${typeTok.color}`, fontSize: 10.5, color: "#0F172A", overflow: "hidden", flexShrink: 0 }}>
+                    <div key={ev.id} onClick={(e) => { e.stopPropagation(); onSelectEvent(ev); }} style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 5px", borderRadius: 4, background: `color-mix(in srgb, ${typeTok.color} 14%, var(--cal2-surface))`, borderLeft: `2px solid ${typeTok.color}`, fontSize: 10.5, color: "var(--cal2-text)", overflow: "hidden", flexShrink: 0 }}>
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{ev.title}</span>
                     </div>
                   );
@@ -489,11 +489,11 @@ function MonthView({ visible, onSelectEvent, onSwitchView, events, calendarColor
 function GridFooter() {
   const [ttVisible, setTtVisible] = useState(false);
   return (
-    <div style={{ padding: "8px 14px", borderTop: "1px solid #EDF1F5", background: "#FAFBFC", display: "flex", alignItems: "center", justifyContent: "flex-end", flexShrink: 0 }}>
+    <div style={{ padding: "8px 14px", borderTop: "1px solid var(--cal2-border-faint)", background: "var(--cal2-canvas-soft)", display: "flex", alignItems: "center", justifyContent: "flex-end", flexShrink: 0 }}>
       <div style={{ position: "relative" }} onMouseEnter={() => setTtVisible(true)} onMouseLeave={() => setTtVisible(false)}>
-        <button style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid #E2E8F0", background: "#fff", color: "#94A3B8", fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", cursor: "help" }}>?</button>
+        <button style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid var(--cal2-border-soft)", background: "var(--cal2-surface)", color: "var(--cal2-text-faint)", fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", cursor: "help" }}>?</button>
         {ttVisible && (
-          <div style={{ position: "absolute", bottom: "calc(100% + 8px)", right: 0, background: "#0F172A", color: "#fff", padding: "8px 11px", borderRadius: 6, fontSize: 11, lineHeight: 1.5, whiteSpace: "nowrap", boxShadow: "0 4px 14px rgba(15,23,42,0.2)", zIndex: 50 }}>
+          <div style={{ position: "absolute", bottom: "calc(100% + 8px)", right: 0, background: "var(--cal2-text)", color: "var(--cal2-surface)", padding: "8px 11px", borderRadius: 6, fontSize: 11, lineHeight: 1.5, whiteSpace: "nowrap", boxShadow: "0 4px 14px rgba(15,23,42,0.2)", zIndex: 50 }}>
             <div>Double-cliquez · créer un événement</div>
             <div>Cliquer · modifier</div>
           </div>
