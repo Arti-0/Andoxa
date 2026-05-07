@@ -716,7 +716,6 @@ export function Thread({
     open: () => void;
   } | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const sendMutation = useSendMessage();
   const markUnread = useMarkChatUnread();
   const { workspaceId } = useWorkspace();
