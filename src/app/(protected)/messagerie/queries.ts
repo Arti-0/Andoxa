@@ -218,13 +218,28 @@ export function useThread(
 export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (vars: { chatId: string; text: string }) => {
-      const res = await fetch(`/api/unipile/chats/${vars.chatId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ text: vars.text }),
-      });
+    mutationFn: async (vars: { chatId: string; text: string; file?: File | null }) => {
+      const url = `/api/unipile/chats/${vars.chatId}/messages`;
+      let res: Response;
+      if (vars.file) {
+        // Avec pièce jointe : multipart/form-data (le navigateur pose la
+        // boundary tout seul, on ne définit PAS Content-Type manuellement).
+        const fd = new FormData();
+        if (vars.text) fd.append("text", vars.text);
+        fd.append("attachments", vars.file, vars.file.name);
+        res = await fetch(url, {
+          method: "POST",
+          credentials: "include",
+          body: fd,
+        });
+      } else {
+        res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ text: vars.text }),
+        });
+      }
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(
@@ -247,6 +262,7 @@ export function useSendMessage() {
           minute: "2-digit",
         }),
         text: vars.text,
+        hasAttachments: !!vars.file,
       };
       qc.setQueryData<ThreadEntry[]>(key, (prev = []) => [...prev, optimistic]);
       return { previous };

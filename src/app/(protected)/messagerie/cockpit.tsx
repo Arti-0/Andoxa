@@ -215,7 +215,7 @@ export function Cockpit({ conv }: { conv: Conversation }) {
         width: 300,
         minWidth: 260,
         borderLeft: "1px solid var(--m2-slate-200)",
-        background: "white",
+        background: "var(--m2-surface-elevated)",
         display: "flex",
         flexDirection: "column",
         flexShrink: 0,

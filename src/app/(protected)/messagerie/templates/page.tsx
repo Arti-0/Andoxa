@@ -99,7 +99,7 @@ function NewCategoryModal({ onClose, onSave }: { onClose: () => void; onSave: (c
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.35)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: 14, boxShadow: "0 24px 60px rgba(15,23,42,0.22)", width: "100%", maxWidth: 380 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--m2-surface-elevated)", borderRadius: 14, boxShadow: "0 24px 60px rgba(15,23,42,0.22)", width: "100%", maxWidth: 380 }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--m2-slate-150)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: "var(--m2-slate-900)" }}>Nouvelle catégorie</span>
           <button className="m2-icon-btn" onClick={onClose}><X size={14} /></button>
@@ -137,7 +137,7 @@ function RenameCategoryModal({ cat, onClose, onSave }: { cat: CategoryEntry; onC
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.35)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: 14, boxShadow: "0 24px 60px rgba(15,23,42,0.22)", width: "100%", maxWidth: 380 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--m2-surface-elevated)", borderRadius: 14, boxShadow: "0 24px 60px rgba(15,23,42,0.22)", width: "100%", maxWidth: 380 }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--m2-slate-150)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: "var(--m2-slate-900)" }}>Modifier la catégorie</span>
           <button className="m2-icon-btn" onClick={onClose}><X size={14} /></button>
@@ -183,7 +183,7 @@ function CategoriesSidebar({
   const [renamingCat, setRenamingCat] = useState<CategoryEntry | null>(null);
 
   return (
-    <aside style={{ width: 240, borderRight: "1px solid var(--m2-slate-200)", background: "#FCFCFD", display: "flex", flexDirection: "column", flexShrink: 0 }}>
+    <aside style={{ width: 240, borderRight: "1px solid var(--m2-slate-200)", background: "var(--m2-surface-muted)", display: "flex", flexDirection: "column", flexShrink: 0 }}>
       <div style={{ padding: "14px 12px 6px", fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--m2-slate-500)" }}>
         Catégories
       </div>
@@ -285,7 +285,7 @@ function TagSelect({ selected, onChange, options }: {
 
   return (
     <div style={{ position: "relative" }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, padding: "5px 6px", border: "1px solid var(--m2-slate-200)", borderRadius: 8, background: "#fff", minHeight: 38 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, padding: "5px 6px", border: "1px solid var(--m2-slate-200)", borderRadius: 8, background: "var(--m2-surface-elevated)", minHeight: 38 }}>
         {selected.map((id) => {
           const opt = options.find((o) => o.id === id);
           return opt ? (
@@ -310,7 +310,7 @@ function TagSelect({ selected, onChange, options }: {
         />
       </div>
       {open && (
-        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#fff", border: "1px solid var(--m2-slate-200)", borderRadius: 8, boxShadow: "0 6px 18px rgba(15,23,42,0.08)", zIndex: 20, maxHeight: 200, overflowY: "auto" }}>
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "var(--m2-surface-elevated)", border: "1px solid var(--m2-slate-200)", borderRadius: 8, boxShadow: "0 6px 18px rgba(15,23,42,0.08)", zIndex: 20, maxHeight: 200, overflowY: "auto" }}>
           {selectableOptions.length === 0 ? (
             <div style={{ padding: "10px 12px", fontSize: 12.5, color: "var(--m2-slate-500)", fontStyle: "italic" }}>
               {options.filter((o) => o.id !== "all").length === 0
@@ -323,7 +323,7 @@ function TagSelect({ selected, onChange, options }: {
                 key={o.id}
                 onMouseDown={() => addTag(o.id)}
                 style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "left", fontSize: 13 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#F8FAFC")}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--m2-slate-50)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >
                 <span style={{ fontSize: 15 }}>{o.emoji}</span>
@@ -357,12 +357,12 @@ function TemplateCard({ tpl, onEdit, onDuplicate, onDelete, categories }: {
             const cat = categories.find((c) => c.id === id);
             const pill = cat ? catPill(id, cat.label) : catPill(id, id);
             return cat ? (
-              <span key={id} className="m2-pill" style={{ background: pill.bg, color: pill.fg }}>
+              <span key={id} className="m2-pill" style={{ background: `color-mix(in srgb, ${pill.fg} 16%, var(--m2-surface-elevated))`, color: pill.fg }}>
                 {cat.emoji} {cat.label}
               </span>
             ) : null;
           })}
-          <span className="m2-pill" style={{ background: ch.bg, color: ch.fg, fontSize: 10.5 }}>{ch.label}</span>
+          <span className="m2-pill" style={{ background: `color-mix(in srgb, ${ch.fg} 16%, var(--m2-surface-elevated))`, color: ch.fg, fontSize: 10.5 }}>{ch.label}</span>
         </div>
       </div>
       <div style={{ fontSize: 12.5, color: "var(--m2-slate-600)", marginTop: 8, lineHeight: 1.55, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
@@ -531,7 +531,7 @@ function EditModal({ tpl, onClose, onSave, onDelete, categories }: {
 
 function PageHeader({ onNew }: { onNew: () => void }) {
   return (
-    <div style={{ padding: "18px 28px 14px", borderBottom: "1px solid var(--m2-slate-200)", background: "white" }}>
+    <div style={{ padding: "18px 28px 14px", borderBottom: "1px solid var(--m2-slate-200)", background: "var(--m2-surface-elevated)" }}>
       <Link href="/messagerie" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--m2-slate-500)", textDecoration: "none" }}>
         <ArrowLeft size={12} />Messagerie
       </Link>
@@ -637,12 +637,12 @@ export default function TemplatesPage() {
             onRenameCategory={handleRenameCategory}
             onDeleteCategory={handleDeleteCategory}
           />
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "#F7F8FA" }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "var(--m2-surface)" }}>
             {templates.length === 0 ? (
               <EmptyState onNew={newTpl} />
             ) : (
               <>
-                <div style={{ padding: "14px 24px", borderBottom: "1px solid var(--m2-slate-200)", background: "white", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ padding: "14px 24px", borderBottom: "1px solid var(--m2-slate-200)", background: "var(--m2-surface-elevated)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                   <div className="m2-input-shell" style={{ flex: 1, minWidth: 240, maxWidth: 420 }}>
                     <Search size={13} style={{ color: "var(--m2-slate-500)" }} />
                     <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher dans vos templates…" />

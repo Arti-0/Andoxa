@@ -56,7 +56,13 @@ export function Avatar({
 export function StagePill({ stage }: { stage: Stage }) {
   const s = STAGES[stage];
   return (
-    <span className="m2-pill" style={{ background: s.bg, color: s.fg }}>
+    <span
+      className="m2-pill"
+      style={{
+        background: `color-mix(in srgb, ${s.dot} 16%, var(--m2-surface-elevated))`,
+        color: s.dot,
+      }}
+    >
       <span
         style={{
           width: 5,
