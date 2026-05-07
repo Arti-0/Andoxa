@@ -73,6 +73,7 @@ function dbToCalEvents(ev: DbEvent, weekStart: Date, currentUserId?: string): Ca
   const base = {
     day: toDayIndex(ev.start_time, weekStart),
     dateISO: toDateISO(ev.start_time),
+    endDateISO: toDateISO(ev.end_time),
     start: toDecimalHour(ev.start_time),
     end: toDecimalHour(ev.end_time),
     title: ev.title,
@@ -87,6 +88,7 @@ function dbToCalEvents(ev: DbEvent, weekStart: Date, currentUserId?: string): Ca
     pipelineStage: ev.pipeline_stage ?? null,
     lastAction: "",
     googleMeetUrl: ev.google_meet_url ?? null,
+    isAllDay: ev.is_all_day ?? false,
   };
 
   const owners: Array<{ ownerKey: string; calendarId: string }> = [];
@@ -151,7 +153,11 @@ export function useCalendarEvents(weekStart: Date) {
       const [userId, data] = await Promise.all([
         getCurrentUserId(),
         getJson<{ items: DbEvent[] }>(
-          `/api/events?start=${weekStart.toISOString()}&end=${weekEnd.toISOString()}&per_page=200`,
+          // `source=andoxa` excludes Google-synced rows from the events table —
+          // colleague columns should never inherit a teammate's Google calendar
+          // (Calendar #3). The current user's own Google calendar still flows
+          // through the dedicated `useGoogleCalendarEvents` hook.
+          `/api/events?start=${weekStart.toISOString()}&end=${weekEnd.toISOString()}&per_page=200&source=andoxa`,
         ),
       ]);
       return (data.items ?? []).flatMap((ev) => dbToCalEvents(ev, weekStart, userId));
@@ -173,6 +179,8 @@ export type CreateEventInput = {
   wa_workflow?: boolean;
   prospect_id?: string | null;
   google_meet?: boolean;
+  /** Whether Google Calendar should email attendees (sendUpdates=all). */
+  notify_attendees?: boolean;
   description?: string;
   attendee_emails?: string[];
   attendee_user_ids?: string[];
@@ -254,6 +262,21 @@ export function useBookingSlug() {
 
 // ─── Booking settings ─────────────────────────────────────────────────────────
 
+export interface BookingTimeRange {
+  start: string; // "HH:MM"
+  end: string;
+}
+
+export interface BookingDaySchedule {
+  enabled: boolean;
+  ranges: BookingTimeRange[];
+}
+
+export interface BookingException {
+  date: string; // "YYYY-MM-DD"
+  ranges: BookingTimeRange[] | null; // null = closed
+}
+
 export interface BookingSettings {
   title: string;
   description: string;
@@ -261,7 +284,8 @@ export interface BookingSettings {
   availability: {
     slotMinutes: number;
     daysAhead: number;
-    daySchedules: Record<number, { enabled: boolean; startHour: number; endHour: number }>;
+    daySchedules: Record<number, BookingDaySchedule>;
+    exceptions: BookingException[];
   };
 }
 

@@ -38,6 +38,19 @@ export const GET = createApiHandler(async (req, ctx) => {
     query = query.eq("created_by", params.created_by);
   }
 
+  // Filter by source (Calendar #3). The calendar grid passes
+  // `?source=andoxa` so colleague columns never display rows that were
+  // synced in from a Google calendar — those should stay confined to the
+  // current user's "Google Calendar" personal track. Accepted values:
+  //   • "andoxa"  — exclude rows whose `source` column is 'google'
+  //   • "google"  — only google-synced rows
+  // omitting the param returns everything (current default).
+  if (params.source === "andoxa") {
+    query = query.or("source.is.null,source.neq.google");
+  } else if (params.source === "google") {
+    query = query.eq("source", "google");
+  }
+
   const { data, error, count } = await query.range(offset, offset + pageSize - 1);
 
   if (error) {
@@ -68,6 +81,8 @@ export const POST = createApiHandler(async (req, ctx) => {
     location?: string;
     is_all_day?: boolean;
     google_meet?: boolean;
+    /** Whether Google Calendar should email invitees. Default false. */
+    notify_attendees?: boolean;
     attendee_emails?: string[];
     event_type?: string;
     status?: string;
@@ -99,12 +114,31 @@ export const POST = createApiHandler(async (req, ctx) => {
         const attendeeEmails = Array.isArray(body.attendee_emails)
           ? body.attendee_emails.filter((e) => typeof e === "string" && e.includes("@"))
           : [];
+        // Resolve emails for invited colleagues (attendee_user_ids) so the
+        // Google Meet invite goes out and the meeting appears in their
+        // Google calendar too — Calendar #5.
+        const userIds = Array.isArray(body.attendee_user_ids)
+          ? body.attendee_user_ids.filter((id): id is string => typeof id === "string")
+          : [];
+        if (userIds.length > 0) {
+          const { data: profileEmails } = await ctx.supabase
+            .from("profiles")
+            .select("email")
+            .in("id", userIds);
+          for (const p of profileEmails ?? []) {
+            const email = (p as { email?: string | null }).email;
+            if (email && email.includes("@") && !attendeeEmails.includes(email)) {
+              attendeeEmails.push(email);
+            }
+          }
+        }
         const cal = await createGoogleMeetEvent(accessToken, {
           summary: body.title,
           description: body.description,
           startIso: body.start_time,
           endIso: body.end_time,
           attendeeEmails: attendeeEmails.length > 0 ? attendeeEmails : undefined,
+          notifyAttendees: body.notify_attendees === true,
         });
         meetUrl = cal.meetUrl;
         googleEventId = cal.eventId || null;
@@ -126,6 +160,10 @@ export const POST = createApiHandler(async (req, ctx) => {
       prospect_id: body.prospect_id ?? null,
       location: body.location ?? null,
       is_all_day: body.is_all_day ?? false,
+      // Stamp the row's origin explicitly so the `?source=andoxa` filter
+      // (Calendar #3) keeps working even when newer columns/migrations
+      // change the default. Constraint added in migration 044.
+      source: "andoxa",
       created_by: ctx.userId,
       google_meet_url: meetUrl,
       google_event_id: googleEventId,

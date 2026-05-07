@@ -1,17 +1,28 @@
 import { createApiHandler, Errors } from "../../../../lib/api";
+import {
+  describeActivity,
+  type ProspectActivityAction,
+} from "@/lib/prospect-activity";
+import { PROSPECT_STATUS_LABELS } from "@/lib/types/prospects";
 
+// Federated activity types come from two sources:
+//   • dashboard-only synthetic events (prospect_added, prospect_imported,
+//     campaign_started, booking_created, call_session_completed,
+//     enrichment_completed) — not stored in `prospect_activity`.
+//   • every canonical verb from the `prospect_activity` registry
+//     (`ProspectActivityAction`) — passed through verbatim so future
+//     additions to the registry surface here automatically.
+//
+// The frontend `activityVisual()` falls back to a generic icon for
+// unknown values, so widening this union is non-breaking.
 type ActivityType =
   | "prospect_added"
   | "prospect_imported"
   | "campaign_started"
   | "booking_created"
   | "call_session_completed"
-  | "status_change"
   | "enrichment_completed"
-  | "workflow_enrolled"
-  | "workflow_step_completed"
-  | "workflow_step_failed"
-  | "workflow_run_completed";
+  | ProspectActivityAction;
 
 interface Activity {
   id: string;
@@ -24,15 +35,7 @@ interface Activity {
   actor_avatar?: string | null;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  new: "Nouveau",
-  contacted: "Contacté",
-  qualified: "Qualifié",
-  rdv: "RDV",
-  proposal: "Proposition",
-  won: "Signé",
-  lost: "Perdu",
-};
+const STATUS_LABELS: Record<string, string> = PROSPECT_STATUS_LABELS;
 
 /**
  * GET /api/dashboard/activity?scope=all|mine|team|system
@@ -271,81 +274,32 @@ export const GET = createApiHandler(async (req, ctx): Promise<Activity[]> => {
       : "Prospect";
     const actor = sa.actor_id ? profileMap.get(sa.actor_id) : null;
 
-    if (sa.action === "status_change") {
-      const details = sa.details as { from?: string; to?: string } | null;
-      const fromLabel = STATUS_LABELS[details?.from ?? ""] ?? details?.from ?? "?";
-      const toLabel = STATUS_LABELS[details?.to ?? ""] ?? details?.to ?? "?";
-      activities.push({
-        id: `status-${sa.id}`,
-        type: "status_change",
-        title: "Statut modifié",
-        description: `${prospectName} · ${fromLabel} → ${toLabel}${actor ? ` · par ${actor.name}` : ""}`,
-        actor_name: actor?.name ?? null,
-        actor_avatar: actor?.avatar ?? null,
-        target_url: sa.prospect_id ? `/prospect/${sa.prospect_id}` : null,
-        timestamp: sa.created_at,
-      });
-      continue;
-    }
-
-    const d = (sa.details ?? {}) as Record<string, unknown>;
-    const wname = typeof d.workflow_name === "string" ? d.workflow_name : "Parcours";
+    const desc = describeActivity(sa.action);
+    const details = (sa.details ?? {}) as Record<string, unknown>;
     const wfUrl = sa.workflow_id ? `/workflows/${sa.workflow_id}` : null;
+    const targetUrl =
+      wfUrl ?? (sa.prospect_id ? `/prospect/${sa.prospect_id}` : null);
 
-    if (sa.action === "workflow_enrolled") {
-      activities.push({
-        id: `wfe-${sa.id}`,
-        type: "workflow_enrolled",
-        title: "Suivi WhatsApp",
-        description: `${prospectName} · Inscrit au parcours « ${wname} »${actor ? ` · par ${actor.name}` : ""}`,
-        actor_name: actor?.name ?? null,
-        actor_avatar: actor?.avatar ?? null,
-        target_url: wfUrl ?? (sa.prospect_id ? `/prospect/${sa.prospect_id}` : null),
-        timestamp: sa.created_at,
-      });
-    } else if (sa.action === "workflow_step_completed") {
-      const st = typeof d.step_type === "string" ? d.step_type : "";
-      const labels: Record<string, string> = {
-        wait: "Attente terminée",
-        linkedin_invite: "Invitation LinkedIn",
-        linkedin_message: "Message LinkedIn",
-        whatsapp_message: "Message WhatsApp",
-      };
-      const stepLabel = labels[st] ?? `Étape (${st || "?"})`;
-      activities.push({
-        id: `wfsc-${sa.id}`,
-        type: "workflow_step_completed",
-        title: "Suivi WhatsApp",
-        description: `${prospectName} · ${stepLabel} · « ${wname} »`,
-        actor_name: actor?.name ?? null,
-        actor_avatar: actor?.avatar ?? null,
-        target_url: wfUrl ?? (sa.prospect_id ? `/prospect/${sa.prospect_id}` : null),
-        timestamp: sa.created_at,
-      });
-    } else if (sa.action === "workflow_step_failed") {
-      const err = typeof d.error === "string" ? d.error.slice(0, 80) : "Erreur";
-      activities.push({
-        id: `wff-${sa.id}`,
-        type: "workflow_step_failed",
-        title: "Suivi WhatsApp",
-        description: `${prospectName} · Échec · « ${wname} » — ${err}`,
-        actor_name: actor?.name ?? null,
-        actor_avatar: actor?.avatar ?? null,
-        target_url: wfUrl ?? (sa.prospect_id ? `/prospect/${sa.prospect_id}` : null),
-        timestamp: sa.created_at,
-      });
-    } else if (sa.action === "workflow_run_completed") {
-      activities.push({
-        id: `wfrc-${sa.id}`,
-        type: "workflow_run_completed",
-        title: "Suivi WhatsApp",
-        description: `${prospectName} · Parcours terminé · « ${wname} »`,
-        actor_name: actor?.name ?? null,
-        actor_avatar: actor?.avatar ?? null,
-        target_url: wfUrl ?? (sa.prospect_id ? `/prospect/${sa.prospect_id}` : null),
-        timestamp: sa.created_at,
-      });
+    // For status changes, prefer FR-localised labels.
+    let body = desc.body(details);
+    if (sa.action === "status_change") {
+      const from = STATUS_LABELS[String(details.from ?? "")] ?? details.from ?? "?";
+      const to = STATUS_LABELS[String(details.to ?? "")] ?? details.to ?? "?";
+      body = `${from} → ${to}`;
     }
+
+    activities.push({
+      id: `pa-${sa.id}`,
+      type: sa.action as ActivityType,
+      title: desc.title,
+      description: body
+        ? `${prospectName} · ${body}`
+        : prospectName,
+      actor_name: actor?.name ?? null,
+      actor_avatar: actor?.avatar ?? null,
+      target_url: targetUrl,
+      timestamp: sa.created_at,
+    });
   }
 
   // Imports (listes)

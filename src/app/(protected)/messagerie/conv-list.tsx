@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { Archive, ArrowLeft } from "lucide-react";
 import type { Conversation, Channel } from "./data";
 import { Avatar, ChannelMark, StagePill } from "./components";
 
@@ -15,6 +16,9 @@ export function ConvList({
   setFilter,
   channel,
   setChannel,
+  view,
+  setView,
+  archivedCount,
 }: {
   conversations: Conversation[];
   activeId: string;
@@ -23,6 +27,9 @@ export function ConvList({
   setFilter: (f: Filter) => void;
   channel: ChannelFilter;
   setChannel: (c: ChannelFilter) => void;
+  view: "active" | "archived";
+  setView: (v: "active" | "archived") => void;
+  archivedCount: number;
 }) {
   const STATUS: { id: Filter; label: string; count: number }[] = [
     { id: "all", label: "Tous", count: conversations.length },
@@ -113,26 +120,50 @@ export function ConvList({
       </div>
 
       {/* Niveau 2 — statut */}
-      <div
-        style={{
-          padding: "10px 14px",
-          borderBottom: "1px solid var(--m2-slate-150)",
-          display: "flex",
-          gap: 4,
-          overflowX: "auto",
-        }}
-      >
-        {STATUS.map((f) => (
-          <button
-            key={f.id}
-            className={"m2-filter-chip" + (filter === f.id ? " active" : "")}
-            onClick={() => setFilter(f.id)}
-          >
-            {f.label}
-            <span className="count">{f.count}</span>
-          </button>
-        ))}
-      </div>
+      {view === "active" ? (
+        <div
+          style={{
+            padding: "10px 14px",
+            borderBottom: "1px solid var(--m2-slate-150)",
+            display: "flex",
+            gap: 4,
+            overflowX: "auto",
+          }}
+        >
+          {STATUS.map((f) => (
+            <button
+              key={f.id}
+              className={"m2-filter-chip" + (filter === f.id ? " active" : "")}
+              onClick={() => setFilter(f.id)}
+            >
+              {f.label}
+              <span className="count">{f.count}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <button
+          onClick={() => setView("active")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "10px 14px",
+            borderBottom: "1px solid var(--m2-slate-150)",
+            background: "var(--m2-slate-50, #f8fafc)",
+            color: "var(--m2-slate-600)",
+            fontSize: 12,
+            fontWeight: 500,
+            border: 0,
+            borderRadius: 0,
+            cursor: "pointer",
+            textAlign: "left",
+          }}
+        >
+          <ArrowLeft size={13} />
+          Retour aux conversations actives
+        </button>
+      )}
 
       {/* Cards */}
       <div style={{ flex: 1, overflowY: "auto" }}>
@@ -237,7 +268,58 @@ export function ConvList({
             </div>
           );
         })}
+        {filtered.length === 0 && view === "archived" && (
+          <div
+            style={{
+              padding: "32px 16px",
+              textAlign: "center",
+              fontSize: 12,
+              color: "var(--m2-slate-500)",
+            }}
+          >
+            Aucune conversation archivée.
+          </div>
+        )}
       </div>
+
+      {view === "active" && (
+        <button
+          onClick={() => setView("archived")}
+          disabled={archivedCount === 0}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+            padding: "10px 14px",
+            borderTop: "1px solid var(--m2-slate-150)",
+            background: "white",
+            color: archivedCount === 0
+              ? "var(--m2-slate-400)"
+              : "var(--m2-slate-700)",
+            fontSize: 12,
+            fontWeight: 500,
+            border: 0,
+            borderRadius: 0,
+            cursor: archivedCount === 0 ? "not-allowed" : "pointer",
+            textAlign: "left",
+          }}
+        >
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <Archive size={13} />
+            Archives
+          </span>
+          <span
+            style={{
+              fontSize: 11,
+              color: "var(--m2-slate-500)",
+              tabularNums: "nums",
+            } as React.CSSProperties}
+          >
+            {archivedCount}
+          </span>
+        </button>
+      )}
     </div>
   );
 }

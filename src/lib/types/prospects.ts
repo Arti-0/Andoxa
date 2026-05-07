@@ -30,45 +30,26 @@ export interface Prospect {
     summary?: string | null;
   } | null;
   metadata?: Record<string, unknown> | null;
-}
-
-export interface ProspectScore {
-  prospect_id: string;
-  organization_id: string;
-  score_total: number;
-  niveau_final: "Faible" | "Moyen" | "Élevé";
-  score_entreprise: number;
-  score_contact: number;
-  score_digital: number;
-  score_alignement: number;
-  criteres_detail: string;
-  scored_at: string;
-}
-
-export interface ProspectWithScore extends Prospect {
-  prospect_scores?: ProspectScore[];
-  _score?: {
-    score_total: number;
-    niveau_final: "Faible" | "Moyen" | "Élevé";
+  /** Server-derived enrichments populated by /api/prospects (lib/crm/enrich-prospects). */
+  bdd_name?: string | null;
+  workflow?: {
+    name: string;
+    step: number;
+    total: number;
+    run_id?: string;
+  } | null;
+  convs?: ("linkedin" | "whatsapp" | "booking")[];
+  last_activity?: {
+    type: "reply" | "outbound" | "silence" | "rdv" | "system";
+    label: string;
+    at: string | null;
   };
 }
 
-export interface ScoreResult {
-  prospect_id: string;
-  success: boolean;
-  score?: number;
-  level?: "Faible" | "Moyen" | "Élevé";
-  error?: string;
-}
-
-export interface ScoreProspectInput {
-  fullName: string;
-  company: string;
-  jobTitle: string | null;
-  linkedin: string | null;
-  email: string | null;
-  phone: string | null;
-}
+// NOTE — the `ProspectScore` / `prospect_scores` / `niveau_final` types
+// that used to live here referenced a table that never shipped. They were
+// removed during the taxonomy audit (see docs/TAGS_AUDIT.md §2). When a
+// real scoring system lands, define its types in a sibling file.
 
 // Canonical prospect statuses (DB keys)
 export const PROSPECT_STATUSES = [
@@ -113,49 +94,33 @@ export const PROSPECT_STATUS_DOT_COLORS: Record<ProspectStatus, string> = {
   lost: "bg-red-500",
 };
 
-// Legacy alias
+// Legacy alias still imported in a few places.
 export type PipelineStatusType = ProspectStatus;
 
 export interface ExtendedProspect extends Prospect {
-  // Champs pipeline (override parent status with narrower type)
+  // Tighten the parent's `status` to the canonical union.
   status: PipelineStatusType | null;
   column?: PipelineStatusType;
-  priority?: "low" | "medium" | "high";
-  estimated_value?: number | null;
-  last_contact?: string | null;
 
-  // Champs UI
+  // Author / list display fields populated by the dashboard / kanban
+  // queries that join on profiles + bdd.
   proprietaire_name?: string | null;
   proprietaire_avatar?: string | null;
   bdd_name?: string | null;
-
-  // Champs propriétaire
   proprietaire?: string;
   metadata?: Record<string, unknown> | null;
-
-  // Score IA
-  _score?: {
-    score_total: number;
-    niveau_final: "Faible" | "Moyen" | "Élevé";
-  };
 }
 
-// Interface pour les données CSV dynamiques
+// CSV import scaffolding (read by the import dialog when previewing rows).
 export interface CSVRowData {
   [key: string]: string | number | boolean | null | undefined | object;
 }
 
-// Interface pour les colonnes dynamiques
 export interface DynamicColumnData extends CSVRowData {
   select?: boolean;
-  enrichment_status?: string;
   enrichment?: {
     email_verified?: boolean;
     confidence?: number;
     enriched_at?: string;
-  };
-  prospect_scores?: {
-    score_total: number;
-    niveau_final: "Faible" | "Moyen" | "Élevé";
   };
 }

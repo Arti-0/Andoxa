@@ -7,6 +7,7 @@ import {
   MoreHorizontal,
   Mail,
   Archive,
+  ArchiveRestore,
   Trash2,
   X,
   Send,
@@ -19,10 +20,13 @@ import {
   Linkedin,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 import type { Conversation, ThreadEntry } from "./data";
 import { resolveVars } from "./data";
 import { useSendMessage, useTemplates, useMarkChatUnread } from "./queries";
 import { Avatar, StagePill } from "./components";
+import { useWorkspace } from "@/lib/workspace";
+import { uploadMessagerieAttachment } from "@/lib/messagerie/upload-attachment";
 
 function DateSep({ label }: { label: string }) {
   return (
@@ -318,11 +322,15 @@ function ContextMenu({
   onClose,
   onMarkUnread,
   onArchive,
+  onRestore,
+  isArchived,
 }: {
   open: boolean;
   onClose: () => void;
   onMarkUnread: () => void;
   onArchive: () => void;
+  onRestore: () => void;
+  isArchived: boolean;
 }) {
   if (!open) return null;
 
@@ -330,25 +338,42 @@ function ContextMenu({
     | { kind?: undefined; Icon: React.ComponentType<{ size?: number }>; label: string; action: () => void; danger?: boolean }
     | { kind: "sep" };
 
-  const items: Item[] = [
-    {
-      Icon: Mail,
-      label: "Marquer comme non lu",
-      action: () => { onMarkUnread(); onClose(); },
-    },
-    {
-      Icon: Archive,
-      label: "Archiver la conversation",
-      action: () => { onArchive(); onClose(); },
-    },
-    { kind: "sep" },
-    {
-      Icon: Trash2,
-      label: "Supprimer la conversation",
-      action: onClose, // placeholder — no delete endpoint yet
-      danger: true,
-    },
-  ];
+  const items: Item[] = isArchived
+    ? [
+        {
+          Icon: ArchiveRestore,
+          label: "Restaurer la conversation",
+          action: () => {
+            onRestore();
+            onClose();
+          },
+        },
+      ]
+    : [
+        {
+          Icon: Mail,
+          label: "Marquer comme non lu",
+          action: () => {
+            onMarkUnread();
+            onClose();
+          },
+        },
+        {
+          Icon: Archive,
+          label: "Archiver la conversation",
+          action: () => {
+            onArchive();
+            onClose();
+          },
+        },
+        { kind: "sep" },
+        {
+          Icon: Trash2,
+          label: "Supprimer la conversation",
+          action: onClose, // placeholder — no delete endpoint yet
+          danger: true,
+        },
+      ];
 
   return (
     <>
@@ -665,21 +690,74 @@ export function Thread({
   conv,
   thread,
   onArchive,
+  onRestore,
+  isArchived,
 }: {
   conv: Conversation;
   thread: ThreadEntry[];
   onArchive: (chatId: string) => void;
+  onRestore: (chatId: string) => void;
+  isArchived: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [tplOpen, setTplOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [pendingLink, setPendingLink] = useState<{
     url: string;
     open: () => void;
   } | null>(null);
   const sendMutation = useSendMessage();
   const markUnread = useMarkChatUnread();
+  const { workspaceId } = useWorkspace();
+
+  /* Cache the user's booking slug so the Lien booking button is a no-wait. */
+  const { data: bookingSlug } = useQuery({
+    queryKey: ["booking-slug"],
+    queryFn: async () => {
+      const res = await fetch("/api/booking/slug", { credentials: "include" });
+      if (!res.ok) return null;
+      const json = await res.json();
+      return ((json.data ?? json) as { booking_slug: string | null })
+        .booking_slug;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const insertBookingLink = () => {
+    if (!bookingSlug) {
+      toast.error(
+        "Aucun lien de booking — configurez votre slug dans Paramètres.",
+      );
+      return;
+    }
+    const origin =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "https://andoxa.fr";
+    const url = `${origin}/booking/${bookingSlug}`;
+    setDraft((d) => (d ? `${d.trimEnd()}\n\n${url}` : url));
+  };
+
+  const handleFilePicked = async (file: File | null) => {
+    if (!file) return;
+    if (!workspaceId) {
+      toast.error("Workspace non chargé");
+      return;
+    }
+    setUploading(true);
+    const uploaded = await uploadMessagerieAttachment(file, workspaceId);
+    setUploading(false);
+    if (!uploaded) {
+      toast.error("Envoi impossible (taille max 25 Mo)");
+      return;
+    }
+    const line = `📎 ${uploaded.name}\n${uploaded.url}`;
+    setDraft((d) => (d ? `${d.trimEnd()}\n\n${line}` : line));
+    toast.success(`${uploaded.name} prêt à envoyer`);
+  };
 
   useEffect(() => {
     if (scrollRef.current)
@@ -806,6 +884,8 @@ export function Thread({
             onClose={() => setMenuOpen(false)}
             onMarkUnread={() => markUnread.mutate(conv.id)}
             onArchive={() => onArchive(conv.id)}
+            onRestore={() => onRestore(conv.id)}
+            isArchived={isArchived}
           />
         </div>
       </div>
@@ -878,17 +958,39 @@ export function Thread({
             <button
               className="m2-btn m2-btn-ghost"
               style={{ padding: "5px 8px" }}
-              title="Insérer un lien Calendly"
+              title={
+                bookingSlug
+                  ? "Insérer un lien de booking"
+                  : "Configurez votre lien de booking dans Paramètres"
+              }
+              onClick={insertBookingLink}
+              disabled={!bookingSlug}
             >
               <Calendar size={14} />
               <span className="m2-thread-btn-label">Lien booking</span>
             </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleFilePicked(file);
+                e.target.value = "";
+              }}
+            />
             <button
               className="m2-btn m2-btn-ghost"
               style={{ padding: "5px 8px" }}
-              title="Pièce jointe"
+              title="Joindre un fichier (le lien est inséré dans le message)"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
             >
-              <Paperclip size={14} />
+              {uploading ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Paperclip size={14} />
+              )}
             </button>
             <div style={{ marginLeft: "auto" }}>
               <button

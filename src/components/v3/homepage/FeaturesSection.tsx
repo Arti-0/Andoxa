@@ -133,7 +133,7 @@ const itemVariants = {
   },
 };
 
-export function FeaturesSectionV2() {
+export function FeaturesSection() {
   return (
     <section className="relative py-12 sm:py-16 md:py-24 lg:py-32">
       <div className="mx-auto max-w-7xl px-4 sm:px-2 md:px-4 lg:px-8">

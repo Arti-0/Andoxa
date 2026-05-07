@@ -1,6 +1,9 @@
 import { createApiHandler, Errors, parseBody } from "../../../../lib/api";
 import { NextRequest } from "next/server";
 import { createNotification } from "@/lib/notifications/create-notification";
+import { enrichProspects } from "@/lib/crm/enrich-prospects";
+import { logStatusChange } from "@/lib/prospect-activity";
+import type { Prospect } from "@/lib/types/prospects";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -8,7 +11,10 @@ interface RouteParams {
 
 /**
  * GET /api/prospects/[id]
- * Get a single prospect
+ * Returns a single prospect with the same enrichments the listing page
+ * receives (bdd_name, workflow, convs, last_activity) so the profile
+ * banner can render the list pill, channel inventory and the workflow
+ * progress card without extra round-trips.
  */
 export const GET = createApiHandler(async (req: NextRequest, ctx) => {
   const url = new URL(req.url);
@@ -32,7 +38,12 @@ export const GET = createApiHandler(async (req: NextRequest, ctx) => {
     throw Errors.notFound("Prospect");
   }
 
-  return data;
+  const [enriched] = await enrichProspects(
+    ctx.supabase,
+    ctx.workspaceId,
+    [data as Prospect],
+  );
+  return enriched ?? data;
 });
 
 /**
@@ -102,17 +113,18 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
   }
 
   if (body.status && previousStatus && body.status !== previousStatus) {
-    await ctx.supabase.from("prospect_activity").insert({
+    await logStatusChange(ctx.supabase, {
       organization_id: ctx.workspaceId,
       prospect_id: id,
-      workflow_id: null,
       actor_id: ctx.userId ?? null,
-      action: "status_change",
-      details: { from: previousStatus, to: body.status },
+      from: previousStatus,
+      to: body.status,
     });
 
-    // Notification: prospect converted to client
-    if (body.status === "closed") {
+    // Notification: prospect converted to client. Canonical status is
+    // "won"; "closed" was a legacy alias that never matched the actual
+    // values written elsewhere (see docs/TAGS_AUDIT.md §1).
+    if (body.status === "won") {
       const prospectName = (data as { full_name?: string | null }).full_name?.trim() || "Ce prospect";
       await createNotification(ctx.supabase, {
         title: "Prospect converti 🎉",

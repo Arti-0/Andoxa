@@ -1,10 +1,59 @@
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
 import type { Json } from "@/lib/types/supabase";
+import {
+  dayScheduleRanges,
+  type AvailabilityException,
+  type DaySchedule,
+  type TimeRange,
+} from "@/lib/booking/slots";
+
+type DaySchedulesMap = Record<number, DaySchedule>;
+
+const DEFAULT_RANGES: TimeRange[] = [
+  { start: "09:00", end: "12:00" },
+  { start: "14:00", end: "18:00" },
+];
+
+const DEFAULT_DAY_SCHEDULES: DaySchedulesMap = {
+  0: { enabled: false, ranges: DEFAULT_RANGES }, // Sun
+  1: { enabled: true,  ranges: DEFAULT_RANGES }, // Mon
+  2: { enabled: true,  ranges: DEFAULT_RANGES },
+  3: { enabled: true,  ranges: DEFAULT_RANGES },
+  4: { enabled: true,  ranges: DEFAULT_RANGES },
+  5: { enabled: true,  ranges: DEFAULT_RANGES }, // Fri
+  6: { enabled: false, ranges: DEFAULT_RANGES }, // Sat
+};
+
+/** Normalise a raw schedule (possibly using legacy `startHour`/`endHour`)
+ *  into the canonical `{ enabled, ranges }` shape. */
+function normaliseSchedule(raw: unknown): DaySchedule {
+  if (!raw || typeof raw !== "object") {
+    return { enabled: false, ranges: [] };
+  }
+  const sched = raw as DaySchedule;
+  const ranges = dayScheduleRanges(sched);
+  return { enabled: !!sched.enabled, ranges };
+}
+
+function normaliseDaySchedules(raw: unknown): DaySchedulesMap {
+  if (!raw || typeof raw !== "object") return DEFAULT_DAY_SCHEDULES;
+  const out: DaySchedulesMap = {};
+  for (let i = 0; i < 7; i++) {
+    const k = i as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+    const entry = (raw as Record<string, unknown>)[String(i)];
+    out[k] = entry ? normaliseSchedule(entry) : DEFAULT_DAY_SCHEDULES[k];
+  }
+  return out;
+}
 
 /**
  * GET /api/booking/settings
- * Returns the user's booking page settings: slot duration, working hours/days,
- * page title and description. Stored in profiles.metadata.
+ * Returns the user's booking page settings: slot duration, weekly schedule,
+ * date exceptions, page title and description. Stored in profiles.metadata.
+ *
+ * Legacy {startHour, endHour} per-day rows are converted on the fly to
+ * the canonical {enabled, ranges} shape so the UI never has to handle the
+ * old format.
  */
 export const GET = createApiHandler(
   async (_req, ctx) => {
@@ -22,17 +71,6 @@ export const GET = createApiHandler(
     const availability = (meta.availability ?? {}) as Record<string, unknown>;
     const booking = (meta.booking ?? {}) as Record<string, unknown>;
 
-    // Default per-day schedule: Mon-Fri 9-18, weekends disabled
-    const defaultDaySchedules: Record<number, { enabled: boolean; startHour: number; endHour: number }> = {
-      0: { enabled: false, startHour: 9, endHour: 18 }, // Sun
-      1: { enabled: true,  startHour: 9, endHour: 18 }, // Mon
-      2: { enabled: true,  startHour: 9, endHour: 18 },
-      3: { enabled: true,  startHour: 9, endHour: 18 },
-      4: { enabled: true,  startHour: 9, endHour: 18 },
-      5: { enabled: true,  startHour: 9, endHour: 18 }, // Fri
-      6: { enabled: false, startHour: 9, endHour: 18 }, // Sat
-    };
-
     return {
       title: (booking.title as string | undefined) ?? `RDV avec ${profile?.full_name ?? "moi"}`,
       description: (booking.description as string | undefined) ?? "",
@@ -40,8 +78,10 @@ export const GET = createApiHandler(
       availability: {
         slotMinutes: (availability.slotMinutes as number | undefined) ?? 30,
         daysAhead: (availability.daysAhead as number | undefined) ?? 14,
-        daySchedules:
-          (availability.daySchedules as typeof defaultDaySchedules | undefined) ?? defaultDaySchedules,
+        daySchedules: normaliseDaySchedules(availability.daySchedules),
+        exceptions: Array.isArray(availability.exceptions)
+          ? (availability.exceptions as AvailabilityException[])
+          : ([] as AvailabilityException[]),
       },
     };
   },
@@ -62,7 +102,8 @@ export const PATCH = createApiHandler(
       availability?: {
         slotMinutes?: number;
         daysAhead?: number;
-        daySchedules?: Record<number, { enabled: boolean; startHour: number; endHour: number }>;
+        daySchedules?: DaySchedulesMap;
+        exceptions?: AvailabilityException[];
       };
     }>(req);
 

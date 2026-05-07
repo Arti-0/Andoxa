@@ -150,6 +150,7 @@ export interface Database {
                     organization_id: string | null;
                     proprietaire: string | null;
                     source: string;
+                    query: string | null;
                     csv_url: string | null;
                     csv_hash: string | null;
                     created_at: string | null;
@@ -161,6 +162,7 @@ export interface Database {
                     organization_id?: string | null;
                     proprietaire?: string | null;
                     source?: string;
+                    query?: string | null;
                     csv_url?: string | null;
                     csv_hash?: string | null;
                     created_at?: string | null;
@@ -172,6 +174,7 @@ export interface Database {
                     organization_id?: string | null;
                     proprietaire?: string | null;
                     source?: string;
+                    query?: string | null;
                     csv_url?: string | null;
                     csv_hash?: string | null;
                     created_at?: string | null;
@@ -347,8 +350,6 @@ export interface Database {
                     budget: string | null;
                     tags: string[] | null;
                     status: string | null;
-                    priority: string | null;
-                    estimated_value: number | null;
                     notes: string | null;
                     last_contact: string | null;
                     enriched_at: string | null;
@@ -378,8 +379,6 @@ export interface Database {
                     budget?: string | null;
                     tags?: string[] | null;
                     status?: string | null;
-                    priority?: string | null;
-                    estimated_value?: number | null;
                     notes?: string | null;
                     last_contact?: string | null;
                     enriched_at?: string | null;
@@ -409,8 +408,6 @@ export interface Database {
                     budget?: string | null;
                     tags?: string[] | null;
                     status?: string | null;
-                    priority?: string | null;
-                    estimated_value?: number | null;
                     notes?: string | null;
                     last_contact?: string | null;
                     enriched_at?: string | null;

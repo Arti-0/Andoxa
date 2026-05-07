@@ -42,11 +42,17 @@ export const GET = createApiHandler(async (req, ctx) => {
     id: string;
     name: string;
     source: string;
+    query: string | null;
     proprietaire: string | null;
     created_at: string | null;
     updated_at: string | null;
     prospects_count: number | string;
     phones_count: number | string;
+    contacted_count: number | string;
+    rdv_count: number | string;
+    signed_count: number | string;
+    delta_7d: number | string;
+    avg_cycle_days: number | string | null;
     total_count: number | string;
   }>;
 
@@ -56,11 +62,20 @@ export const GET = createApiHandler(async (req, ctx) => {
     id: row.id,
     name: row.name,
     source: row.source,
+    query: row.query,
     proprietaire: row.proprietaire,
     created_at: row.created_at,
     updated_at: row.updated_at,
     prospects_count: Number(row.prospects_count),
     phones_count: Number(row.phones_count),
+    contacted_count: Number(row.contacted_count ?? 0),
+    rdv_count: Number(row.rdv_count ?? 0),
+    signed_count: Number(row.signed_count ?? 0),
+    delta_7d: Number(row.delta_7d ?? 0),
+    avg_cycle_days:
+      row.avg_cycle_days == null
+        ? null
+        : Math.round(Number(row.avg_cycle_days) * 10) / 10,
   }));
 
   return {
@@ -81,8 +96,12 @@ export const POST = createApiHandler(async (req, ctx) => {
     throw Errors.badRequest("Workspace required");
   }
 
-  const body = await parseBody<{ name?: string }>(req);
+  const body = await parseBody<{ name?: string; query?: string }>(req);
   const name = String(body.name ?? "").trim();
+  const query =
+    typeof body.query === "string" && body.query.trim().length > 0
+      ? body.query.trim()
+      : null;
   if (!name) {
     throw Errors.validation({ name: "Le nom de la liste est requis" });
   }
@@ -117,6 +136,7 @@ export const POST = createApiHandler(async (req, ctx) => {
       organization_id: ctx.workspaceId,
       proprietaire: ctx.userId,
       source: "linkedin_extension",
+      query,
       csv_url: null,
       csv_hash: null,
     })

@@ -16,7 +16,7 @@
 
 import { HeroSectionV3 } from "@/components/v3/homepage/HeroSectionV3";
 import { UnifiedHeader } from "@/components/v3/homepage/UnifiedHeader";
-import { FeaturesSectionV2 } from "@/components/v3/homepage/FeaturesSectionV2";
+import { FeaturesSection } from "@/components/v3/homepage/FeaturesSection";
 import { TarifsSection } from "@/components/v3/homepage/TarifsSection";
 import { AboutSection } from "@/components/v3/homepage/AboutSection";
 import { ContactSection } from "@/components/v3/homepage/ContactSection";
@@ -46,7 +46,7 @@ export default function Home() {
 
           {/* Section fonctionnalités - Scroll anchor pour navigation */}
           <div id="features" className="scroll-mt-24">
-            <FeaturesSectionV2 />
+            <FeaturesSection />
           </div>
 
           {/* Section tarifs - Plans et pricing */}

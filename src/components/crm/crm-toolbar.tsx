@@ -41,13 +41,16 @@ import type { BddItem, FilterState } from "./crm-table";
 
 export type CrmView = "listes" | "prospects" | "corbeille" | "kanban";
 
+// Only sources actually written by the API are exposed as filter options.
+// `linkedin` (without `_extension`) is a legacy alias that older rows may
+// still carry — kept handled by the rendering pipeline but hidden from the
+// filter to avoid duplicate "LinkedIn" rows. See docs/TAGS_AUDIT.md §3.
 const SOURCE_OPTIONS = [
   { value: "linkedin_extension", label: "LinkedIn" },
-  { value: "linkedin", label: "LinkedIn (autre)" },
   { value: "csv", label: "Import CSV" },
-  { value: "import", label: "Import" },
+  { value: "xlsx", label: "Import Excel" },
   { value: "manual", label: "Manuel" },
-  { value: "website", label: "Site web" },
+  { value: "booking", label: "Booking" },
 ];
 
 const STATUS_OPTIONS = [

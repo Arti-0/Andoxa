@@ -1,4 +1,6 @@
 import { createApiHandler, Errors } from "@/lib/api";
+import { describeActivity } from "@/lib/prospect-activity";
+import { PROSPECT_STATUS_LABELS } from "@/lib/types/prospects";
 
 function getProspectIdFromUrl(req: Request): string {
   const segments = new URL(req.url).pathname.split("/").filter(Boolean);
@@ -62,6 +64,18 @@ export const GET = createApiHandler(async (req, ctx) => {
 
   const items = (rows ?? []).map((r) => {
     const d = (r.details ?? {}) as Record<string, unknown>;
+    const desc = describeActivity(r.action ?? "");
+    // For status_change, swap the raw db keys for FR labels in the body.
+    let body = desc.body(d);
+    if (r.action === "status_change") {
+      const from = typeof d.from === "string" ? d.from : "?";
+      const to = typeof d.to === "string" ? d.to : "?";
+      const fromLabel =
+        PROSPECT_STATUS_LABELS[from as keyof typeof PROSPECT_STATUS_LABELS] ?? from;
+      const toLabel =
+        PROSPECT_STATUS_LABELS[to as keyof typeof PROSPECT_STATUS_LABELS] ?? to;
+      body = `Statut : ${fromLabel} → ${toLabel}`;
+    }
     return {
       id: r.id,
       action: r.action,
@@ -69,63 +83,11 @@ export const GET = createApiHandler(async (req, ctx) => {
       actor_name: r.actor_id ? profileMap.get(r.actor_id) ?? null : null,
       workflow_id: r.workflow_id,
       workflow_name: r.workflow_id ? workflowMap.get(r.workflow_id) ?? null : null,
-      title: activityTitle(r.action, d),
-      description: activityDescription(r.action, d),
+      title: desc.title,
+      description: body,
       target_url: r.workflow_id ? `/workflows/${r.workflow_id}` : undefined,
     };
   });
 
   return { items };
 });
-
-function activityTitle(action: string, d: Record<string, unknown>): string {
-  switch (action) {
-    case "status_change":
-      return "Statut CRM";
-    case "workflow_enrolled":
-      return "Suivi WhatsApp";
-    case "workflow_step_completed":
-      return "Suivi WhatsApp";
-    case "workflow_step_failed":
-      return "Suivi WhatsApp";
-    case "workflow_run_completed":
-      return "Suivi WhatsApp";
-    case "prospect_restored":
-      return "Prospect restauré";
-    default:
-      return action;
-  }
-}
-
-function activityDescription(action: string, d: Record<string, unknown>): string {
-  const wn = typeof d.workflow_name === "string" ? d.workflow_name : null;
-  switch (action) {
-    case "status_change": {
-      const from = typeof d.from === "string" ? d.from : "?";
-      const to = typeof d.to === "string" ? d.to : "?";
-      return `Statut : ${from} → ${to}`;
-    }
-    case "workflow_enrolled":
-      return wn ? `Inscrit au parcours « ${wn} »` : "Inscrit à un parcours";
-    case "workflow_step_completed": {
-      const st = typeof d.step_type === "string" ? d.step_type : "";
-      const labels: Record<string, string> = {
-        wait: "Attente terminée",
-        linkedin_invite: "Invitation LinkedIn envoyée",
-        linkedin_message: "Message LinkedIn envoyé",
-        whatsapp_message: "Message WhatsApp envoyé",
-      };
-      return labels[st] ?? `Étape terminée (${st || "?"})`;
-    }
-    case "workflow_step_failed":
-      return typeof d.error === "string" ? `Échec : ${d.error.slice(0, 200)}` : "Échec d’étape";
-    case "workflow_run_completed":
-      return wn ? `Parcours « ${wn} » terminé` : "Parcours terminé";
-    case "prospect_restored": {
-      const list = typeof d.bdd_name === "string" ? d.bdd_name : null;
-      return list ? `Restauré depuis la corbeille — ajouté à « ${list} »` : "Restauré depuis la corbeille";
-    }
-    default:
-      return JSON.stringify(d).slice(0, 200);
-  }
-}

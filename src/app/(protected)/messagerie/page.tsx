@@ -76,14 +76,18 @@ export default function Messagerie2Page() {
     "all",
   );
   const [channel, setChannel] = useState<"all" | "li" | "wa">("all");
+  const [view, setView] = useState<"active" | "archived">("active");
 
   const { data: conversations } = useConversations();
   const markSeen = useMarkChatSeen();
 
-  // Visible list — exclude archived conversations.
-  const visibleConvs = (conversations ?? []).filter(
-    (c) => !archivedIds.has(c.id),
+  // Visible list — exclude or include archived depending on view.
+  const visibleConvs = (conversations ?? []).filter((c) =>
+    view === "archived" ? archivedIds.has(c.id) : !archivedIds.has(c.id),
   );
+  const archivedCount = (conversations ?? []).filter((c) =>
+    archivedIds.has(c.id),
+  ).length;
 
   // Effective chat: use persisted/active ID if present; otherwise first
   // visible conversation once the list loads.
@@ -132,6 +136,22 @@ export default function Messagerie2Page() {
     }
   };
 
+  const handleRestore = (chatId: string) => {
+    setArchivedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(chatId);
+      try {
+        localStorage.setItem("m2_archived", JSON.stringify([...next]));
+      } catch {}
+      return next;
+    });
+    if (chatId === effectiveId) {
+      // We're still on this chat — it just moved out of the archived list.
+      // Switch back to the active view so it doesn't disappear.
+      setView("active");
+    }
+  };
+
   return (
     <div className="m2-root flex h-full min-w-[1180px] flex-col">
       {/* Page-scoped action bar */}
@@ -168,6 +188,9 @@ export default function Messagerie2Page() {
           setFilter={setFilter}
           channel={channel}
           setChannel={setChannel}
+          view={view}
+          setView={setView}
+          archivedCount={archivedCount}
         />
 
         {/* Thread + Cockpit need a resolved conv object. */}
@@ -176,7 +199,9 @@ export default function Messagerie2Page() {
             <Thread
               conv={conv}
               thread={(thread ?? []) as ThreadEntry[]}
+              isArchived={view === "archived"}
               onArchive={handleArchive}
+              onRestore={handleRestore}
             />
             <Cockpit conv={conv} />
           </>

@@ -150,22 +150,91 @@ function WeekView({ visible, onSelectEvent, onCreate, events, weekDays, weekOffs
   const nowOffset = (now.hour + now.minute / 60) * HOUR_HEIGHT;
   const cols = `${GUTTER}px repeat(7, 1fr)`;
 
+  // Pre-bucket all-day events per day so the header band and the body
+  // tint stay in sync (Calendar #2). The first all-day event drives the
+  // full-day background colour; additional events stack below the date.
+  const allDayByDay = new Map<number, CalEvent[]>();
+  const timedEvents: CalEvent[] = [];
+  for (const e of events) {
+    if (visible[e.owner] === false) continue;
+    if (e.isAllDay) {
+      const arr = allDayByDay.get(e.day) ?? [];
+      arr.push(e);
+      allDayByDay.set(e.day, arr);
+    } else {
+      timedEvents.push(e);
+    }
+  }
+
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         {/* Sticky day-header row — same grid template as body, no scrollbar offset */}
         <div style={{ position: "sticky", top: 0, zIndex: 10, display: "grid", gridTemplateColumns: cols, background: "#fff", borderBottom: "1px solid #EDF1F5" }}>
-          <div style={{ height: 52 }} />
-          {weekDays.map((d, i) => (
-            <div key={i} style={{ padding: "10px 8px 12px", textAlign: "center", borderLeft: "1px solid #F1F5F9", background: d.weekend ? "#F1F5F9" : "#fff" }}>
-              <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: d.isToday ? "#0052D9" : "#94A3B8", textTransform: "uppercase", marginBottom: 4 }}>{d.short}</div>
-              {d.isToday ? (
-                <div style={{ width: 28, height: 28, margin: "0 auto", borderRadius: "50%", background: "#0052D9", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 500 }}>{d.num}</div>
-              ) : (
-                <div style={{ fontSize: 16, color: d.weekend ? "#94A3B8" : "#475569", lineHeight: "28px" }}>{d.num}</div>
-              )}
-            </div>
-          ))}
+          <div />
+          {weekDays.map((d, i) => {
+            const allDay = allDayByDay.get(i) ?? [];
+            const lead = allDay[0];
+            const leadTok = lead ? resolveEventColor(lead, calendarColors) : null;
+            const headerBg = leadTok?.tint ?? (d.weekend ? "#F1F5F9" : "#fff");
+            return (
+              <div
+                key={i}
+                style={{
+                  padding: "10px 8px 8px",
+                  textAlign: "center",
+                  borderLeft: "1px solid #F1F5F9",
+                  background: headerBg,
+                  borderTop: leadTok ? `2px solid ${leadTok.color}` : "none",
+                  marginTop: leadTok ? -2 : 0,
+                }}
+              >
+                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: d.isToday ? "#0052D9" : "#94A3B8", textTransform: "uppercase", marginBottom: 4 }}>{d.short}</div>
+                {d.isToday ? (
+                  <div style={{ width: 28, height: 28, margin: "0 auto", borderRadius: "50%", background: "#0052D9", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 500 }}>{d.num}</div>
+                ) : (
+                  <div style={{ fontSize: 16, color: d.weekend ? "#94A3B8" : "#475569", lineHeight: "28px" }}>{d.num}</div>
+                )}
+                {allDay.length > 0 && (
+                  <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 2 }}>
+                    {allDay.slice(0, 2).map((ev) => {
+                      const tok = resolveEventColor(ev, calendarColors);
+                      return (
+                        <button
+                          key={ev.id}
+                          onClick={(e) => { e.stopPropagation(); onSelectEvent(ev); }}
+                          title={ev.title}
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            padding: "2px 6px",
+                            borderRadius: 4,
+                            background: "rgba(255,255,255,0.85)",
+                            color: tok.color,
+                            fontSize: 10.5,
+                            fontWeight: 600,
+                            border: "none",
+                            cursor: "pointer",
+                            fontFamily: "inherit",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {ev.title}
+                        </button>
+                      );
+                    })}
+                    {allDay.length > 2 && (
+                      <span style={{ fontSize: 10, color: "#64748B" }}>
+                        +{allDay.length - 2} autre{allDay.length - 2 > 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* Body — same grid template */}
@@ -182,10 +251,19 @@ function WeekView({ visible, onSelectEvent, onCreate, events, weekDays, weekOffs
 
           {/* Day columns */}
           {weekDays.map((day, dIdx) => {
-            const dayEvents = events.filter((e) => e.day === dIdx && visible[e.owner] !== false);
+            const dayEvents = timedEvents.filter((e) => e.day === dIdx);
             const laidOut = layoutDayEvents(dayEvents);
+            const allDay = allDayByDay.get(dIdx) ?? [];
+            const leadTok = allDay[0]
+              ? resolveEventColor(allDay[0], calendarColors)
+              : null;
+            const colBg = leadTok
+              ? leadTok.tint
+              : day.weekend
+                ? "#F1F5F9"
+                : "transparent";
             return (
-              <div key={dIdx} style={{ position: "relative", borderLeft: "1px solid #F1F5F9", background: day.weekend ? "#F1F5F9" : "transparent" }}>
+              <div key={dIdx} style={{ position: "relative", borderLeft: "1px solid #F1F5F9", background: colBg }}>
                 {HOURS.map((h) => {
                   const isLunch = !day.weekend && (h === 12 || h === 13);
                   return (
@@ -199,10 +277,30 @@ function WeekView({ visible, onSelectEvent, onCreate, events, weekDays, weekOffs
                   );
                 })}
                 {laidOut.map((l) => <EventCard key={l.ev.id} ev={l.ev} onClick={onSelectEvent} calendarColors={calendarColors} col={l.col} cols={l.cols} />)}
-                {day.isToday && weekOffset === 0 && <div style={{ position: "absolute", top: nowOffset, left: 0, right: 0, height: 1, background: "#EF4444", pointerEvents: "none", zIndex: 5 }} />}
               </div>
             );
           })}
+
+          {/* Current-time line — single absolute element spanning every day
+            * column (Calendar #8). Anchored to the body grid's relative
+            * parent so the gutter measurement stays correct regardless of
+            * scroll. Only rendered when the visible week actually contains
+            * "now". */}
+          {weekOffset === 0 && (
+            <div
+              aria-hidden
+              style={{
+                position: "absolute",
+                top: nowOffset,
+                left: GUTTER,
+                right: 0,
+                height: 1,
+                background: "#EF4444",
+                pointerEvents: "none",
+                zIndex: 5,
+              }}
+            />
+          )}
         </div>
       </div>
       <GridFooter />

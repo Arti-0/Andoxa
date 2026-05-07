@@ -569,7 +569,7 @@ function relativeTimeFr(iso: string): string {
 
 function PrioritiesBand({ workspaceId }: { workspaceId: string | null | undefined }) {
   const { data, isLoading } = useQuery({
-    queryKey: ["dashboard2-priorities", workspaceId],
+    queryKey: ["dashboard-priorities", workspaceId],
     queryFn: fetchPriorities,
     enabled: !!workspaceId,
     staleTime: 60 * 1000,
@@ -848,7 +848,10 @@ function FunnelCard({
             );
           }
           const raw = first > 0 ? (s.count / first) * 100 : 0;
-          const w = first > 0 ? MIN_W + (raw / 100) * (100 - MIN_W) : MIN_W;
+          // 0% means 0% — don't show a phantom sliver. Otherwise reserve
+          // a baseline width so the gradient is readable even at 1–2%.
+          const w =
+            s.count === 0 ? 0 : first > 0 ? MIN_W + (raw / 100) * (100 - MIN_W) : MIN_W;
           return (
             <div key={s.key} className="group">
               <div className="flex items-center justify-between mb-1 gap-2">
@@ -1057,7 +1060,7 @@ function ActivityVolumeCard({
 
 function TopDealsCard({ workspaceId }: { workspaceId: string | null | undefined }) {
   const { data = [], isLoading } = useQuery({
-    queryKey: ["dashboard2-top-deals", workspaceId],
+    queryKey: ["dashboard-top-deals", workspaceId],
     queryFn: fetchTopDeals,
     enabled: !!workspaceId,
   });
@@ -1146,7 +1149,7 @@ function TopDealsCard({ workspaceId }: { workspaceId: string | null | undefined 
 
 function AtRiskCard({ workspaceId }: { workspaceId: string | null | undefined }) {
   const { data = [], isLoading } = useQuery({
-    queryKey: ["dashboard2-at-risk", workspaceId],
+    queryKey: ["dashboard-at-risk", workspaceId],
     queryFn: fetchAtRisk,
     enabled: !!workspaceId,
   });
@@ -1250,7 +1253,7 @@ function LinkedInQuotasCard({
   const { data: linkedIn, isLoading: liLoading } = useLinkedInAccount();
 
   const { data: usage, isLoading: usageLoading } = useQuery({
-    queryKey: ["dashboard2-linkedin-usage", workspaceId],
+    queryKey: ["dashboard-linkedin-usage", workspaceId],
     queryFn: fetchLinkedInUsage,
     enabled: !!workspaceId && !!linkedIn?.connected,
     staleTime: 60 * 1000,
@@ -1440,7 +1443,7 @@ function ActiveCampaignsCard({
   workspaceId: string | null | undefined;
 }) {
   const { data = [], isLoading } = useQuery({
-    queryKey: ["dashboard2-active-campaigns", workspaceId],
+    queryKey: ["dashboard-active-campaigns", workspaceId],
     queryFn: fetchActiveCampaigns,
     enabled: !!workspaceId,
   });
@@ -1561,7 +1564,7 @@ function activityVisual(type: string): {
     case "call_session_completed":
       return { icon: AlertTriangle, tone: "amber" };
     case "enrichment_completed":
-      return { icon: Check, tone: "green" };
+      return { icon: Check, tone: "cyan" };
     case "prospect_imported":
       return { icon: Upload, tone: "slate" };
     case "prospect_added":
@@ -1569,9 +1572,11 @@ function activityVisual(type: string): {
     case "status_change":
       return { icon: ArrowRight, tone: "blue" };
     case "workflow_enrolled":
+      return { icon: Workflow, tone: "violet" };
     case "workflow_step_completed":
+      return { icon: Check, tone: "violet" };
     case "workflow_run_completed":
-      return { icon: MessageCircle, tone: "green" };
+      return { icon: Check, tone: "green" };
     case "workflow_step_failed":
       return { icon: AlertTriangle, tone: "rose" };
     default:
@@ -1579,14 +1584,46 @@ function activityVisual(type: string): {
   }
 }
 
+const ACTIVITY_BUCKET_LABELS: Record<string, string> = {
+  prospect_added: "Prospect",
+  prospect_imported: "Import",
+  campaign_started: "Campagne",
+  booking_created: "Booking",
+  call_session_completed: "Appels",
+  enrichment_completed: "Enrich.",
+  status_change: "Pipeline",
+  workflow_enrolled: "Parcours",
+  workflow_step_completed: "Parcours",
+  workflow_run_completed: "Parcours",
+  workflow_step_failed: "Parcours",
+};
+
+/** "il y a 2 min" / "il y a 3 h" / "hier · 14:32" / "12 mai · 14:32" */
 function formatActivityTime(iso: string): string {
   const d = new Date(iso);
+  const diffMs = Date.now() - d.getTime();
+  if (diffMs < 60_000) return "à l'instant";
+  if (diffMs < 3_600_000) {
+    const m = Math.floor(diffMs / 60_000);
+    return `il y a ${m} min`;
+  }
+  if (diffMs < 86_400_000) {
+    const h = Math.floor(diffMs / 3_600_000);
+    return `il y a ${h} h`;
+  }
+  if (diffMs < 2 * 86_400_000) {
+    return (
+      "hier · " +
+      d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
+    );
+  }
+  if (diffMs < 7 * 86_400_000) {
+    const days = Math.floor(diffMs / 86_400_000);
+    return `il y a ${days} j`;
+  }
   return (
     d
-      .toLocaleDateString("fr-FR", {
-        day: "numeric",
-        month: "short",
-      })
+      .toLocaleDateString("fr-FR", { day: "numeric", month: "short" })
       .replace(".", "") +
     " · " +
     d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
@@ -1601,7 +1638,7 @@ function RecentActivityCard({
   const [filter, setFilter] = useState<ActFilterLabel>("Tous");
 
   const { data: rows = [], isLoading } = useQuery({
-    queryKey: ["dashboard2-activity", workspaceId, filter],
+    queryKey: ["dashboard-activity", workspaceId, filter],
     queryFn: () => fetchActivity(FILTER_TO_SCOPE[filter]),
     enabled: !!workspaceId,
   });
@@ -1673,30 +1710,54 @@ function RecentActivityCard({
             : rows.slice(0, 8).map((e) => {
                 const { icon: EvIcon, tone } = activityVisual(e.type);
                 const t = TONE_BG[tone];
+                const bucket = ACTIVITY_BUCKET_LABELS[e.type] ?? "Activité";
                 const Wrapper: "a" | "div" = e.target_url ? "a" : "div";
+                // The API already prefixes the description with the
+                // prospect/list name when relevant. Strip the leading
+                // "X · " so we can render it inline as bold while
+                // keeping the rest as muted prose.
+                const [lead, ...rest] = e.description.split(" · ");
+                const tail = rest.join(" · ");
                 return (
                   <Wrapper
                     key={e.id}
                     {...(e.target_url ? { href: e.target_url } : {})}
-                    className="flex items-start gap-3 py-3 border-b border-slate-100 last:border-0 hover:bg-slate-50/60 -mx-2 px-2 rounded transition-colors"
+                    className="-mx-2 flex items-start gap-3 rounded px-2 py-3 transition-colors hover:bg-slate-50/70"
                   >
                     <div
-                      className={`w-8 h-8 rounded-lg ${t.bg} ${t.text} flex items-center justify-center flex-shrink-0 mt-0.5`}
+                      className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${t.bg} ${t.text}`}
                     >
                       <EvIcon size={14} />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[12.5px] sm:text-[13px] font-medium text-slate-900">
-                          {e.title}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12.5px] leading-snug sm:text-[13px]">
+                        <span className="font-semibold text-slate-900">
+                          {lead}
+                        </span>
+                        {tail && (
+                          <span className="text-slate-600">{tail}</span>
+                        )}
+                        <span
+                          className={`ml-1 inline-flex items-center rounded-full ${t.bg} ${t.text} px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider`}
+                        >
+                          {bucket}
                         </span>
                       </div>
-                      <div className="text-[11px] sm:text-[11.5px] text-slate-500 mt-0.5">
-                        {e.description}
+                      <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
+                        {e.actor_name && (
+                          <>
+                            <span className="font-medium text-slate-600">
+                              {e.actor_name}
+                            </span>
+                            <span aria-hidden className="text-slate-300">
+                              ·
+                            </span>
+                          </>
+                        )}
+                        <span className="tabular-nums">
+                          {formatActivityTime(e.timestamp)}
+                        </span>
                       </div>
-                    </div>
-                    <div className="text-[10.5px] sm:text-[11px] text-slate-400 flex-shrink-0 mt-1 tabular-nums whitespace-nowrap">
-                      {formatActivityTime(e.timestamp)}
                     </div>
                   </Wrapper>
                 );
@@ -1710,19 +1771,19 @@ function RecentActivityCard({
    ROOT
    ============================================================ */
 
-export function Dashboard2Content() {
+export function DashboardContent() {
   const { workspace, user, profile } = useWorkspace();
   const [period, setPeriod] = useState<Period>("Ce mois");
   const apiPeriod = PERIOD_TO_API[period];
 
   const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ["dashboard2-stats", workspace?.id, apiPeriod],
+    queryKey: ["dashboard-stats", workspace?.id, apiPeriod],
     queryFn: () => fetchStatsV2(apiPeriod),
     enabled: !!workspace?.id,
   });
 
   const { data: funnel, isLoading: funnelLoading } = useQuery({
-    queryKey: ["dashboard2-funnel", workspace?.id, apiPeriod],
+    queryKey: ["dashboard-funnel", workspace?.id, apiPeriod],
     queryFn: () => fetchFunnel(apiPeriod),
     enabled: !!workspace?.id,
   });

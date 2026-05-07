@@ -62,6 +62,14 @@ export type CreateMeetEventInput = {
   endIso: string;
   /** Optional attendee emails (Google Calendar). */
   attendeeEmails?: string[];
+  /**
+   * Whether Google Calendar should email the attendees about the new
+   * event. Maps to the `sendUpdates` query parameter:
+   *   • true  → "all"  (send invitations to every attendee)
+   *   • false → "none" (silent insert)
+   * Defaults to "none" so legacy callers don't suddenly start spamming.
+   */
+  notifyAttendees?: boolean;
 };
 
 export type CreateMeetEventResult = {
@@ -102,6 +110,7 @@ export async function createGoogleMeetEvent(
     "https://www.googleapis.com/calendar/v3/calendars/primary/events"
   );
   url.searchParams.set("conferenceDataVersion", "1");
+  url.searchParams.set("sendUpdates", input.notifyAttendees ? "all" : "none");
 
   const res = await fetch(url.toString(), {
     method: "POST",

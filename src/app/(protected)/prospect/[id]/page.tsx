@@ -3,8 +3,11 @@
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { ArrowLeft, Loader2 } from "lucide-react";
-import { ProspectProfileContent } from "@/components/prospect/prospect-profile-content";
+import { Loader2 } from "lucide-react";
+import {
+  ProspectContent,
+  ProspectBreadcrumb,
+} from "@/components/prospect/prospect-content";
 import type { Prospect } from "@/lib/types/prospects";
 
 export default function ProspectProfilePage() {
@@ -15,7 +18,9 @@ export default function ProspectProfilePage() {
   const { data: prospect, isLoading, error } = useQuery({
     queryKey: ["prospect", id],
     queryFn: async () => {
-      const res = await fetch(`/api/prospects/${id}`, { credentials: "include" });
+      const res = await fetch(`/api/prospects/${id}`, {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error(String(res.status));
       const json = await res.json();
       return (json.data ?? json) as Prospect;
@@ -32,7 +37,12 @@ export default function ProspectProfilePage() {
       if (!res.ok) return null;
       const json = await res.json();
       const data = json?.data ?? json;
-      return (data as { unipile_chat_id?: string; chat_id?: string })?.unipile_chat_id ?? (data as { chat_id?: string })?.chat_id ?? null;
+      return (
+        (data as { unipile_chat_id?: string; chat_id?: string })
+          ?.unipile_chat_id ??
+        (data as { chat_id?: string })?.chat_id ??
+        null
+      );
     },
     enabled: !!id,
   });
@@ -63,19 +73,9 @@ export default function ProspectProfilePage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-6 lg:p-8">
-      <div className="flex items-center gap-3">
-        <Link
-          href={prospect?.bdd_id ? `/crm?bdd_id=${prospect.bdd_id}` : "/crm"}
-          className="rounded-lg border p-2 hover:bg-accent"
-          aria-label="Retour au CRM"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <h1 className="text-xl font-semibold">Profil prospect</h1>
-      </div>
-
-      <ProspectProfileContent
+    <div className="px-3 pb-16 pt-3 sm:px-7">
+      <ProspectBreadcrumb prospect={prospect} />
+      <ProspectContent
         prospect={prospect}
         linkedChatId={linkedChat ?? undefined}
       />

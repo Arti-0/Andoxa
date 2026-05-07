@@ -182,7 +182,11 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
         end_time: endIso,
         calendar_id: calendarId,
         meeting_kind: platform,
-        google_meet: platform === "meet" && sendEmailInvite,
+        // Always create the Google Meet when the platform is Meet — the
+        // toggle below only controls whether Google Calendar emails the
+        // attendees (sendUpdates flag, Calendar #6).
+        google_meet: platform === "meet",
+        notify_attendees: sendEmailInvite,
         prospect_id: selectedProspect?.id || null,
         attendee_user_ids: attendeeUserIds,
         attendee_emails: attendeeEmails,

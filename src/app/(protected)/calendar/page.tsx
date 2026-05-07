@@ -15,7 +15,9 @@ import {
 } from "./data";
 import {
   useCalendarEvents, useCalendarKpi, useBookingSlug, useGoogleCalendarEvents,
+  useOrgMembers,
 } from "./queries";
+import { useExternalCalendars } from "./external-calendars";
 
 type Slot = { day: number; start: number; end: number };
 
@@ -48,18 +50,27 @@ export default function Calendar2Page() {
   const { data: gcalData } = useGoogleCalendarEvents(weekStart);
   const { data: kpi } = useCalendarKpi();
   const { data: slugData } = useBookingSlug();
+  const { data: orgMembers = [] } = useOrgMembers();
+  const externalEvents = useExternalCalendars(weekStart);
   const bookingSlug = slugData?.booking_slug ?? null;
 
-  // Merge Andoxa + Google events. GCal events get owner/calendarId="gcal"
-  // and respect visible.gcal automatically (visible[e.owner] !== false).
+  // Merge Andoxa + Google + external (holidays / school vacances) events.
+  // Each layer carries its own `owner` so the sidebar visibility map can
+  // toggle them independently (visible[e.owner] !== false).
   const events = useMemo(
-    () => [...andoxaEvents, ...(gcalData?.events ?? [])],
-    [andoxaEvents, gcalData],
+    () => [
+      ...andoxaEvents,
+      ...(gcalData?.events ?? []),
+      ...externalEvents,
+    ],
+    [andoxaEvents, gcalData, externalEvents],
   );
 
+  // Include org members so colleague-owned events (Calendar #4) resolve
+  // to their assigned palette colour instead of the default blue fallback.
   const calendarColors = useMemo(
-    () => buildCalendarColors(customCals),
-    [customCals],
+    () => buildCalendarColors(customCals, orgMembers),
+    [customCals, orgMembers],
   );
 
   const toggle = (id: string) => setVisible((v) => ({ ...v, [id]: !v[id] }));

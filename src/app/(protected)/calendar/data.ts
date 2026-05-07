@@ -42,6 +42,8 @@ export type CalEvent = {
   start: number;
   end: number;
   dateISO: string;          // "2026-04-27" — used for month-view filtering
+  /** Last day covered by the event (inclusive) — for multi-day all-day events. */
+  endDateISO?: string;
   title: string;
   prospect: string | null;
   prospectId: string | null;
@@ -57,6 +59,10 @@ export type CalEvent = {
   lastAction: string;
   googleMeetUrl: string | null;
   gcalAttendees?: GcalAttendee[];
+  /** True for events that span the entire day (e.g. holidays, school
+   *  breaks, day-off). Rendered as a coloured band under the day number
+   *  rather than as a time-grid block. */
+  isAllDay?: boolean;
 };
 
 export type GcalAttendee = {

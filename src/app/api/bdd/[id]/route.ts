@@ -14,7 +14,7 @@ export const GET = createApiHandler(async (req, ctx) => {
 
   const { data, error } = await ctx.supabase
     .from("bdd")
-    .select("id, name, source, proprietaire, created_at, organization_id")
+    .select("id, name, source, query, proprietaire, created_at, organization_id")
     .eq("id", id)
     .eq("organization_id", ctx.workspaceId)
     .maybeSingle();
@@ -25,7 +25,11 @@ export const GET = createApiHandler(async (req, ctx) => {
 
 /**
  * PATCH /api/bdd/[id]
- * Rename a list. Rejects (409) if another list in the same org already has that name.
+ * Update a list. Accepts:
+ *   • { name }  — rename (409 on case-insensitive duplicate)
+ *   • { query } — update the search-query description (CRM-2). The
+ *                 Chrome extension calls this after seeding a new list.
+ * Either field is optional individually.
  */
 export const PATCH = createApiHandler(async (req, ctx) => {
   if (!ctx.workspaceId) {
@@ -36,39 +40,56 @@ export const PATCH = createApiHandler(async (req, ctx) => {
   const id = url.pathname.split("/").pop();
   if (!id) throw Errors.notFound("Liste");
 
-  const body = await parseBody<{ name?: string }>(req);
-  const name = String(body.name ?? "").trim();
-  if (!name) {
-    throw Errors.validation({ name: "Le nom de la liste est requis" });
+  const body = await parseBody<{ name?: string; query?: string | null }>(req);
+  const update: { name?: string; query?: string | null } = {};
+
+  if (typeof body.name === "string") {
+    const name = body.name.trim();
+    if (!name) {
+      throw Errors.validation({ name: "Le nom de la liste est requis" });
+    }
+    // Case-insensitive conflict check — exclude the list being renamed.
+    const { data: existing } = await ctx.supabase
+      .from("bdd")
+      .select("id, name")
+      .eq("organization_id", ctx.workspaceId)
+      .ilike("name", name)
+      .neq("id", id)
+      .limit(5);
+
+    const conflict = (existing ?? []).find(
+      (l) => l.name.trim().toLowerCase() === name.toLowerCase()
+    );
+    if (conflict) {
+      throw Errors.conflict("Une liste avec ce nom existe déjà");
+    }
+    update.name = name;
   }
 
-  // Case-insensitive conflict check — exclude the list being renamed.
-  const { data: existing } = await ctx.supabase
-    .from("bdd")
-    .select("id, name")
-    .eq("organization_id", ctx.workspaceId)
-    .ilike("name", name)
-    .neq("id", id)
-    .limit(5);
+  if ("query" in body) {
+    if (body.query === null) {
+      update.query = null;
+    } else if (typeof body.query === "string") {
+      const trimmed = body.query.trim();
+      update.query = trimmed.length > 0 ? trimmed : null;
+    }
+  }
 
-  const conflict = (existing ?? []).find(
-    (l) => l.name.trim().toLowerCase() === name.toLowerCase()
-  );
-  if (conflict) {
-    throw Errors.conflict("Une liste avec ce nom existe déjà");
+  if (Object.keys(update).length === 0) {
+    throw Errors.validation({ body: "Aucun champ à mettre à jour" });
   }
 
   const { data, error } = await ctx.supabase
     .from("bdd")
-    .update({ name })
+    .update(update)
     .eq("id", id)
     .eq("organization_id", ctx.workspaceId)
     .select("*")
     .single();
 
   if (error || !data) {
-    console.error("[API] BDD rename error:", error);
-    throw Errors.internal("Impossible de renommer la liste");
+    console.error("[API] BDD update error:", error);
+    throw Errors.internal("Impossible de mettre à jour la liste");
   }
 
   return data;

@@ -43,10 +43,20 @@ export interface BddRow {
   id: string;
   name: string;
   source: string;
+  /** Free-form description of the search/filter that produced the list. CRM-2. */
+  query?: string | null;
   proprietaire: string | null;
   created_at: string | null;
   prospects_count?: number;
   phones_count?: number;
+  /** CRM-1 — cumulative funnel counts. */
+  contacted_count?: number;
+  rdv_count?: number;
+  signed_count?: number;
+  /** CRM-1 — number of prospects added to the list in the last 7 days. */
+  delta_7d?: number;
+  /** CRM-3 — average days between prospect creation and `won`, rounded to 1 decimal, or null if no signed yet. */
+  avg_cycle_days?: number | null;
 }
 
 export interface ListesFilterState {

@@ -102,16 +102,6 @@ export function CalendarsSidebar({ visible, onToggle, customCals, onCustomCalsCh
         )}
       </Section>
 
-      {/* Externes — read-only */}
-      <Section title="Externes">
-        <Row color="#EF4444" accent="#FEE2E2" icon={<DotIcon color="#EF4444" />} name="Jours fériés France"
-          checked={!!visible.holidays} onToggle={() => onToggle("holidays")} canEdit={false} />
-        <Row color="#F59E0B" accent="#FEF3C7" icon={<DotIcon color="#F59E0B" />} name="Vacances scolaires"
-          checked={visible.vacances !== false} onToggle={() => onToggle("vacances")} canEdit={false} />
-      </Section>
-
-      <div style={{ flex: 1 }} />
-
       <button
         onClick={() => setNewCalOpen(true)}
         style={{ marginTop: 12, padding: "9px 12px", background: "#fff", border: "1px dashed #CBD5E1", borderRadius: 8, color: "#475569", fontSize: 12.5, fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer", fontFamily: "inherit", transition: "all 120ms" }}
@@ -121,6 +111,16 @@ export function CalendarsSidebar({ visible, onToggle, customCals, onCustomCalsCh
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
         Ajouter un agenda
       </button>
+
+      <div style={{ flex: 1 }} />
+
+      {/* Externes — pinned to the bottom of the sidebar (Calendar #1). */}
+      <Section title="Externes">
+        <Row color="#EF4444" accent="#FEE2E2" icon={<DotIcon color="#EF4444" />} name="Jours fériés France"
+          checked={!!visible.holidays} onToggle={() => onToggle("holidays")} canEdit={false} />
+        <Row color="#F59E0B" accent="#FEF3C7" icon={<DotIcon color="#F59E0B" />} name="Vacances scolaires"
+          checked={visible.vacances !== false} onToggle={() => onToggle("vacances")} canEdit={false} />
+      </Section>
 
       {/* Modals */}
       {newCalOpen && <CalModal title="Nouvel agenda" onClose={() => setNewCalOpen(false)} onSave={handleNewCal} />}

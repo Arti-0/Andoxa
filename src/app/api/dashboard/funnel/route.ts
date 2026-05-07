@@ -1,6 +1,6 @@
 import { createApiHandler, Errors } from "@/lib/api";
-import { getPeriodPair, parsePeriod, trendPts } from "@/lib/dashboard2/period";
-import { readDashboardTargets } from "@/lib/dashboard2/targets";
+import { getPeriodPair, parsePeriod, trendPts } from "@/lib/dashboard/period";
+import { readDashboardTargets } from "@/lib/dashboard/targets";
 
 /**
  * GET /api/dashboard/funnel?period=today|week|month|30d

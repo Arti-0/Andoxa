@@ -1,7 +1,7 @@
 import { createApiHandler, Errors } from "../../../../lib/api";
-import { buildWeekBuckets, bucketIndex } from "@/lib/dashboard2/weeks";
-import { getPeriodPair, parsePeriod, trendPts } from "@/lib/dashboard2/period";
-import { readDashboardTargets } from "@/lib/dashboard2/targets";
+import { buildWeekBuckets, bucketIndex } from "@/lib/dashboard/weeks";
+import { getPeriodPair, parsePeriod, trendPts } from "@/lib/dashboard/period";
+import { readDashboardTargets } from "@/lib/dashboard/targets";
 
 /**
  * GET /api/dashboard/stats
@@ -15,7 +15,7 @@ import { readDashboardTargets } from "@/lib/dashboard2/targets";
  *   kpis.{messagesEnvoyes, prospectsQualifies, dealsEnCours},
  *   charts.{prospectsOverTime, activityVolume}
  *
- * v2 cockpit fields (consumed by /dashboard2):
+ * v2 cockpit fields (consumed by /dashboard):
  *   pipeline, rdv, linkedin, closings — each with sparkline + trend_pts.
  */
 
@@ -390,6 +390,35 @@ export const GET = createApiHandler(async (req, ctx) => {
     }
   }
 
+  // Workflow + manual outbound messages (prospect_activity).
+  // Two flavours coexist:
+  //   1. legacy: `workflow_step_completed` with details.step_type ∈ {linkedin_invite, linkedin_message, whatsapp_message}
+  //   2. canonical: `linkedin_invite_sent` / `linkedin_message_outbound` / `whatsapp_message_outbound` (verb registry)
+  const { data: outboundActivity } = await supabase
+    .from("prospect_activity")
+    .select("created_at, action, details")
+    .eq("organization_id", workspaceId)
+    .gte("created_at", eightWeeksAgoIso)
+    .or(
+      "action.in.(linkedin_invite_sent,linkedin_message_outbound,whatsapp_message_outbound)," +
+        "action.eq.workflow_step_completed",
+    );
+  for (const row of outboundActivity ?? []) {
+    if (row.action === "workflow_step_completed") {
+      const stepType = (row.details as { step_type?: string } | null)?.step_type;
+      if (
+        stepType !== "linkedin_invite" &&
+        stepType !== "linkedin_message" &&
+        stepType !== "whatsapp_message"
+      ) {
+        continue;
+      }
+    }
+    const label = getWeekLabel(new Date(row.created_at as string));
+    const entry = weekMap.get(label);
+    if (entry) entry.messages++;
+  }
+
   const activityVolume = weekLabels.map((w) => ({
     week: `Sem. ${w}`,
     ...(weekMap.get(w) ?? { calls: 0, messages: 0, bookings: 0 }),
@@ -621,7 +650,7 @@ export const GET = createApiHandler(async (req, ctx) => {
       activityVolume,
     },
 
-    // ── v2 (cockpit /dashboard2) ───────────────────────────────────
+    // ── v2 (cockpit /dashboard) ───────────────────────────────────
     period,
     pipeline: pipelineBlock,
     rdv: rdvBlock,

@@ -164,16 +164,23 @@ export function ProspectCreateDialog({
           {error && (
             <p className="text-sm text-destructive">{error}</p>
           )}
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-2">
             <Button
               type="button"
               variant="outline"
+              size="sm"
               onClick={() => handleOpenChange(false)}
               disabled={isSubmitting}
+              className="min-w-[96px]"
             >
               Annuler
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={isSubmitting}
+              className="min-w-[96px] bg-blue-600 text-white hover:bg-blue-700"
+            >
               {isSubmitting ? "Création..." : "Créer"}
             </Button>
           </DialogFooter>

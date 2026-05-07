@@ -1,11 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useBookingSettings, useUpdateBookingSettings } from "./queries";
+import { useEffect, useMemo, useState } from "react";
+import {
+  useBookingSettings,
+  useUpdateBookingSettings,
+  type BookingDaySchedule,
+  type BookingException,
+  type BookingTimeRange,
+} from "./queries";
 
 type Props = { open: boolean; onClose: () => void };
 
-// Day order for display: Mon..Sun. Values match JS getDay() (0=Sun..6=Sat).
+// Day order for display: Mon..Sun. `val` matches JS getDay() (0=Sun..6=Sat).
 const DAYS = [
   { val: 1, short: "Lundi" },
   { val: 2, short: "Mardi" },
@@ -17,17 +23,16 @@ const DAYS = [
 ];
 
 const SLOT_OPTIONS = [15, 30, 45, 60];
+const DEFAULT_RANGE: BookingTimeRange = { start: "09:00", end: "18:00" };
 
-type DaySchedule = { enabled: boolean; startHour: number; endHour: number };
-
-const DEFAULT_SCHEDULES: Record<number, DaySchedule> = {
-  0: { enabled: false, startHour: 9, endHour: 18 },
-  1: { enabled: true,  startHour: 9, endHour: 18 },
-  2: { enabled: true,  startHour: 9, endHour: 18 },
-  3: { enabled: true,  startHour: 9, endHour: 18 },
-  4: { enabled: true,  startHour: 9, endHour: 18 },
-  5: { enabled: true,  startHour: 9, endHour: 18 },
-  6: { enabled: false, startHour: 9, endHour: 18 },
+const DEFAULT_SCHEDULES: Record<number, BookingDaySchedule> = {
+  0: { enabled: false, ranges: [DEFAULT_RANGE] },
+  1: { enabled: true,  ranges: [{ start: "09:00", end: "12:00" }, { start: "14:00", end: "18:00" }] },
+  2: { enabled: true,  ranges: [{ start: "09:00", end: "12:00" }, { start: "14:00", end: "18:00" }] },
+  3: { enabled: true,  ranges: [{ start: "09:00", end: "12:00" }, { start: "14:00", end: "18:00" }] },
+  4: { enabled: true,  ranges: [{ start: "09:00", end: "12:00" }, { start: "14:00", end: "18:00" }] },
+  5: { enabled: true,  ranges: [{ start: "09:00", end: "12:00" }, { start: "14:00", end: "18:00" }] },
+  6: { enabled: false, ranges: [DEFAULT_RANGE] },
 };
 
 export function BookingModal({ open, onClose }: Props) {
@@ -38,7 +43,9 @@ export function BookingModal({ open, onClose }: Props) {
   const [description, setDescription] = useState("");
   const [slotMinutes, setSlotMinutes] = useState(30);
   const [daysAhead, setDaysAhead] = useState(14);
-  const [schedules, setSchedules] = useState<Record<number, DaySchedule>>(DEFAULT_SCHEDULES);
+  const [schedules, setSchedules] = useState<Record<number, BookingDaySchedule>>(DEFAULT_SCHEDULES);
+  const [exceptions, setExceptions] = useState<BookingException[]>([]);
+  const [copyOpen, setCopyOpen] = useState<number | null>(null);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,6 +56,7 @@ export function BookingModal({ open, onClose }: Props) {
       setSlotMinutes(settings.availability.slotMinutes);
       setDaysAhead(settings.availability.daysAhead);
       setSchedules(settings.availability.daySchedules ?? DEFAULT_SCHEDULES);
+      setExceptions(settings.availability.exceptions ?? []);
       setSaved(false);
       setError(null);
     }
@@ -56,27 +64,110 @@ export function BookingModal({ open, onClose }: Props) {
 
   if (!open) return null;
 
-  const updateDay = (day: number, patch: Partial<DaySchedule>) => {
-    setSchedules((s) => ({ ...s, [day]: { ...s[day], ...patch } }));
+  /* ─── schedule mutators ─── */
+
+  const updateRanges = (day: number, ranges: BookingTimeRange[]) => {
+    setSchedules((s) => ({ ...s, [day]: { ...s[day], ranges } }));
   };
+  const setEnabled = (day: number, enabled: boolean) => {
+    setSchedules((s) => ({ ...s, [day]: { ...s[day], enabled } }));
+  };
+  const addRange = (day: number) => {
+    const sched = schedules[day] ?? { enabled: true, ranges: [] };
+    updateRanges(day, [...sched.ranges, DEFAULT_RANGE]);
+  };
+  const removeRange = (day: number, idx: number) => {
+    const sched = schedules[day];
+    if (!sched) return;
+    updateRanges(day, sched.ranges.filter((_, i) => i !== idx));
+  };
+  const patchRange = (day: number, idx: number, patch: Partial<BookingTimeRange>) => {
+    const sched = schedules[day];
+    if (!sched) return;
+    updateRanges(
+      day,
+      sched.ranges.map((r, i) => (i === idx ? { ...r, ...patch } : r)),
+    );
+  };
+
+  /** Copy day X's ranges to a list of target days. */
+  const copyToDays = (sourceDay: number, targetDays: number[]) => {
+    const sourceRanges = schedules[sourceDay]?.ranges ?? [];
+    setSchedules((s) => {
+      const next = { ...s };
+      for (const td of targetDays) {
+        next[td] = { enabled: true, ranges: sourceRanges.map((r) => ({ ...r })) };
+      }
+      return next;
+    });
+  };
+
+  /* ─── exception mutators ─── */
+
+  const addException = () => {
+    const today = new Date();
+    today.setDate(today.getDate() + 1);
+    const iso = today.toISOString().slice(0, 10);
+    setExceptions((arr) => [
+      ...arr,
+      { date: iso, ranges: [{ start: "09:00", end: "18:00" }] },
+    ]);
+  };
+  const removeException = (idx: number) => {
+    setExceptions((arr) => arr.filter((_, i) => i !== idx));
+  };
+  const patchException = (idx: number, patch: Partial<BookingException>) => {
+    setExceptions((arr) =>
+      arr.map((e, i) => (i === idx ? { ...e, ...patch } : e)),
+    );
+  };
+  const toggleExceptionClosed = (idx: number) => {
+    setExceptions((arr) =>
+      arr.map((e, i) =>
+        i === idx
+          ? { ...e, ranges: e.ranges === null ? [{ start: "09:00", end: "18:00" }] : null }
+          : e,
+      ),
+    );
+  };
+
+  /* ─── save ─── */
 
   const handleSave = () => {
     setError(null);
-    for (const [, sched] of Object.entries(schedules)) {
-      if (sched.enabled && sched.endHour <= sched.startHour) {
-        setError("Pour chaque jour activé, l'heure de fin doit être après l'heure de début.");
-        return;
+
+    // Validate every range — start < end
+    for (const sched of Object.values(schedules)) {
+      if (!sched.enabled) continue;
+      for (const r of sched.ranges) {
+        if (r.end <= r.start) {
+          setError(
+            "Pour chaque plage, l'heure de fin doit être après l'heure de début.",
+          );
+          return;
+        }
       }
     }
-    if (!Object.values(schedules).some((s) => s.enabled)) {
-      setError("Activez au moins un jour.");
+    if (!Object.values(schedules).some((s) => s.enabled && s.ranges.length > 0)) {
+      setError("Activez au moins un jour avec une plage horaire.");
       return;
     }
+    for (const ex of exceptions) {
+      if (ex.ranges) {
+        for (const r of ex.ranges) {
+          if (r.end <= r.start) {
+            setError("Une exception a une plage invalide.");
+            return;
+          }
+        }
+      }
+    }
+
     updateSettings.mutate(
       {
         title: title.trim(),
         description: description.trim(),
-        availability: { slotMinutes, daysAhead, daySchedules: schedules },
+        availability: { slotMinutes, daysAhead, daySchedules: schedules, exceptions },
       },
       {
         onSuccess: () => {
@@ -93,7 +184,7 @@ export function BookingModal({ open, onClose }: Props) {
       <div onClick={onClose} className="cal2-fade-in" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)", zIndex: 200 }} />
       <div
         className="cal2-fade-in"
-        style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: "92%", maxWidth: 580, maxHeight: "88vh", background: "#fff", borderRadius: 12, zIndex: 201, boxShadow: "0 24px 60px rgba(15,23,42,0.22)", display: "flex", flexDirection: "column", overflow: "hidden" }}
+        style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: "92%", maxWidth: 640, maxHeight: "88vh", background: "#fff", borderRadius: 12, zIndex: 201, boxShadow: "0 24px 60px rgba(15,23,42,0.22)", display: "flex", flexDirection: "column", overflow: "hidden" }}
       >
         <div style={{ height: 4, background: "#0052D9", flexShrink: 0 }} />
 
@@ -113,21 +204,11 @@ export function BookingModal({ open, onClose }: Props) {
           ) : (
             <>
               <Field label="Titre de la page">
-                <input
-                  type="text" value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Ex: RDV avec Marie Dupont"
-                  style={inputStyle}
-                />
+                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex: RDV avec Marie Dupont" style={inputStyle} />
               </Field>
 
               <Field label="Description" hint="Affichée sous le titre">
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Une courte description, ce que vous proposez, votre disponibilité…"
-                  style={{ ...inputStyle, minHeight: 76, resize: "vertical", fontFamily: "inherit" }}
-                />
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Une courte description, ce que vous proposez, votre disponibilité…" style={{ ...inputStyle, minHeight: 76, resize: "vertical", fontFamily: "inherit" }} />
               </Field>
 
               <Field label="Durée des créneaux">
@@ -147,59 +228,70 @@ export function BookingModal({ open, onClose }: Props) {
                 </div>
               </Field>
 
-              {/* Per-day schedule */}
-              <Field label="Disponibilités par jour" hint="Définir des heures différentes pour chaque jour">
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, border: "1px solid #EDF1F5", borderRadius: 8, padding: 8, background: "#FAFBFC" }}>
+              <Field
+                label="Disponibilités hebdomadaires"
+                hint="Plusieurs plages possibles par jour"
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, border: "1px solid #EDF1F5", borderRadius: 8, padding: 8, background: "#FAFBFC" }}>
                   {DAYS.map((d) => {
-                    const sched = schedules[d.val] ?? DEFAULT_SCHEDULES[d.val];
+                    const sched = schedules[d.val] ?? { enabled: false, ranges: [DEFAULT_RANGE] };
                     return (
-                      <div key={d.val} style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 4px" }}>
-                        {/* Toggle */}
-                        <button
-                          onClick={() => updateDay(d.val, { enabled: !sched.enabled })}
-                          style={{ position: "relative", width: 32, height: 18, background: sched.enabled ? "#0052D9" : "#CBD5E1", borderRadius: 999, flexShrink: 0, transition: "background 140ms", cursor: "pointer", border: "none", padding: 0 }}
-                        >
-                          <span style={{ position: "absolute", top: 2, left: sched.enabled ? 16 : 2, width: 14, height: 14, background: "#fff", borderRadius: "50%", transition: "left 140ms" }} />
-                        </button>
-                        {/* Day label */}
-                        <span style={{ fontSize: 12.5, color: sched.enabled ? "#0F172A" : "#94A3B8", fontWeight: 500, width: 84, flexShrink: 0 }}>
-                          {d.short}
-                        </span>
-                        {/* Time inputs (visibility: hidden when disabled to avoid layout shift) */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, visibility: sched.enabled ? "visible" : "hidden" }}>
-                          <input
-                            type="time"
-                            value={`${String(sched.startHour).padStart(2, "0")}:00`}
-                            onChange={(e) => {
-                              const h = Number(e.target.value.split(":")[0]);
-                              if (!isNaN(h)) updateDay(d.val, { startHour: h });
-                            }}
-                            style={timeInputStyle}
-                          />
-                          <span style={{ fontSize: 11.5, color: "#94A3B8" }}>–</span>
-                          <input
-                            type="time"
-                            value={`${String(sched.endHour).padStart(2, "0")}:00`}
-                            onChange={(e) => {
-                              const h = Number(e.target.value.split(":")[0]);
-                              if (!isNaN(h)) updateDay(d.val, { endHour: h });
-                            }}
-                            style={timeInputStyle}
-                          />
-                        </div>
-                      </div>
+                      <DayRow
+                        key={d.val}
+                        label={d.short}
+                        sched={sched}
+                        onToggleEnabled={(v) => setEnabled(d.val, v)}
+                        onAddRange={() => addRange(d.val)}
+                        onRemoveRange={(i) => removeRange(d.val, i)}
+                        onPatchRange={(i, p) => patchRange(d.val, i, p)}
+                        onCopyClick={() => setCopyOpen(copyOpen === d.val ? null : d.val)}
+                        copyOpen={copyOpen === d.val}
+                        onCopyConfirm={(targets) => {
+                          copyToDays(d.val, targets);
+                          setCopyOpen(null);
+                        }}
+                        sourceDay={d.val}
+                      />
                     );
                   })}
                 </div>
               </Field>
 
+              <Field
+                label="Exceptions à des dates spécifiques"
+                hint="Surcharge la disponibilité d'un jour précis (vacances, jour férié, créneau exceptionnel)"
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {exceptions.length === 0 ? (
+                    <div style={{ padding: "10px 12px", border: "1px dashed #E2E8F0", borderRadius: 7, fontSize: 12, color: "#94A3B8" }}>
+                      Aucune exception. Ajoutez-en une pour fermer un jour ou ouvrir un créneau ponctuel.
+                    </div>
+                  ) : (
+                    exceptions.map((ex, i) => (
+                      <ExceptionRow
+                        key={i}
+                        ex={ex}
+                        onPatch={(p) => patchException(i, p)}
+                        onToggleClosed={() => toggleExceptionClosed(i)}
+                        onRemove={() => removeException(i)}
+                      />
+                    ))
+                  )}
+                  <button
+                    onClick={addException}
+                    style={{ alignSelf: "flex-start", padding: "6px 12px", background: "#fff", color: "#0052D9", border: "1px dashed #CBD5E1", borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#0052D9"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#CBD5E1"; }}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                    Ajouter une exception
+                  </button>
+                </div>
+              </Field>
+
               <Field label="Fenêtre de réservation" hint="Combien de jours à l'avance">
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <input
-                    type="number" min={1} max={90} value={daysAhead}
-                    onChange={(e) => setDaysAhead(Number(e.target.value))}
-                    style={{ ...inputStyle, width: 90 }}
-                  />
+                  <input type="number" min={1} max={90} value={daysAhead} onChange={(e) => setDaysAhead(Number(e.target.value))} style={{ ...inputStyle, width: 90 }} />
                   <span style={{ fontSize: 12.5, color: "#64748B" }}>jours</span>
                 </div>
               </Field>
@@ -232,6 +324,282 @@ export function BookingModal({ open, onClose }: Props) {
     </>
   );
 }
+
+/* ─── Day row (multi-range + apply-to) ─── */
+
+function DayRow({
+  label,
+  sched,
+  onToggleEnabled,
+  onAddRange,
+  onRemoveRange,
+  onPatchRange,
+  onCopyClick,
+  copyOpen,
+  onCopyConfirm,
+  sourceDay,
+}: {
+  label: string;
+  sched: BookingDaySchedule;
+  onToggleEnabled: (enabled: boolean) => void;
+  onAddRange: () => void;
+  onRemoveRange: (idx: number) => void;
+  onPatchRange: (idx: number, patch: Partial<BookingTimeRange>) => void;
+  onCopyClick: () => void;
+  copyOpen: boolean;
+  onCopyConfirm: (targetDays: number[]) => void;
+  sourceDay: number;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "6px 4px", borderBottom: "1px solid #F1F5F9" }}>
+      {/* Toggle */}
+      <button
+        onClick={() => onToggleEnabled(!sched.enabled)}
+        style={{ position: "relative", width: 32, height: 18, background: sched.enabled ? "#0052D9" : "#CBD5E1", borderRadius: 999, flexShrink: 0, transition: "background 140ms", cursor: "pointer", border: "none", padding: 0, marginTop: 6 }}
+      >
+        <span style={{ position: "absolute", top: 2, left: sched.enabled ? 16 : 2, width: 14, height: 14, background: "#fff", borderRadius: "50%", transition: "left 140ms" }} />
+      </button>
+
+      {/* Day label */}
+      <span style={{ fontSize: 12.5, color: sched.enabled ? "#0F172A" : "#94A3B8", fontWeight: 500, width: 84, flexShrink: 0, paddingTop: 7 }}>
+        {label}
+      </span>
+
+      {/* Ranges + actions */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6, minWidth: 0, opacity: sched.enabled ? 1 : 0.45 }}>
+        {sched.ranges.length === 0 && sched.enabled && (
+          <div style={{ fontSize: 11.5, color: "#94A3B8", padding: "4px 0" }}>
+            Aucune plage — ajoutez-en une.
+          </div>
+        )}
+        {sched.ranges.map((r, idx) => (
+          <div key={idx} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="time"
+              value={r.start}
+              disabled={!sched.enabled}
+              onChange={(e) => onPatchRange(idx, { start: e.target.value })}
+              style={timeInputStyle}
+            />
+            <span style={{ fontSize: 11.5, color: "#94A3B8" }}>–</span>
+            <input
+              type="time"
+              value={r.end}
+              disabled={!sched.enabled}
+              onChange={(e) => onPatchRange(idx, { end: e.target.value })}
+              style={timeInputStyle}
+            />
+            {sched.enabled && (
+              <button
+                onClick={() => onRemoveRange(idx)}
+                title="Supprimer cette plage"
+                style={{ width: 22, height: 22, border: "none", background: "transparent", borderRadius: 5, color: "#94A3B8", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "#FEF2F2"; e.currentTarget.style.color = "#EF4444"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#94A3B8"; }}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            )}
+          </div>
+        ))}
+        {sched.enabled && (
+          <div style={{ display: "flex", gap: 12, alignItems: "center", paddingTop: 2 }}>
+            <button
+              onClick={onAddRange}
+              style={{ background: "transparent", color: "#0052D9", border: "none", fontSize: 11.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 4, padding: 0 }}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+              Ajouter une plage
+            </button>
+            <div style={{ position: "relative" }}>
+              <button
+                onClick={onCopyClick}
+                style={{ background: "transparent", color: "#64748B", border: "none", fontSize: 11.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}
+              >
+                Copier vers…
+              </button>
+              {copyOpen && <CopyPopover sourceDay={sourceDay} onConfirm={onCopyConfirm} onClose={onCopyClick} />}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CopyPopover({
+  sourceDay,
+  onConfirm,
+  onClose,
+}: {
+  sourceDay: number;
+  onConfirm: (targetDays: number[]) => void;
+  onClose: () => void;
+}) {
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const candidates = useMemo(
+    () => DAYS.filter((d) => d.val !== sourceDay),
+    [sourceDay],
+  );
+  const toggle = (val: number) => {
+    setPicked((s) => {
+      const n = new Set(s);
+      if (n.has(val)) n.delete(val);
+      else n.add(val);
+      return n;
+    });
+  };
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 250 }} />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: "absolute",
+          top: "calc(100% + 6px)",
+          left: 0,
+          zIndex: 251,
+          width: 220,
+          background: "#fff",
+          border: "1px solid #E2E8F0",
+          borderRadius: 8,
+          boxShadow: "0 12px 28px rgba(15,23,42,0.18)",
+          padding: 10,
+        }}
+      >
+        <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", marginBottom: 8 }}>
+          Appliquer à
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {candidates.map((d) => (
+            <label
+              key={d.val}
+              style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#0F172A", cursor: "pointer", padding: "3px 4px" }}
+            >
+              <input
+                type="checkbox"
+                checked={picked.has(d.val)}
+                onChange={() => toggle(d.val)}
+                style={{ accentColor: "#0052D9" }}
+              />
+              {d.short}
+            </label>
+          ))}
+        </div>
+        <div style={{ marginTop: 10, display: "flex", gap: 6, justifyContent: "flex-end" }}>
+          <button
+            onClick={onClose}
+            style={{ padding: "5px 10px", background: "transparent", color: "#64748B", border: "1px solid #E2E8F0", borderRadius: 6, fontSize: 11.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}
+          >
+            Annuler
+          </button>
+          <button
+            disabled={picked.size === 0}
+            onClick={() => onConfirm([...picked])}
+            style={{ padding: "5px 10px", background: picked.size > 0 ? "#0052D9" : "#CBD5E1", color: "#fff", border: "none", borderRadius: 6, fontSize: 11.5, fontWeight: 500, cursor: picked.size > 0 ? "pointer" : "default", fontFamily: "inherit" }}
+          >
+            Appliquer
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ─── Exception row ─── */
+
+function ExceptionRow({
+  ex,
+  onPatch,
+  onToggleClosed,
+  onRemove,
+}: {
+  ex: BookingException;
+  onPatch: (patch: Partial<BookingException>) => void;
+  onToggleClosed: () => void;
+  onRemove: () => void;
+}) {
+  const closed = ex.ranges === null;
+  const ranges = ex.ranges ?? [];
+
+  const updateRange = (idx: number, patch: Partial<BookingTimeRange>) => {
+    onPatch({
+      ranges: ranges.map((r, i) => (i === idx ? { ...r, ...patch } : r)),
+    });
+  };
+  const addRange = () => {
+    onPatch({ ranges: [...ranges, { start: "09:00", end: "12:00" }] });
+  };
+  const removeRange = (idx: number) => {
+    onPatch({ ranges: ranges.filter((_, i) => i !== idx) });
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10, border: "1px solid #EDF1F5", borderRadius: 8, background: "#fff" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <input
+          type="date"
+          value={ex.date}
+          onChange={(e) => onPatch({ date: e.target.value })}
+          style={timeInputStyle}
+        />
+        <button
+          onClick={onToggleClosed}
+          style={{
+            padding: "4px 10px",
+            border: "1px solid",
+            borderColor: closed ? "#EF4444" : "#E2E8F0",
+            borderRadius: 6,
+            background: closed ? "#FEE2E2" : "#fff",
+            color: closed ? "#B91C1C" : "#475569",
+            fontSize: 11,
+            fontWeight: 500,
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          {closed ? "Fermé" : "Ouvert"}
+        </button>
+        <div style={{ flex: 1 }} />
+        <button
+          onClick={onRemove}
+          title="Supprimer l'exception"
+          style={{ width: 24, height: 24, border: "none", background: "transparent", borderRadius: 5, color: "#94A3B8", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "#FEF2F2"; e.currentTarget.style.color = "#EF4444"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#94A3B8"; }}
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+        </button>
+      </div>
+      {!closed && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 4 }}>
+          {ranges.map((r, idx) => (
+            <div key={idx} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input type="time" value={r.start} onChange={(e) => updateRange(idx, { start: e.target.value })} style={timeInputStyle} />
+              <span style={{ fontSize: 11.5, color: "#94A3B8" }}>–</span>
+              <input type="time" value={r.end} onChange={(e) => updateRange(idx, { end: e.target.value })} style={timeInputStyle} />
+              <button
+                onClick={() => removeRange(idx)}
+                style={{ width: 22, height: 22, border: "none", background: "transparent", borderRadius: 5, color: "#94A3B8", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            </div>
+          ))}
+          <button
+            onClick={addRange}
+            style={{ alignSelf: "flex-start", background: "transparent", color: "#0052D9", border: "none", fontSize: 11, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", padding: 0 }}
+          >
+            + Ajouter une plage
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── styles ─── */
 
 const inputStyle: React.CSSProperties = {
   width: "100%", padding: "8px 11px",

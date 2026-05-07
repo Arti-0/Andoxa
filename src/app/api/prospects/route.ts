@@ -5,6 +5,8 @@ import {
   getPagination,
   getSearchParams,
 } from "../../../lib/api";
+import { enrichProspects } from "../../../lib/crm/enrich-prospects";
+import type { Prospect } from "../../../lib/types/prospects";
 
 /** Retire % et _ pour un fallback ilike sans caractères joker utilisateur */
 function sanitizeIlikeTerm(raw: string): string {
@@ -46,8 +48,13 @@ export const GET = createApiHandler(async (req, ctx) => {
       const parsed = rpcResult as { items: unknown[]; total: number };
       const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
       const total = typeof parsed.total === "number" ? parsed.total : 0;
+      const enriched = await enrichProspects(
+        ctx.supabase,
+        workspaceId,
+        rawItems as Prospect[],
+      );
       return {
-        items: rawItems,
+        items: enriched,
         total,
         page,
         pageSize,
@@ -90,10 +97,11 @@ export const GET = createApiHandler(async (req, ctx) => {
       throw Errors.internal("Failed to fetch prospects");
     }
 
-    const items = data || [];
+    const items = (data || []) as Prospect[];
+    const enriched = await enrichProspects(ctx.supabase, workspaceId, items);
 
     return {
-      items,
+      items: enriched,
       total: count || 0,
       page,
       pageSize,
@@ -128,10 +136,11 @@ export const GET = createApiHandler(async (req, ctx) => {
     throw Errors.internal("Failed to fetch prospects");
   }
 
-  const items = data || [];
+  const items = (data || []) as Prospect[];
+  const enriched = await enrichProspects(ctx.supabase, workspaceId, items);
 
   return {
-    items,
+    items: enriched,
     total: count || 0,
     page,
     pageSize,
