@@ -93,6 +93,7 @@ const CORE_APP_ROUTES: string[] = [
     '/crm',
     '/prospect',
     '/campaigns',
+    '/campaigns2',
     '/call-sessions',
     '/calendar',
     '/settings',
