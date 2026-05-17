@@ -1,29 +1,30 @@
 "use client";
 
 // Right config panel — visuals from design/whatsapp/wf-components.jsx
-// RightConfigPanel. Form fields are limited to what the backend schema can
-// actually persist (see /lib/workflows/schema.ts). Fields shown in the
-// original demo that aren't backed by storage (delay, tracking variables,
-// etc.) are noted in `BACKEND_GAPS.md` rather than rendered.
+// RightConfigPanel. Form fields use .wf-* (scoped under .ws2-root) + theme tokens.
 
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Icon, ICO } from "./icons";
 import { WF_NODE_TYPES, type WfNodeType } from "./node-types";
 import type { WorkflowStep } from "@/lib/workflows/schema";
 import {
   WORKFLOW_TRIGGERS,
+  WORKFLOW_TRIGGER_KIND_OPTIONS,
   type WorkflowTemplateTrigger,
+  type WorkflowTriggerKind,
 } from "@/lib/workflows";
 import { TRIGGER_NODE_ID } from "./xy-canvas";
+import { cn } from "@/lib/utils";
 
 interface RightPanelProps {
-  /** Selected step or special TRIGGER_NODE_ID. */
   selectedId: string;
   step: WorkflowStep | null;
   trigger: WorkflowTemplateTrigger | null;
+  triggerKind: WorkflowTriggerKind;
   onClose: () => void;
   onUpdateStep: (stepId: string, patch: Record<string, unknown>) => void;
   onUpdateTrigger: (next: WorkflowTemplateTrigger | null) => void;
+  onUpdateTriggerKind: (next: WorkflowTriggerKind) => void;
   onDeleteStep: (stepId: string) => void;
   onDuplicateStep: (stepId: string) => void;
 }
@@ -40,33 +41,15 @@ const STEP_TYPE_TO_NODE_TYPE: Record<string, WfNodeType> = {
   end: "end",
 };
 
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <label
-      style={{
-        display: "block",
-        fontSize: 12,
-        fontWeight: 600,
-        color: "#374151",
-        marginBottom: 5,
-      }}
-    >
-      {children}
-    </label>
-  );
-}
+const sectionTitle =
+  "mb-3.5 text-xs font-bold uppercase tracking-wider text-muted-foreground";
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "7px 10px",
-  borderRadius: 8,
-  border: "1px solid #E2E8F0",
-  fontSize: 12.5,
-  color: "#0F172A",
-  background: "white",
-  outline: "none",
-  boxSizing: "border-box",
-};
+const infoCallout =
+  "rounded-lg border border-border bg-muted/45 p-2 text-[11px] leading-relaxed text-muted-foreground dark:bg-muted/30";
+
+function FieldLabel({ children }: { children: ReactNode }) {
+  return <label className="wf-label">{children}</label>;
+}
 
 function Toggle({
   value,
@@ -76,36 +59,57 @@ function Toggle({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <div
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={value}
         onClick={() => onChange(!value)}
-        style={{
-          width: 36,
-          height: 20,
-          borderRadius: 10,
-          background: value ? "#0052D9" : "#CBD5E1",
-          position: "relative",
-          cursor: "pointer",
-          transition: "background 150ms",
-        }}
+        className={cn(
+          "relative h-5 w-9 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          value ? "bg-primary" : "bg-muted",
+        )}
       >
-        <div
-          style={{
-            position: "absolute",
-            width: 16,
-            height: 16,
-            borderRadius: "50%",
-            background: "white",
-            top: 2,
-            left: value ? 18 : 2,
-            transition: "left 150ms",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-          }}
+        <span
+          className={cn(
+            "pointer-events-none absolute top-0.5 left-1 size-4 rounded-full bg-background shadow-sm ring-1 ring-black/5 transition-[transform] dark:ring-white/10",
+            value ? "translate-x-[18px]" : "translate-x-0",
+          )}
+          aria-hidden
         />
-      </div>
-      <span style={{ fontSize: 12, color: "#64748B" }}>
+      </button>
+      <span className="text-xs text-muted-foreground">
         {value ? "Activé" : "Désactivé"}
       </span>
+    </div>
+  );
+}
+
+function TriggerKindForm({
+  triggerKind,
+  onUpdate,
+}: {
+  triggerKind: WorkflowTriggerKind;
+  onUpdate: (next: WorkflowTriggerKind) => void;
+}) {
+  return (
+    <div className="mb-5">
+      <FieldLabel>Type d&apos;automatisation (enregistré en base)</FieldLabel>
+      <select
+        value={triggerKind}
+        onChange={(e) => onUpdate(e.target.value as WorkflowTriggerKind)}
+        className="wf-select box-border"
+      >
+        {WORKFLOW_TRIGGER_KIND_OPTIONS.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.label}
+          </option>
+        ))}
+      </select>
+      <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+        {WORKFLOW_TRIGGER_KIND_OPTIONS.find((t) => t.id === triggerKind)
+          ?.description ?? ""}
+      </p>
     </div>
   );
 }
@@ -119,26 +123,15 @@ function TriggerForm({
 }) {
   return (
     <>
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 700,
-          color: "#64748B",
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          marginBottom: 14,
-        }}
-      >
-        Configuration du déclencheur
-      </div>
-      <div style={{ marginBottom: 14 }}>
-        <FieldLabel>Événement déclencheur</FieldLabel>
+      <div className={sectionTitle}>Configuration du déclencheur</div>
+      <div className="mb-3.5">
+        <FieldLabel>Scénario marketing (métadonnées)</FieldLabel>
         <select
           value={trigger ?? ""}
           onChange={(e) =>
             onUpdate((e.target.value || null) as WorkflowTemplateTrigger | null)
           }
-          style={inputStyle}
+          className="wf-select box-border"
         >
           <option value="">Aucun</option>
           {WORKFLOW_TRIGGERS.map((t) => (
@@ -148,20 +141,11 @@ function TriggerForm({
           ))}
         </select>
       </div>
-      <p
-        style={{
-          fontSize: 11,
-          color: "#94A3B8",
-          lineHeight: 1.5,
-          background: "#F8FAFC",
-          padding: "8px 10px",
-          borderRadius: 8,
-          border: "1px solid #E2E8F0",
-        }}
-      >
-        Les déclencheurs sont enregistrés dans les métadonnées du workflow.
-        L&apos;exécution réelle de chaque déclencheur sera branchée dans une
-        prochaine itération du backend.
+      <p className={infoCallout}>
+        Le libellé ci-dessus sert au canvas et à la simulation. Le routage
+        automatique utilisera le <strong className="text-foreground">type d&apos;automatisation</strong>{" "}
+        (champ <code className="text-xs">trigger_kind</code>) une fois les écouteurs branchés côté
+        serveur.
       </p>
     </>
   );
@@ -177,19 +161,8 @@ function WaitForm({
   const cfg = step.config as { durationHours: number; onlyIfNoReply?: boolean };
   return (
     <>
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 700,
-          color: "#64748B",
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          marginBottom: 14,
-        }}
-      >
-        Délai d&apos;attente
-      </div>
-      <div style={{ marginBottom: 14 }}>
+      <div className={sectionTitle}>Délai d&apos;attente</div>
+      <div className="mb-3.5">
         <FieldLabel>Durée (heures)</FieldLabel>
         <input
           type="number"
@@ -202,23 +175,16 @@ function WaitForm({
               onUpdate({ durationHours: n });
             }
           }}
-          style={inputStyle}
+          className="wf-input box-border"
         />
       </div>
-      <div style={{ marginBottom: 14 }}>
+      <div className="mb-3.5">
         <FieldLabel>Conditionnel</FieldLabel>
         <Toggle
           value={!!cfg.onlyIfNoReply}
           onChange={(v) => onUpdate({ onlyIfNoReply: v })}
         />
-        <p
-          style={{
-            fontSize: 11,
-            color: "#94A3B8",
-            marginTop: 6,
-            lineHeight: 1.5,
-          }}
-        >
+        <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
           Si activé, l&apos;étape suivante ne s&apos;exécute que si le prospect
           n&apos;a pas répondu pendant ce délai.
         </p>
@@ -244,19 +210,8 @@ function MessageForm({
 
   return (
     <>
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 700,
-          color: "#64748B",
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          marginBottom: 14,
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ marginBottom: 14 }}>
+      <div className={sectionTitle}>{label}</div>
+      <div className="mb-3.5">
         <FieldLabel>Modèle de message</FieldLabel>
         <textarea
           value={draft}
@@ -268,21 +223,9 @@ function MessageForm({
           }}
           rows={6}
           placeholder="Bonjour {{firstName}}, ..."
-          style={{
-            ...inputStyle,
-            fontFamily: "inherit",
-            lineHeight: 1.5,
-            resize: "vertical",
-          }}
+          className="wf-textarea min-h-[144px] leading-normal font-[inherit]"
         />
-        <p
-          style={{
-            fontSize: 11,
-            color: "#94A3B8",
-            marginTop: 6,
-            lineHeight: 1.5,
-          }}
-        >
+        <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
           Variables disponibles : <code>{"{{firstName}}"}</code>,{" "}
           <code>{"{{lastName}}"}</code>, <code>{"{{company}}"}</code>.
         </p>
@@ -306,30 +249,19 @@ function CrmForm({
   const field = cfg.field ?? "status";
   return (
     <>
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 700,
-          color: "#64748B",
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          marginBottom: 14,
-        }}
-      >
-        Mise à jour CRM
-      </div>
-      <div style={{ marginBottom: 14 }}>
+      <div className={sectionTitle}>Mise à jour CRM</div>
+      <div className="mb-3.5">
         <FieldLabel>Champ à modifier</FieldLabel>
         <select
           value={field}
           onChange={(e) => onUpdate({ field: e.target.value })}
-          style={inputStyle}
+          className="wf-select box-border"
         >
           <option value="status">Statut</option>
           <option value="priority">Priorité</option>
         </select>
       </div>
-      <div style={{ marginBottom: 14 }}>
+      <div className="mb-3.5">
         <FieldLabel>Nouvelle valeur</FieldLabel>
         <input
           value={cfg.value ?? ""}
@@ -339,10 +271,10 @@ function CrmForm({
               ? "ex : Réunion effectuée"
               : "ex : haute"
           }
-          style={inputStyle}
+          className="wf-input box-border"
         />
       </div>
-      <div style={{ marginBottom: 14 }}>
+      <div className="mb-3.5">
         <FieldLabel>Notifier le propriétaire</FieldLabel>
         <Toggle
           value={!!cfg.notifyOwner}
@@ -367,19 +299,8 @@ function NotificationForm({
   }, [cfg.message]);
   return (
     <>
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 700,
-          color: "#64748B",
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          marginBottom: 14,
-        }}
-      >
-        Notification interne
-      </div>
-      <div style={{ marginBottom: 14 }}>
+      <div className={sectionTitle}>Notification interne</div>
+      <div className="mb-3.5">
         <FieldLabel>Message</FieldLabel>
         <textarea
           value={draft}
@@ -391,20 +312,15 @@ function NotificationForm({
           }}
           rows={4}
           placeholder="Aucun consentement WhatsApp pour {{firstName}}…"
-          style={{
-            ...inputStyle,
-            fontFamily: "inherit",
-            lineHeight: 1.5,
-            resize: "vertical",
-          }}
+          className="wf-textarea min-h-[112px] leading-normal font-[inherit]"
         />
       </div>
-      <div style={{ marginBottom: 14 }}>
+      <div className="mb-3.5">
         <FieldLabel>Priorité</FieldLabel>
         <select
           value={cfg.priority ?? "normal"}
           onChange={(e) => onUpdate({ priority: e.target.value })}
-          style={inputStyle}
+          className="wf-select box-border"
         >
           <option value="normal">Normale</option>
           <option value="high">Haute</option>
@@ -429,19 +345,8 @@ function TaskForm({
   }, [cfg.title]);
   return (
     <>
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 700,
-          color: "#64748B",
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          marginBottom: 14,
-        }}
-      >
-        Création de tâche
-      </div>
-      <div style={{ marginBottom: 14 }}>
+      <div className={sectionTitle}>Création de tâche</div>
+      <div className="mb-3.5">
         <FieldLabel>Titre</FieldLabel>
         <input
           value={draft}
@@ -452,10 +357,10 @@ function TaskForm({
             }
           }}
           placeholder="Relancer {{firstName}} manuellement"
-          style={inputStyle}
+          className="wf-input box-border"
         />
       </div>
-      <div style={{ marginBottom: 14 }}>
+      <div className="mb-3.5">
         <FieldLabel>Échéance (heures)</FieldLabel>
         <input
           type="number"
@@ -467,7 +372,7 @@ function TaskForm({
               onUpdate({ dueInHours: n });
             }
           }}
-          style={inputStyle}
+          className="wf-input box-border"
         />
       </div>
     </>
@@ -477,29 +382,8 @@ function TaskForm({
 function EndForm() {
   return (
     <>
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 700,
-          color: "#64748B",
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          marginBottom: 14,
-        }}
-      >
-        Fin du parcours
-      </div>
-      <p
-        style={{
-          fontSize: 12.5,
-          color: "#475569",
-          lineHeight: 1.55,
-          background: "#F8FAFC",
-          padding: "10px 12px",
-          borderRadius: 8,
-          border: "1px solid #E2E8F0",
-        }}
-      >
+      <div className={sectionTitle}>Fin du parcours</div>
+      <p className={cn(infoCallout, "text-xs leading-relaxed text-foreground/90")}>
         Quand un prospect atteint cette étape, son parcours est marqué comme
         terminé. Aucune autre étape ne sera exécutée pour lui.
       </p>
@@ -510,37 +394,16 @@ function EndForm() {
 function ConditionForm() {
   return (
     <>
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 700,
-          color: "#64748B",
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          marginBottom: 14,
-        }}
-      >
-        Configuration de la condition
-      </div>
-      <div style={{ marginBottom: 14 }}>
+      <div className={sectionTitle}>Configuration de la condition</div>
+      <div className="mb-3.5">
         <FieldLabel>Type de condition</FieldLabel>
-        <select value="prospect_replied" disabled style={inputStyle}>
+        <select value="prospect_replied" disabled className="wf-select box-border opacity-70">
           <option value="prospect_replied">Le prospect a répondu</option>
         </select>
       </div>
-      <p
-        style={{
-          fontSize: 11,
-          color: "#94A3B8",
-          lineHeight: 1.5,
-          background: "#F8FAFC",
-          padding: "8px 10px",
-          borderRadius: 8,
-          border: "1px solid #E2E8F0",
-        }}
-      >
+      <p className={infoCallout}>
         Une seule condition est supportée pour le moment :{" "}
-        <strong>Le prospect a répondu ?</strong>. Les branches Oui/Non sont
+        <strong className="text-foreground">Le prospect a répondu ?</strong>. Les branches Oui/Non sont
         définies par les liens dans le canvas.
       </p>
     </>
@@ -551,16 +414,20 @@ export function RightPanel({
   selectedId,
   step,
   trigger,
+  triggerKind,
   onClose,
   onUpdateStep,
   onUpdateTrigger,
+  onUpdateTriggerKind,
   onDeleteStep,
   onDuplicateStep,
 }: RightPanelProps) {
   const isTrigger = selectedId === TRIGGER_NODE_ID;
   const nodeType: WfNodeType = isTrigger
     ? "trigger"
-    : (step ? (STEP_TYPE_TO_NODE_TYPE[step.type] ?? "end") : "end");
+    : step
+      ? (STEP_TYPE_TO_NODE_TYPE[step.type] ?? "end")
+      : "end";
   const cfg = WF_NODE_TYPES[nodeType];
   const headline = isTrigger
     ? trigger
@@ -589,90 +456,49 @@ export function RightPanel({
       : "Étape introuvable";
 
   return (
-    <div
-      style={{
-        width: 320,
-        flexShrink: 0,
-        borderLeft: "1px solid #E2E8F0",
-        background: "white",
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          padding: "14px 16px",
-          borderBottom: "1px solid #E2E8F0",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-        }}
-      >
+    <div className="flex w-80 shrink-0 flex-col overflow-hidden border-l border-border bg-card">
+      <div className="flex items-center gap-2.5 border-b border-border px-4 py-3.5">
         <div
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
             background: cfg.bg,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-            border: `1px solid ${cfg.border}44`,
+            borderColor: `${cfg.border}44`,
           }}
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg border"
         >
           {cfg.iconFn(16)}
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="min-w-0 flex-1">
           <div
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
-              color: cfg.color,
-            }}
+            style={{ color: cfg.color }}
+            className="text-[11px] font-bold uppercase tracking-wide"
           >
             {cfg.label}
           </div>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#0F172A",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
+          <div className="truncate text-[13px] font-semibold text-foreground">
             {headline}
           </div>
         </div>
         <button
+          type="button"
           onClick={onClose}
-          style={{
-            border: "none",
-            background: "none",
-            cursor: "pointer",
-            color: "#94A3B8",
-            display: "flex",
-            padding: 4,
-            borderRadius: 6,
-          }}
+          className="flex cursor-pointer items-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           aria-label="Fermer"
         >
-          <Icon size={14} color="#94A3B8" d={ICO.x} />
+          <Icon size={14} color="currentColor" d={ICO.x} />
         </button>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+      <div className="flex-1 overflow-y-auto p-4">
         {isTrigger ? (
-          <TriggerForm trigger={trigger} onUpdate={onUpdateTrigger} />
+          <>
+            <TriggerKindForm
+              triggerKind={triggerKind}
+              onUpdate={onUpdateTriggerKind}
+            />
+            <TriggerForm trigger={trigger} onUpdate={onUpdateTrigger} />
+          </>
         ) : !step ? (
-          <p style={{ fontSize: 13, color: "#94A3B8" }}>
-            Étape introuvable.
-          </p>
+          <p className="text-sm text-muted-foreground">Étape introuvable.</p>
         ) : step.type === "wait" ? (
           <WaitForm
             step={step as WorkflowStep & { type: "wait" }}
@@ -716,74 +542,37 @@ export function RightPanel({
         ) : step.type === "end" ? (
           <EndForm />
         ) : (
-          <p style={{ fontSize: 13, color: "#94A3B8" }}>
+          <p className="text-sm text-muted-foreground">
             Aucune configuration disponible pour ce type.
           </p>
         )}
 
         {!isTrigger && step && (
-          <div
-            style={{
-              marginTop: 8,
-              paddingTop: 14,
-              borderTop: "1px solid #E2E8F0",
-              display: "flex",
-              gap: 6,
-            }}
-          >
+          <div className="mt-2 flex gap-1.5 border-t border-border pt-3.5">
             <button
+              type="button"
               onClick={() => onDuplicateStep(step.id)}
-              style={{
-                flex: 1,
-                padding: "7px 0",
-                borderRadius: 8,
-                border: "1px solid #E2E8F0",
-                background: "white",
-                fontSize: 12.5,
-                fontWeight: 500,
-                color: "#374151",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 5,
-              }}
+              className="flex flex-1 cursor-pointer items-center justify-center gap-1 rounded-lg border border-border bg-background px-2 py-1.5 text-[12.5px] font-medium text-foreground transition-colors hover:bg-accent"
             >
-              <Icon size={12} color="#374151" d={ICO.copy} />
+              <Icon size={12} color="currentColor" d={ICO.copy} />
               Dupliquer
             </button>
             <button
+              type="button"
               onClick={() => onDeleteStep(step.id)}
-              style={{
-                padding: "7px 10px",
-                borderRadius: 8,
-                border: "1px solid #FEE2E2",
-                background: "#FFF1F2",
-                fontSize: 12.5,
-                color: "#BE123C",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-              }}
+              className="flex cursor-pointer items-center gap-1 rounded-lg border border-destructive/35 bg-destructive/10 px-2.5 py-1.5 text-[12.5px] text-destructive transition-colors hover:bg-destructive/15 dark:border-destructive/45 dark:bg-destructive/15"
               aria-label="Supprimer"
             >
-              <Icon size={12} color="#BE123C" d={ICO.trash} />
+              <Icon size={12} color="currentColor" d={ICO.trash} />
             </button>
           </div>
         )}
       </div>
 
-      <div style={{ padding: "12px 16px", borderTop: "1px solid #E2E8F0" }}>
-        <p
-          style={{
-            fontSize: 11,
-            color: "#94A3B8",
-            textAlign: "center",
-          }}
-        >
+      <div className="border-t border-border px-4 py-3">
+        <p className="text-center text-[11px] text-muted-foreground">
           Les modifications sont enregistrées au prochain clic sur{" "}
-          <strong style={{ color: "#0F172A" }}>Enregistrer</strong>.
+          <strong className="text-foreground">Enregistrer</strong>.
         </p>
       </div>
     </div>

@@ -29,7 +29,9 @@ export async function GET(
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("id, active_organization_id, metadata")
+      .select(
+        "id, active_organization_id, metadata, full_name, email, avatar_url"
+      )
       .eq("booking_slug", slug)
       .single();
 
@@ -81,9 +83,38 @@ export async function GET(
       (s) => new Date(s.start) > now
     );
 
+    // Optional meeting type — stored in profile.metadata.meetingType when set;
+    // otherwise we synthesize a sensible default derived from the availability
+    // slot length.
+    type MeetingTypeMeta = {
+      title?: string;
+      description?: string;
+      duration?: number;
+      mode?: string;
+      role?: string;
+    };
+    const mt = (meta?.meetingType ?? {}) as MeetingTypeMeta;
+    const slotMinutes =
+      typeof availability.slotMinutes === "number" ? availability.slotMinutes : 30;
+
+    const meetingType = {
+      title: mt.title ?? "Échange découverte",
+      description:
+        mt.description ??
+        "Un premier échange pour faire connaissance et voir comment je peux vous aider.",
+      duration: mt.duration ?? slotMinutes,
+      mode: mt.mode ?? "Visioconférence",
+    };
+
+    const host = {
+      name: profile.full_name ?? slug,
+      role: mt.role ?? "",
+      avatar_url: profile.avatar_url ?? null,
+    };
+
     return NextResponse.json({
       success: true,
-      data: { slots: futureSlots },
+      data: { slots: futureSlots, host, meetingType },
     });
   } catch (error) {
     captureRouteError(route, error, { extra: { step: "unhandled" } });

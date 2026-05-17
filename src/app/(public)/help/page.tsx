@@ -24,8 +24,8 @@ import {
     Shield,
     BarChart3,
 } from 'lucide-react';
-import AndoxaHeader from '@/components/content/AndoxaHeader';
-import AndoxaFooter from '@/components/content/AndoxaFooter';
+import { MarketingPageLayout } from '@/components/marketing/marketing-page-layout';
+import { Container } from '@/components/marketing/ui/container';
 import Balancer from 'react-wrap-balancer';
 import Link from 'next/link';
 
@@ -182,25 +182,14 @@ export default function HelpPage() {
     };
 
     return (
-        <main className="min-h-screen bg-white dark:bg-slate-900">
-            <AndoxaHeader />
-
-            <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-                <div className="space-y-12">
-                    {/* Hero Section */}
-                    <div className="text-center space-y-4">
-                        <h1 className="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl dark:text-white">
-                            <Balancer>Centre d&apos;aide</Balancer>
-                        </h1>
-                        <p className="mt-4 text-lg text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
-                            <Balancer>
-                                Trouvez des réponses détaillées à vos questions
-                                et apprenez à tirer le meilleur parti
-                                d&apos;Andoxa pour développer votre activité
-                            </Balancer>
-                        </p>
-                    </div>
-
+        <MarketingPageLayout
+            eyebrow="Aide"
+            title="Centre d'aide"
+            subtitle="Trouvez des réponses détaillées à vos questions et apprenez à tirer le meilleur parti d'Andoxa pour développer votre activité."
+        >
+            <section className="py-16 sm:py-20">
+                <Container>
+                    <div className="space-y-12">
                     {/* Search */}
                     <Card className="border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
                         <CardContent className="pt-6">
@@ -466,10 +455,9 @@ export default function HelpPage() {
                             </div>
                         </CardContent>
                     </Card>
-                </div>
-            </div>
-
-            <AndoxaFooter />
-        </main>
+                    </div>
+                </Container>
+            </section>
+        </MarketingPageLayout>
     );
 }

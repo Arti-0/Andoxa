@@ -2,9 +2,18 @@ import { createApiHandler, Errors, parseBody } from "@/lib/api";
 import { assertMessagerieAndTemplatesPlan } from "@/lib/billing/plan-gates";
 import { z } from "zod";
 
+const TemplateCategoryEnum = z.enum([
+  "first",
+  "relance",
+  "rdv",
+  "suivi",
+  "other",
+]);
+
 const UpdateTemplateSchema = z.object({
   name: z.string().min(1).max(100).trim().optional(),
   channel: z.enum(["linkedin", "whatsapp", "email"]).optional(),
+  category: TemplateCategoryEnum.optional(),
   content: z
     .string()
     .min(1)
@@ -79,6 +88,7 @@ export const PATCH = createApiHandler(async (req, ctx) => {
     .update({
       name: parsed.data.name,
       channel: parsed.data.channel,
+      category: parsed.data.category,
       content: parsed.data.content,
       variables_used: parsed.data.content ? extractVariables(parsed.data.content) : undefined,
       is_default: parsed.data.is_default,

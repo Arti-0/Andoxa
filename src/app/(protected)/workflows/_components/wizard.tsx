@@ -15,6 +15,7 @@ import {
   type WorkflowTemplateTrigger,
 } from "@/lib/workflows";
 import { toastFromApiError } from "@/lib/toast";
+import { cn } from "@/lib/utils";
 
 const TRIGGER_ICONS: Record<
   WorkflowTemplateTrigger,
@@ -56,65 +57,40 @@ const STEPS = [
 
 function StepIndicator({ current }: { current: number }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 0,
-        marginBottom: 56,
-        maxWidth: 640,
-        marginLeft: "auto",
-        marginRight: "auto",
-      }}
-    >
+    <div className="mx-auto mb-14 flex max-w-[640px] items-center justify-center gap-0">
       {STEPS.map((s, i) => {
         const done = s.n < current;
         const active = s.n === current;
         return (
           <Fragment key={s.n}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="flex items-center gap-2.5">
               <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: "50%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  background: done || active ? "#0052D9" : "#F1F5F9",
-                  color: done || active ? "white" : "#94A3B8",
-                  border: done || active ? "none" : "2px solid #E2E8F0",
-                  transition: "all 200ms",
-                  flexShrink: 0,
-                }}
+                className={cn(
+                  "flex size-8 shrink-0 items-center justify-center rounded-full border-2 text-[13px] font-bold transition-all",
+                  done || active
+                    ? "border-transparent bg-primary text-primary-foreground"
+                    : "border-border bg-muted text-muted-foreground",
+                )}
               >
-                {done ? <Icon size={14} color="white" d={ICO.check} /> : s.n}
+                {done ? <Icon size={14} color="currentColor" d={ICO.check} /> : s.n}
               </div>
               <span
-                style={{
-                  fontSize: 13.5,
-                  fontWeight: active ? 600 : 400,
-                  color: active ? "#0F172A" : done ? "#64748B" : "#94A3B8",
-                  whiteSpace: "nowrap",
-                }}
+                className={cn(
+                  "whitespace-nowrap text-[13.5px]",
+                  active && "font-semibold text-foreground",
+                  done && !active && "text-muted-foreground",
+                  !active && !done && "text-muted-foreground/70",
+                )}
               >
                 {s.label}
               </span>
             </div>
             {i < STEPS.length - 1 && (
               <div
-                style={{
-                  flex: 1,
-                  height: 1,
-                  background: s.n < current ? "#0052D9" : "#E2E8F0",
-                  margin: "0 20px",
-                  minWidth: 56,
-                  maxWidth: 120,
-                  transition: "background 300ms",
-                }}
+                className={cn(
+                  "mx-5 h-px min-w-14 max-w-[120px] flex-1 transition-colors",
+                  s.n < current ? "bg-primary" : "bg-border",
+                )}
               />
             )}
           </Fragment>
@@ -133,40 +109,14 @@ function Step1({
 }) {
   return (
     <div className="andoxa-fade-up">
-      <h2
-        style={{
-          fontSize: 26,
-          fontWeight: 700,
-          letterSpacing: "-0.03em",
-          color: "#0F172A",
-          marginBottom: 8,
-          textAlign: "center",
-        }}
-      >
+      <h2 className="mb-2 text-center text-[26px] font-bold tracking-tight text-foreground">
         Comment souhaitez-vous commencer ?
       </h2>
-      <p
-        style={{
-          fontSize: 14.5,
-          color: "#64748B",
-          marginBottom: 36,
-          lineHeight: 1.6,
-          textAlign: "center",
-          maxWidth: 560,
-          marginLeft: "auto",
-          marginRight: "auto",
-        }}
-      >
+      <p className="mx-auto mb-9 max-w-[560px] text-center text-[14.5px] leading-snug text-muted-foreground">
         Choisissez un modèle prêt à l&apos;emploi ou créez un workflow
         personnalisé depuis zéro.
       </p>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gap: 14,
-        }}
-      >
+      <div className="grid grid-cols-3 gap-3.5">
         {WORKFLOW_TEMPLATES.map((t) => {
           const sel = selected?.id === t.id;
           const tags = TEMPLATE_TAGS[t.id] ?? [];
@@ -174,117 +124,70 @@ function Step1({
           return (
             <div
               key={t.id}
+              role="button"
+              tabIndex={0}
               onClick={() => onSelect(t)}
-              onMouseEnter={(e) => {
-                if (!sel) e.currentTarget.style.borderColor = "#93C5FD";
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelect(t);
+                }
               }}
-              onMouseLeave={(e) => {
-                if (!sel) e.currentTarget.style.borderColor = "#E2E8F0";
-              }}
-              style={{
-                padding: "16px 18px",
-                borderRadius: 14,
-                border: `2px solid ${sel ? "#0052D9" : "#E2E8F0"}`,
-                background: sel
-                  ? "#E8F0FD"
-                  : isScratch
-                    ? "#F8FAFC"
-                    : "white",
-                cursor: "pointer",
-                transition: "all 150ms",
-                position: "relative",
-                boxShadow: sel ? "0 0 0 1px rgba(0,82,217,0.15)" : "none",
-              }}
-            >
-              {t.popular && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 10,
-                    right: 10,
-                    fontSize: 10,
-                    fontWeight: 700,
-                    background: "#FF6700",
-                    color: "white",
-                    padding: "2px 7px",
-                    borderRadius: 10,
-                  }}
-                >
-                  Populaire
-                </div>
+              className={cn(
+                "relative cursor-pointer rounded-[14px] border-2 p-4 pb-5 transition-colors",
+                sel
+                  ? "border-primary bg-primary/10 ring-1 ring-primary/25 dark:bg-primary/15"
+                  : "border-border bg-card hover:border-primary/40",
+                isScratch &&
+                  !sel &&
+                  "bg-muted/35 hover:bg-muted/50 dark:bg-muted/25",
               )}
-              {sel && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 10,
-                    right: 10,
-                    width: 20,
-                    height: 20,
-                    borderRadius: "50%",
-                    background: "#0052D9",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Icon size={11} color="white" d={ICO.check} />
+            >
+              {sel ? (
+                <div className="absolute right-2.5 top-2.5 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                  <Icon size={11} color="currentColor" d={ICO.check} />
                 </div>
+              ) : (
+                t.popular && (
+                  <div className="absolute right-2.5 top-2.5 rounded-[10px] bg-orange-600 px-1.5 py-0.5 text-[10px] font-bold text-white dark:bg-orange-500">
+                    Populaire
+                  </div>
+                )
               )}
               <div
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  background: isScratch ? "#F1F5F9" : "#E8F0FD",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginBottom: 10,
-                }}
+                className={cn(
+                  "mb-2.5 flex size-9 items-center justify-center rounded-[10px]",
+                  isScratch
+                    ? "bg-muted text-muted-foreground"
+                    : "bg-primary/12 text-primary",
+                )}
               >
                 <Icon
                   size={18}
-                  color={isScratch ? "#64748B" : "#0052D9"}
+                  color="currentColor"
                   d={isScratch ? ICO.plus_circle : ICO.template}
                 />
               </div>
               <div
-                style={{
-                  fontSize: 13.5,
-                  fontWeight: 700,
-                  color: "#0F172A",
-                  marginBottom: 5,
-                  lineHeight: 1.3,
-                  paddingRight: t.popular ? 60 : 0,
-                }}
+                className={cn(
+                  "mb-1.5 text-[13.5px] font-bold leading-snug text-foreground",
+                  t.popular ? "pr-14" : undefined,
+                  sel && !t.popular ? "pr-10" : undefined,
+                )}
               >
                 {t.name}
               </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#64748B",
-                  lineHeight: 1.5,
-                  marginBottom: 10,
-                }}
-              >
+              <div className="mb-2.5 text-xs leading-snug text-muted-foreground">
                 {t.description}
               </div>
-              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              <div className="flex flex-wrap gap-1">
                 {tags.map((tag) => {
                   const c = TAG_COLOR[tag] ?? ["#F1F5F9", "#64748B"];
                   return (
                     <span
                       key={tag}
-                      style={{
-                        fontSize: 10.5,
-                        fontWeight: 600,
-                        padding: "2px 7px",
-                        borderRadius: 5,
-                        background: c[0],
-                        color: c[1],
-                      }}
+                      style={{ background: c[0], color: c[1] }}
+                      className="rounded px-1.5 py-0.5 text-[10.5px] font-semibold ring-1 ring-black/5 dark:ring-white/10"
                     >
                       {tag}
                     </span>
@@ -308,118 +211,70 @@ function Step2({
 }) {
   return (
     <div className="andoxa-fade-up">
-      <h2
-        style={{
-          fontSize: 26,
-          fontWeight: 700,
-          letterSpacing: "-0.03em",
-          color: "#0F172A",
-          marginBottom: 8,
-          textAlign: "center",
-        }}
-      >
+      <h2 className="mb-2 text-center text-[26px] font-bold tracking-tight text-foreground">
         Quel est le déclencheur ?
       </h2>
-      <p
-        style={{
-          fontSize: 14.5,
-          color: "#64748B",
-          marginBottom: 36,
-          lineHeight: 1.6,
-          textAlign: "center",
-          maxWidth: 560,
-          marginLeft: "auto",
-          marginRight: "auto",
-        }}
-      >
+      <p className="mx-auto mb-9 max-w-[560px] text-center text-[14.5px] leading-snug text-muted-foreground">
         Sélectionnez l&apos;événement qui démarrera automatiquement ce workflow.
       </p>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2, 1fr)",
-          gap: 12,
-          maxWidth: 800,
-          marginLeft: "auto",
-          marginRight: "auto",
-        }}
-      >
+      <div className="mx-auto grid max-w-[800px] grid-cols-2 gap-3">
         {WORKFLOW_TRIGGERS.map((t) => {
           const sel = selected === t.id;
           const ico = TRIGGER_ICONS[t.id];
           return (
             <div
               key={t.id}
+              role="button"
+              tabIndex={0}
               onClick={() => onSelect(t.id)}
-              onMouseEnter={(e) => {
-                if (!sel) e.currentTarget.style.borderColor = "#93C5FD";
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelect(t.id);
+                }
               }}
-              onMouseLeave={(e) => {
-                if (!sel) e.currentTarget.style.borderColor = "#E2E8F0";
-              }}
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 14,
-                padding: "14px 16px",
-                borderRadius: 12,
-                border: `2px solid ${sel ? "#0052D9" : "#E2E8F0"}`,
-                background: sel ? "#E8F0FD" : "white",
-                cursor: "pointer",
-                transition: "all 150ms",
-              }}
+              className={cn(
+                "flex cursor-pointer items-start gap-3.5 rounded-xl border-2 px-4 py-3.5 transition-colors",
+                sel
+                  ? "border-primary bg-primary/10 ring-1 ring-primary/25 dark:bg-primary/15"
+                  : "border-border bg-card hover:border-primary/40",
+              )}
             >
               <div
                 style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 10,
-                  background: sel ? ico.bg : "#F8FAFC",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                  border: `1px solid ${sel ? ico.color + "33" : "#E2E8F0"}`,
-                  transition: "all 150ms",
+                  background: sel ? ico.bg : undefined,
+                  borderColor: sel ? `${ico.color}33` : undefined,
                 }}
+                className={cn(
+                  "flex size-[38px] shrink-0 items-center justify-center rounded-[10px] border",
+                  !sel && "border-border bg-muted",
+                  sel && "border-transparent",
+                )}
               >
-                <Icon
-                  size={18}
-                  color={sel ? ico.color : "#94A3B8"}
-                  d={ico.d}
-                />
+                <span className={sel ? "" : "text-muted-foreground"}>
+                  <Icon
+                    size={18}
+                    color={sel ? ico.color : "currentColor"}
+                    d={ico.d}
+                  />
+                </span>
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="min-w-0 flex-1">
                 <div
-                  style={{
-                    fontSize: 13.5,
-                    fontWeight: 700,
-                    color: sel ? "#0052D9" : "#0F172A",
-                    marginBottom: 3,
-                  }}
+                  className={cn(
+                    "mb-1 text-[13.5px] font-bold",
+                    sel ? "text-primary" : "text-foreground",
+                  )}
                 >
                   {t.label}
                 </div>
-                <div
-                  style={{ fontSize: 12, color: "#64748B", lineHeight: 1.5 }}
-                >
+                <div className="text-xs leading-snug text-muted-foreground">
                   {t.description}
                 </div>
               </div>
               {sel && (
-                <div
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: "50%",
-                    background: "#0052D9",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
-                  }}
-                >
-                  <Icon size={11} color="white" d={ICO.check} />
+                <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                  <Icon size={11} color="currentColor" d={ICO.check} />
                 </div>
               )}
             </div>
@@ -440,16 +295,16 @@ function SummaryRow({
   color?: string;
 }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <span style={{ fontSize: 12.5, color: "#94A3B8", minWidth: 120 }}>
+    <div className="flex items-center gap-2.5">
+      <span className="min-w-[120px] text-[12.5px] text-muted-foreground">
         {label}
       </span>
       <span
-        style={{
-          fontSize: 13,
-          fontWeight: 600,
-          color: color ?? "#0F172A",
-        }}
+        style={color ? { color } : undefined}
+        className={cn(
+          "text-[13px] font-semibold",
+          !color && "text-foreground",
+        )}
       >
         {value}
       </span>
@@ -475,80 +330,30 @@ function Step3({
   const trig = trigger ? WORKFLOW_TRIGGERS.find((t) => t.id === trigger) : null;
   const trigColor = trigger ? TRIGGER_ICONS[trigger].color : "#94A3B8";
   return (
-    <div
-      className="andoxa-fade-up"
-      style={{
-        maxWidth: 600,
-        marginLeft: "auto",
-        marginRight: "auto",
-      }}
-    >
-      <h2
-        style={{
-          fontSize: 26,
-          fontWeight: 700,
-          letterSpacing: "-0.03em",
-          color: "#0F172A",
-          marginBottom: 8,
-          textAlign: "center",
-        }}
-      >
+    <div className="andoxa-fade-up mx-auto max-w-[600px]">
+      <h2 className="mb-2 text-center text-[26px] font-bold tracking-tight text-foreground">
         Nommez votre workflow
       </h2>
-      <p
-        style={{
-          fontSize: 14.5,
-          color: "#64748B",
-          marginBottom: 36,
-          lineHeight: 1.6,
-          textAlign: "center",
-        }}
-      >
+      <p className="mb-9 text-center text-[14.5px] leading-snug text-muted-foreground">
         Donnez un nom clair à votre workflow pour le retrouver facilement dans
         la liste.
       </p>
 
-      <div style={{ marginBottom: 20 }}>
-        <label
-          style={{
-            display: "block",
-            fontSize: 13,
-            fontWeight: 600,
-            color: "#374151",
-            marginBottom: 6,
-          }}
-        >
-          Nom du workflow <span style={{ color: "#EF4444" }}>*</span>
+      <div className="mb-5">
+        <label className="mb-1.5 block text-[13px] font-semibold text-foreground">
+          Nom du workflow <span className="text-destructive">*</span>
         </label>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="ex : Séquence post-réunion — Q3 2025"
-          style={{
-            width: "100%",
-            padding: "10px 14px",
-            borderRadius: 10,
-            border: "1.5px solid #E2E8F0",
-            fontSize: 14,
-            color: "#0F172A",
-            background: "white",
-            transition: "all 150ms",
-            outline: "none",
-          }}
+          className="w-full rounded-[10px] border-[1.5px] border-input bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
-      <div style={{ marginBottom: 28 }}>
-        <label
-          style={{
-            display: "block",
-            fontSize: 13,
-            fontWeight: 600,
-            color: "#374151",
-            marginBottom: 6,
-          }}
-        >
+      <div className="mb-7">
+        <label className="mb-1.5 block text-[13px] font-semibold text-foreground">
           Description{" "}
-          <span style={{ fontSize: 12, fontWeight: 400, color: "#94A3B8" }}>
+          <span className="text-xs font-normal text-muted-foreground">
             (optionnel)
           </span>
         </label>
@@ -557,48 +362,19 @@ function Step3({
           onChange={(e) => setDesc(e.target.value)}
           rows={3}
           placeholder="Décrivez l'objectif de ce workflow..."
-          style={{
-            width: "100%",
-            padding: "10px 14px",
-            borderRadius: 10,
-            border: "1.5px solid #E2E8F0",
-            fontSize: 14,
-            color: "#0F172A",
-            background: "white",
-            resize: "vertical",
-            transition: "all 150ms",
-            lineHeight: 1.5,
-            outline: "none",
-            fontFamily: "inherit",
-          }}
+          className="w-full resize-y rounded-[10px] border-[1.5px] border-input bg-background px-3.5 py-2.5 font-[inherit] text-sm leading-normal text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
 
-      <div
-        style={{
-          background: "#F8FAFC",
-          borderRadius: 14,
-          border: "1px solid #E2E8F0",
-          padding: "18px 20px",
-        }}
-      >
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.07em",
-            color: "#94A3B8",
-            marginBottom: 14,
-          }}
-        >
+      <div className="rounded-[14px] border border-border bg-muted/45 p-5 dark:bg-muted/30">
+        <div className="mb-3.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
           Récapitulatif
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div className="flex flex-col gap-2.5">
           <SummaryRow
             label="Point de départ"
             value={template ? template.name : "—"}
-            color="#0052D9"
+            color="var(--primary)"
           />
           <SummaryRow
             label="Déclencheur"
@@ -609,27 +385,18 @@ function Step3({
             label="Nom"
             value={
               name || (
-                <span style={{ color: "#CBD5E1", fontStyle: "italic" }}>
+                <span className="italic text-muted-foreground/70">
                   Non renseigné
                 </span>
               )
             }
           />
-          <div
-            style={{ height: 1, background: "#E2E8F0", margin: "4px 0" }}
-          />
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: "#94A3B8",
-              }}
-            />
-            <span style={{ fontSize: 12.5, color: "#64748B" }}>
+          <div className="my-1 h-px bg-border" />
+          <div className="flex items-center gap-2">
+            <div className="size-2 rounded-full bg-muted-foreground/50" />
+            <span className="text-[12.5px] text-muted-foreground">
               Statut initial :{" "}
-              <strong style={{ color: "#0F172A" }}>Brouillon</strong>
+              <strong className="text-foreground">Brouillon</strong>
             </span>
           </div>
         </div>
@@ -708,64 +475,9 @@ export function WizardClient() {
   }
 
   return (
-    <div
-      style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-        background: "white",
-      }}
-    >
-      {/* Top bar */}
-      <div
-        style={{
-          height: 56,
-          borderBottom: "1px solid #E2E8F0",
-          display: "flex",
-          alignItems: "center",
-          padding: "0 28px",
-          gap: 14,
-          flexShrink: 0,
-        }}
-      >
-        <button
-          onClick={() => router.push("/workflows")}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "#0052D9")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "#64748B")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            color: "#64748B",
-            fontSize: 13,
-            fontWeight: 500,
-            transition: "color 120ms",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-          }}
-        >
-          <Icon size={14} color="currentColor" d={ICO.arrow_left} />
-          Retour aux workflows
-        </button>
-        <div style={{ width: 1, height: 20, background: "#E2E8F0" }} />
-        <span style={{ fontSize: 14, fontWeight: 600, color: "#0F172A" }}>
-          Créer un workflow
-        </span>
-      </div>
-
-      {/* Content */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "64px 48px 48px",
-          display: "flex",
-          justifyContent: "center",
-        }}
-      >
-        <div style={{ width: "100%", maxWidth: 960 }}>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-8 pt-6 sm:px-10 md:pb-12 md:pt-10 lg:px-12">
+        <div className="mx-auto flex min-h-full w-full max-w-[960px] flex-col justify-center py-6 md:py-10">
           <StepIndicator current={step} />
           {step === 1 && <Step1 selected={template} onSelect={setTemplate} />}
           {step === 2 && (
@@ -784,68 +496,40 @@ export function WizardClient() {
         </div>
       </div>
 
-      {/* Bottom navigation */}
-      <div
-        style={{
-          height: 68,
-          borderTop: "1px solid #E2E8F0",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 48px",
-          flexShrink: 0,
-          background: "white",
-        }}
-      >
+      <div className="flex h-[68px] shrink-0 items-center justify-between gap-4 border-t border-border bg-card px-6 sm:px-12">
         <button
+          type="button"
           onClick={handlePrev}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "8px 18px",
-            borderRadius: 10,
-            border: "1px solid #E2E8F0",
-            background: "white",
-            fontSize: 13.5,
-            fontWeight: 500,
-            color: "#374151",
-            cursor: "pointer",
-          }}
+          className="flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-border bg-background px-[18px] py-2 text-[13.5px] font-medium text-foreground hover:bg-accent"
         >
-          <Icon size={14} color="#374151" d={ICO.arrow_left} />
+          <Icon size={14} color="currentColor" d={ICO.arrow_left} />
           {step === 1 ? "Annuler" : "Retour"}
         </button>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 12.5, color: "#94A3B8" }}>
+        <div className="flex items-center gap-2.5">
+          <span className="text-[12.5px] text-muted-foreground">
             {step} / {STEPS.length}
           </span>
           <button
+            type="button"
             onClick={handleNext}
             disabled={!canNext || submitting}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "9px 22px",
-              borderRadius: 10,
-              border: "none",
-              background: canNext && !submitting ? "#0052D9" : "#CBD5E1",
-              fontSize: 13.5,
-              fontWeight: 600,
-              color: "white",
-              cursor: canNext && !submitting ? "pointer" : "not-allowed",
-              transition: "all 150ms",
-            }}
+            className={cn(
+              "flex items-center gap-1.5 rounded-[10px] border-none px-[22px] py-2.5 text-[13.5px] font-semibold transition-colors",
+              canNext && !submitting
+                ? "cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90"
+                : "cursor-not-allowed bg-muted text-muted-foreground opacity-70",
+            )}
           >
             {step === 3
               ? submitting
                 ? "Création…"
                 : "Créer le workflow"
               : "Continuer"}
-            {step < 3 && <Icon size={14} color="white" d={ICO.arrow_right} />}
-            {step === 3 && !submitting && (
-              <Icon size={14} color="white" d={ICO.lightning} />
+            {step < 3 && canNext && !submitting && (
+              <Icon size={14} color="currentColor" d={ICO.arrow_right} />
+            )}
+            {step === 3 && !submitting && canNext && (
+              <Icon size={14} color="currentColor" d={ICO.lightning} />
             )}
           </button>
         </div>

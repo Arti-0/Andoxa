@@ -220,7 +220,7 @@ async function buildApiContext(
         name: org.name,
         slug: org.slug ?? "",
         logo_url: org.logo_url,
-        plan: (org.plan ?? "free") as Workspace["plan"],
+        plan: (org.plan ?? "trial") as Workspace["plan"],
         subscription_status: org.subscription_status as Workspace["subscription_status"],
         trial_ends_at: org.trial_ends_at,
         credits: org.credits ?? 0,

@@ -21,7 +21,9 @@ import {
   type WorkflowDefinition,
   type WorkflowTemplate,
   type WorkflowTemplateTrigger,
+  type WorkflowTriggerKind,
 } from "@/lib/workflows";
+import { isWorkflowTriggerKind } from "@/lib/workflows/trigger-kind";
 import type { WorkflowStep, WorkflowStepType } from "@/lib/workflows/schema";
 import {
   deriveStatus,
@@ -73,6 +75,7 @@ export function CanvasClient({ workflowId }: Props) {
   const [steps, setSteps] = useState<WorkflowStep[]>([]);
   const [entryStepId, setEntryStepId] = useState<string | undefined>(undefined);
   const [trigger, setTrigger] = useState<WorkflowTemplateTrigger | null>(null);
+  const [triggerKind, setTriggerKind] = useState<WorkflowTriggerKind>("manual");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [isTemplate, setIsTemplate] = useState(false);
@@ -108,6 +111,8 @@ export function CanvasClient({ workflowId }: Props) {
       setName(w.name);
       setDescription(w.description ?? "");
       setIsTemplate(Boolean(w.is_template));
+      const tk = w.trigger_kind;
+      setTriggerKind(isWorkflowTriggerKind(tk) ? tk : "manual");
       const ui = parseWorkflowUi(w.metadata);
       setIconKey(ui.icon);
       setColorKey(ui.color);
@@ -304,6 +309,7 @@ export function CanvasClient({ workflowId }: Props) {
           description: description.trim() || null,
           is_template: isTemplate,
           draft_definition: definition,
+          trigger_kind: triggerKind,
           ui: {
             icon: iconKey,
             color: colorKey,
@@ -348,6 +354,7 @@ export function CanvasClient({ workflowId }: Props) {
     iconKey,
     colorKey,
     trigger,
+    triggerKind,
     canvasPositions,
   ]);
 
@@ -467,51 +474,22 @@ export function CanvasClient({ workflowId }: Props) {
 
   if (loading) {
     return (
-      <div
-        className="ws2-root"
-        style={{
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#F8FAFC",
-        }}
-      >
+      <div className="ws2-root flex h-full min-h-0 items-center justify-center bg-background text-muted-foreground">
         <Whatsapp2Styles />
-        <p style={{ fontSize: 13, color: "#94A3B8" }}>Chargement…</p>
+        <p className="text-[13px]">Chargement…</p>
       </div>
     );
   }
 
   if (!workflow) {
     return (
-      <div
-        className="ws2-root"
-        style={{
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#F8FAFC",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
+      <div className="ws2-root flex h-full min-h-0 flex-col items-center justify-center gap-3 bg-background text-foreground">
         <Whatsapp2Styles />
-        <p style={{ fontSize: 14, color: "#0F172A", fontWeight: 600 }}>
-          Workflow introuvable.
-        </p>
+        <p className="text-sm font-semibold">Workflow introuvable.</p>
         <button
+          type="button"
           onClick={() => router.push("/workflows")}
-          style={{
-            padding: "8px 16px",
-            borderRadius: 10,
-            border: "1px solid #E2E8F0",
-            background: "white",
-            fontSize: 13,
-            color: "#374151",
-            cursor: "pointer",
-          }}
+          className="cursor-pointer rounded-[10px] border border-border bg-card px-4 py-2 text-[13px] font-medium text-foreground shadow-sm hover:bg-accent"
         >
           Retour
         </button>
@@ -520,29 +498,16 @@ export function CanvasClient({ workflowId }: Props) {
   }
 
   return (
-    <div
-      className="ws2-root"
-      style={{
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        background: "white",
-        fontFamily:
-          "'Geist', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-        overflow: "hidden",
-      }}
-    >
+    <div className="ws2-root flex h-full min-h-0 flex-col overflow-hidden bg-background font-sans text-foreground">
       <Whatsapp2Styles />
       <ReactFlowProvider>
         <CanvasToolbar
-          workflowName={name || workflow.name}
           status={status}
           isTemplate={isTemplate}
           saving={saving}
           togglingActive={togglingActive}
           testing={testing}
           canLaunch={workflow.published_definition != null}
-          onBack={() => router.push("/workflows")}
           onSave={() => void handleSave()}
           onToggleActive={() => void handleToggleActive()}
           onTest={() => void handleTest()}
@@ -585,9 +550,11 @@ export function CanvasClient({ workflowId }: Props) {
               selectedId={selectedId}
               step={selectedStep}
               trigger={trigger}
+              triggerKind={triggerKind}
               onClose={() => setSelectedId(null)}
               onUpdateStep={updateStep}
               onUpdateTrigger={setTrigger}
+              onUpdateTriggerKind={setTriggerKind}
               onDeleteStep={deleteStep}
               onDuplicateStep={duplicateStep}
             />

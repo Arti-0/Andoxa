@@ -1,4 +1,5 @@
 import { createApiHandler, Errors } from "@/lib/api";
+import { invalidate } from "@/lib/cache/redis";
 
 /**
  * POST /api/prospects/trash/empty   (CRM-5)
@@ -26,6 +27,8 @@ export const POST = createApiHandler(async (_req, ctx) => {
     console.error("[API] empty corbeille error:", error);
     throw Errors.internal("Impossible de vider la corbeille");
   }
+
+  await invalidate.prospects(ctx.workspaceId);
 
   return { deleted: (data ?? []).length };
 });

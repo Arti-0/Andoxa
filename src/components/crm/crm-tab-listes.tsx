@@ -334,17 +334,14 @@ export function ListesTab({
       {/* Header */}
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3 sm:gap-6">
         <div className="min-w-0">
-          <h1 className="m-0 text-xl font-semibold tracking-tight sm:text-[22px]">
-            Listes
-          </h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">
+          <p className="m-0 text-[13px] text-muted-foreground">
             {totalLists} session{totalLists > 1 ? "s" : ""} de prospection · La
             plupart proviennent de l’extension Chrome Andoxa
           </p>
         </div>
         <button
           type="button"
-          className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-card px-3 py-1.5 text-[13px] font-medium text-blue-700 hover:bg-blue-50"
+          className="inline-flex items-center gap-2 rounded-lg border border-primary/35 bg-background px-3 py-1.5 text-[13px] font-medium text-primary shadow-sm transition-colors hover:bg-accent dark:border-primary/45"
           onClick={() => setShowImport(true)}
         >
           <Upload className="h-3.5 w-3.5" />
@@ -783,7 +780,7 @@ function ListRow({
               e.stopPropagation();
               onSelect();
             }}
-            className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-card px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
+            className="inline-flex items-center gap-1.5 rounded-md border border-primary/35 bg-background px-2.5 py-1.5 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-accent dark:border-primary/45"
           >
             <Megaphone className="h-2.5 w-2.5" />
             Lancer une campagne
@@ -1046,7 +1043,7 @@ function ListDetailPanel({
         <div className="flex flex-col gap-2 border-t border-border bg-card p-4">
           <button
             onClick={() => onOpenProspects(list.id)}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2.5 text-[13.5px] font-semibold text-white hover:bg-blue-700"
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 py-2.5 text-[13.5px] font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
           >
             <Megaphone className="h-3 w-3" />
             Lancer une campagne sur cette liste
@@ -1375,12 +1372,9 @@ export function ListesEmpty() {
     <div>
       <div className="mb-4 flex items-start justify-between gap-6">
         <div>
-          <h1 className="m-0 text-[22px] font-semibold tracking-tight">
-            Listes
-          </h1>
-          <div className="mt-1 text-[13px] text-muted-foreground">
+          <p className="m-0 text-[13px] text-muted-foreground">
             Aucune liste pour le moment
-          </div>
+          </p>
         </div>
       </div>
       <div className="relative overflow-hidden rounded-2xl border border-border bg-card px-8 pb-14 pt-16">

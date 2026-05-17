@@ -573,13 +573,13 @@ function CanvasInner({
         proOptions={{ hideAttribution: true }}
         minZoom={0.4}
         maxZoom={1.5}
-        style={{ background: "#F8FAFC" }}
+        style={{ background: "var(--workflow-canvas-fill)" }}
       >
         <Background
           variant={BackgroundVariant.Dots}
           gap={24}
           size={1}
-          color="#CBD5E1"
+          color="var(--workflow-dot-color)"
         />
       </ReactFlow>
     </div>

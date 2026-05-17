@@ -105,7 +105,12 @@ export function WorkflowEnrollModal({
         throw new Error(json?.error?.message ?? "Échec");
       }
       const created = json.data?.created_run_ids?.length ?? 0;
-      const skipped = json.data?.skipped?.length ?? 0;
+      const skipRows =
+        (json.data?.skipped as { prospect_id: string; reason: string }[] | undefined) ??
+        [];
+      const skipped = skipRows.length;
+      const inCampaign = skipRows.filter((s) => s.reason === "in_active_campaign")
+        .length;
       if (created) {
         toast.success(
           created === 1
@@ -114,13 +119,11 @@ export function WorkflowEnrollModal({
         );
       }
       if (skipped) {
-        toast.message(
-          `${skipped} ignoré(s)`,
-          {
-            description:
-              "Déjà un parcours actif pour ce suivi, ou prospect invalide.",
-          }
-        );
+        toast.message(`${skipped} ignoré(s)`, {
+          description: inCampaign
+            ? `${inCampaign} déjà dans une campagne active (envoi en cours). Autres : parcours déjà lancé, prospect invalide ou téléphone manquant.`
+            : "Déjà un parcours actif pour ce suivi, prospect invalide ou téléphone manquant.",
+        });
       }
       if (!created && !skipped) {
         toast.error("Aucune inscription effectuée");

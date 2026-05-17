@@ -27,8 +27,65 @@ export const GET = createApiHandler(async (req, ctx) => {
         throw Errors.internal('Failed to fetch call sessions');
     }
 
+    // ── Inline per-session stats ─────────────────────────────────────────────
+    // Used by /campaigns2's sessions grid so each card shows real
+    // processed / meetings / qualifications / pickupRate counters without
+    // N+1 fetches. Aggregations on call_session_prospects per session id.
+    const sessions = data ?? [];
+    const sessionIds = sessions.map((s) => s.id);
+    type ProspectRow = { call_session_id: string; outcome: string | null };
+    let stats: Map<
+        string,
+        { total: number; processed: number; meetings: number; qualifications: number; pickup_rate: number | null }
+    > = new Map();
+    if (sessionIds.length > 0) {
+        const { data: rows, error: pErr } = await ctx.supabase
+            .from('call_session_prospects')
+            .select('call_session_id, outcome')
+            .in('call_session_id', sessionIds);
+        if (pErr) throw Errors.internal('Failed to compute session stats');
+
+        const agg = new Map<string, ProspectRow[]>();
+        for (const r of (rows ?? []) as ProspectRow[]) {
+            const list = agg.get(r.call_session_id) ?? [];
+            list.push(r);
+            agg.set(r.call_session_id, list);
+        }
+        stats = new Map(
+            sessionIds.map((id) => {
+                const list = agg.get(id) ?? [];
+                const total = list.length;
+                const processed = list.filter((r) => r.outcome).length;
+                const meetings = list.filter((r) => r.outcome === 'rdv').length;
+                const qualifications = list.filter((r) => r.outcome && r.outcome !== 'noanswer').length;
+                const pickup_rate =
+                    processed === 0
+                        ? null
+                        : Math.round(
+                              ((processed -
+                                  list.filter((r) => r.outcome === 'noanswer').length) /
+                                  processed) *
+                                  100,
+                          );
+                return [id, { total, processed, meetings, qualifications, pickup_rate }] as const;
+            }),
+        );
+    }
+
+    const enriched = sessions.map((s) => {
+        const st = stats.get(s.id);
+        return {
+            ...s,
+            total_count: st?.total ?? 0,
+            processed: st?.processed ?? 0,
+            meetings: st?.meetings ?? 0,
+            qualifications: st?.qualifications ?? 0,
+            pickup_rate: st?.pickup_rate ?? null,
+        };
+    });
+
     return {
-        items: data ?? [],
+        items: enriched,
         total: count ?? 0,
         page,
         pageSize,
@@ -54,7 +111,59 @@ export const POST = createApiHandler(async (req, ctx) => {
         prospect_ids?: string[];
         bdd_ids?: string[];
         title?: string;
+        /** Modal: "now" | "later" — when no prospects, creates an empty shell session. */
+        schedule_mode?: 'now' | 'later';
+        /** ISO8601 scheduled start when `schedule_mode === "later"` */
+        scheduled_at?: string | null;
     }>(req);
+
+    const prospectIdsProvided =
+        Array.isArray(body.prospect_ids) && body.prospect_ids.length > 0;
+    const bddProvided = Array.isArray(body.bdd_ids) && body.bdd_ids.length > 0;
+
+    if (!prospectIdsProvided && !bddProvided) {
+        const title =
+            body.title?.trim() ||
+            `Session ${new Date().toLocaleDateString('fr-FR')}`;
+        const mode = body.schedule_mode ?? 'now';
+        let scheduled_at: string | null =
+            typeof body.scheduled_at === 'string' && body.scheduled_at.trim()
+                ? body.scheduled_at.trim()
+                : null;
+
+        let status: 'active' | 'scheduled';
+        if (mode === 'later') {
+            if (!scheduled_at) {
+                throw Errors.validation({
+                    scheduled_at:
+                        'Le créneau est requis pour une session planifiée sans sélection de prospects.',
+                });
+            }
+            status = 'scheduled';
+        } else {
+            status = 'active';
+            scheduled_at = null;
+        }
+
+        const { data: session, error: sessionError } =
+            await ctx.supabase.from('call_sessions').insert({
+                organization_id: ctx.workspaceId,
+                created_by: ctx.userId,
+                title,
+                status,
+                scheduled_at,
+            }).select().single();
+
+        if (sessionError || !session) {
+            console.error(
+                'call-sessions insert error (empty session):',
+                sessionError,
+            );
+            throw Errors.internal("Impossible de créer la session d'appels");
+        }
+
+        return session;
+    }
 
     let prospectRows: {
         id: string;

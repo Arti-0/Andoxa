@@ -282,6 +282,7 @@ export const invalidate = {
   workspace: async (workspaceId: string) => {
     await cache.invalidatePattern(`workspace:${workspaceId}*`);
   },
+  /** Call after any prospect row change (create, update, soft-delete, import, bulk…). Wired from API routes; keeps list cache correct once GET uses `cacheKeys.prospects`. */
   prospects: async (workspaceId: string) => {
     await cache.invalidatePattern(`prospects:${workspaceId}*`);
   },

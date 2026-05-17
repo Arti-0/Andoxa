@@ -10,13 +10,14 @@ import {
   parseWorkflowDefinition,
 } from "@/lib/workflows";
 import {
+  definitionHasOutboundMessaging,
   definitionRequiresLinkedIn,
   definitionRequiresWhatsApp,
 } from "@/lib/workflows/schema";
 import { getWorkflowPublishedDefinition } from "@/lib/workflows/queries";
 import {
   getLinkedInAccountIdForUserId,
-  getWhatsAppAccountIdForUserId,
+  resolveWhatsAppAccountIdForOrganization,
 } from "@/lib/unipile/account";
 
 function getWorkflowIdFromUrl(req: Request): string {
@@ -231,13 +232,14 @@ export const POST = createApiHandler(
     const needsLinkedIn = definitionRequiresLinkedIn(definition);
 
     if (needsWhatsApp) {
-      const accountId = await getWhatsAppAccountIdForUserId(
+      const accountId = await resolveWhatsAppAccountIdForOrganization(
         ctx.supabase,
+        ctx.workspaceId,
         ctx.userId!
       );
       if (!accountId) {
         throw Errors.badRequest(
-          "Connectez votre compte WhatsApp depuis les paramètres pour lancer ce parcours."
+          "Connectez un compte WhatsApp depuis Installation (un membre avec une boîte connectée suffit) pour lancer ce parcours."
         );
       }
     }
@@ -280,6 +282,23 @@ export const POST = createApiHandler(
       }
     }
 
+    const needsOverlapCheck = definitionHasOutboundMessaging(definition);
+    let prospectIdsInActiveCampaign = new Set<string>();
+    if (needsOverlapCheck && prospectIds.length > 0) {
+      const { data: ov, error: ovErr } = await ctx.supabase
+        .from("prospect_in_active_campaign")
+        .select("prospect_id")
+        .eq("organization_id", ctx.workspaceId)
+        .in("prospect_id", prospectIds);
+      if (ovErr) {
+        console.error("[WORKFLOW ENROLL] prospect_in_active_campaign", ovErr);
+        throw Errors.internal("Impossible de vérifier les campagnes actives");
+      }
+      prospectIdsInActiveCampaign = new Set(
+        (ov ?? []).map((r) => r.prospect_id)
+      );
+    }
+
     const created: string[] = [];
     const skipped: { prospect_id: string; reason: string }[] = [];
 
@@ -294,6 +313,14 @@ export const POST = createApiHandler(
           skipped.push({ prospect_id: prospectId, reason: "missing_phone" });
           continue;
         }
+      }
+
+      if (needsOverlapCheck && prospectIdsInActiveCampaign.has(prospectId)) {
+        skipped.push({
+          prospect_id: prospectId,
+          reason: "in_active_campaign",
+        });
+        continue;
       }
 
       const runContext: Record<string, unknown> =

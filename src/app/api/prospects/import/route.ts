@@ -3,9 +3,11 @@ import {
   canImportRows,
   checkPlanLimit,
   getImportMaxRows,
+  toPlanId,
   type PlanId,
 } from "../../../../lib/config/plans-config";
 import { classifyProspectsForImport, mapProspectRow } from "../../../../lib/utils/deduplicateProspects";
+import { invalidate } from "@/lib/cache/redis";
 import { insertProspectActivity } from "@/lib/prospect-activity";
 import { ensureLinkedInRelationFromUnipileProfile } from "@/lib/linkedin/ensure-relation-from-unipile-profile";
 import { extractLinkedInSlug } from "@/lib/unipile/campaign";
@@ -25,8 +27,6 @@ type MappedProspect = {
   linkedin: string | null;
   metadata: Record<string, string> | null;
 };
-const VALID_PLANS: PlanId[] = ["trial", "essential", "pro", "business", "demo"];
-
 export const POST = createApiHandler(async (req, ctx) => {
   if (!ctx.workspaceId) {
     throw Errors.badRequest("Workspace required");
@@ -118,11 +118,12 @@ export const POST = createApiHandler(async (req, ctx) => {
     });
   }
 
-  const planIdRaw = effectivePlanIdForLimits(
-    ctx.workspace?.plan ?? null,
-    ctx.workspace?.subscription_status ?? null
+  const planId: PlanId = toPlanId(
+    effectivePlanIdForLimits(
+      ctx.workspace?.plan ?? null,
+      ctx.workspace?.subscription_status ?? null
+    )
   );
-  const planId = VALID_PLANS.includes(planIdRaw) ? planIdRaw : "trial";
   const maxImportRows = getImportMaxRows(planId);
   if (!canImportRows(planId, normalizedRows.length)) {
     throw Errors.validation({
@@ -387,6 +388,8 @@ export const POST = createApiHandler(async (req, ctx) => {
       }
     }
   }
+
+  await invalidate.prospects(ctx.workspaceId);
 
   return {
     bddId,

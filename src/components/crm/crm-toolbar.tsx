@@ -133,7 +133,7 @@ export function CrmToolbar({
   const [showCampaignModal, setShowCampaignModal] = useState(false);
   const [campaignConfig, setCampaignConfig] = useState<CampaignConfig | null>(null);
   const { data: linkedInAccount } = useLinkedInAccount();
-  const linkedinIsPremium = linkedInAccount?.linkedin_is_premium ?? false;
+  const linkedInTier = linkedInAccount?.linkedin_tier ?? "standard";
 
   const prospectsWithLinkedin = selectedProspects.filter((p) => p.linkedin?.trim());
   const prospectsWithPhone = selectedProspects.filter((p) => p.phone?.trim());
@@ -506,7 +506,7 @@ export function CrmToolbar({
         config={campaignConfig}
         prospects={prospectsWithLinkedin}
         onSuccess={closeCampaignModal}
-        isPremium={linkedinIsPremium}
+        linkedInTier={linkedInTier}
       />
     </>
   );

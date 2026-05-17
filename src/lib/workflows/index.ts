@@ -4,6 +4,7 @@ export {
   validateDefinitionForPublish,
   definitionRequiresLinkedIn,
   definitionRequiresWhatsApp,
+  definitionHasOutboundMessaging,
   WORKFLOW_STEP_TYPES,
   workflowDefinitionSchema,
   workflowStepSchema,
@@ -38,6 +39,11 @@ export {
   type WorkflowTemplate,
   type WorkflowTemplateTrigger,
 } from "./templates";
+export {
+  WORKFLOW_TRIGGER_KIND_OPTIONS,
+  isWorkflowTriggerKind,
+  type WorkflowTriggerKind,
+} from "./trigger-kind";
 export {
   STEP_TYPE_LABELS,
   getStepLabel,

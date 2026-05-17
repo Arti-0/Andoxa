@@ -11,6 +11,7 @@ import {
   useConversations,
   useThread,
   useMarkChatSeen,
+  useToggleChatPin,
 } from "./queries";
 import type { ThreadEntry } from "./data";
 
@@ -80,6 +81,7 @@ export default function Messagerie2Page() {
 
   const { data: conversations } = useConversations();
   const markSeen = useMarkChatSeen();
+  const togglePin = useToggleChatPin();
 
   // Visible list — exclude or include archived depending on view.
   const visibleConvs = (conversations ?? []).filter((c) =>
@@ -184,6 +186,9 @@ export default function Messagerie2Page() {
           conversations={visibleConvs}
           activeId={effectiveId ?? ""}
           onSelect={handleSelect}
+          onTogglePin={(chatId, pinned) =>
+            togglePin.mutate({ chatId, pinned })
+          }
           filter={filter}
           setFilter={setFilter}
           channel={channel}

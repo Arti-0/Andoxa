@@ -6,6 +6,39 @@ import {
   getSearchParams,
 } from "../../../lib/api";
 import { getValidGoogleAccessToken, createGoogleMeetEvent } from "@/lib/google/calendar";
+import type { Database } from "@/lib/types/supabase";
+
+type EventInsert = Database["public"]["Tables"]["events"]["Insert"];
+type EventStatus = NonNullable<EventInsert["status"]>;
+type MeetingKind = NonNullable<EventInsert["meeting_kind"]>;
+
+const EVENT_STATUSES = [
+  "confirmed",
+  "done",
+  "pending",
+  "noshow",
+  "internal",
+] as const satisfies readonly EventStatus[];
+
+const MEETING_KINDS = [
+  "meet",
+  "zoom",
+  "inperson",
+  "phone",
+  "other",
+] as const satisfies readonly MeetingKind[];
+
+function coerceEventStatus(raw: string | undefined): EventStatus {
+  return raw && EVENT_STATUSES.includes(raw as EventStatus)
+    ? (raw as EventStatus)
+    : "confirmed";
+}
+
+function coerceMeetingKind(raw: string | undefined): MeetingKind {
+  return raw && MEETING_KINDS.includes(raw as MeetingKind)
+    ? (raw as MeetingKind)
+    : "meet";
+}
 
 /**
  * GET /api/events
@@ -168,8 +201,8 @@ export const POST = createApiHandler(async (req, ctx) => {
       google_meet_url: meetUrl,
       google_event_id: googleEventId,
       event_type: body.event_type ?? null,
-      status: body.status ?? "confirmed",
-      meeting_kind: body.meeting_kind ?? "meet",
+      status: coerceEventStatus(body.status),
+      meeting_kind: coerceMeetingKind(body.meeting_kind),
       wa_workflow: body.wa_workflow ?? false,
       pipeline_stage: body.pipeline_stage ?? null,
       attendee_user_ids: body.attendee_user_ids ?? [],

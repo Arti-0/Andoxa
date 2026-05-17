@@ -26,7 +26,7 @@ import {
     settingsLabelClass,
     settingsSaveButtonClass,
 } from "@/components/settings/settings-card";
-import { PLAN_DISPLAY, STATUS_DISPLAY } from "@/lib/billing/display";
+import { PLAN_DISPLAY, PLAN_DISPLAY_FALLBACK, STATUS_DISPLAY } from "@/lib/billing/display";
 import { cn } from "@/lib/utils";
 import { uploadOrgLogo } from "@/lib/organizations/upload-logo";
 
@@ -55,10 +55,11 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const PLAN_LABELS: Record<string, string> = {
-    free: "Gratuit",
-    starter: "Starter",
-    pro: "Pro",
-    enterprise: "Enterprise",
+    trial: "Essai gratuit",
+    solo: "Solo",
+    team: "Team",
+    custom: "Custom",
+    demo: "Démo",
 };
 
 const ROLE_ICONS: Record<string, typeof Crown> = {
@@ -379,8 +380,8 @@ export function OrganizationSettingsSection({
             ? "max-h-[280px] overflow-y-auto pr-1 scrollbar-thin"
             : undefined;
 
-    const planKey = (workspace?.plan ?? "free").toLowerCase();
-    const planDisplay = PLAN_DISPLAY[planKey] ?? PLAN_DISPLAY.free;
+    const planKey = (workspace?.plan ?? "trial").toLowerCase();
+    const planDisplay = PLAN_DISPLAY[planKey] ?? PLAN_DISPLAY_FALLBACK;
     const PlanIconBilling = planDisplay.icon;
     const subscriptionStatusLabel =
         STATUS_DISPLAY[workspace?.subscription_status ?? ""] ??
@@ -396,7 +397,8 @@ export function OrganizationSettingsSection({
     return (
         <SettingsCard
             title="Organisation"
-            description="Organisation, membres, invitations et abonnement"
+            description="Identité, membres, invitations et abonnement"
+            icon={<Building2 />}
         >
             {workspaceId && (
                 <div className="space-y-4">
@@ -513,10 +515,10 @@ export function OrganizationSettingsSection({
                                             {isActive
                                                 ? "Actif"
                                                 : (PLAN_LABELS[
-                                                      (org.plan ?? "free").toLowerCase()
+                                                      (org.plan ?? "trial").toLowerCase()
                                                   ] ??
                                                   org.plan ??
-                                                  "Gratuit")}
+                                                  "Essai")}
                                         </p>
                                     </div>
                                     {!isActive && (

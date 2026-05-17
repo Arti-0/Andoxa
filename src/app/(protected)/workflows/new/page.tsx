@@ -5,17 +5,7 @@ import { Whatsapp2Styles } from "../_components/styles";
 
 export default function Whatsapp2NewPage() {
   return (
-    <div
-      className="ws2-root"
-      style={{
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        background: "white",
-        fontFamily:
-          "'Geist', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-      }}
-    >
+    <div className="ws2-root flex h-full min-h-0 flex-col bg-background font-sans text-foreground">
       <Whatsapp2Styles />
       <WizardClient />
     </div>

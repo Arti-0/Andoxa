@@ -35,7 +35,9 @@ export const POST = createApiHandler(
       throw Errors.badRequest("Brouillon invalide : impossible de parser la définition");
     }
 
-    const built = await tryBuildPublishedDefinition(ctx.supabase, ctx.userId, def);
+    const built = await tryBuildPublishedDefinition(ctx.supabase, ctx.userId, def, {
+      organizationId: ctx.workspaceId,
+    });
     if (!built.ok) {
       throw Errors.badRequest(built.message);
     }

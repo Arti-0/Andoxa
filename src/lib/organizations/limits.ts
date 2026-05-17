@@ -1,9 +1,12 @@
-import { PlanId } from '@/lib/config/stripe-config';
+import { type PlanId, toPlanId, getPlanLimits as getPlanLimitsFromConfig, type PlanLimits as PlanLimitsFromConfig } from '@/lib/config/plans-config';
 import { createClient } from '@/lib/supabase/server';
-import { getPlanLimits as getPlanLimitsFromConfig, type PlanLimits as PlanLimitsFromConfig } from '@/lib/config/plans-config';
 import { effectivePlanIdForLimits } from '@/lib/billing/effective-plan';
 
-// Re-export PlanLimits interface for backward compatibility
+/**
+ * Legacy interface that maps -1 to Infinity. Kept because plan-limits
+ * banners + the older quota UI render Infinity in their copy. New code
+ * should consume `getPlanLimits` from `plans-config` directly.
+ */
 export interface PlanLimits {
   users: number;
   prospects: number;
@@ -11,29 +14,25 @@ export interface PlanLimits {
   enrichmentCredits: number;
 }
 
-/**
- * @deprecated Use getPlanLimitsFromConfig from @/lib/config/plans-config instead
- * This function maps the new PlanLimits structure to the old interface
- */
 function mapPlanLimits(configLimits: PlanLimitsFromConfig): PlanLimits {
   return {
     users: configLimits.users === -1 ? Infinity : configLimits.users,
     prospects: configLimits.prospects === -1 ? Infinity : configLimits.prospects,
-    emails: Infinity, // Email limits not in new config, default to Infinity
-    enrichmentCredits: configLimits.enrichment_credits === -1 ? Infinity : configLimits.enrichment_credits,
+    emails: Infinity, // Emails are rate-limited per-route, not capped per plan.
+    enrichmentCredits:
+      configLimits.enrichment_credits === -1
+        ? Infinity
+        : configLimits.enrichment_credits,
   };
 }
 
-/**
- * @deprecated Use PLAN_LIMITS from @/lib/config/plans-config instead
- * Kept for backward compatibility only
- */
-export const PLAN_LIMITS: Record<PlanId | "demo", PlanLimits> = {
-  trial: mapPlanLimits(getPlanLimitsFromConfig("trial")),
-  essential: mapPlanLimits(getPlanLimitsFromConfig("essential")),
-  pro: mapPlanLimits(getPlanLimitsFromConfig("pro")),
-  business: mapPlanLimits(getPlanLimitsFromConfig("business")),
-  demo: mapPlanLimits(getPlanLimitsFromConfig("demo")),
+/** @deprecated Use `getPlanLimits` from `@/lib/config/plans-config`. */
+export const PLAN_LIMITS: Record<PlanId, PlanLimits> = {
+  trial: mapPlanLimits(getPlanLimitsFromConfig('trial')),
+  solo: mapPlanLimits(getPlanLimitsFromConfig('solo')),
+  team: mapPlanLimits(getPlanLimitsFromConfig('team')),
+  custom: mapPlanLimits(getPlanLimitsFromConfig('custom')),
+  demo: mapPlanLimits(getPlanLimitsFromConfig('demo')),
 };
 
 /**
@@ -69,7 +68,7 @@ export async function canAddMember(organizationId: string): Promise<boolean> {
     org.plan as string,
     org.subscription_status as string | null
   );
-  const limits = getPlanLimits(effective as PlanId);
+  const limits = getPlanLimits(effective);
 
   console.log(
     "[canAddMember] Organization plan (effective):",
@@ -109,22 +108,11 @@ export async function canAddMember(organizationId: string): Promise<boolean> {
   return canAdd;
 }
 
-/**
- * Récupérer les limites du plan
- * Uses the centralized plans-config for accurate limits
- */
+/** Read plan limits, defaulting to trial caps when the plan is unknown. */
 export function getPlanLimits(
-  plan: PlanId | "demo" | string | null | undefined
+  plan: PlanId | string | null | undefined
 ): PlanLimits {
-  if (!plan) return mapPlanLimits(getPlanLimitsFromConfig("trial"));
-  
-  try {
-    const configLimits = getPlanLimitsFromConfig(plan as PlanId | "demo");
-    return mapPlanLimits(configLimits);
-  } catch {
-    // Fallback to trial if plan is invalid
-    return mapPlanLimits(getPlanLimitsFromConfig("trial"));
-  }
+  return mapPlanLimits(getPlanLimitsFromConfig(toPlanId(plan)));
 }
 
 /**
@@ -145,9 +133,9 @@ export async function canAddProspects(organizationId: string, count: number = 1)
     org.plan as string,
     org.subscription_status as string | null
   );
-  const limits = getPlanLimits(effective as PlanId);
+  const limits = getPlanLimits(effective);
   if (limits.prospects === Infinity) return true;
-  
+
   const { count: currentCount } = await supabase
     .from('prospects')
     .select('*', { count: 'exact', head: true })
@@ -169,8 +157,8 @@ export async function canSendEmails(organizationId: string, count: number = 1): 
     .single();
   
   if (!org) return false;
-  
-  const limits = getPlanLimits(org.plan as PlanId);
+
+  const limits = getPlanLimits(org.plan as string);
   if (limits.emails === Infinity) return true;
   
   // Compter les emails envoyés dans la période actuelle

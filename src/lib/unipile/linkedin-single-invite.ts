@@ -6,6 +6,11 @@ import {
   weeklyPeriodKey,
 } from "@/lib/campaigns/throttle";
 import { ensureLinkedInRelationFromUnipileProfile } from "@/lib/linkedin/ensure-relation-from-unipile-profile";
+import {
+  consumeLinkedInInviteQuota,
+  fetchLinkedInInviteWeeklyQuotaState,
+  LinkedInInviteWeeklyQuotaError,
+} from "@/lib/linkedin/weekly-invite-quota";
 import { createServiceClient } from "@/lib/supabase/service";
 import { applyMessageVariables, extractLinkedInSlug } from "@/lib/unipile/campaign";
 import { unipileFetch } from "@/lib/unipile/client";
@@ -73,6 +78,26 @@ export async function sendLinkedInInviteForProspect(
     );
   }
 
+  // Atomic invite-quota reservation. Must happen BEFORE the Unipile call so
+  // concurrent senders (workflows / batch campaigns / single sends) cannot all
+  // pass an in-memory check and then collectively overshoot the cap.
+  const serviceSupabase = createServiceClient();
+  const weekKey = weeklyPeriodKey();
+  const quota = await fetchLinkedInInviteWeeklyQuotaState(
+    serviceSupabase,
+    ctx.userId,
+    weekKey
+  );
+  const consumed = await consumeLinkedInInviteQuota(
+    serviceSupabase,
+    ctx.userId,
+    quota.cap,
+    weekKey
+  );
+  if (!consumed.ok) {
+    throw new LinkedInInviteWeeklyQuotaError(quota.cap, consumed.used);
+  }
+
   await unipileFetch("/users/invite", {
     method: "POST",
     body: JSON.stringify({
@@ -82,17 +107,13 @@ export async function sendLinkedInInviteForProspect(
     }),
   });
 
-  const serviceSupabase = createServiceClient();
+  // The weekly linkedin_invite counter is already incremented inside
+  // consumeLinkedInInviteQuota above. Only the (uncapped) daily direct-invite
+  // counter remains to track here.
   await incrementUsageCounter(
     serviceSupabase,
     ctx.userId,
     "linkedin_invite_direct",
     dailyPeriodKey()
-  );
-  await incrementUsageCounter(
-    serviceSupabase,
-    ctx.userId,
-    "linkedin_invite",
-    weeklyPeriodKey()
   );
 }

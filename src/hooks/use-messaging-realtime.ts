@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useWorkspace } from "@/lib/workspace";
 
@@ -54,13 +54,22 @@ export function useMessagingRealtime(
     setUnseenCount(0);
   }, [workspaceId]);
 
+  /** Unique topic suffix — `.channel(topic)` is deduped globally by the SDK. */
+  const channelSuffix = useMemo(
+    () =>
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID().slice(0, 10)
+        : Math.random().toString(36).slice(2, 12),
+    [],
+  );
+
   useEffect(() => {
     if (!workspaceId) return;
     void fetchUnseenCount();
 
     const supabase = createClient();
     const channel = supabase
-      .channel(`inbox-events-${workspaceId}`)
+      .channel(`inbox-events-${workspaceId}-${channelSuffix}`)
       .on(
         "postgres_changes",
         {
@@ -82,7 +91,7 @@ export function useMessagingRealtime(
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [workspaceId, fetchUnseenCount]);
+  }, [workspaceId, fetchUnseenCount, channelSuffix]);
 
   return { lastIncomingChatId, unseenCount, markChatSeen, markAllSeen };
 }

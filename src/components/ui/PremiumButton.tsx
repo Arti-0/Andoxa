@@ -3,11 +3,11 @@
 import { Button } from "@/components/ui/button";
 import { PremiumBadge } from "@/components/ui/PremiumBadge";
 import { UpgradeButton } from "@/components/ui/UpgradeButton";
+import { isPaidPlan, type PlanId } from "@/lib/config/plans-config";
 import { cn } from "@/lib/utils";
 
 interface PremiumButtonProps {
-  currentPlan: "essential" | "pro" | "business";
-  requiredPlan: "pro" | "business";
+  currentPlan: PlanId;
   variant?: "default" | "outline" | "ghost";
   size?: "default" | "sm" | "lg";
   className?: string;
@@ -17,9 +17,15 @@ interface PremiumButtonProps {
   onClick?: () => void;
 }
 
+/**
+ * Wraps a primary action behind a "needs a paid plan" lock.
+ *
+ * Under the new model every paid plan unlocks every feature, so the gate is
+ * simple: `currentPlan` is paid → render the button; otherwise → render an
+ * `UpgradeButton`.
+ */
 export function PremiumButton({
   currentPlan,
-  requiredPlan,
   variant = "default",
   size = "default",
   className,
@@ -28,11 +34,9 @@ export function PremiumButton({
   disabled = false,
   onClick,
 }: PremiumButtonProps) {
-  const isLocked =
-    (currentPlan === "essential" && requiredPlan === "pro") ||
-    (currentPlan === "pro" && requiredPlan === "business");
+  const locked = !isPaidPlan(currentPlan);
 
-  if (isLocked) {
+  if (locked) {
     return (
       <div className="relative">
         <UpgradeButton
@@ -47,9 +51,7 @@ export function PremiumButton({
         >
           <div className="flex items-center gap-2">
             {children}
-            {showBadge && (
-              <PremiumBadge variant="small" requiredPlan={requiredPlan} />
-            )}
+            {showBadge && <PremiumBadge variant="small" />}
           </div>
         </UpgradeButton>
       </div>
@@ -70,9 +72,7 @@ export function PremiumButton({
     >
       <div className="flex items-center gap-2">
         {children}
-        {showBadge && (
-          <PremiumBadge variant="small" requiredPlan={requiredPlan} />
-        )}
+        {showBadge && <PremiumBadge variant="small" />}
       </div>
     </Button>
   );

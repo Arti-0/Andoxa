@@ -74,7 +74,7 @@ function normalizeWorkspaceFromApi(workspaceData: OrgRowForWorkspace): Workspace
     slug: workspaceData.slug || workspaceData.id,
     type: "team",
     logo_url: workspaceData.logo_url,
-    plan: (workspaceData.plan ?? "free") as Workspace["plan"],
+    plan: (workspaceData.plan ?? "trial") as Workspace["plan"],
     subscription_status: subscriptionStatus ?? null,
     trial_ends_at: workspaceData.trial_ends_at,
     credits: workspaceData.credits ?? 0,
@@ -255,36 +255,11 @@ export function WorkspaceProvider({
         throw error;
       }
 
-      const { data: memberRow, error: memberErr } = await supabase
-        .from("organization_members")
-        .select("role")
-        .eq("organization_id", workspaceId)
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (memberErr) {
-        console.error("[Workspace] Role lookup error during switch:", memberErr);
-        throw memberErr;
-      }
-
-      const role = memberRow?.role ?? "member";
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-      const currentMeta = (authUser?.user_metadata ?? {}) as Record<string, unknown>;
-      const { error: metaErr } = await supabase.auth.updateUser({
-        data: {
-          ...currentMeta,
-          active_organization_id: workspaceId,
-          active_organization_role: role,
-        },
-      });
-
-      if (metaErr) {
-        console.error("[Workspace] JWT metadata sync error during switch:", metaErr);
-        throw metaErr;
-      }
-
+      // RLS reads `active_organization_id` from `app_metadata`, which is server-only.
+      // The DB trigger `sync_active_org_to_user_metadata` mirrors the profile update
+      // into `auth.users.raw_app_meta_data` on commit. We refresh the session so the
+      // new JWT carries the updated app_metadata claim.
+      await supabase.auth.refreshSession();
       await queryClient.invalidateQueries({ queryKey: WORKSPACE_ME_QUERY_KEY });
     },
     [user, supabase, queryClient]
@@ -304,11 +279,13 @@ export function WorkspaceProvider({
   // Computed values
   // ─────────────────────────────────────────────────────────────────────────
 
+  // Active = has a real subscription (active|trialing) OR is on an internal
+  // demo account. `trial` accounts without subscription_status still need to
+  // pick a plan, so they're considered inactive here.
   const hasActivePlan =
-    workspace?.plan !== "free" &&
-    (workspace?.subscription_status === "active" ||
-      workspace?.subscription_status === "trialing" ||
-      workspace?.plan === "demo");
+    workspace?.subscription_status === "active" ||
+    workspace?.subscription_status === "trialing" ||
+    workspace?.plan === "demo";
 
   const isTrialing = workspace?.subscription_status === "trialing";
 

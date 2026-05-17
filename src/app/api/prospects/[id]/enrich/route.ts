@@ -1,7 +1,9 @@
 import { createApiHandler, Errors } from "@/lib/api";
+import { invalidate } from "@/lib/cache/redis";
 import { NextRequest } from "next/server";
 import { getAccountIdForUser } from "@/lib/unipile/account";
 import { enrichProspectFromUnipile } from "@/lib/enrichment/unipile-enrich";
+import { logEnrich } from "@/lib/prospect-activity";
 
 /**
  * POST /api/prospects/[id]/enrich
@@ -31,6 +33,13 @@ export const POST = createApiHandler(async (req: NextRequest, ctx) => {
     throw Errors.badRequest(result.error);
   }
 
+  await logEnrich(ctx.supabase, {
+    organization_id: ctx.workspaceId,
+    prospect_id: id,
+    actor_id: ctx.userId,
+    source: "unipile",
+  });
+
   const { data: updated, error: updateError } = await ctx.supabase
     .from("prospects")
     .select()
@@ -41,6 +50,8 @@ export const POST = createApiHandler(async (req: NextRequest, ctx) => {
   if (updateError || !updated) {
     throw Errors.internal("Impossible de charger le prospect mis à jour");
   }
+
+  await invalidate.prospects(ctx.workspaceId);
 
   return updated;
 });

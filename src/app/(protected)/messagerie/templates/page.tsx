@@ -1,10 +1,8 @@
 "use client";
 
 import "../styles.css";
-import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft,
   ChevronRight,
   Copy,
   MessageSquarePlus,
@@ -15,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { parseTemplateCategory } from "../data";
 import {
   useAdminTemplates,
   useDeleteTemplate,
@@ -532,14 +531,10 @@ function EditModal({ tpl, onClose, onSave, onDelete, categories }: {
 function PageHeader({ onNew }: { onNew: () => void }) {
   return (
     <div style={{ padding: "18px 28px 14px", borderBottom: "1px solid var(--m2-slate-200)", background: "var(--m2-surface-elevated)" }}>
-      <Link href="/messagerie" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--m2-slate-500)", textDecoration: "none" }}>
-        <ArrowLeft size={12} />Messagerie
-      </Link>
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginTop: 8, gap: 16, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 500, color: "var(--m2-slate-900)", letterSpacing: "-0.01em" }}>Templates de messages</h1>
-          <p style={{ fontSize: 13, color: "var(--m2-slate-600)", marginTop: 4 }}>Créez et gérez vos templates pour répondre plus vite à vos prospects.</p>
-        </div>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <p style={{ fontSize: 13, color: "var(--m2-slate-600)", margin: 0, maxWidth: 560, lineHeight: 1.5 }}>
+          Créez et gérez vos templates pour répondre plus vite à vos prospects.
+        </p>
         <button className="m2-btn m2-btn-primary" onClick={onNew}><Plus size={14} />Nouveau template</button>
       </div>
     </div>
@@ -616,7 +611,7 @@ export default function TemplatesPage() {
 
   const save = (tpl: EditingTemplate) => {
     saveMutation.mutate(
-      { id: tpl.id, name: tpl.name, tags: tpl.tags, category: tpl.tags[0] ?? "first", channel: tpl.channel, content: tpl.content, usage: tpl.usage ?? 0 },
+      { id: tpl.id, name: tpl.name, tags: tpl.tags, category: parseTemplateCategory(tpl.tags?.[0]), channel: tpl.channel, content: tpl.content, usage: tpl.usage ?? 0 },
       {
         onSuccess: () => toast.success(tpl.id ? "Template mis à jour" : "Template créé"),
         onError: (err) => toast.error(err instanceof Error ? err.message : "Erreur"),

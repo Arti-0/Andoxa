@@ -1,6 +1,8 @@
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
 import { assertMessagerieAndTemplatesPlan } from "@/lib/billing/plan-gates";
-import type { Json } from "@/lib/types/supabase";
+import type { Database, Json } from "@/lib/types/supabase";
+
+type WorkflowUpdateRow = Database["public"]["Tables"]["workflows"]["Update"];
 import {
   safeParseWorkflowDefinition,
   tryBuildPublishedDefinition,
@@ -9,6 +11,7 @@ import {
   isWorkflowIconKey,
   type WorkflowUiState,
 } from "@/lib/workflows";
+import { isWorkflowTriggerKind } from "@/lib/workflows/trigger-kind";
 import { getWorkflowPublishedDefinition } from "@/lib/workflows/queries";
 
 function getWorkflowIdFromUrl(req: Request): string {
@@ -41,7 +44,12 @@ export const GET = createApiHandler(async (req, ctx) => {
   if (!canLaunch) {
     const parsed = safeParseWorkflowDefinition(wf.draft_definition);
     if (parsed.success) {
-      const built = await tryBuildPublishedDefinition(ctx.supabase, ctx.userId!, parsed.data);
+      const built = await tryBuildPublishedDefinition(
+        ctx.supabase,
+        ctx.userId!,
+        parsed.data,
+        { organizationId: ctx.workspaceId }
+      );
       if (!built.ok) {
         launch_prereq_message = built.message;
       } else {
@@ -73,6 +81,8 @@ export const PATCH = createApiHandler(async (req, ctx) => {
     is_active?: boolean;
     draft_definition?: unknown;
     pending_enrollment_bdd_ids?: string[];
+    trigger_kind?: string;
+    run_mode?: string;
     ui?: {
       icon?: string;
       color?: string;
@@ -90,7 +100,7 @@ export const PATCH = createApiHandler(async (req, ctx) => {
 
   if (!existing) throw Errors.notFound("Workflow");
 
-  const updates: Record<string, unknown> = {
+  const updates: WorkflowUpdateRow = {
     updated_at: new Date().toISOString(),
   };
 
@@ -111,6 +121,20 @@ export const PATCH = createApiHandler(async (req, ctx) => {
 
   if (body.is_template !== undefined) {
     updates.is_template = Boolean(body.is_template);
+  }
+
+  if (body.trigger_kind !== undefined) {
+    if (!isWorkflowTriggerKind(body.trigger_kind)) {
+      throw Errors.validation({ trigger_kind: "Déclencheur invalide" });
+    }
+    updates.trigger_kind = body.trigger_kind;
+  }
+
+  if (body.run_mode !== undefined) {
+    if (body.run_mode !== "terminating" && body.run_mode !== "evergreen") {
+      throw Errors.validation({ run_mode: "Mode d'exécution invalide" });
+    }
+    updates.run_mode = body.run_mode;
   }
 
   if (body.is_active !== undefined) {
@@ -143,8 +167,10 @@ export const PATCH = createApiHandler(async (req, ctx) => {
           parsed.error.flatten().formErrors.join(", ") || "Définition invalide",
       });
     }
-    updates.draft_definition = parsed.data;
-    const built = await tryBuildPublishedDefinition(ctx.supabase, ctx.userId, parsed.data);
+    updates.draft_definition = parsed.data as Json;
+    const built = await tryBuildPublishedDefinition(ctx.supabase, ctx.userId, parsed.data, {
+      organizationId: ctx.workspaceId,
+    });
     if (built.ok) {
       updates.published_definition = built.definition as Json;
     } else {
@@ -163,7 +189,10 @@ export const PATCH = createApiHandler(async (req, ctx) => {
       existing.metadata && typeof existing.metadata === "object" && !Array.isArray(existing.metadata)
         ? (existing.metadata as Record<string, unknown>)
         : {};
-    updates.metadata = { ...prevMeta, pending_enrollment_bdd_ids: ids };
+    updates.metadata = {
+      ...prevMeta,
+      pending_enrollment_bdd_ids: ids,
+    } as Json;
   }
 
   if (body.ui !== undefined) {

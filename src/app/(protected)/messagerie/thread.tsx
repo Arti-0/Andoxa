@@ -459,9 +459,6 @@ function QuickInsertModal({
   onPick: (text: string) => void;
 }) {
   const [q, setQ] = useState("");
-  // TODO(BACKEND.md §7.2): once message_templates has a `category` column,
-  // wire these filters server-side. For now the UI chips remain but only
-  // by-channel filtering happens automatically based on conv.channel.
   const [f, setF] = useState<
     "all" | "first" | "relance" | "rdv" | "suivi" | "mine"
   >("all");
@@ -483,6 +480,7 @@ function QuickInsertModal({
   const list = (templates ?? []).filter((t) => {
     // Hide templates from the wrong channel — keep "both" always visible.
     if (t.channel !== "both" && t.channel !== conv.channel) return false;
+    if (f !== "all" && f !== "mine" && t.category !== f) return false;
     if (
       q &&
       !(t.name + " " + t.content).toLowerCase().includes(q.toLowerCase())

@@ -8,7 +8,7 @@ import { BookingOwnerConfirmationEmail } from "@/emails/BookingOwnerConfirmation
 export async function sendBookingOwnerConfirmationEmail(params: {
   to: string;
   guestName: string;
-  guestEmail: string;
+  guestEmail: string | null;
   guestLinkedin: string | null;
   guestPhone: string | null;
   slotStartIso: string;

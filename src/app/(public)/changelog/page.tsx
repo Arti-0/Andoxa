@@ -1,8 +1,8 @@
 import { Badge } from '@/components/ui/badge';
-import { UnifiedHeader } from '@/components/v3/homepage/UnifiedHeader';
-import AndoxaFooter from '@/components/content/AndoxaFooter';
+import { MarketingPageLayout } from '@/components/marketing/marketing-page-layout';
+import { Container } from '@/components/marketing/ui/container';
 import { RiSparklingLine, RiBugLine, RiAddLine } from '@remixicon/react';
-import { cn } from '../../../../src/lib/utils';
+import { cn } from '@/lib/utils';
 
 interface ChangelogEntry {
     version: string;
@@ -667,20 +667,14 @@ const getFeatureLabel = (type: 'new' | 'improved' | 'fix') => {
 
 export default function Changelog() {
     return (
-        <main className="min-h-screen bg-white dark:bg-slate-950">
-            <UnifiedHeader showMobileMenu={true} enableScrollEffect={false} />
-
-            <div className="mx-auto max-w-3xl px-4 pt-32 pb-20 sm:px-6 lg:px-8">
-                <header className="mb-16">
-                    <h1 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">
-                        Changelog
-                    </h1>
-                    <p className="mt-2 text-base text-slate-500 dark:text-slate-400">
-                        Nouveautés, améliorations et corrections.
-                    </p>
-                </header>
-
-                <div className="space-y-12">
+        <MarketingPageLayout
+            eyebrow="Changelog"
+            title="Ce qui change dans Andoxa"
+            subtitle="Nouveautés, améliorations et corrections — par ordre chronologique."
+        >
+            <section className="py-16 sm:py-20">
+                <Container>
+                    <div className="mx-auto max-w-3xl space-y-12">
                     {changelogEntries.map((entry, index) => (
                         <article key={entry.version} className="relative pl-8 border-l border-slate-200 dark:border-slate-800">
                             <div className="absolute -left-1.5 top-1.5 h-3 w-3 rounded-full border-2 border-white dark:border-slate-950 bg-slate-400 dark:bg-slate-600" />
@@ -724,10 +718,9 @@ export default function Changelog() {
                             </ul>
                         </article>
                     ))}
-                </div>
-            </div>
-
-            <AndoxaFooter />
-        </main>
+                    </div>
+                </Container>
+            </section>
+        </MarketingPageLayout>
     );
 }

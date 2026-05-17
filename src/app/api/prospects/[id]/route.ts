@@ -1,9 +1,13 @@
 import { createApiHandler, Errors, parseBody } from "../../../../lib/api";
 import { NextRequest } from "next/server";
+import { invalidate } from "@/lib/cache/redis";
 import { createNotification } from "@/lib/notifications/create-notification";
 import { enrichProspects } from "@/lib/crm/enrich-prospects";
 import { logStatusChange } from "@/lib/prospect-activity";
 import type { Prospect } from "@/lib/types/prospects";
+import type { Database } from "@/lib/types/supabase";
+
+type ProspectUpdateRow = Database["public"]["Tables"]["prospects"]["Update"];
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -92,12 +96,53 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
   }
 
   const { linkedin_url, ...rest } = body;
-  const updateData: Record<string, unknown> = {
-    ...rest,
+  const updateData: ProspectUpdateRow = {
     updated_at: new Date().toISOString(),
   };
+  if (rest.full_name !== undefined) {
+    updateData.full_name = rest.full_name.trim() || null;
+  }
+  if (rest.email !== undefined) {
+    updateData.email = rest.email.trim() || null;
+  }
+  if (rest.phone !== undefined) {
+    updateData.phone = rest.phone.trim() || null;
+  }
+  if (rest.company !== undefined) {
+    updateData.company = rest.company.trim() || null;
+  }
+  if (rest.job_title !== undefined) {
+    updateData.job_title = rest.job_title.trim() || null;
+  }
+  if (rest.linkedin !== undefined) {
+    updateData.linkedin = rest.linkedin.trim() || null;
+  }
+  if (rest.website !== undefined) {
+    updateData.website = rest.website.trim() || null;
+  }
+  if (rest.status !== undefined) {
+    updateData.status = rest.status.trim() || null;
+  }
+  if (rest.notes !== undefined) {
+    updateData.notes = rest.notes.trim() || null;
+  }
+  if (rest.industry !== undefined) {
+    updateData.industry = rest.industry.trim() || null;
+  }
+  if (rest.employees !== undefined) {
+    updateData.employees = rest.employees.trim() || null;
+  }
+  if (rest.location !== undefined) {
+    updateData.location = rest.location.trim() || null;
+  }
+  if (rest.budget !== undefined) {
+    updateData.budget = rest.budget.trim() || null;
+  }
+  if (rest.source !== undefined) {
+    updateData.source = rest.source.trim() || null;
+  }
   if (linkedin_url !== undefined) {
-    updateData.linkedin = linkedin_url;
+    updateData.linkedin = linkedin_url.trim() || null;
   }
 
   const { data, error } = await ctx.supabase
@@ -134,9 +179,12 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
         actor_id: ctx.userId ?? null,
         organization_id: ctx.workspaceId,
         target_url: `/prospect/${id}`,
+        dedupe_key: `prospect:won:${id}`,
       });
     }
   }
+
+  await invalidate.prospects(ctx.workspaceId);
 
   return data;
 });
@@ -165,6 +213,8 @@ export const DELETE = createApiHandler(async (req: NextRequest, ctx) => {
   if (error) {
     throw Errors.internal("Failed to delete prospect");
   }
+
+  await invalidate.prospects(ctx.workspaceId);
 
   return { deleted: true };
 });

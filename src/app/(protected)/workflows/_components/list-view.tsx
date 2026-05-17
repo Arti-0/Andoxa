@@ -1,7 +1,6 @@
 "use client";
 
-// List view — visuals ported from design/whatsapp/Workflows.html.
-// Data comes from /api/workflows via the parent page.
+// List view — data from /api/workflows. Theme-aligned with bg-card / bg-background.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -15,6 +14,7 @@ import {
 import { toastFromApiError } from "@/lib/toast";
 import { LaunchButton } from "./launch-button";
 import type { DesignTag, DesignWorkflowCard } from "./workflow-mapping";
+import { cn } from "@/lib/utils";
 
 const STATUS_CFG = {
   active: { label: "Actif", bg: "#ECFDF5", color: "#15803D", dot: "#10B981" },
@@ -67,146 +67,61 @@ function TopBar({
   }, [open]);
 
   return (
-    <div
-      style={{
-        height: 56,
-        borderBottom: "1px solid #E2E8F0",
-        background: "white",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "0 24px",
-        flexShrink: 0,
-      }}
-    >
-      <div>
-        <div
-          style={{
-            fontWeight: 700,
-            fontSize: 17,
-            letterSpacing: "-0.02em",
-            color: "#0F172A",
-          }}
-        >
-          Workflows
-        </div>
-        <div style={{ fontSize: 12.5, color: "#64748B", marginTop: 1 }}>
-          Créez des séquences automatisées sur WhatsApp, LinkedIn, le booking et le CRM.
-        </div>
-      </div>
-      <div
-        ref={popoverRef}
-        style={{ display: "flex", gap: 8, position: "relative" }}
-      >
+    <div className="flex min-h-14 shrink-0 flex-col gap-4 border-b border-border bg-card px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <p className="max-w-xl text-[13px] leading-snug text-muted-foreground">
+        Créez des séquences automatisées sur WhatsApp, LinkedIn, le booking et le CRM.
+      </p>
+      <div ref={popoverRef} className="relative flex shrink-0 items-center gap-2">
         <button
+          type="button"
           onClick={() => setOpen((v) => !v)}
-          style={{
-            padding: "7px 14px",
-            borderRadius: 8,
-            border: `1px solid ${open ? "#0052D9" : "#E2E8F0"}`,
-            background: "white",
-            fontSize: 13,
-            fontWeight: 500,
-            color: "#374151",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-          }}
+          className={cn(
+            "flex cursor-pointer items-center gap-1.5 rounded-lg border bg-background px-3.5 py-1.5 text-[13px] font-medium text-foreground shadow-sm transition-colors",
+            open
+              ? "border-primary ring-2 ring-primary/20"
+              : "border-border hover:bg-accent",
+          )}
         >
-          <Icon size={14} color="#64748B" d={ICO.hamburger} />
+          <span className="text-muted-foreground [&_svg]:block">
+            <Icon size={14} color="currentColor" d={ICO.hamburger} />
+          </span>
           Utiliser un modèle
         </button>
         {open && (
           <div
             role="menu"
-            style={{
-              position: "absolute",
-              right: 96,
-              top: 44,
-              width: 360,
-              background: "white",
-              border: "1px solid #E2E8F0",
-              borderRadius: 12,
-              boxShadow: "0 12px 32px rgba(15, 23, 42, 0.12)",
-              padding: 8,
-              zIndex: 30,
-              maxHeight: 480,
-              overflowY: "auto",
-            }}
+            className="absolute right-0 top-full z-30 mt-2 max-h-[min(480px,70vh)] w-[360px] overflow-y-auto rounded-xl border border-border bg-popover p-2 shadow-lg"
           >
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                color: "#94A3B8",
-                padding: "6px 8px",
-              }}
-            >
+            <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               Modèles intégrés
             </div>
             {WORKFLOW_TEMPLATES.filter((t) => t.id !== "blank").map((t) => (
               <button
                 key={t.id}
+                type="button"
                 disabled={busyTemplateId !== null}
                 onClick={() => {
                   setOpen(false);
                   onUseTemplate("builtin", t.id, t.name);
                 }}
-                style={{
-                  width: "100%",
-                  textAlign: "left",
-                  padding: "9px 10px",
-                  borderRadius: 8,
-                  border: "none",
-                  background:
-                    busyTemplateId === `builtin:${t.id}` ? "#F1F5F9" : "transparent",
-                  cursor: busyTemplateId !== null ? "wait" : "pointer",
-                  display: "block",
-                  marginBottom: 2,
-                }}
-                onMouseEnter={(e) => {
-                  if (busyTemplateId === null) {
-                    e.currentTarget.style.background = "#F8FAFC";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (busyTemplateId !== `builtin:${t.id}`) {
-                    e.currentTarget.style.background = "transparent";
-                  }
-                }}
+                className={cn(
+                  "mb-0.5 block w-full rounded-lg px-2.5 py-2 text-left transition-colors",
+                  busyTemplateId === `builtin:${t.id}`
+                    ? "bg-muted"
+                    : "hover:bg-accent",
+                  busyTemplateId !== null && "cursor-wait opacity-70",
+                  busyTemplateId === null && "cursor-pointer",
+                )}
               >
-                <div
-                  style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}
-                >
+                <div className="text-[13px] font-semibold text-foreground">
                   {t.name}
                   {t.popular && (
-                    <span
-                      style={{
-                        marginLeft: 6,
-                        fontSize: 9.5,
-                        fontWeight: 700,
-                        background: "#FF6700",
-                        color: "white",
-                        padding: "1px 6px",
-                        borderRadius: 8,
-                        verticalAlign: 1,
-                      }}
-                    >
+                    <span className="ml-1.5 inline align-middle rounded-lg bg-orange-600 px-1.5 py-px text-[9.5px] font-bold text-white dark:bg-orange-500">
                       Populaire
                     </span>
                   )}
                 </div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "#64748B",
-                    marginTop: 2,
-                    lineHeight: 1.4,
-                  }}
-                >
+                <div className="mt-0.5 text-xs leading-snug text-muted-foreground">
                   {t.description}
                 </div>
               </button>
@@ -214,70 +129,30 @@ function TopBar({
 
             {userTemplates.length > 0 && (
               <>
-                <div
-                  style={{
-                    height: 1,
-                    background: "#E2E8F0",
-                    margin: "6px 4px",
-                  }}
-                />
-                <div
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    color: "#94A3B8",
-                    padding: "6px 8px",
-                  }}
-                >
+                <div className="mx-1 my-1.5 h-px bg-border" />
+                <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                   Vos modèles
                 </div>
                 {userTemplates.map((t) => (
                   <button
                     key={t.id}
+                    type="button"
                     disabled={busyTemplateId !== null}
                     onClick={() => {
                       setOpen(false);
                       onUseTemplate("user", t.id, t.name);
                     }}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "9px 10px",
-                      borderRadius: 8,
-                      border: "none",
-                      background: "transparent",
-                      cursor: busyTemplateId !== null ? "wait" : "pointer",
-                      display: "block",
-                      marginBottom: 2,
-                    }}
-                    onMouseEnter={(e) => {
-                      if (busyTemplateId === null)
-                        e.currentTarget.style.background = "#F8FAFC";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "transparent";
-                    }}
+                    className={cn(
+                      "mb-0.5 block w-full rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-accent",
+                      busyTemplateId !== null && "cursor-wait opacity-70",
+                      busyTemplateId === null && "cursor-pointer",
+                    )}
                   >
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: "#0F172A",
-                      }}
-                    >
+                    <div className="text-[13px] font-semibold text-foreground">
                       {t.name}
                     </div>
                     {t.description && (
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#64748B",
-                          marginTop: 2,
-                          lineHeight: 1.4,
-                        }}
-                      >
+                      <div className="mt-0.5 text-xs leading-snug text-muted-foreground">
                         {t.description}
                       </div>
                     )}
@@ -289,22 +164,9 @@ function TopBar({
         )}
         <Link
           href="/workflows/new"
-          style={{
-            padding: "7px 16px",
-            borderRadius: 8,
-            border: "none",
-            background: "#0052D9",
-            fontSize: 13,
-            fontWeight: 600,
-            color: "white",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            textDecoration: "none",
-          }}
+          className="flex items-center gap-1.5 rounded-lg bg-(--brand-blue) px-4 py-1.5 text-[13px] font-semibold text-white no-underline shadow-sm transition-colors hover:bg-(--brand-blue)/90 dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90"
         >
-          <Icon size={14} color="white" d={ICO.plus} />
+          <Icon size={14} color="currentColor" d={ICO.plus} />
           Créer un workflow
         </Link>
       </div>
@@ -331,76 +193,35 @@ function WorkflowCard({
         ? "Le parcours est en erreur."
         : undefined;
   const sc = STATUS_CFG[wf.status];
-  const [hov, setHov] = useState(false);
   return (
     <div
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
+      role="button"
+      tabIndex={0}
       onClick={() => onOpen(wf.id)}
-      style={{
-        background: "white",
-        border: `1px solid ${hov ? "#0052D9" : "#E2E8F0"}`,
-        borderRadius: 14,
-        padding: "18px 20px",
-        cursor: "pointer",
-        transition: "all 150ms",
-        boxShadow: hov
-          ? "0 4px 20px rgba(0,82,217,0.1)"
-          : "0 1px 4px rgba(0,0,0,0.04)",
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen(wf.id);
+        }
       }}
+      className="group/card cursor-pointer rounded-[14px] border border-border bg-card px-5 py-[18px] shadow-sm outline-none ring-offset-background transition-all hover:border-primary/45 hover:shadow-md hover:shadow-primary/10 focus-visible:ring-2 focus-visible:ring-ring dark:border-border dark:hover:border-primary/40 dark:hover:shadow-primary/15"
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 10,
-          marginBottom: 8,
-        }}
-      >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 5,
-              flexWrap: "wrap",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 14.5,
-                fontWeight: 700,
-                color: "#0F172A",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                maxWidth: "100%",
-              }}
-            >
+      <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <div className="max-w-full truncate text-[14.5px] font-bold text-foreground">
               {wf.name}
             </div>
             <div
+              className="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-black/5 dark:ring-white/10"
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
                 background: sc.bg,
-                padding: "2px 8px",
-                borderRadius: 20,
-                fontSize: 11,
-                fontWeight: 600,
                 color: sc.color,
               }}
             >
               <div
-                style={{
-                  width: 5,
-                  height: 5,
-                  borderRadius: "50%",
-                  background: sc.dot,
-                }}
+                className="size-1 rounded-full"
+                style={{ background: sc.dot }}
               />
               {sc.label}
             </div>
@@ -409,33 +230,16 @@ function WorkflowCard({
       </div>
 
       <div
-        style={{
-          fontSize: 12.5,
-          color: wf.description ? "#475569" : "#94A3B8",
-          lineHeight: 1.55,
-          marginBottom: 14,
-          minHeight: 38,
-          display: "-webkit-box",
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
-          fontStyle: wf.description ? "normal" : "italic",
-        }}
+        className={cn(
+          "mb-3.5 min-h-[38px] text-[13px] leading-snug text-muted-foreground",
+          !wf.description && "italic",
+          wf.description && "text-foreground/80 dark:text-muted-foreground",
+        )}
       >
         {wf.description || "Aucune description."}
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 0,
-          background: "#F8FAFC",
-          borderRadius: 10,
-          overflow: "hidden",
-          border: "1px solid #E2E8F0",
-        }}
-      >
+      <div className="grid grid-cols-4 gap-0 overflow-hidden rounded-[10px] border border-border bg-muted/45 dark:bg-muted/30">
         {[
           { label: "Prospects", value: wf.stats.enrolled },
           { label: "Taux de réponse", value: wf.stats.replyRate },
@@ -444,66 +248,41 @@ function WorkflowCard({
         ].map((s, i) => (
           <div
             key={i}
-            style={{
-              padding: "10px 12px",
-              textAlign: "center",
-              borderLeft: i > 0 ? "1px solid #E2E8F0" : "none",
-            }}
+            className={cn(
+              "px-3 py-2.5 text-center",
+              i > 0 && "border-l border-border",
+            )}
           >
-            <div
-              style={{
-                fontSize: 16,
-                fontWeight: 700,
-                color: "#0F172A",
-                letterSpacing: "-0.02em",
-              }}
-            >
+            <div className="text-base font-bold tracking-tight text-foreground">
               {s.value}
             </div>
-            <div
-              style={{
-                fontSize: 10.5,
-                color: "#94A3B8",
-                fontWeight: 500,
-                marginTop: 1,
-              }}
-            >
+            <div className="mt-px text-[10.5px] font-medium text-muted-foreground">
               {s.label}
             </div>
           </div>
         ))}
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginTop: 12,
-        }}
-      >
-        <div style={{ display: "flex", gap: 5 }}>
+      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-1.5">
           {wf.tags.map((t) => {
             const tc = TAG_CFG[t];
             return (
               <span
                 key={t}
                 style={{
-                  fontSize: 10.5,
-                  fontWeight: 600,
-                  padding: "2px 7px",
-                  borderRadius: 5,
                   background: tc.bg,
                   color: tc.color,
                 }}
+                className="rounded px-2 py-0.5 text-[10.5px] font-semibold ring-1 ring-black/[0.06] dark:ring-white/10"
               >
                 {t}
               </span>
             );
           })}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 11, color: "#94A3B8" }}>
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] text-muted-foreground">
             Modifié {wf.lastModified}
           </span>
           <LaunchButton
@@ -559,7 +338,6 @@ export function ListView({
           },
         };
       } else {
-        // Hydrate from the user template's stored definition.
         const res = await fetch(`/api/workflows/${templateId}`, {
           credentials: "include",
         });
@@ -630,64 +408,36 @@ export function ListView({
     filter === "all" ? workflows : workflows.filter((w) => w.status === filter);
 
   return (
-    <div
-      style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-      }}
-    >
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <TopBar
         userTemplates={userTemplates}
         onUseTemplate={(s, id, n) => void handleUseTemplate(s, id, n)}
         busyTemplateId={busyTemplateId}
       />
 
-      <div
-        style={{
-          padding: "12px 24px 0",
-          background: "white",
-          borderBottom: "1px solid #E2E8F0",
-          display: "flex",
-          gap: 0,
-          flexShrink: 0,
-        }}
-      >
+      <div className="flex shrink-0 gap-0 border-b border-border bg-background px-6 pt-0">
         {filters.map((f) => {
           const active = filter === f.id;
           return (
             <button
               key={f.id}
+              type="button"
               onClick={() => setFilter(f.id)}
-              style={{
-                padding: "8px 16px",
-                border: "none",
-                background: "none",
-                cursor: "pointer",
-                fontSize: 13,
-                fontWeight: active ? 600 : 400,
-                color: active ? "#0052D9" : "#64748B",
-                borderBottom: active
-                  ? "2px solid #0052D9"
-                  : "2px solid transparent",
-                marginBottom: -1,
-                transition: "all 120ms",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
+              className={cn(
+                "-mb-px flex cursor-pointer items-center gap-1.5 border-b-2 px-4 py-2 text-[13px] transition-colors",
+                active
+                  ? "border-primary font-semibold text-primary"
+                  : "border-transparent font-normal text-muted-foreground hover:text-foreground",
+              )}
             >
               {f.label}
               <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  padding: "1px 6px",
-                  borderRadius: 10,
-                  background: active ? "#E8F0FD" : "#F1F5F9",
-                  color: active ? "#0052D9" : "#94A3B8",
-                }}
+                className={cn(
+                  "rounded-full px-1.5 py-px text-[11px] font-bold",
+                  active
+                    ? "bg-primary/15 text-primary"
+                    : "bg-muted text-muted-foreground",
+                )}
               >
                 {counts[f.id] ?? 0}
               </span>
@@ -696,63 +446,23 @@ export function ListView({
         })}
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: "24px 24px" }}>
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
         {loading ? (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(460px, 1fr))",
-              gap: 14,
-            }}
-          >
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(460px,1fr))] gap-3.5">
             {Array.from({ length: 4 }).map((_, i) => (
               <div
                 key={i}
-                style={{
-                  background: "white",
-                  border: "1px solid #E2E8F0",
-                  borderRadius: 14,
-                  padding: "18px 20px",
-                  height: 180,
-                }}
+                className="animate-pulse rounded-[14px] border border-border bg-card p-5"
               >
-                <div
-                  style={{
-                    width: "60%",
-                    height: 18,
-                    background: "#F1F5F9",
-                    borderRadius: 4,
-                    marginBottom: 12,
-                  }}
-                />
-                <div
-                  style={{
-                    width: "100%",
-                    height: 12,
-                    background: "#F1F5F9",
-                    borderRadius: 4,
-                    marginBottom: 6,
-                  }}
-                />
-                <div
-                  style={{
-                    width: "80%",
-                    height: 12,
-                    background: "#F1F5F9",
-                    borderRadius: 4,
-                  }}
-                />
+                <div className="mb-3 h-4 w-[60%] rounded bg-muted" />
+                <div className="mb-1.5 h-3 w-full rounded bg-muted" />
+                <div className="mb-6 h-3 w-[80%] rounded bg-muted" />
+                <div className="h-16 rounded-lg bg-muted/80" />
               </div>
             ))}
           </div>
         ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(460px, 1fr))",
-              gap: 14,
-            }}
-          >
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(460px,1fr))] gap-3.5">
             {visible.map((wf) => (
               <WorkflowCard
                 key={wf.id}
@@ -762,82 +472,34 @@ export function ListView({
               />
             ))}
             {visible.length === 0 && (
-              <div
-                style={{
-                  gridColumn: "1/-1",
-                  textAlign: "center",
-                  padding: "60px 0",
-                  color: "#94A3B8",
-                }}
-              >
-                <div style={{ fontSize: 14 }}>
-                  Aucun workflow dans cette catégorie.
-                </div>
+              <div className="col-span-full py-16 text-center text-sm text-muted-foreground">
+                Aucun workflow dans cette catégorie.
               </div>
             )}
           </div>
         )}
 
-        <div
-          style={{
-            marginTop: 20,
-            padding: "24px",
-            background: "linear-gradient(135deg, #E8F0FD 0%, #EFF6FF 100%)",
-            borderRadius: 14,
-            border: "1px dashed #93C5FD",
-            display: "flex",
-            alignItems: "center",
-            gap: 20,
-          }}
-        >
-          <div
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 12,
-              background: "#0052D9",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <Icon size={22} color="white" d={ICO.plus} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div
-              style={{
-                fontSize: 15,
-                fontWeight: 700,
-                color: "#0F172A",
-                marginBottom: 3,
-              }}
+        <div className="mt-5 rounded-[14px] border border-dashed border-primary/35 bg-gradient-to-br from-primary/12 via-background to-muted/40 p-6 dark:border-primary/30 dark:from-primary/15 dark:via-background dark:to-muted/25">
+          <div className="flex flex-col items-stretch gap-5 sm:flex-row sm:items-center">
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-(--brand-blue) text-white dark:bg-primary dark:text-primary-foreground">
+              <Icon size={22} color="currentColor" d={ICO.plus} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="mb-1 text-[15px] font-bold text-foreground">
+                Créer un nouveau workflow
+              </div>
+              <div className="text-[13px] text-muted-foreground">
+                Partez de zéro ou choisissez parmi nos modèles de séquences
+                commerciales prêts à l&apos;emploi.
+              </div>
+            </div>
+            <Link
+              href="/workflows/new"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg bg-(--brand-blue) px-5 py-2.5 text-[13.5px] font-semibold text-white no-underline transition-colors hover:bg-(--brand-blue)/90 dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90 sm:whitespace-nowrap"
             >
-              Créer un nouveau workflow
-            </div>
-            <div style={{ fontSize: 13, color: "#64748B" }}>
-              Partez de zéro ou choisissez parmi nos modèles de séquences
-              commerciales prêts à l&apos;emploi.
-            </div>
+              Créer un workflow
+            </Link>
           </div>
-          <Link
-            href="/workflows/new"
-            style={{
-              padding: "9px 20px",
-              borderRadius: 9,
-              border: "none",
-              background: "#0052D9",
-              fontSize: 13.5,
-              fontWeight: 600,
-              color: "white",
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-              flexShrink: 0,
-              textDecoration: "none",
-            }}
-          >
-            Créer un workflow
-          </Link>
         </div>
       </div>
     </div>

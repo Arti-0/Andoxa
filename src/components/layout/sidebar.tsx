@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
     LayoutDashboard,
     Megaphone,
@@ -11,18 +11,20 @@ import {
     Settings,
     ChevronLeft,
     ChevronRight,
+    ChevronUp,
     ChevronDown,
     Check,
-    Building2,
     Workflow,
     Lock,
+    Plus,
+    User as UserIcon,
+    LogOut,
+    HelpCircle,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '../../lib/utils';
 import { LogoDisplay } from '../ui/logo-display';
-import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { useWorkspace } from '../../lib/workspace';
-import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import {
     getUserOrganizations,
     type Organization,
@@ -32,6 +34,8 @@ import { canAccessRoute, type PlanId } from '@/lib/config/plans-config';
 import { useMessagingRealtime } from '@/hooks/use-messaging-realtime';
 import { useLinkedInAccount } from '@/hooks/use-linkedin-account';
 import { isAnyUnipileMessagingConnected } from '@/components/unipile/connection-gate';
+import { createClient } from '@/lib/supabase/client';
+import { AddOrganizationModal } from '../organizations/add-organization-modal';
 
 interface NavItem {
     href: string;
@@ -44,7 +48,6 @@ const MAIN_NAV_ITEMS: NavItem[] = [
     { href: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
     { href: '/crm', label: 'CRM', icon: Users },
     { href: '/campaigns', label: 'Campagnes & Appels', icon: Megaphone },
-    { href: '/campaigns2', label: 'Campagnes & Appels', icon: Megaphone },
     { href: '/workflows', label: 'Workflows', icon: Workflow },
     { href: '/messagerie', label: 'Messagerie', icon: MessageSquare },
     { href: '/calendar', label: 'Calendrier', icon: Calendar },
@@ -62,31 +65,396 @@ function cleanOrgName(name: string | undefined | null): string {
     return cleaned;
 }
 
-function OrgLogoThumb({
+function getInitials(name: string): string {
+    return (name || '?')
+        .trim()
+        .split(/\s+/)
+        .map((w) => w[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase();
+}
+
+const PLAN_LABELS: Record<string, string> = {
+    trial: 'Essai',
+    solo: 'Plan Solo',
+    team: 'Plan Team',
+    custom: 'Plan Custom',
+    demo: 'Plan Demo',
+};
+
+function planLabel(plan?: string | null): string {
+    if (!plan) return '';
+    return PLAN_LABELS[plan] ?? plan;
+}
+
+function OrgAvatar({
     logoUrl,
-    className,
+    name,
+    size = 34,
+    rounded = 8,
 }: {
     logoUrl?: string | null;
-    className?: string;
+    name: string;
+    size?: number;
+    rounded?: number;
 }) {
     return (
         <span
-            className={cn(
-                'flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/60 bg-muted/50',
-                className ?? 'h-7 w-7'
-            )}
+            className="sb-org-avatar"
+            style={{ width: size, height: size, borderRadius: rounded }}
         >
             {logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- remote Supabase URLs; matches dashboard-header
-                <img
-                    src={logoUrl}
-                    alt=""
-                    className="h-full w-full object-cover"
-                />
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoUrl} alt="" />
             ) : (
-                <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>{getInitials(name)}</span>
             )}
         </span>
+    );
+}
+
+interface OrgSwitcherProps {
+    collapsed: boolean;
+    organizations: Organization[];
+    activeOrgId?: string;
+    activeOrg: { name: string; plan?: string | null; logo_url?: string | null };
+    onSwitch: (id: string) => void;
+    onAdd: () => void;
+}
+
+function OrgSwitcher({
+    collapsed,
+    organizations,
+    activeOrgId,
+    activeOrg,
+    onSwitch,
+    onAdd,
+}: OrgSwitcherProps) {
+    const [open, setOpen] = useState(false);
+    const wrapRef = useRef<HTMLDivElement>(null);
+    const listRef = useRef<HTMLDivElement>(null);
+    const displayName = cleanOrgName(activeOrg.name);
+
+    useEffect(() => {
+        if (!open) return;
+        const onDown = (e: MouseEvent) => {
+            if (wrapRef.current && !wrapRef.current.contains(e.target as Node))
+                setOpen(false);
+        };
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                setOpen(false);
+                return;
+            }
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const focusables =
+                    listRef.current?.querySelectorAll<HTMLElement>(
+                        '[data-org-row]'
+                    );
+                if (!focusables || !focusables.length) return;
+                const arr = Array.from(focusables);
+                const current = document.activeElement as HTMLElement;
+                const idx = arr.indexOf(current);
+                const next =
+                    e.key === 'ArrowDown'
+                        ? Math.min(arr.length - 1, idx + 1)
+                        : Math.max(0, idx - 1);
+                arr[next < 0 ? 0 : next].focus();
+            }
+        };
+        window.addEventListener('mousedown', onDown);
+        window.addEventListener('keydown', onKey);
+        return () => {
+            window.removeEventListener('mousedown', onDown);
+            window.removeEventListener('keydown', onKey);
+        };
+    }, [open]);
+
+    const handleSwitch = (id: string) => {
+        setOpen(false);
+        if (id !== activeOrgId) onSwitch(id);
+    };
+    const handleAdd = () => {
+        setOpen(false);
+        onAdd();
+    };
+
+    return (
+        <div
+            ref={wrapRef}
+            className={cn('sb-org-wrap', collapsed && 'sb-org-wrap--collapsed')}
+        >
+            <button
+                type="button"
+                className={cn(
+                    'sb-org',
+                    collapsed && 'sb-org--collapsed',
+                    open && 'sb-org--open'
+                )}
+                onClick={() => setOpen((o) => !o)}
+                aria-haspopup="listbox"
+                aria-expanded={open}
+                aria-label={
+                    collapsed
+                        ? `Organisation : ${displayName} — changer`
+                        : undefined
+                }
+            >
+                <OrgAvatar
+                    logoUrl={activeOrg.logo_url}
+                    name={displayName}
+                    size={34}
+                />
+                {!collapsed && (
+                    <>
+                        <span className="sb-org-meta">
+                            <span className="sb-org-name">{displayName}</span>
+                            {activeOrg.plan && (
+                                <span className="sb-org-plan">
+                                    {planLabel(activeOrg.plan)}
+                                </span>
+                            )}
+                        </span>
+                        <span className="sb-org-chev">
+                            <ChevronDown className="h-3.5 w-3.5" />
+                        </span>
+                    </>
+                )}
+                {collapsed && (
+                    <span className="sb-tooltip" role="tooltip">
+                        {displayName}
+                        {activeOrg.plan && (
+                            <span className="sb-tooltip-badge">
+                                {planLabel(activeOrg.plan)}
+                            </span>
+                        )}
+                    </span>
+                )}
+            </button>
+
+            {open && (
+                <div
+                    ref={listRef}
+                    className={cn(
+                        'sb-org-menu',
+                        collapsed && 'sb-org-menu--collapsed'
+                    )}
+                    role="listbox"
+                    aria-label="Vos organisations"
+                >
+                    <div className="sb-org-menu-label">Vos organisations</div>
+                    {organizations.length === 0 && (
+                        <div className="px-2 py-2 text-xs text-muted-foreground">
+                            Aucune organisation
+                        </div>
+                    )}
+                    {organizations.map((org) => {
+                        const name = cleanOrgName(org.name);
+                        const isActive = org.id === activeOrgId;
+                        return (
+                            <button
+                                key={org.id}
+                                type="button"
+                                data-org-row
+                                role="option"
+                                aria-selected={isActive}
+                                className="sb-org-row"
+                                onClick={() => handleSwitch(org.id)}
+                            >
+                                <OrgAvatar
+                                    logoUrl={org.logo_url}
+                                    name={name}
+                                    size={30}
+                                    rounded={7}
+                                />
+                                <span className="sb-org-row-meta">
+                                    <span className="sb-org-row-name">
+                                        {name}
+                                    </span>
+                                    {org.plan && (
+                                        <span className="sb-org-row-plan">
+                                            {planLabel(org.plan)}
+                                        </span>
+                                    )}
+                                </span>
+                                {isActive && (
+                                    <span className="sb-org-row-check">
+                                        <Check className="h-4 w-4" />
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
+                    <div className="sb-org-menu-divider" />
+                    <button
+                        type="button"
+                        className="sb-org-add"
+                        onClick={handleAdd}
+                    >
+                        <span className="sb-org-add-icon">
+                            <Plus className="h-4 w-4" />
+                        </span>
+                        Ajouter une organisation
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+interface UserBlockProps {
+    collapsed: boolean;
+    name: string;
+    email: string;
+    avatarUrl?: string | null;
+}
+
+function UserBlock({ collapsed, name, email, avatarUrl }: UserBlockProps) {
+    const [open, setOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+    const router = useRouter();
+    const initial = (name || email || 'U').charAt(0).toUpperCase();
+
+    useEffect(() => {
+        if (!open) return;
+        const handler = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node))
+                setOpen(false);
+        };
+        const esc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setOpen(false);
+        };
+        window.addEventListener('mousedown', handler);
+        window.addEventListener('keydown', esc);
+        return () => {
+            window.removeEventListener('mousedown', handler);
+            window.removeEventListener('keydown', esc);
+        };
+    }, [open]);
+
+    const onLogout = async () => {
+        setOpen(false);
+        try {
+            const supabase = createClient();
+            await supabase.auth.signOut();
+            router.push('/auth/login');
+        } catch {
+            router.push('/auth/login');
+        }
+    };
+
+    return (
+        <div ref={ref} style={{ position: 'relative' }}>
+            <button
+                type="button"
+                onClick={() => setOpen((o) => !o)}
+                aria-haspopup="menu"
+                aria-expanded={open}
+                aria-label={collapsed ? `Compte de ${name}` : undefined}
+                className={cn(
+                    'sb-user',
+                    open && 'sb-user--open',
+                    collapsed && 'sb-user--collapsed'
+                )}
+            >
+                <span className="sb-avatar-wrap">
+                    <span className="sb-avatar">
+                        {avatarUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={avatarUrl} alt="" />
+                        ) : (
+                            initial
+                        )}
+                    </span>
+                    <span className="sb-avatar-status" aria-label="En ligne" />
+                </span>
+                {!collapsed && (
+                    <>
+                        <span className="sb-user-meta">
+                            <span className="sb-user-name">{name}</span>
+                            <span className="sb-user-email">{email}</span>
+                        </span>
+                        <span className="sb-user-chev">
+                            <ChevronUp className="h-3.5 w-3.5" />
+                        </span>
+                    </>
+                )}
+                {collapsed && (
+                    <span className="sb-tooltip" role="tooltip">
+                        {name}
+                    </span>
+                )}
+            </button>
+
+            {open && (
+                <div
+                    className="sb-menu"
+                    role="menu"
+                    style={
+                        collapsed
+                            ? {
+                                  left: '100%',
+                                  right: 'auto',
+                                  marginLeft: 12,
+                                  bottom: 0,
+                                  width: 220,
+                              }
+                            : undefined
+                    }
+                >
+                    {collapsed && (
+                        <div className="sb-menu-header">
+                            <div className="sb-menu-name">{name}</div>
+                            <div className="sb-menu-email">{email}</div>
+                        </div>
+                    )}
+                    <button
+                        type="button"
+                        className="sb-menu-item"
+                        role="menuitem"
+                        onClick={() => {
+                            setOpen(false);
+                            router.push('/settings');
+                        }}
+                    >
+                        <UserIcon className="h-4 w-4" /> Mon profil
+                    </button>
+                    <button
+                        type="button"
+                        className="sb-menu-item"
+                        role="menuitem"
+                        onClick={() => {
+                            setOpen(false);
+                            router.push('/settings');
+                        }}
+                    >
+                        <Settings className="h-4 w-4" /> Préférences
+                    </button>
+                    <button
+                        type="button"
+                        className="sb-menu-item"
+                        role="menuitem"
+                        onClick={() => {
+                            setOpen(false);
+                            window.location.href = 'mailto:support@andoxa.app';
+                        }}
+                    >
+                        <HelpCircle className="h-4 w-4" /> Aide & support
+                    </button>
+                    <div className="sb-menu-divider" />
+                    <button
+                        type="button"
+                        className="sb-menu-item sb-menu-item--danger"
+                        role="menuitem"
+                        onClick={onLogout}
+                    >
+                        <LogOut className="h-4 w-4" /> Se déconnecter
+                    </button>
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -95,9 +463,9 @@ export function Sidebar() {
     const { workspace, profile, user, switchWorkspace, refresh } =
         useWorkspace();
     const [isCollapsed, setIsCollapsed] = useState(false);
-    const [orgOpen, setOrgOpen] = useState(false);
     const [orgs, setOrgs] = useState<Organization[]>([]);
     const [orgsLoaded, setOrgsLoaded] = useState(false);
+    const [addOrgOpen, setAddOrgOpen] = useState(false);
 
     const { unseenCount, markAllSeen } = useMessagingRealtime();
     const { data: unipileMe, isPending: unipilePending } = useLinkedInAccount();
@@ -122,24 +490,24 @@ export function Sidebar() {
         }
     }, [user?.id]);
 
+    // Preload orgs once so we always know whether to render the dropdown's
+    // single-org case correctly (we still show the dropdown either way, but
+    // we want the list to be ready when the user opens it).
     useEffect(() => {
-        if (orgOpen && !orgsLoaded) {
-            loadOrgs();
+        if (!orgsLoaded && user?.id) {
+            void loadOrgs();
         }
-    }, [orgOpen, orgsLoaded, loadOrgs]);
+    }, [orgsLoaded, user?.id, loadOrgs]);
 
     const handleSwitch = async (orgId: string) => {
         try {
             await switchWorkspace(orgId);
             refresh?.();
-            setOrgOpen(false);
             setOrgsLoaded(false);
         } catch {
             // silent
         }
     };
-
-    const displayName = cleanOrgName(workspace?.name);
 
     const routePlan = normalizePlanIdForRoutes(
         workspace?.plan,
@@ -148,7 +516,6 @@ export function Sidebar() {
     const mainNavItems = MAIN_NAV_ITEMS.filter((item) =>
         canAccessRoute(routePlan, item.href)
     );
-
     const mainNavItemsWithBadges = mainNavItems.map((item) => {
         if (item.href === '/messagerie' && unseenCount > 0) {
             return { ...item, badge: unseenCount };
@@ -161,129 +528,93 @@ export function Sidebar() {
     const displayUserEmail = profile?.email || user?.email || '';
 
     return (
-        <aside
-            className={cn(
-                'flex h-full flex-col border-r bg-card transition-all duration-300',
-                isCollapsed ? 'w-16' : 'w-64'
-            )}
-        >
-            <div className="flex h-16 shrink-0 items-center justify-between border-b px-4">
-                <Link
-                    href="/"
-                    className={cn(
-                        'flex min-w-0 flex-1 items-center justify-start transition-opacity hover:opacity-80',
-                        isCollapsed && 'justify-center'
-                    )}
-                >
-                    <LogoDisplay
-                        collapsed={isCollapsed}
-                        className={cn(isCollapsed ? 'h-8 w-8' : 'h-5 w-auto')}
-                    />
-                </Link>
-                <button
-                    onClick={() => setIsCollapsed(!isCollapsed)}
-                    className="shrink-0 rounded-lg p-1.5 hover:bg-accent"
-                    aria-label={
+        <>
+            <aside
+                className={cn(
+                    'sb',
+                    isCollapsed ? 'sb--collapsed' : 'sb--expanded'
+                )}
+                aria-label="Navigation principale"
+            >
+                <div
+                    className="sb-header"
+                    style={
                         isCollapsed
-                            ? 'Développer la barre latérale'
-                            : 'Réduire la barre latérale'
+                            ? { justifyContent: 'center', padding: '14px 0' }
+                            : undefined
                     }
                 >
-                    {isCollapsed ? (
-                        <ChevronRight className="h-4 w-4" />
-                    ) : (
-                        <ChevronLeft className="h-4 w-4" />
+                    {!isCollapsed && (
+                        <Link href="/" className="sb-logo" aria-label="Accueil">
+                            <LogoDisplay
+                                collapsed={false}
+                                className="h-6 w-auto"
+                            />
+                        </Link>
                     )}
-                </button>
-            </div>
+                    {!isCollapsed && (
+                        <button
+                            type="button"
+                            className="sb-collapse-btn"
+                            onClick={() => setIsCollapsed(true)}
+                            aria-label="Réduire la barre latérale"
+                            title="Réduire"
+                        >
+                            <ChevronLeft className="h-4 w-4" />
+                        </button>
+                    )}
+                    {isCollapsed && (
+                        <Link
+                            href="/"
+                            aria-label="Accueil"
+                            className="inline-flex"
+                        >
+                            <LogoDisplay collapsed={true} className="h-8 w-8" />
+                        </Link>
+                    )}
+                </div>
 
-            <nav className="flex-1 overflow-auto p-2">
-                <ul className="space-y-1">
-                    <li>
-                        <Popover open={orgOpen} onOpenChange={setOrgOpen}>
-                            <PopoverTrigger asChild>
-                                <button
-                                    type="button"
-                                    className={cn(
-                                        'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-accent',
-                                        isCollapsed && 'justify-center px-2'
-                                    )}
-                                    title={
-                                        isCollapsed ? displayName : undefined
-                                    }
-                                >
-                                    <OrgLogoThumb
-                                        logoUrl={workspace?.logo_url}
-                                        className={cn(
-                                            isCollapsed ? 'h-8 w-8' : 'h-7 w-7'
-                                        )}
-                                    />
-                                    {!isCollapsed && (
-                                        <>
-                                            <span className="truncate flex-1 text-left">
-                                                {displayName}
-                                            </span>
-                                            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                        </>
-                                    )}
-                                </button>
-                            </PopoverTrigger>
-                            <PopoverContent
-                                className="w-64 p-1"
-                                align="start"
-                                side="bottom"
-                            >
-                                <p className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                    Organisations
-                                </p>
-                                {orgs.length === 0 && orgsLoaded && (
-                                    <p className="px-2 py-2 text-xs text-muted-foreground">
-                                        Aucune organisation
-                                    </p>
-                                )}
-                                {orgs.map((org) => {
-                                    const isActive = org.id === workspace?.id;
-                                    return (
-                                        <button
-                                            key={org.id}
-                                            type="button"
-                                            onClick={() =>
-                                                !isActive &&
-                                                handleSwitch(org.id)
-                                            }
-                                            className={cn(
-                                                'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
-                                                isActive
-                                                    ? 'bg-accent font-medium'
-                                                    : 'hover:bg-accent text-muted-foreground hover:text-foreground'
-                                            )}
-                                        >
-                                            <OrgLogoThumb
-                                                logoUrl={org.logo_url}
-                                            />
-                                            <span className="min-w-0 flex-1 truncate text-left">
-                                                {cleanOrgName(org.name)}
-                                            </span>
-                                            {isActive && (
-                                                <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
-                                            )}
-                                        </button>
-                                    );
-                                })}
-                            </PopoverContent>
-                        </Popover>
-                    </li>
-                    <li aria-hidden="true">
-                        <div className="my-1 border-t" />
-                    </li>
-                    {mainNavItemsWithBadges.map((item) => {
-                        const isActive = pathname?.startsWith(item.href);
-                        const Icon = item.icon;
-                        const badge = item.badge ?? 0;
+                {isCollapsed && (
+                    <div className="sb-collapsed-controls">
+                        <button
+                            type="button"
+                            className="sb-collapse-btn"
+                            onClick={() => setIsCollapsed(false)}
+                            aria-label="Déplier la barre latérale"
+                            title="Déplier"
+                        >
+                            <ChevronRight className="h-4 w-4" />
+                        </button>
+                    </div>
+                )}
 
-                        return (
-                            <li key={item.href}>
+                <OrgSwitcher
+                    collapsed={isCollapsed}
+                    organizations={orgs}
+                    activeOrgId={workspace?.id}
+                    activeOrg={{
+                        name: workspace?.name ?? 'Mon organisation',
+                        plan: workspace?.plan,
+                        logo_url: workspace?.logo_url,
+                    }}
+                    onSwitch={handleSwitch}
+                    onAdd={() => setAddOrgOpen(true)}
+                />
+
+                <nav className="sb-nav" aria-label="Sections">
+                    <div className="sb-nav-group">
+                        {mainNavItemsWithBadges.map((item) => {
+                            const isActive = pathname?.startsWith(item.href);
+                            const Icon = item.icon;
+                            const badge = item.badge ?? 0;
+                            const showLock =
+                                showUnipileNavLock &&
+                                (item.href === '/messagerie' ||
+                                    item.href === '/campaigns' ||
+                                    item.href === '/workflows');
+                            return (
                                 <Link
+                                    key={item.href}
                                     href={item.href}
                                     onClick={() => {
                                         if (
@@ -293,125 +624,110 @@ export function Sidebar() {
                                             void markAllSeen();
                                         }
                                     }}
+                                    aria-current={isActive ? 'page' : undefined}
                                     className={cn(
-                                        'relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                                        isActive
-                                            ? 'bg-primary text-primary-foreground'
-                                            : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                                        isCollapsed && 'justify-center px-2'
+                                        'sb-item',
+                                        isActive && 'sb-item--active',
+                                        isCollapsed && 'sb-item--collapsed'
                                     )}
                                     title={isCollapsed ? item.label : undefined}
                                 >
-                                    <span className="relative shrink-0">
-                                        <Icon className="h-5 w-5" />
-                                        {isCollapsed && badge > 0 && (
-                                            <span
-                                                className={cn(
-                                                    'absolute -right-1.5 -top-1.5 flex items-center justify-center rounded-full bg-red-500 font-semibold leading-none text-white',
-                                                    badge > 99
-                                                        ? 'h-4 min-w-4 px-0.5 text-[9px]'
-                                                        : 'h-4 min-w-4 px-0.5 text-[10px]'
-                                                )}
-                                                aria-label={`${badge} message${badge > 1 ? 's' : ''} non lu${badge > 1 ? 's' : ''}`}
-                                            >
-                                                {badge > 99 ? '99+' : badge}
-                                            </span>
-                                        )}
+                                    <span className="sb-icon">
+                                        <Icon className="h-[18px] w-[18px]" />
                                     </span>
                                     {!isCollapsed && (
                                         <>
-                                            <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                                                <span className="truncate">
-                                                    {item.label}
-                                                </span>
-                                                {showUnipileNavLock &&
-                                                    (item.href ===
-                                                        '/messagerie' ||
-                                                        item.href ===
-                                                            '/campaigns' ||
-                                                        item.href ===
-                                                            '/workflows') && (
-                                                        <Lock
-                                                            className={cn(
-                                                                'h-3 w-3 shrink-0',
-                                                                isActive
-                                                                    ? 'text-primary-foreground/85'
-                                                                    : 'text-muted-foreground'
-                                                            )}
-                                                            aria-hidden
-                                                        />
-                                                    )}
+                                            <span className="sb-label">
+                                                {item.label}
+                                                {showLock && (
+                                                    <Lock
+                                                        className="sb-lock"
+                                                        aria-hidden
+                                                    />
+                                                )}
                                             </span>
-                                            {badge > 0 ? (
-                                                <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+                                            {badge > 0 && (
+                                                <span className="sb-badge">
                                                     {badge > 99 ? '99+' : badge}
                                                 </span>
-                                            ) : null}
+                                            )}
                                         </>
                                     )}
+                                    {isCollapsed && badge > 0 && (
+                                        <span
+                                            className="sb-badge sb-badge--dot"
+                                            aria-hidden="true"
+                                        />
+                                    )}
+                                    {isCollapsed && (
+                                        <span
+                                            className="sb-tooltip"
+                                            role="tooltip"
+                                        >
+                                            {item.label}
+                                            {badge > 0 && (
+                                                <span className="sb-tooltip-badge">
+                                                    {badge > 99 ? '99+' : badge}
+                                                </span>
+                                            )}
+                                        </span>
+                                    )}
                                 </Link>
-                            </li>
-                        );
-                    })}
-                </ul>
-            </nav>
+                            );
+                        })}
+                    </div>
+                </nav>
 
-            <div className="border-t p-2">
-                <ul className="space-y-1">
-                    {FOOTER_NAV_ITEMS.map((item) => {
-                        const isActive = pathname?.startsWith(item.href);
-                        const Icon = item.icon;
-
-                        return (
-                            <li key={item.href}>
+                <div className="sb-footer">
+                    <div className="sb-nav-group" style={{ padding: 0 }}>
+                        {FOOTER_NAV_ITEMS.map((item) => {
+                            const isActive = pathname?.startsWith(item.href);
+                            const Icon = item.icon;
+                            return (
                                 <Link
+                                    key={item.href}
                                     href={item.href}
+                                    aria-current={isActive ? 'page' : undefined}
                                     className={cn(
-                                        'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                                        isActive
-                                            ? 'bg-primary text-primary-foreground'
-                                            : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                                        isCollapsed && 'justify-center px-2'
+                                        'sb-item',
+                                        isActive && 'sb-item--active',
+                                        isCollapsed && 'sb-item--collapsed'
                                     )}
                                     title={isCollapsed ? item.label : undefined}
                                 >
-                                    <Icon className="h-5 w-5 shrink-0" />
-                                    {!isCollapsed && <span>{item.label}</span>}
+                                    <span className="sb-icon">
+                                        <Icon className="h-[18px] w-[18px]" />
+                                    </span>
+                                    {!isCollapsed && (
+                                        <span className="sb-label">
+                                            {item.label}
+                                        </span>
+                                    )}
+                                    {isCollapsed && (
+                                        <span
+                                            className="sb-tooltip"
+                                            role="tooltip"
+                                        >
+                                            {item.label}
+                                        </span>
+                                    )}
                                 </Link>
-                            </li>
-                        );
-                    })}
-                </ul>
-            </div>
-
-            <div className="border-t p-4">
-                <div
-                    className={cn(
-                        'flex items-center gap-3',
-                        isCollapsed && 'justify-center'
-                    )}
-                >
-                    <Avatar className="h-8 w-8 shrink-0">
-                        <AvatarImage
-                            src={profile?.avatar_url ?? undefined}
-                            alt=""
-                        />
-                        <AvatarFallback className="bg-muted text-sm font-medium">
-                            {profile?.full_name?.charAt(0) || 'U'}
-                        </AvatarFallback>
-                    </Avatar>
-                    {!isCollapsed && (
-                        <div className="min-w-0 flex-1 overflow-hidden">
-                            <p className="truncate text-sm font-medium">
-                                {displayUserName}
-                            </p>
-                            <p className="truncate text-xs text-muted-foreground">
-                                {displayUserEmail}
-                            </p>
-                        </div>
-                    )}
+                            );
+                        })}
+                    </div>
+                    <UserBlock
+                        collapsed={isCollapsed}
+                        name={displayUserName}
+                        email={displayUserEmail}
+                        avatarUrl={profile?.avatar_url}
+                    />
                 </div>
-            </div>
-        </aside>
+            </aside>
+
+            <AddOrganizationModal
+                open={addOrgOpen}
+                onClose={() => setAddOrgOpen(false)}
+            />
+        </>
     );
 }

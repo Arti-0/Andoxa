@@ -1,71 +1,64 @@
-import type { PlanId } from "@/lib/config/plans-config";
+import { isPlanId, type PlanId } from "@/lib/config/plans-config";
 
 /**
- * Transitional: Essential + Stripe trial (`plan=essential`, `subscription_status=trialing`)
- * is treated as Business for quotas and route/API gates. DB plan and role permissions are unchanged.
- * Rate limits (Upstash per-route) are unaffected.
+ * Effective-plan resolution.
  *
- * Set to `false` to restore trial caps + Essential-only routes for trialing Essential.
+ * After the `solo|team|custom` migration there's no more "essential trialing
+ * unlocks Pro" promo — every paid plan gets every feature, so feature gating
+ * lives behind `isPaidPlan` / `isMultiSeatPlan` in `plans-config.ts` instead.
+ *
+ * The only special case left is `solo` + `trialing` → use the smaller trial
+ * caps (1 000 prospects) so trial accounts can't import a million rows for
+ * free. Legacy `essential|pro|business|free` strings — left over from the
+ * old DB layout — are mapped onto the new IDs as a defensive fallback (the
+ * DB constraint M-PLAN-1 makes them unreachable in practice).
  */
-export const TRIAL_ESSENTIAL_PROMO_FULL_ACCESS = true;
 
-function isEssentialStripeTrial(
-  plan: string | null | undefined,
-  subscriptionStatus: string | null | undefined
-): boolean {
-  return (
-    (plan ?? "").toLowerCase() === "essential" &&
-    subscriptionStatus === "trialing"
-  );
+/** Normalize a raw DB plan string to a canonical PlanId. */
+function coercePlan(plan: string | null | undefined): PlanId {
+  const p = (plan ?? "").toLowerCase().trim();
+  if (isPlanId(p)) return p;
+  // Defensive: legacy strings if a row predates M-PLAN-1.
+  if (p === "free" || p === "essential") return "solo";
+  if (p === "pro" || p === "business") return "team";
+  return "trial";
 }
 
 /**
- * Plan column on `organizations` during Stripe trial is usually `essential`.
- * When {@link TRIAL_ESSENTIAL_PROMO_FULL_ACCESS} is false, limits match the trial row in plans-config.
+ * Map a DB (plan, subscription_status) tuple to the PlanId we should use when
+ * looking up **usage limits** (prospects, campaigns, …).
+ *
+ * Solo + trialing → `trial` row in `PLAN_LIMITS` (smaller caps).
  */
 export function effectivePlanIdForLimits(
   plan: string | null | undefined,
   subscriptionStatus: string | null | undefined
 ): PlanId {
-  if (
-    TRIAL_ESSENTIAL_PROMO_FULL_ACCESS &&
-    isEssentialStripeTrial(plan, subscriptionStatus)
-  ) {
-    return "business";
-  }
-
-  const p = (plan ?? "essential").toLowerCase();
-  if (p === "essential" && subscriptionStatus === "trialing") {
+  const p = coercePlan(plan);
+  if (p === "solo" && subscriptionStatus === "trialing") {
     return "trial";
   }
-  if (p === "trial" || p === "essential" || p === "pro" || p === "business" || p === "demo") {
-    return p as PlanId;
-  }
-  if (p === "free") {
-    return "essential";
-  }
-  return "trial";
+  return p;
 }
 
-/** Map DB plan to a PlanId used for route/feature gating (not limit rows). */
+/**
+ * Map a DB (plan, subscription_status) tuple to the PlanId we should use when
+ * answering **route access / feature gates**.
+ *
+ * Today this returns the same value as `effectivePlanIdForLimits`, because
+ * route access doesn't differ between trial and solo (both have the full
+ * feature surface, only the caps differ). Kept as a separate function so we
+ * can diverge later if needed.
+ */
 export function normalizePlanIdForRoutes(
   plan: string | null | undefined,
   subscriptionStatus: string | null | undefined
 ): PlanId {
-  if (
-    TRIAL_ESSENTIAL_PROMO_FULL_ACCESS &&
-    isEssentialStripeTrial(plan, subscriptionStatus)
-  ) {
-    return "business";
+  // Trial accounts should still be able to access every paid route — so we
+  // return `solo` (not `trial`) for routing purposes.
+  const p = coercePlan(plan);
+  if (p === "solo" && subscriptionStatus === "trialing") {
+    return "solo";
   }
-
-  const p = (plan ?? "essential").toLowerCase();
-  if (p === "free") return "essential";
-  if (p === "trial" || p === "essential" || p === "pro" || p === "business" || p === "demo") {
-    if (p === "essential" && subscriptionStatus === "trialing") {
-      return "essential";
-    }
-    return p as PlanId;
-  }
-  return "essential";
+  return p;
 }

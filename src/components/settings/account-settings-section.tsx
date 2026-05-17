@@ -10,7 +10,7 @@ import {
   settingsLabelClass,
 } from "./settings-card";
 import { cn } from "@/lib/utils";
-import { LogOut, UserX } from "lucide-react";
+import { LogOut, UserX, AlertTriangle } from "lucide-react";
 
 const actionBtnBase =
   "flex flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition-colors sm:min-w-[140px]";
@@ -70,7 +70,7 @@ export function AccountSettingsSection() {
   };
 
   return (
-    <SettingsCard title="Zone de danger" variant="danger">
+    <SettingsCard title="Zone de danger" description="Actions irréversibles sur votre compte" icon={<AlertTriangle />} variant="danger">
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <button

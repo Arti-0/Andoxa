@@ -1,0 +1,628 @@
+-- M-RLS-1: replace auth.user_metadata with auth.app_metadata in RLS policies.
+-- See docs/AUDIT/03-SCHEMA-RECONCILIATION.md §M-RLS-1 (Supabase advisor 0015).
+--
+-- user_metadata is editable by the end user, so any RLS policy that reads
+-- it for authorisation can be bypassed. We move the canonical claim into
+-- raw_app_meta_data (read-only from the client) and keep raw_user_meta_data
+-- in sync only as a 24h transition fallback while JWTs refresh.
+--
+-- 35 policies on 11 tables are recreated.
+
+BEGIN;
+
+-- 1. Trigger writes both app_metadata (canonical) and user_metadata (back-compat)
+CREATE OR REPLACE FUNCTION public.sync_active_org_to_user_metadata()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
+DECLARE
+  v_role text;
+BEGIN
+  SELECT role INTO v_role
+  FROM public.organization_members
+  WHERE user_id = NEW.id
+    AND organization_id = NEW.active_organization_id
+  LIMIT 1;
+
+  UPDATE auth.users
+  SET raw_app_meta_data = COALESCE(raw_app_meta_data, '{}'::jsonb)
+                          || jsonb_build_object(
+                              'active_organization_id', NEW.active_organization_id::text,
+                              'active_organization_role', v_role
+                            ),
+      raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb)
+                           || jsonb_build_object(
+                               'active_organization_id', NEW.active_organization_id::text,
+                               'active_organization_role', v_role
+                             )
+  WHERE id = NEW.id;
+  RETURN NEW;
+END;
+$$;
+
+-- 2. Backfill app_metadata for every existing profile
+UPDATE auth.users u
+SET raw_app_meta_data = COALESCE(u.raw_app_meta_data, '{}'::jsonb)
+                        || jsonb_build_object(
+                            'active_organization_id', p.active_organization_id::text,
+                            'active_organization_role', om.role
+                          )
+FROM public.profiles p
+LEFT JOIN public.organization_members om
+  ON om.user_id = p.id
+ AND om.organization_id = p.active_organization_id
+WHERE p.id = u.id
+  AND p.active_organization_id IS NOT NULL;
+
+-- 3. Recreate every flagged policy. The COALESCE(app_metadata, user_metadata)
+--    fallback gives the in-flight JWTs a 24h grace window. Drop the fallback
+--    in a follow-up migration once all tokens have rotated.
+
+-- =========================================================================
+-- bdd (4 policies)
+-- =========================================================================
+DROP POLICY IF EXISTS bdd_select_jwt_org ON public.bdd;
+CREATE POLICY bdd_select_jwt_org ON public.bdd
+  FOR SELECT TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS bdd_insert_jwt_org ON public.bdd;
+CREATE POLICY bdd_insert_jwt_org ON public.bdd
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS bdd_update_jwt_org ON public.bdd;
+CREATE POLICY bdd_update_jwt_org ON public.bdd
+  FOR UPDATE TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS bdd_delete_jwt_org ON public.bdd;
+CREATE POLICY bdd_delete_jwt_org ON public.bdd
+  FOR DELETE TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+
+-- =========================================================================
+-- call_sessions (4 policies)
+-- =========================================================================
+DROP POLICY IF EXISTS call_sessions_select_jwt_org ON public.call_sessions;
+CREATE POLICY call_sessions_select_jwt_org ON public.call_sessions
+  FOR SELECT TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS call_sessions_insert_jwt_org ON public.call_sessions;
+CREATE POLICY call_sessions_insert_jwt_org ON public.call_sessions
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS call_sessions_update_jwt_org ON public.call_sessions;
+CREATE POLICY call_sessions_update_jwt_org ON public.call_sessions
+  FOR UPDATE TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+  );
+DROP POLICY IF EXISTS call_sessions_delete_jwt_org ON public.call_sessions;
+CREATE POLICY call_sessions_delete_jwt_org ON public.call_sessions
+  FOR DELETE TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+  );
+
+-- =========================================================================
+-- events (4 policies)
+-- =========================================================================
+DROP POLICY IF EXISTS events_select_jwt_org ON public.events;
+CREATE POLICY events_select_jwt_org ON public.events
+  FOR SELECT TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS events_insert_jwt_org ON public.events;
+CREATE POLICY events_insert_jwt_org ON public.events
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS events_update_jwt_org ON public.events;
+CREATE POLICY events_update_jwt_org ON public.events
+  FOR UPDATE TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS events_delete_jwt_org ON public.events;
+CREATE POLICY events_delete_jwt_org ON public.events
+  FOR DELETE TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+
+-- =========================================================================
+-- prospect_activity (2 policies)
+-- =========================================================================
+DROP POLICY IF EXISTS prospect_activity_select_jwt_org ON public.prospect_activity;
+CREATE POLICY prospect_activity_select_jwt_org ON public.prospect_activity
+  FOR SELECT TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS prospect_activity_insert_jwt_org ON public.prospect_activity;
+CREATE POLICY prospect_activity_insert_jwt_org ON public.prospect_activity
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+
+-- =========================================================================
+-- enrichment_jobs (2 policies)
+-- =========================================================================
+DROP POLICY IF EXISTS enrichment_jobs_select_jwt_org ON public.enrichment_jobs;
+CREATE POLICY enrichment_jobs_select_jwt_org ON public.enrichment_jobs
+  FOR SELECT TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS enrichment_jobs_insert_jwt_org ON public.enrichment_jobs;
+CREATE POLICY enrichment_jobs_insert_jwt_org ON public.enrichment_jobs
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+
+-- =========================================================================
+-- prospects (4 policies, with extra IS NOT NULL guard)
+-- =========================================================================
+DROP POLICY IF EXISTS prospects_select_jwt_org ON public.prospects;
+CREATE POLICY prospects_select_jwt_org ON public.prospects
+  FOR SELECT TO authenticated
+  USING (
+    organization_id IS NOT NULL
+    AND (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS prospects_insert_jwt_org ON public.prospects;
+CREATE POLICY prospects_insert_jwt_org ON public.prospects
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    organization_id IS NOT NULL
+    AND (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS prospects_update_jwt_org ON public.prospects;
+CREATE POLICY prospects_update_jwt_org ON public.prospects
+  FOR UPDATE TO authenticated
+  USING (
+    organization_id IS NOT NULL
+    AND (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS prospects_delete_jwt_org ON public.prospects;
+CREATE POLICY prospects_delete_jwt_org ON public.prospects
+  FOR DELETE TO authenticated
+  USING (
+    organization_id IS NOT NULL
+    AND (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+
+-- =========================================================================
+-- workflows (4 policies)
+-- =========================================================================
+DROP POLICY IF EXISTS workflows_select_jwt_org ON public.workflows;
+CREATE POLICY workflows_select_jwt_org ON public.workflows
+  FOR SELECT TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS workflows_insert_jwt_org ON public.workflows;
+CREATE POLICY workflows_insert_jwt_org ON public.workflows
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS workflows_update_jwt_org ON public.workflows;
+CREATE POLICY workflows_update_jwt_org ON public.workflows
+  FOR UPDATE TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS workflows_delete_jwt_org ON public.workflows;
+CREATE POLICY workflows_delete_jwt_org ON public.workflows
+  FOR DELETE TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+
+-- =========================================================================
+-- workflow_runs (4 policies)
+-- =========================================================================
+DROP POLICY IF EXISTS workflow_runs_select_jwt_org ON public.workflow_runs;
+CREATE POLICY workflow_runs_select_jwt_org ON public.workflow_runs
+  FOR SELECT TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS workflow_runs_insert_jwt_org ON public.workflow_runs;
+CREATE POLICY workflow_runs_insert_jwt_org ON public.workflow_runs
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS workflow_runs_update_jwt_org ON public.workflow_runs;
+CREATE POLICY workflow_runs_update_jwt_org ON public.workflow_runs
+  FOR UPDATE TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+DROP POLICY IF EXISTS workflow_runs_delete_jwt_org ON public.workflow_runs;
+CREATE POLICY workflow_runs_delete_jwt_org ON public.workflow_runs
+  FOR DELETE TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    ) <> ''
+  );
+
+-- =========================================================================
+-- workflow_step_executions (3 policies — joined via workflow_runs)
+-- =========================================================================
+DROP POLICY IF EXISTS workflow_step_executions_select_jwt_org ON public.workflow_step_executions;
+CREATE POLICY workflow_step_executions_select_jwt_org ON public.workflow_step_executions
+  FOR SELECT TO authenticated
+  USING (
+    run_id IN (
+      SELECT wr.id FROM public.workflow_runs wr
+      WHERE (wr.organization_id)::text = COALESCE(
+        ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+        ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+        ''
+      )
+      AND COALESCE(
+        ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+        ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+        ''
+      ) <> ''
+    )
+  );
+DROP POLICY IF EXISTS workflow_step_executions_insert_jwt_org ON public.workflow_step_executions;
+CREATE POLICY workflow_step_executions_insert_jwt_org ON public.workflow_step_executions
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    run_id IN (
+      SELECT wr.id FROM public.workflow_runs wr
+      WHERE (wr.organization_id)::text = COALESCE(
+        ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+        ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+        ''
+      )
+      AND COALESCE(
+        ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+        ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+        ''
+      ) <> ''
+    )
+  );
+DROP POLICY IF EXISTS workflow_step_executions_update_jwt_org ON public.workflow_step_executions;
+CREATE POLICY workflow_step_executions_update_jwt_org ON public.workflow_step_executions
+  FOR UPDATE TO authenticated
+  USING (
+    run_id IN (
+      SELECT wr.id FROM public.workflow_runs wr
+      WHERE (wr.organization_id)::text = COALESCE(
+        ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+        ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+        ''
+      )
+      AND COALESCE(
+        ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+        ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+        ''
+      ) <> ''
+    )
+  );
+
+-- =========================================================================
+-- organization_members (3 policies — role check inside)
+-- =========================================================================
+DROP POLICY IF EXISTS organization_members_select ON public.organization_members;
+CREATE POLICY organization_members_select ON public.organization_members
+  FOR SELECT TO authenticated
+  USING (
+    user_id = auth.uid()
+    OR (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+  );
+DROP POLICY IF EXISTS organization_members_insert_by_owner_admin ON public.organization_members;
+CREATE POLICY organization_members_insert_by_owner_admin ON public.organization_members
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_role'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_role'),
+      ''
+    ) IN ('owner','admin')
+  );
+DROP POLICY IF EXISTS organization_members_delete_by_owner_admin ON public.organization_members;
+CREATE POLICY organization_members_delete_by_owner_admin ON public.organization_members
+  FOR DELETE TO authenticated
+  USING (
+    (organization_id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+    AND COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_role'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_role'),
+      ''
+    ) IN ('owner','admin')
+    AND role <> 'owner'
+  );
+
+-- =========================================================================
+-- organizations (1 policy)
+-- =========================================================================
+DROP POLICY IF EXISTS organizations_select ON public.organizations;
+CREATE POLICY organizations_select ON public.organizations
+  FOR SELECT TO authenticated
+  USING (
+    owner_id = auth.uid()
+    OR (id)::text = COALESCE(
+      ((auth.jwt() -> 'app_metadata') ->> 'active_organization_id'),
+      ((auth.jwt() -> 'user_metadata') ->> 'active_organization_id'),
+      ''
+    )
+  );
+
+COMMIT;

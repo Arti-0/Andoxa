@@ -32,6 +32,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ProspectStateStrip } from "@/components/prospect/prospect-state-strip";
 import { CampaignModal } from "@/components/campaigns/campaign-modal";
+import { tierSupportsPremiumInviteFeatures } from "@/lib/linkedin/tier";
 import type { CampaignConfig } from "@/lib/campaigns/types";
 import { WorkflowEnrollModal } from "@/components/workflows/workflow-enroll-modal";
 import { ActivityFeed } from "@/components/design";
@@ -110,7 +111,7 @@ export function ProspectProfileContent({
   const [campaignConfig, setCampaignConfig] = useState<CampaignConfig | null>(null);
   const [editing, setEditing] = useState(false);
   const { data: linkedInAccount } = useLinkedInAccount();
-  const linkedinIsPremium = linkedInAccount?.linkedin_is_premium ?? false;
+  const linkedInTier = linkedInAccount?.linkedin_tier ?? "standard";
 
   const hasContact = prospect.email || prospect.phone || prospect.website || prospect.linkedin;
   const hasLinkedin = !!prospect.linkedin?.trim();
@@ -206,7 +207,9 @@ export function ProspectProfileContent({
   const openInviteModal = () => {
     setCampaignConfig({
       channel: "linkedin",
-      linkedInAction: linkedinIsPremium ? "invite_with_note" : "invite",
+      linkedInAction: tierSupportsPremiumInviteFeatures(linkedInTier)
+        ? "invite_with_note"
+        : "invite",
     });
     setShowCampaignModal(true);
   };
@@ -364,7 +367,7 @@ export function ProspectProfileContent({
           invalidateProspect();
           if (wasContact) router.push('/messagerie');
         }}
-        isPremium={linkedinIsPremium}
+        linkedInTier={linkedInTier}
       />
 
       <WorkflowEnrollModal

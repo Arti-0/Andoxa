@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Building2 } from "lucide-react";
+import { Building2, AlertTriangle } from "lucide-react";
 import { useWorkspace } from "@/lib/workspace";
 import { Input } from "@/components/ui/input";
 import { SettingsCard, settingsFieldClass } from "./settings-card";
@@ -41,7 +41,7 @@ export function OrganizationDangerSection() {
   };
 
   return (
-    <SettingsCard title="Zone de danger" variant="danger">
+    <SettingsCard title="Zone de danger" description="Actions irréversibles sur cette organisation" icon={<AlertTriangle />} variant="danger">
       <div className="flex flex-col gap-4">
         <button
           type="button"

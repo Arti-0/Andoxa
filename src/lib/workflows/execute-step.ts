@@ -4,16 +4,30 @@ import { env } from "@/lib/config/environment";
 import { normalizePhoneForWhatsApp } from "@/lib/utils/phone";
 import {
   getLinkedInAccountIdForUserId,
-  getWhatsAppAccountIdForUserId,
+  resolveWhatsAppAccountIdForOrganization,
 } from "@/lib/unipile/account";
-import { applyMessageVariables, extractLinkedInSlug } from "@/lib/unipile/campaign";
+import {
+  applyMessageVariables,
+  extractLinkedInSlug,
+  sendWhatsAppMessage,
+} from "@/lib/unipile/campaign";
 import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";
 import {
   prospectHasInboundReplyAfter,
   prospectHasLinkedInInboundReply,
 } from "@/lib/unipile/linkedin-inbound-reply";
 import type { UnipileChat } from "@/lib/unipile/types";
-import type { Database } from "@/lib/types/supabase";
+import type { Database, Json } from "@/lib/types/supabase";
+import {
+  incrementUsageCounter,
+  weeklyPeriodKey,
+} from "@/lib/campaigns/throttle";
+import {
+  consumeLinkedInInviteQuota,
+  fetchLinkedInInviteWeeklyQuotaState,
+  LinkedInInviteWeeklyQuotaError,
+  nextUtcInstantWhenWeeklyInviteCounterResets,
+} from "@/lib/linkedin/weekly-invite-quota";
 import {
   logWorkflowRunCompleted,
   logWorkflowStepCompleted,
@@ -108,6 +122,28 @@ type StepHandlerResult = {
   conditionResult?: boolean;
 };
 
+async function assertProspectNotInActiveCampaign(ctx: HandlerContext): Promise<void> {
+  const orgId = ctx.run.organization_id;
+  if (!orgId) return;
+  const { data, error } = await ctx.supabase
+    .from("prospect_in_active_campaign")
+    .select("campaign_job_id")
+    .eq("organization_id", orgId)
+    .eq("prospect_id", ctx.prospect.id)
+    .limit(1);
+  if (error) {
+    console.error("[workflow] overlap view lookup failed", error);
+    throw new Error(
+      "Impossible de vérifier les campagnes actives. Réessayez dans un instant."
+    );
+  }
+  if (data?.length) {
+    throw new Error(
+      "Prospect déjà dans une campagne active — envoi interrompu pour éviter les doublons."
+    );
+  }
+}
+
 async function handleWait(ctx: HandlerContext): Promise<StepHandlerResult> {
   const hours = Number(ctx.config.durationHours);
   if (!Number.isFinite(hours) || hours <= 0) {
@@ -143,6 +179,8 @@ async function handleLinkedInInvite(
   ) {
     return { awaitingConnection: false };
   }
+
+  await assertProspectNotInActiveCampaign(ctx);
 
   const pendingId =
     typeof ctx.config.pending_provider_id === "string"
@@ -205,6 +243,24 @@ async function handleLinkedInInvite(
     return { awaitingConnection: false };
   }
 
+  // Atomic invite-quota reservation: check-and-increment in a single statement
+  // (race-free against concurrent workflow runs / campaigns for the same user).
+  const inviteWeekKey = weeklyPeriodKey();
+  const quota = await fetchLinkedInInviteWeeklyQuotaState(
+    ctx.supabase,
+    ctx.startedByUserId,
+    inviteWeekKey
+  );
+  const consumed = await consumeLinkedInInviteQuota(
+    ctx.supabase,
+    ctx.startedByUserId,
+    quota.cap,
+    inviteWeekKey
+  );
+  if (!consumed.ok) {
+    throw new LinkedInInviteWeeklyQuotaError(quota.cap, consumed.used);
+  }
+
   await unipileFetch("/users/invite", {
     method: "POST",
     body: JSON.stringify({
@@ -226,7 +282,7 @@ async function handleLinkedInInvite(
         ...ctx.config,
         pending_provider_id: providerId,
         pending_account_id: accountId,
-      },
+      } as Json,
       run_after: runAfter,
       status: "pending",
       updated_at: new Date().toISOString(),
@@ -246,6 +302,7 @@ async function handleLinkedInMessage(ctx: HandlerContext): Promise<void> {
   ) {
     return;
   }
+  await assertProspectNotInActiveCampaign(ctx);
   const accountId = await getLinkedInAccountIdForUserId(
     ctx.supabase,
     ctx.startedByUserId
@@ -296,12 +353,16 @@ async function handleLinkedInMessage(ctx: HandlerContext): Promise<void> {
 }
 
 async function handleWhatsAppMessage(ctx: HandlerContext): Promise<void> {
-  const accountId = await getWhatsAppAccountIdForUserId(
+  await assertProspectNotInActiveCampaign(ctx);
+  const accountId = await resolveWhatsAppAccountIdForOrganization(
     ctx.supabase,
+    ctx.run.organization_id,
     ctx.startedByUserId
   );
   if (!accountId) {
-    throw new Error("Aucun compte WhatsApp connecté pour l’utilisateur ayant lancé le workflow");
+    throw new Error(
+      "Aucun compte WhatsApp connecté pour ce workspace (connectez WhatsApp depuis Installation, ou un autre membre avec une boîte connectée doit lancer l’étape)."
+    );
   }
   const rawPhone = (ctx.prospect.phone ?? "").trim();
   if (!rawPhone) {
@@ -316,14 +377,20 @@ async function handleWhatsAppMessage(ctx: HandlerContext): Promise<void> {
   const text = applyMessageVariables(template, ctx.prospect, {});
 
   try {
-    await unipileFetch("/chats", {
-      method: "POST",
-      body: JSON.stringify({
-        account_id: accountId,
-        attendees_ids: [phone],
-        text,
-      }),
-    });
+    // Unipile's POST /chats needs multipart/form-data + a WhatsApp JID
+    // attendee — see sendWhatsAppMessage(). Plain JSON + bare phone silently
+    // fails for WhatsApp, which is why this step was broken.
+    const chat = await sendWhatsAppMessage({ accountId, phone, text });
+    if (chat?.id && ctx.run.organization_id) {
+      await ctx.supabase.from("unipile_chat_prospects").upsert(
+        {
+          prospect_id: ctx.prospect.id,
+          unipile_chat_id: chat.id,
+          organization_id: ctx.run.organization_id,
+        },
+        { onConflict: "prospect_id,unipile_chat_id" }
+      );
+    }
   } catch (err) {
     console.error("Unipile WA error (workflow):", err);
     throw err;
@@ -625,6 +692,19 @@ export async function processWorkflowStepExecution(
     delayOverrideMs = result.delayOverrideMs;
     conditionResult = result.conditionResult;
   } catch (err) {
+    if (err instanceof LinkedInInviteWeeklyQuotaError) {
+      await supabase
+        .from("workflow_step_executions")
+        .update({
+          status: "pending",
+          last_error: err.message,
+          run_after: nextUtcInstantWhenWeeklyInviteCounterResets(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", executionId);
+      return { outcome: "skipped", reason: "weekly_invite_quota" };
+    }
+
     const msg = err instanceof UnipileApiError ? err.message : String(err);
     const attempts = (execution.attempts ?? 0) + 1;
     const maxAttempts = execution.max_attempts ?? 5;

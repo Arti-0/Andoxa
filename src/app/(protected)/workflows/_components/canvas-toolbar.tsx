@@ -1,23 +1,43 @@
 "use client";
 
 // Canvas toolbar — visuals from design/whatsapp/wf-components.jsx CanvasToolbar.
-// Wired so Activer/Mettre en pause and Enregistrer hit the workflow API; zoom
-// is driven by xyflow's useReactFlow().
+// Uses app theme tokens (bg-card, border-border) so dark mode matches CRM/dashboard.
 
 import { useReactFlow } from "@xyflow/react";
 import { Icon, ICO } from "./icons";
 import { LaunchButton } from "./launch-button";
 import type { DesignStatus } from "./workflow-mapping";
+import { cn } from "@/lib/utils";
 
-const STATUS_CFG: Record<DesignStatus, { label: string; bg: string; color: string; dot: string }> = {
-  draft: { label: "Brouillon", bg: "#F1F5F9", color: "#475569", dot: "#94A3B8" },
-  active: { label: "Actif", bg: "#ECFDF5", color: "#15803D", dot: "#10B981" },
-  paused: { label: "En pause", bg: "#FFF7ED", color: "#C2410C", dot: "#F97316" },
-  error: { label: "Erreur", bg: "#FFF1F2", color: "#BE123C", dot: "#F43F5E" },
+const STATUS_CHIP: Record<
+  DesignStatus,
+  { label: string; pillClass: string; dotClass: string }
+> = {
+  draft: {
+    label: "Brouillon",
+    pillClass: "bg-muted text-muted-foreground",
+    dotClass: "bg-muted-foreground/50",
+  },
+  active: {
+    label: "Actif",
+    pillClass:
+      "bg-emerald-500/12 text-emerald-800 dark:text-emerald-300",
+    dotClass: "bg-emerald-500",
+  },
+  paused: {
+    label: "En pause",
+    pillClass:
+      "bg-orange-500/12 text-orange-900 dark:text-orange-300",
+    dotClass: "bg-orange-500",
+  },
+  error: {
+    label: "Erreur",
+    pillClass: "bg-rose-500/12 text-rose-800 dark:text-rose-300",
+    dotClass: "bg-rose-500",
+  },
 };
 
 interface CanvasToolbarProps {
-  workflowName: string;
   status: DesignStatus;
   isTemplate: boolean;
   saving: boolean;
@@ -25,7 +45,6 @@ interface CanvasToolbarProps {
   testing: boolean;
   /** True when the workflow has at least one validated published_definition. */
   canLaunch: boolean;
-  onBack: () => void;
   onSave: () => void;
   onToggleActive: () => void;
   onTest: () => void;
@@ -34,15 +53,16 @@ interface CanvasToolbarProps {
   onOpenSettings: () => void;
 }
 
+const btnNeutral =
+  "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-[13px] font-medium text-foreground hover:bg-accent/60 disabled:pointer-events-none disabled:opacity-60";
+
 export function CanvasToolbar({
-  workflowName,
   status,
   isTemplate,
   saving,
   togglingActive,
   testing,
   canLaunch,
-  onBack,
   onSave,
   onToggleActive,
   onTest,
@@ -50,246 +70,97 @@ export function CanvasToolbar({
   onOpenRuns,
   onOpenSettings,
 }: CanvasToolbarProps) {
-  const sc = STATUS_CFG[status];
+  const sc = STATUS_CHIP[status];
   const flow = useReactFlow();
 
   return (
-    <div
-      style={{
-        height: 52,
-        borderBottom: "1px solid #E2E8F0",
-        background: "white",
-        display: "flex",
-        alignItems: "center",
-        padding: "0 16px",
-        gap: 10,
-        flexShrink: 0,
-      }}
-    >
+    <div className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-border bg-card px-4 text-[13px]">
       <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          fontSize: 13,
-          color: "#64748B",
-          marginRight: 8,
-        }}
+        className={cn(
+          "flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold",
+          sc.pillClass,
+        )}
       >
-        <button
-          onClick={onBack}
-          style={{
-            cursor: "pointer",
-            color: "#0052D9",
-            fontWeight: 500,
-            background: "none",
-            border: "none",
-            padding: 0,
-            fontSize: 13,
-          }}
-        >
-          Workflows
-        </button>
-        <span>/</span>
-        <span
-          style={{
-            color: "#0F172A",
-            fontWeight: 600,
-            maxWidth: 320,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {workflowName}
-        </span>
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 5,
-          background: sc.bg,
-          padding: "3px 10px",
-          borderRadius: 20,
-          fontSize: 11.5,
-          fontWeight: 600,
-          color: sc.color,
-        }}
-      >
-        <div
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: sc.dot,
-          }}
-        />
+        <span className={cn("size-1.5 shrink-0 rounded-full", sc.dotClass)} />
         {sc.label}
       </div>
 
       {isTemplate && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 5,
-            background: "#EFF6FF",
-            padding: "3px 10px",
-            borderRadius: 20,
-            fontSize: 11.5,
-            fontWeight: 600,
-            color: "#1E3A8A",
-            border: "1px solid #BFDBFE",
-          }}
-        >
+        <div className="flex items-center gap-1.5 rounded-full border border-blue-500/35 bg-blue-500/10 px-2.5 py-0.5 text-[11.5px] font-semibold text-blue-700 dark:border-blue-400/30 dark:bg-blue-500/15 dark:text-blue-300">
           Modèle
         </div>
       )}
 
-      <div style={{ flex: 1 }} />
+      <div className="min-w-2 flex-1" />
 
       <button
+        type="button"
         onClick={onOpenRuns}
         title="Voir les prospects en parcours"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "6px 12px",
-          borderRadius: 8,
-          border: "1px solid #E2E8F0",
-          background: "white",
-          fontSize: 13,
-          fontWeight: 500,
-          color: "#374151",
-          cursor: "pointer",
-        }}
+        className={cn(btnNeutral, "text-foreground")}
       >
-        <Icon size={13} color="#64748B" d={ICO.workflows} />
+        <span className="text-muted-foreground">
+          <Icon size={13} color="currentColor" d={ICO.workflows} />
+        </span>
         Exécutions
       </button>
 
       <button
+        type="button"
         onClick={onOpenSettings}
         title="Paramètres du workflow"
         aria-label="Paramètres"
-        style={{
-          padding: 6,
-          borderRadius: 8,
-          border: "1px solid #E2E8F0",
-          background: "white",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: 30,
-          width: 30,
-        }}
+        className="flex size-[30px] shrink-0 items-center justify-center rounded-lg border border-border bg-background hover:bg-accent/60"
       >
-        <Icon size={14} color="#64748B" d={ICO.settings} />
+        <span className="text-muted-foreground">
+          <Icon size={14} color="currentColor" d={ICO.settings} />
+        </span>
       </button>
 
-      {/* Zoom — driven by xyflow */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          background: "#F8FAFC",
-          border: "1px solid #E2E8F0",
-          borderRadius: 8,
-          padding: "4px 8px",
-        }}
-      >
+      <div className="flex items-center gap-1 rounded-lg border border-border bg-muted px-2 py-1">
         <button
+          type="button"
           onClick={() => flow.zoomOut?.({ duration: 150 })}
-          style={{
-            border: "none",
-            background: "none",
-            cursor: "pointer",
-            color: "#64748B",
-            padding: "0 2px",
-            display: "flex",
-          }}
+          className="flex border-none bg-transparent p-px text-muted-foreground hover:text-foreground"
           aria-label="Dézoomer"
         >
-          <Icon size={14} color="#64748B" d={ICO.zoom_out} />
+          <Icon size={14} color="currentColor" d={ICO.zoom_out} />
         </button>
         <button
+          type="button"
           onClick={() => flow.fitView?.({ duration: 200, padding: 0.25 })}
-          style={{
-            fontSize: 12,
-            color: "#64748B",
-            minWidth: 36,
-            textAlign: "center",
-            fontWeight: 500,
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-          }}
+          className="min-w-9 cursor-pointer border-none bg-transparent px-1 text-center text-xs font-medium text-muted-foreground hover:text-foreground"
           aria-label="Recentrer"
         >
           Recentrer
         </button>
         <button
+          type="button"
           onClick={() => flow.zoomIn?.({ duration: 150 })}
-          style={{
-            border: "none",
-            background: "none",
-            cursor: "pointer",
-            color: "#64748B",
-            padding: "0 2px",
-            display: "flex",
-          }}
+          className="flex border-none bg-transparent p-px text-muted-foreground hover:text-foreground"
           aria-label="Zoomer"
         >
-          <Icon size={14} color="#64748B" d={ICO.zoom_in} />
+          <Icon size={14} color="currentColor" d={ICO.zoom_in} />
         </button>
       </div>
 
       <button
+        type="button"
         onClick={onTest}
         disabled={testing}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "6px 14px",
-          borderRadius: 8,
-          border: "1px solid #E2E8F0",
-          background: "white",
-          fontSize: 13,
-          fontWeight: 500,
-          color: "#374151",
-          cursor: testing ? "wait" : "pointer",
-          opacity: testing ? 0.7 : 1,
-        }}
+        className={cn(btnNeutral, testing && "cursor-wait")}
       >
-        <Icon size={13} color="#374151" d={ICO.play} />
+        <Icon size={13} color="currentColor" d={ICO.play} />
         {testing ? "Test en cours…" : "Tester"}
       </button>
 
       <button
+        type="button"
         onClick={onSave}
         disabled={saving}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "6px 14px",
-          borderRadius: 8,
-          border: "1px solid #E2E8F0",
-          background: "white",
-          fontSize: 13,
-          fontWeight: 500,
-          color: "#374151",
-          cursor: saving ? "wait" : "pointer",
-          opacity: saving ? 0.7 : 1,
-        }}
+        className={cn(btnNeutral, saving && "cursor-wait")}
       >
-        <Icon size={13} color="#374151" d={ICO.save} />
+        <Icon size={13} color="currentColor" d={ICO.save} />
         {saving ? "Enregistrement…" : "Enregistrer"}
       </button>
 
@@ -307,44 +178,27 @@ export function CanvasToolbar({
 
       {status !== "active" ? (
         <button
+          type="button"
           onClick={onToggleActive}
           disabled={togglingActive}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "6px 16px",
-            borderRadius: 8,
-            border: "none",
-            background: "#0052D9",
-            fontSize: 13,
-            fontWeight: 600,
-            color: "white",
-            cursor: togglingActive ? "wait" : "pointer",
-            opacity: togglingActive ? 0.7 : 1,
-          }}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-lg border-none px-4 py-1.5 text-[13px] font-semibold text-white shadow-sm",
+            "bg-[var(--brand-blue)] hover:opacity-[0.92]",
+            togglingActive && "cursor-wait opacity-70"
+          )}
         >
-          <Icon size={13} color="white" d={ICO.zap} />
+          <Icon size={13} color="currentColor" d={ICO.zap} />
           {togglingActive ? "…" : "Activer"}
         </button>
       ) : (
         <button
+          type="button"
           onClick={onToggleActive}
           disabled={togglingActive}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "6px 16px",
-            borderRadius: 8,
-            border: "none",
-            background: "#F97316",
-            fontSize: 13,
-            fontWeight: 600,
-            color: "white",
-            cursor: togglingActive ? "wait" : "pointer",
-            opacity: togglingActive ? 0.7 : 1,
-          }}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-lg border-none bg-orange-500 px-4 py-1.5 text-[13px] font-semibold text-white shadow-sm hover:bg-orange-600",
+            togglingActive && "cursor-wait opacity-70"
+          )}
         >
           {togglingActive ? "…" : "Mettre en pause"}
         </button>

@@ -272,6 +272,7 @@ export async function insertProspectActivity(
     organization_id: string;
     prospect_id: string;
     workflow_id?: string | null;
+    campaign_job_id?: string | null;
     actor_id: string | null;
     action: ProspectActivityAction;
     details: Record<string, unknown>;
@@ -282,6 +283,7 @@ export async function insertProspectActivity(
       organization_id: row.organization_id,
       prospect_id: row.prospect_id,
       workflow_id: row.workflow_id ?? null,
+      campaign_job_id: row.campaign_job_id ?? null,
       actor_id: row.actor_id,
       action: row.action,
       details: row.details as Json,

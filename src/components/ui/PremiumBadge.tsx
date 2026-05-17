@@ -8,7 +8,12 @@ interface PremiumBadgeProps {
   className?: string;
   children?: React.ReactNode;
   showStar?: boolean;
-  requiredPlan?: "pro" | "business";
+  /**
+   * Visual tone of the badge. The new plan model has a single "paid" tier
+   * (Solo/Team/Custom all include the same features), so we keep `team` for
+   * the default blue gradient and `custom` for the warmer enterprise look.
+   */
+  tone?: "team" | "custom";
 }
 
 export function PremiumBadge({
@@ -16,7 +21,7 @@ export function PremiumBadge({
   className,
   children,
   showStar = true,
-  requiredPlan = "pro",
+  tone = "team",
 }: PremiumBadgeProps) {
   const getVariantClasses = () => {
     switch (variant) {
@@ -30,10 +35,9 @@ export function PremiumBadge({
   };
 
   const getColorClasses = () => {
-    if (requiredPlan === "business") {
+    if (tone === "custom") {
       return "bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 dark:from-purple-900/20 dark:to-pink-900/20 dark:text-purple-300";
     }
-    // Default Pro plan colors
     return "bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-700 dark:from-blue-900/20 dark:to-indigo-900/20 dark:text-blue-300";
   };
 
@@ -53,12 +57,12 @@ export function PremiumBadge({
             variant === "small"
               ? "h-3 w-3"
               : variant === "minimal"
-              ? "h-3 w-3"
-              : "h-4 w-4"
+                ? "h-3 w-3"
+                : "h-4 w-4"
           )}
         />
       )}
-      {children || (requiredPlan === "business" ? "Business" : "Pro")}
+      {children || (tone === "custom" ? "Custom" : "Premium")}
     </span>
   );
 }

@@ -1,5 +1,9 @@
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
+import { invalidate } from "@/lib/cache/redis";
 import { PROSPECT_STATUSES, type ProspectStatus } from "@/lib/types/prospects";
+import type { Database } from "@/lib/types/supabase";
+
+type ProspectUpdateRow = Database["public"]["Tables"]["prospects"]["Update"];
 
 /**
  * POST /api/prospects/bulk   (CRM-10)
@@ -44,7 +48,7 @@ export const POST = createApiHandler(async (req, ctx) => {
     throw Errors.validation({ action: "Action invalide" });
   }
 
-  const update: Record<string, unknown> = {};
+  const update: ProspectUpdateRow = {};
   switch (action) {
     case "status": {
       if (
@@ -84,6 +88,8 @@ export const POST = createApiHandler(async (req, ctx) => {
     console.error("[API] prospects/bulk error:", error);
     throw Errors.internal("Échec de l'action en masse");
   }
+
+  await invalidate.prospects(workspaceId);
 
   return {
     updated: (data ?? []).length,

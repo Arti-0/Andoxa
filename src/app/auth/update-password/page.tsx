@@ -3,12 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { AuthShell } from "@/components/marketing/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { UnifiedHeader } from "@/components/v3/homepage/UnifiedHeader";
-import Balancer from "react-wrap-balancer";
 
 export default function UpdatePasswordPage() {
   const router = useRouter();
@@ -66,66 +65,53 @@ export default function UpdatePasswordPage() {
 
   if (!ready) {
     return (
-      <div className="min-h-svh bg-slate-50 dark:bg-slate-900">
-        <UnifiedHeader showMobileMenu={false} enableScrollEffect={false} />
-        <div className="flex min-h-[60vh] items-center justify-center p-6">
-          <p className="text-sm text-muted-foreground">Chargement…</p>
-        </div>
-      </div>
+      <AuthShell title="Définir votre mot de passe">
+        <p className="text-center text-sm text-muted-foreground">Chargement…</p>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="min-h-svh bg-slate-50 dark:bg-slate-900 relative overflow-hidden">
-      <UnifiedHeader showMobileMenu={false} enableScrollEffect={false} />
-      <div className="relative z-10 flex min-h-screen items-center justify-center p-6 pt-32">
-        <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-              <Balancer>Définir votre mot de passe</Balancer>
-            </h1>
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-              Choisissez un mot de passe pour accéder à votre compte.
-            </p>
-          </div>
-          <Card className="backdrop-blur-xl bg-white/10 dark:bg-black/20 border-white/20 dark:border-white/10 shadow-xl rounded-2xl">
-            <CardContent className="p-8">
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="password">Mot de passe</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    autoComplete="new-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    minLength={8}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirm">Confirmer</Label>
-                  <Input
-                    id="confirm"
-                    type="password"
-                    autoComplete="new-password"
-                    value={confirm}
-                    onChange={(e) => setConfirm(e.target.value)}
-                    required
-                    minLength={8}
-                  />
-                </div>
-                {error ? (
-                  <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-                ) : null}
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? "Enregistrement…" : "Continuer vers le tableau de bord"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </div>
+    <AuthShell
+      title="Définir votre mot de passe"
+      subtitle="Choisissez un mot de passe pour accéder à votre compte."
+    >
+      <Card className="border-[var(--border)] shadow-[0_4px_18px_-12px_rgba(0,0,0,0.08)]">
+        <CardContent className="p-7 sm:p-8">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="password">Mot de passe</Label>
+              <Input
+                id="password"
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={8}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm">Confirmer</Label>
+              <Input
+                id="confirm"
+                type="password"
+                autoComplete="new-password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                required
+                minLength={8}
+              />
+            </div>
+            {error ? (
+              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+            ) : null}
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? "Enregistrement…" : "Continuer vers le tableau de bord"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </AuthShell>
   );
 }

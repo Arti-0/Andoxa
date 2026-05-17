@@ -23,7 +23,7 @@ const PUBLIC_ROUTES = [
     '/auth',
     '/auth/login',
     '/auth/invite',
-    '/login',
+    
     '/pricing',
     '/about',
     '/help',
@@ -160,24 +160,9 @@ export async function proxy(request: NextRequest) {
         }
     );
 
-    console.log(
-        '[proxy] cookie value preview:',
-        request.cookies
-            .get('sb-uggsuchjyysjpcyeqqgy-auth-token')
-            ?.value?.slice(0, 50)
-    );
-
     const {
         data: { user },
     } = await supabase.auth.getUser();
-    console.log(
-        '[proxy]',
-        pathname,
-        'user:',
-        user?.id ?? 'null',
-        'cookies:',
-        request.cookies.getAll().map((c) => c.name)
-    );
     if (!user) {
         const loginUrl = createRedirectUrl('/auth/login', request);
         loginUrl.searchParams.set('next', pathname);
@@ -239,17 +224,6 @@ export async function proxy(request: NextRequest) {
         // (deriveScenario gère les redirections : terminé → /dashboard, etc.)
         return response;
     }
-
-    console.log('[proxy]', {
-        pathname,
-        userId: user.id,
-        profileOrgId,
-        activeOrganizationId,
-        orgStatus: organization?.status ?? 'null',
-        orgSubStatus: organization?.subscription_status ?? 'null',
-        orgDeletedAt: organization?.deleted_at ?? 'null',
-        hasActiveOrg,
-    });
 
     if (!hasActiveOrg) {
         if (

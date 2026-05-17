@@ -1,8 +1,8 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import AndoxaHeader from "@/components/content/AndoxaHeader";
-import AndoxaFooter from "@/components/content/AndoxaFooter";
+import { MarketingPageLayout } from "@/components/marketing/marketing-page-layout";
+import { Container } from "@/components/marketing/ui/container";
 import { Card } from "@/components/ui/card";
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -46,9 +46,8 @@ export default function SecurityWhitePaper() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-white dark:bg-slate-900">
-      <AndoxaHeader />
-      <div className="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
+    <MarketingPageLayout chrome={false}>
+      <Container className="py-24 sm:py-28">
         <div className="lg:grid lg:grid-cols-4 lg:gap-8">
           {/* Sidebar */}
           <aside className="hidden lg:block lg:col-span-1">
@@ -392,9 +391,8 @@ export default function SecurityWhitePaper() {
             </div>
           </div>
         </div>
-      </div>
-      <AndoxaFooter />
-    </main>
+      </Container>
+    </MarketingPageLayout>
   );
 }
 

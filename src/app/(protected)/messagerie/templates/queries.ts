@@ -2,12 +2,10 @@
 
 // Templates admin — wired to /api/message-templates.
 //
-// Schema gaps the design wants but backend doesn't yet have (BACKEND.md §7.2):
-//   - `category` column → all templates render under category "first" client-side
-//   - `usage` counter   → always 0 until template_usages table lands
-//   - `both` channel    → mapped to "linkedin" on save (kept as "both" only when
-//                          channel is unknown). Email templates from existing data
-//                          surface as "li" so they're still visible.
+// Remaining schema gaps (BACKEND.md §7.2):
+//   - `usage` counter → always 0 until template_usages table lands
+//   - `both` channel → mapped to "linkedin" on save (kept as "both" only when
+//     channel is unknown). Email templates surface as "li" so they're visible.
 //
 // Variable syntax: backend stores `{{firstName}}` etc. The view layer accepts
 // both `{{x}}` and the older `{x}` French form via resolveVars.
@@ -17,12 +15,17 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import {
+  parseTemplateCategory,
+  type TemplateCategory,
+} from "../data";
 
 export type AdminTemplate = {
   id: string;
   name: string;
-  category: string; // kept for backward-compat with existing backend data
-  tags?: string[];  // array of category IDs; replaces single category in UI
+  category: TemplateCategory;
+  /** First entry mirrors `category` until multi-tag templates are supported server-side */
+  tags?: string[];
   channel: "li" | "wa" | "both";
   content: string;
   usage: number;
@@ -35,6 +38,7 @@ interface BackendTemplate {
   id: string;
   name: string;
   channel: "linkedin" | "whatsapp" | "email";
+  category?: string | null;
   content: string;
   variables_used: string[];
   is_default: boolean;
@@ -58,12 +62,17 @@ function designToBackendChannel(
   return "linkedin";
 }
 
+function designSaveCategory(tpl: Pick<AdminTemplate, "category" | "tags">): TemplateCategory {
+  return parseTemplateCategory(tpl.tags?.[0] ?? tpl.category);
+}
+
 function backendToAdmin(t: BackendTemplate): AdminTemplate {
+  const category = parseTemplateCategory(t.category);
   return {
     id: t.id,
     name: t.name,
-    category: "first", // TODO(BACKEND.md §7.2): read from DB once column exists
-    tags: [],           // TODO(BACKEND.md §7.2): read tags array from DB
+    category,
+    tags: [category],
     channel: backendToDesignChannel(t.channel),
     content: t.content,
     usage: 0,           // TODO(BACKEND.md §7.2): wire to template_usages
@@ -112,6 +121,7 @@ export function useSaveTemplate() {
         name: tpl.name,
         channel: designToBackendChannel(tpl.channel),
         content: tpl.content,
+        category: designSaveCategory(tpl),
       };
       if (tpl.id) {
         const updated = await getJson<BackendTemplate>(
@@ -171,6 +181,7 @@ export function useDuplicateTemplate() {
           name: tpl.name + " (copie)",
           channel: designToBackendChannel(tpl.channel),
           content: tpl.content,
+          category: designSaveCategory(tpl),
         }),
       });
       return backendToAdmin(created);

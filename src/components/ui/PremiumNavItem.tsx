@@ -1,33 +1,34 @@
 "use client";
 
 import { PremiumBadge } from "@/components/ui/PremiumBadge";
+import { isPaidPlan, type PlanId } from "@/lib/config/plans-config";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
 interface PremiumNavItemProps {
   href: string;
   children: React.ReactNode;
-  requiredPlan: "pro" | "business";
-  currentPlan: "essential" | "pro" | "business";
+  currentPlan: PlanId;
   className?: string;
   isCollapsed?: boolean;
   onClick?: () => void;
 }
 
+/**
+ * Sidebar nav item that's only navigable on a paid plan; otherwise it's
+ * rendered locked with a PremiumBadge.
+ */
 export function PremiumNavItem({
   href,
   children,
-  requiredPlan,
   currentPlan,
   className,
   isCollapsed = false,
   onClick,
 }: PremiumNavItemProps) {
-  const isLocked =
-    (currentPlan === "essential" && requiredPlan === "pro") ||
-    (currentPlan === "pro" && requiredPlan === "business");
+  const locked = !isPaidPlan(currentPlan);
 
-  if (isLocked) {
+  if (locked) {
     return (
       <div
         className={cn(
@@ -36,10 +37,7 @@ export function PremiumNavItem({
         )}
       >
         <span className="text-sm font-medium">{children}</span>
-        <PremiumBadge
-          variant={isCollapsed ? "minimal" : "small"}
-          requiredPlan={requiredPlan}
-        />
+        <PremiumBadge variant={isCollapsed ? "minimal" : "small"} />
       </div>
     );
   }
@@ -54,10 +52,7 @@ export function PremiumNavItem({
       )}
     >
       <span className="text-sm font-medium">{children}</span>
-      <PremiumBadge
-        variant={isCollapsed ? "minimal" : "small"}
-        requiredPlan={requiredPlan}
-      />
+      <PremiumBadge variant={isCollapsed ? "minimal" : "small"} />
     </Link>
   );
 }

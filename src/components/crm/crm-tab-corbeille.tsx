@@ -92,10 +92,7 @@ export function CorbeilleTab({
     <div>
       <div className="mb-4 flex items-start justify-between gap-6">
         <div>
-          <h1 className="m-0 text-[22px] font-semibold tracking-tight">
-            Corbeille
-          </h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">
+          <p className="m-0 text-[13px] text-muted-foreground">
             Les prospects supprimés sont conservés{" "}
             <b className="text-foreground">30 jours</b> avant suppression
             définitive.

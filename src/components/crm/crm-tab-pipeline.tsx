@@ -316,10 +316,7 @@ export function PipelineTab({
       {/* Header */}
       <div className="mb-3 flex items-start justify-between gap-6">
         <div>
-          <h1 className="m-0 text-[22px] font-semibold tracking-tight">
-            Pipeline
-          </h1>
-          <p className="mt-1 text-[12.5px] text-muted-foreground">
+          <p className="m-0 text-[12.5px] text-muted-foreground">
             {totalActive} prospects actifs · Cycle moyen{" "}
             <span className="font-medium text-foreground">
               {avgCycleAcrossStages != null

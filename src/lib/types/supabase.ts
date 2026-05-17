@@ -428,6 +428,7 @@ export interface Database {
                     organization_id: string;
                     prospect_id: string | null;
                     workflow_id: string | null;
+                    campaign_job_id: string | null;
                     actor_id: string | null;
                     action: string;
                     details: Json;
@@ -438,6 +439,7 @@ export interface Database {
                     organization_id: string;
                     prospect_id?: string | null;
                     workflow_id?: string | null;
+                    campaign_job_id?: string | null;
                     actor_id?: string | null;
                     action: string;
                     details?: Json;
@@ -445,6 +447,7 @@ export interface Database {
                 };
                 Update: {
                     details?: Json;
+                    campaign_job_id?: string | null;
                 };
                 Relationships: [];
             };
@@ -670,6 +673,21 @@ export interface Database {
                     location: string | null;
                     is_all_day: boolean;
                     source: string | null;
+                    event_type: string | null;
+                    status:
+                        | "confirmed"
+                        | "done"
+                        | "pending"
+                        | "noshow"
+                        | "internal";
+                    meeting_kind:
+                        | "meet"
+                        | "zoom"
+                        | "inperson"
+                        | "phone"
+                        | "other";
+                    wa_workflow: boolean;
+                    pipeline_stage: string | null;
                     guest_name: string | null;
                     guest_email: string | null;
                     guest_linkedin: string | null;
@@ -680,6 +698,7 @@ export interface Database {
                     created_by: string | null;
                     created_at: string | null;
                     updated_at: string | null;
+                    attendee_user_ids: string[];
                 };
                 Insert: {
                     id?: string;
@@ -692,6 +711,21 @@ export interface Database {
                     location?: string | null;
                     is_all_day?: boolean;
                     source?: string | null;
+                    event_type?: string | null;
+                    status?:
+                        | "confirmed"
+                        | "done"
+                        | "pending"
+                        | "noshow"
+                        | "internal";
+                    meeting_kind?:
+                        | "meet"
+                        | "zoom"
+                        | "inperson"
+                        | "phone"
+                        | "other";
+                    wa_workflow?: boolean;
+                    pipeline_stage?: string | null;
                     guest_name?: string | null;
                     guest_email?: string | null;
                     guest_linkedin?: string | null;
@@ -702,6 +736,7 @@ export interface Database {
                     created_by?: string | null;
                     created_at?: string | null;
                     updated_at?: string | null;
+                    attendee_user_ids?: string[];
                 };
                 Update: {
                     id?: string;
@@ -714,6 +749,21 @@ export interface Database {
                     location?: string | null;
                     is_all_day?: boolean;
                     source?: string | null;
+                    event_type?: string | null;
+                    status?:
+                        | "confirmed"
+                        | "done"
+                        | "pending"
+                        | "noshow"
+                        | "internal";
+                    meeting_kind?:
+                        | "meet"
+                        | "zoom"
+                        | "inperson"
+                        | "phone"
+                        | "other";
+                    wa_workflow?: boolean;
+                    pipeline_stage?: string | null;
                     guest_name?: string | null;
                     guest_email?: string | null;
                     guest_linkedin?: string | null;
@@ -724,6 +774,7 @@ export interface Database {
                     created_by?: string | null;
                     created_at?: string | null;
                     updated_at?: string | null;
+                    attendee_user_ids?: string[];
                 };
                 Relationships: [];
             };
@@ -830,6 +881,7 @@ export interface Database {
                     organization_id: string;
                     created_at: string | null;
                     last_inbound_at: string | null;
+                    pinned_at: string | null;
                 };
                 Insert: {
                     id?: string;
@@ -838,6 +890,7 @@ export interface Database {
                     organization_id: string;
                     created_at?: string | null;
                     last_inbound_at?: string | null;
+                    pinned_at?: string | null;
                 };
                 Update: {
                     id?: string;
@@ -846,6 +899,7 @@ export interface Database {
                     organization_id?: string;
                     created_at?: string | null;
                     last_inbound_at?: string | null;
+                    pinned_at?: string | null;
                 };
                 Relationships: [];
             };
@@ -950,6 +1004,7 @@ export interface Database {
                     last_error: string | null;
                     created_at: string;
                     updated_at: string;
+                    has_outbound_step: boolean;
                 };
                 Insert: {
                     id?: string;
@@ -971,6 +1026,7 @@ export interface Database {
                     context?: Json;
                     last_error?: string | null;
                     updated_at?: string;
+                    has_outbound_step?: boolean;
                 };
                 Relationships: [];
             };
@@ -1015,9 +1071,11 @@ export interface Database {
                     updated_at?: string;
                 };
                 Update: {
+                    config_snapshot?: Json;
                     status?: string;
                     run_after?: string;
                     attempts?: number;
+                    max_attempts?: number;
                     last_error?: string | null;
                     processed_at?: string | null;
                     updated_at?: string;
@@ -1038,6 +1096,12 @@ export interface Database {
                     metadata: Json;
                     created_at: string;
                     updated_at: string;
+                    run_mode: "terminating" | "evergreen";
+                    trigger_kind:
+                        | "manual"
+                        | "on_list_add"
+                        | "on_tag"
+                        | "on_status_change";
                 };
                 Insert: {
                     id?: string;
@@ -1052,6 +1116,12 @@ export interface Database {
                     metadata?: Json;
                     created_at?: string;
                     updated_at?: string;
+                    run_mode?: "terminating" | "evergreen";
+                    trigger_kind?:
+                        | "manual"
+                        | "on_list_add"
+                        | "on_tag"
+                        | "on_status_change";
                 };
                 Update: {
                     name?: string;
@@ -1062,6 +1132,12 @@ export interface Database {
                     published_definition?: Json | null;
                     metadata?: Json;
                     updated_at?: string;
+                    run_mode?: "terminating" | "evergreen";
+                    trigger_kind?:
+                        | "manual"
+                        | "on_list_add"
+                        | "on_tag"
+                        | "on_status_change";
                 };
                 Relationships: [];
             };
@@ -1074,7 +1150,8 @@ export interface Database {
                     ended_at: string | null;
                     title: string | null;
                     total_duration_s: number | null;
-                    status: 'active' | 'running' | 'paused' | 'completed';
+                    scheduled_at: string | null;
+                    status: 'active' | 'running' | 'paused' | 'completed' | 'scheduled' | 'draft';
                 };
                 Insert: {
                     id?: string;
@@ -1084,13 +1161,27 @@ export interface Database {
                     ended_at?: string | null;
                     title?: string | null;
                     total_duration_s?: number | null;
-                    status?: 'active' | 'running' | 'paused' | 'completed';
+                    scheduled_at?: string | null;
+                    status?:
+                        | 'active'
+                        | 'running'
+                        | 'paused'
+                        | 'completed'
+                        | 'scheduled'
+                        | 'draft';
                 };
                 Update: {
                     ended_at?: string | null;
                     title?: string | null;
                     total_duration_s?: number | null;
-                    status?: 'active' | 'running' | 'paused' | 'completed';
+                    scheduled_at?: string | null;
+                    status?:
+                        | 'active'
+                        | 'running'
+                        | 'paused'
+                        | 'completed'
+                        | 'scheduled'
+                        | 'draft';
                 };
                 Relationships: [];
             };
@@ -1202,6 +1293,7 @@ export interface Database {
                     organization_id: string | null;
                     target_url: string | null;
                     metadata: Json;
+                    dedupe_key: string | null;
                     created_at: string;
                     expires_at: string | null;
                 };
@@ -1216,6 +1308,7 @@ export interface Database {
                     organization_id?: string | null;
                     target_url?: string | null;
                     metadata?: Json;
+                    dedupe_key?: string | null;
                     created_at?: string;
                     expires_at?: string | null;
                 };
@@ -1230,6 +1323,7 @@ export interface Database {
                     organization_id?: string | null;
                     target_url?: string | null;
                     metadata?: Json;
+                    dedupe_key?: string | null;
                     created_at?: string;
                     expires_at?: string | null;
                 };
@@ -1296,6 +1390,7 @@ export interface Database {
                     created_by: string;
                     name: string;
                     channel: string;
+                    category: string;
                     content: string;
                     variables_used: string[];
                     is_default: boolean;
@@ -1308,6 +1403,7 @@ export interface Database {
                     created_by: string;
                     name: string;
                     channel: string;
+                    category?: string;
                     content: string;
                     variables_used?: string[];
                     is_default?: boolean;
@@ -1320,6 +1416,7 @@ export interface Database {
                     created_by?: string;
                     name?: string;
                     channel?: string;
+                    category?: string;
                     content?: string;
                     variables_used?: string[];
                     is_default?: boolean;
@@ -1329,7 +1426,28 @@ export interface Database {
                 Relationships: [];
             };
         };
-        Views: Record<string, never>;
+        Views: {
+            prospect_in_active_campaign: {
+                Row: {
+                    prospect_id: string;
+                    campaign_job_id: string;
+                    channel: string;
+                    campaign_status: string;
+                    organization_id: string;
+                };
+                Relationships: [];
+            };
+            campaign_job_stats: {
+                Row: {
+                    job_id: string;
+                    organization_id: string;
+                    accepted: number;
+                    replied: number;
+                    meetings: number;
+                };
+                Relationships: [];
+            };
+        };
         Functions: {
             redeem_organization_invitation: {
                 Args: { p_token: string };

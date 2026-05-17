@@ -44,6 +44,8 @@ export interface UnipileChat {
   unread_count: number;
   provider_id?: string;
   picture_url?: string | null;
+  /** Hydrated server-side from `unipile_chat_prospects.pinned_at` */
+  pinned_at?: string | null;
 }
 
 export interface UnipileAttachment {

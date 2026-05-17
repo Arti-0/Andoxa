@@ -12,9 +12,18 @@ const ALLOWED_VARIABLES = [
   "bookingLink",
 ] as const;
 
+const TemplateCategoryEnum = z.enum([
+  "first",
+  "relance",
+  "rdv",
+  "suivi",
+  "other",
+]);
+
 const CreateTemplateSchema = z.object({
   name: z.string().min(1, "Le nom est requis").max(100).trim(),
   channel: z.enum(["linkedin", "whatsapp", "email"]),
+  category: TemplateCategoryEnum.optional(),
   content: z
     .string()
     .min(1, "Le contenu est requis")
@@ -91,7 +100,7 @@ export const POST = createApiHandler(async (req, ctx) => {
     throw Errors.validation(fieldErrors);
   }
 
-  const { name, channel, content, is_default } = parsed.data;
+  const { name, channel, category, content, is_default } = parsed.data;
   const variables_used = extractVariables(content);
 
   const { data, error } = await ctx.supabase
@@ -101,6 +110,7 @@ export const POST = createApiHandler(async (req, ctx) => {
       created_by: ctx.userId,
       name,
       channel,
+      category: category ?? "first",
       content,
       variables_used,
       is_default: is_default ?? false,

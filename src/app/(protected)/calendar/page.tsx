@@ -111,7 +111,7 @@ export default function Calendar2Page() {
 
         {/* Calendar header */}
         <header style={{ padding: "14px 20px", background: "var(--cal2-surface)", borderBottom: "1px solid var(--cal2-border-faint)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexShrink: 0, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
             {/* Burger button — mobile only */}
             <button
               className="cal2-burger-btn"
@@ -125,8 +125,8 @@ export default function Calendar2Page() {
                 <line x1="3" y1="18" x2="21" y2="18" />
               </svg>
             </button>
-            <div>
-              <h1 style={{ fontSize: 18, fontWeight: 600, color: "var(--cal2-text)", letterSpacing: "-0.01em", lineHeight: 1.2 }}>Calendrier</h1>
+            <div style={{ flex: 1, minWidth: 0, maxWidth: 620 }}>
+              <BookingLink slug={bookingSlug} onCustomize={() => setBookingOpen(true)} />
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -157,9 +157,6 @@ export default function Calendar2Page() {
         {/* Content */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0 }}>
           <div style={{ flexShrink: 0, padding: "12px 18px 0" }}>
-            <div className="cal2-booking">
-              <BookingLink slug={bookingSlug} onCustomize={() => setBookingOpen(true)} />
-            </div>
             <KpiCards kpi={kpi} />
           </div>
 
@@ -229,7 +226,7 @@ function BookingLink({ slug, onCustomize }: { slug: string | null; onCustomize: 
   };
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 14px", background: "var(--cal2-surface-3)", border: "1px solid var(--cal2-border-faint)", borderRadius: 9, fontSize: 12.5, marginBottom: 12 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "7px 12px", background: "var(--cal2-surface-3)", border: "1px solid var(--cal2-border-faint)", borderRadius: 9, fontSize: 12.5, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7, color: "var(--cal2-text)", fontWeight: 500, flexShrink: 0 }}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0052D9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
         <span>Lien de booking</span>

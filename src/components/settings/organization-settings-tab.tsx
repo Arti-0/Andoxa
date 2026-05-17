@@ -9,7 +9,7 @@ export function OrganizationSettingsTab({
   onSwitch?: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <OrganizationSettingsSection onSwitch={onSwitch} />
       <OrganizationDangerSection />
     </div>

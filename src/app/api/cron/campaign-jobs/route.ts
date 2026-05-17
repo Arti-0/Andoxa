@@ -14,11 +14,15 @@ export async function POST(req: Request) {
   const route = "api/cron/campaign-jobs";
   try {
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get("Authorization")?.replace("Bearer ", "");
-    if (auth !== secret) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!secret) {
+    captureRouteError(route, new Error("CRON_SECRET not configured"), {
+      extra: { step: "auth" },
+    });
+    return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
+  }
+  const auth = req.headers.get("Authorization")?.replace("Bearer ", "");
+  if (auth !== secret) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const supabase = createServiceClient();

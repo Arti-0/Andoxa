@@ -21,16 +21,24 @@ function SettingsPageInner() {
   const defaultTab = resolveTabFromSearch(searchParams);
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 pb-24 pt-6 sm:px-6 lg:pt-8">
-      <Tabs defaultValue={defaultTab} key={defaultTab}>
-        <TabsList className="mb-6 w-full sm:w-auto">
-          <TabsTrigger value="account" className="flex-1 sm:flex-none">
+    <div className="mx-auto w-full max-w-5xl px-4 pb-24 pt-8 sm:px-6 lg:px-8">
+      <header className="settings-page-header">
+        <h1>Paramètres</h1>
+        <p>
+          Gérez votre compte, vos intégrations et votre organisation depuis un
+          seul endroit.
+        </p>
+      </header>
+
+      <Tabs defaultValue={defaultTab} key={defaultTab} className="gap-6">
+        <TabsList className="settings-tabs-list">
+          <TabsTrigger value="account" className="settings-tabs-trigger">
             Compte
           </TabsTrigger>
-          <TabsTrigger value="integrations" className="flex-1 sm:flex-none">
+          <TabsTrigger value="integrations" className="settings-tabs-trigger">
             Intégrations
           </TabsTrigger>
-          <TabsTrigger value="organization" className="flex-1 sm:flex-none">
+          <TabsTrigger value="organization" className="settings-tabs-trigger">
             Organisation
           </TabsTrigger>
         </TabsList>
@@ -59,7 +67,7 @@ export default function SettingsPage() {
   return (
     <Suspense
       fallback={
-        <div className="mx-auto w-full max-w-4xl px-4 pb-24 pt-6 sm:px-6 lg:pt-8">
+        <div className="mx-auto w-full max-w-5xl px-4 pb-24 pt-8 sm:px-6 lg:px-8">
           <div className="h-40 animate-pulse rounded-xl bg-muted/40" aria-hidden />
         </div>
       }

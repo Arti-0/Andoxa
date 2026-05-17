@@ -1,930 +1,561 @@
-'use client';
+"use client";
 
-import { useState, useMemo, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { Megaphone, Loader2, Phone, MessageCircle, Play, Pause, Trash2 } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useWorkspace } from '@/lib/workspace';
-import { EmptyState } from '@/components/design';
-import type { Prospect } from '@/lib/types/prospects';
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { Phone, Plus, RotateCcw, Search, Target, X } from "lucide-react";
+import { toast } from "sonner";
+import { useWorkspace } from "@/lib/workspace";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
-    CrmTable,
-    type BddRow,
-    type FilterState,
-    type ListesFilterState,
-} from '@/components/crm/crm-table';
-import { CampaignModal } from '@/components/campaigns/campaign-modal';
+  ConfirmDialog,
+} from "@/components/ui/confirm-dialog";
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
-import { useLinkedInAccount } from '@/hooks/use-linkedin-account';
-import { isAnyUnipileMessagingConnected } from '@/components/unipile/connection-gate';
-import Link from 'next/link';
-import type {
-    CampaignConfig,
-    CampaignJobStatus,
-    CampaignJobType,
-} from '@/lib/campaigns/types';
-import { campaignLabel, configFromJobType } from '@/lib/campaigns/types';
+  DEFAULT_FILTERS,
+  computePerf,
+  type Campaign,
+  type FilterState,
+  type Item,
+} from "./data";
+import {
+  postJson,
+  useCallSessions,
+  useCampaignJobs,
+  useCampaignJobsBulk,
+  useCancelJob,
+  useDeleteSession,
+  useDuplicateJob,
+  useLaunchJob,
+  useUpdateJobStatus,
+  type CampaignJobBulkOperation,
+} from "./queries";
+import { KpiBar } from "./kpi-bar";
+import { FiltersBar } from "./filters";
+import { CampaignsTable, type Action, type SortBy } from "./campaigns-table";
+import { SessionsGrid } from "./sessions-grid";
+import { Timeline } from "./timeline";
+import { BulkActionBar, type BulkAction } from "./bulk-action-bar";
+import {
+  CreateCampaignModal,
+  type CreateCampaignPayload,
+  type LinkedInCampaignType,
+} from "./create-campaign-modal";
+import {
+  CallSessionModal,
+  type CreateSessionPayload,
+} from "./call-session-modal";
 
-interface CampaignJob {
-    id: string;
-    type: CampaignJobType;
-    status: CampaignJobStatus;
-    total_count: number;
-    processed_count: number;
-    success_count: number;
-    error_count: number;
-    created_at: string;
-    message_template?: string | null;
-    batch_size?: number | null;
-    delay_ms?: number | null;
-    metadata?: Record<string, unknown> | null;
-}
+type Tab = "campaigns" | "sessions" | "all";
 
-interface CallSession {
-    id: string;
-    title: string | null;
-    status: string;
-    total_duration_s: number;
-    created_at: string;
-    ended_at: string | null;
-}
-
-type CampaignRowType = 'campaign' | 'call_session';
-
-interface UnifiedRow {
-    type: CampaignRowType;
-    id: string;
-    date: string;
-    status: string;
-    prospectCount: number;
-    label: string;
-    href: string;
-    messageSnippet?: string | null;
-    sendMode?: string | null;
-    jobType?: CampaignJobType;
-}
-
-const STATUS_LABELS: Record<string, string> = {
-    draft: 'Brouillon',
-    pending: 'En attente',
-    running: 'En cours',
-    paused: 'Pause',
-    completed: 'Terminée',
-    failed: 'Échouée',
-    active: 'En cours',
+const PERIOD_MS: Record<string, number> = {
+  "7": 7 * 86400000,
+  "30": 30 * 86400000,
+  "90": 90 * 86400000,
 };
+const NOW_REF = new Date("2026-05-06T12:00:00").getTime();
 
-function formatMessageSnippet(s: string | null | undefined, max = 72): string {
-    if (!s?.trim()) return '—';
-    const t = s.trim().replace(/\s+/g, ' ');
-    return t.length > max ? `${t.slice(0, max)}…` : t;
+function mapLinkedInCampaignType(
+  t: LinkedInCampaignType,
+): "invite" | "invite_with_note" | "contact" {
+  switch (t) {
+    case "invitation_only":
+      return "invite";
+    case "message_only":
+      return "contact";
+    case "invitation_message":
+    default:
+      return "invite_with_note";
+  }
 }
 
-function formatCampaignSendMode(job: {
-    status?: CampaignJobStatus;
-    total_count: number;
-    batch_size?: number | null;
-    delay_ms?: number | null;
-}): string {
-    if (job.status === 'draft') return 'Brouillon — pas encore lancée';
-    const batch = job.batch_size ?? 10;
-    if (job.total_count > batch) {
-        return 'Envoi échelonné';
-    }
-    return 'Envoi en une fois';
+function unwrapCreatedEntityId(payload: unknown): string | undefined {
+  if (typeof payload !== "object" || payload === null) return undefined;
+  const p = payload as { data?: { id?: string }; id?: string };
+  return p.data?.id ?? p.id;
 }
 
 export default function CampaignsPage() {
-    const { workspaceId } = useWorkspace();
-    const router = useRouter();
-    const queryClient = useQueryClient();
-    const [filter, setFilter] = useState<'all' | 'campaigns' | 'sessions'>(
-        'all'
-    );
+  const router = useRouter();
+  const qc = useQueryClient();
+  const { workspaceId } = useWorkspace();
+  const { data: campaigns = [] } = useCampaignJobs();
+  const { data: sessions = [] } = useCallSessions();
+  const updateStatus = useUpdateJobStatus();
+  const launchJob = useLaunchJob();
+  const cancelJob = useCancelJob();
+  const duplicateJob = useDuplicateJob();
+  const bulkJobs = useCampaignJobsBulk();
+  const deleteSession = useDeleteSession();
+  const [tab, setTab] = useState<Tab>("campaigns");
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [sortBy, setSortBy] = useState<SortBy>({ field: "launchedAt", dir: "desc" });
+  const [createOpen, setCreateOpen] = useState(false);
+  const [bookingOpen, setBookingOpen] = useState(false);
+  const [flashedId] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
 
-    const defaultProspectFilters: FilterState = {
-        status: [],
-        source: [],
-        tags: [],
-        assignedTo: null,
-        dateRange: null,
-        search: '',
-        bddId: null,
-    };
-    const defaultListesFilters: ListesFilterState = {
-        source: [],
-        proprietaire: null,
-        dateFrom: null,
-        dateTo: null,
-    };
+  const filterFn = (item: Item): boolean => {
+    if (filters.search) {
+      if (!item.name.toLowerCase().includes(filters.search.toLowerCase())) return false;
+    }
+    if (filters.channels.length > 0 && !filters.channels.includes(item.channel)) return false;
+    if (filters.statuses.length > 0 && !filters.statuses.includes(item.status)) return false;
+    if (filters.creators.length > 0 && !filters.creators.includes(item.creator)) return false;
+    if (filters.period !== "all") {
+      const d = item.kind === "campaign" ? item.launchedAt : item.date;
+      if (!d) return false;
+      if (NOW_REF - new Date(d).getTime() > PERIOD_MS[filters.period]) return false;
+    }
+    return true;
+  };
 
-    type ListPickerMode = 'campaign' | 'call_session';
-    const [listPickerOpen, setListPickerOpen] = useState(false);
-    const [listPickerMode, setListPickerMode] =
-        useState<ListPickerMode>('campaign');
-    const [selectedListes, setSelectedListes] = useState<BddRow[]>([]);
-    const [campaignConfig, setCampaignConfig] = useState<CampaignConfig | null>(
-        null
-    );
-    const [showCampaignModal, setShowCampaignModal] = useState(false);
-    const [campaignProspects, setCampaignProspects] = useState<Prospect[]>([]);
-    const [campaignListName, setCampaignListName] = useState<string | null>(
-        null
-    );
-    const [preparingCampaign, setPreparingCampaign] = useState(false);
-    const [preparingCallSession, setPreparingCallSession] = useState(false);
-    const [launchingId, setLaunchingId] = useState<string | null>(null);
-    const [actionPending, setActionPending] = useState<{ id: string; action: string } | null>(null);
-
-    const { data: linkedInAccount } = useLinkedInAccount();
-    const isPremium = linkedInAccount?.linkedin_is_premium ?? false;
-
-    const { data: jobsData, isLoading: jobsLoading } = useQuery({
-        queryKey: ['campaign-jobs', workspaceId],
-        queryFn: async () => {
-            const res = await fetch('/api/campaigns/jobs', {
-                credentials: 'include',
-            });
-            if (!res.ok) return [] as CampaignJob[];
-            const json = await res.json();
-            const raw = json.data?.items ?? json.data ?? json.items ?? [];
-            return (Array.isArray(raw) ? raw : []) as CampaignJob[];
-        },
-        enabled: !!workspaceId,
-        staleTime: 30_000,
+  const filteredCampaigns = useMemo(() => {
+    const out = campaigns.filter(filterFn);
+    return [...out].sort((a, b) => {
+      const f = sortBy.field;
+      let av: number | string | null;
+      let bv: number | string | null;
+      switch (f) {
+        case "progress":
+          av = a.processed / (a.total || 1);
+          bv = b.processed / (b.total || 1);
+          break;
+        case "performance": {
+          const pa = computePerf(a);
+          const pb = computePerf(b);
+          av = pa ? pa.rate : -1;
+          bv = pb ? pb.rate : -1;
+          break;
+        }
+        case "launchedAt":
+          av = a.launchedAt ? new Date(a.launchedAt).getTime() : 0;
+          bv = b.launchedAt ? new Date(b.launchedAt).getTime() : 0;
+          break;
+        default:
+          av = (a as unknown as Record<string, string>)[f] ?? "";
+          bv = (b as unknown as Record<string, string>)[f] ?? "";
+      }
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (av < bv) return sortBy.dir === "asc" ? -1 : 1;
+      if (av > bv) return sortBy.dir === "asc" ? 1 : -1;
+      return 0;
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaigns, filters, sortBy]);
 
-    const { data: sessionsData, isLoading: sessionsLoading } = useQuery({
-        queryKey: ['call-sessions', workspaceId],
-        queryFn: async () => {
-            const res = await fetch('/api/call-sessions?pageSize=50', {
-                credentials: 'include',
-            });
-            if (!res.ok) throw new Error(String(res.status));
-            const json = await res.json();
-            const d = json.data ?? json;
-            return d as { items: CallSession[]; total: number };
+  const filteredSessions = useMemo(
+    () =>
+      sessions.filter(filterFn).sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sessions, filters],
+  );
+
+  const allItems: Item[] = useMemo(
+    () =>
+      [...filteredCampaigns, ...filteredSessions].sort((a, b) => {
+        const av = new Date(a.kind === "campaign" ? a.launchedAt ?? 0 : a.date).getTime();
+        const bv = new Date(b.kind === "campaign" ? b.launchedAt ?? 0 : b.date).getTime();
+        return bv - av;
+      }),
+    [filteredCampaigns, filteredSessions],
+  );
+
+  const counts = {
+    campaigns: filteredCampaigns.length,
+    sessions: filteredSessions.length,
+    all: filteredCampaigns.length + filteredSessions.length,
+  };
+  const totalCount = campaigns.length + sessions.length;
+
+  const handleAction = (action: Action, item: Campaign) => {
+    if (action === "pause") {
+      updateStatus.mutate(
+        { id: item.id, status: "paused" },
+        { onSuccess: () => toast.success(`« ${item.name} » mise en pause`) },
+      );
+    } else if (action === "resume") {
+      updateStatus.mutate(
+        { id: item.id, status: "running" },
+        { onSuccess: () => toast.success(`« ${item.name} » reprise`) },
+      );
+    } else if (action === "launch") {
+      launchJob.mutate(item.id, {
+        onSuccess: () => toast.success(`« ${item.name} » lancée`),
+      });
+    } else if (action === "duplicate") {
+      duplicateJob.mutate(item.id, {
+        onSuccess: () => toast.success(`« ${item.name} » dupliquée`),
+      });
+    } else if (action === "delete") {
+      setConfirm({
+        title: "Supprimer cette campagne ?",
+        message: `« ${item.name} » sera définitivement supprimée. Cette action est irréversible.`,
+        onConfirm: () => {
+          cancelJob.mutate(item.id, {
+            onSuccess: () => toast.success(`« ${item.name} » supprimée`),
+          });
+          setConfirm(null);
         },
-        enabled: !!workspaceId,
-        staleTime: 30_000,
+      });
+    }
+  };
+
+  const runCampaignBulk = (operations: CampaignJobBulkOperation[]) => {
+    if (operations.length === 0) {
+      toast.message("Aucune campagne sélectionnée n'est éligible pour cette action.");
+      setSelected([]);
+      return;
+    }
+    bulkJobs.mutate(operations, {
+      onSuccess: (payload) => {
+        const failures = payload.results.filter((r) => !r.ok);
+        const okCount = payload.results.filter((r) => r.ok).length;
+        if (failures.length && okCount === 0) {
+          toast.error(failures[0]?.error ?? "Action groupée impossible");
+        } else if (failures.length) {
+          toast.warning(`${okCount}/${payload.results.length} traitées`, {
+            description:
+              failures
+                .map((f) => f.error)
+                .filter(Boolean)
+                .slice(0, 3)
+                .join(" · ") || undefined,
+          });
+        } else {
+          const op = operations[0]?.op;
+          if (op === "duplicate") {
+            toast.success(okCount === 1 ? "Campagne dupliquée" : `${okCount} campagnes dupliquées`);
+          } else if (op === "delete") {
+            toast.success(okCount === 1 ? "Campagne supprimée" : `${okCount} campagnes supprimées`);
+          } else if (op === "set_status") {
+            toast.success("Campagnes mises en pause");
+          }
+        }
+        void qc.invalidateQueries({ queryKey: ["campaigns", "jobs", workspaceId] });
+      },
+      onSettled: () => {
+        setSelected([]);
+      },
     });
+  };
 
-    const jobs = Array.isArray(jobsData) ? jobsData : [];
-    const sessions = sessionsData?.items ?? [];
-    const isLoading = jobsLoading || sessionsLoading;
-
-    const rows = useMemo((): UnifiedRow[] => {
-        const list: UnifiedRow[] = [];
-        for (const j of jobs) {
-            list.push({
-                type: 'campaign',
-                id: j.id,
-                date: j.created_at,
-                status: j.status,
-                prospectCount: j.total_count,
-                label: (j.metadata?.name as string | undefined) ?? campaignLabel(configFromJobType(j.type)),
-                href: `/campaigns/${j.id}`,
-                messageSnippet: formatMessageSnippet(
-                    j.message_template ?? null
-                ),
-                sendMode: formatCampaignSendMode({
-                    status: j.status,
-                    total_count: j.total_count,
-                    batch_size: j.batch_size,
-                    delay_ms: j.delay_ms,
-                }),
-                jobType: j.type,
-            });
-        }
-        for (const s of sessions) {
-            list.push({
-                type: 'call_session',
-                id: s.id,
-                date: s.created_at,
-                status: s.status,
-                prospectCount: 0, // API may not return count; we could add it later
-                label: s.title ?? "Session d'appels",
-                href: `/call-sessions/${s.id}`,
-            });
-        }
-        list.sort(
-            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-        );
-        return list;
-    }, [jobs, sessions]);
-
-    const { data: membersData } = useQuery({
-        queryKey: ['organization-members', workspaceId],
-        queryFn: async () => {
-            const res = await fetch('/api/organization/members', {
-                credentials: 'include',
-            });
-            if (!res.ok) throw new Error(String(res.status));
-            const json = await res.json();
-            return (json.data ?? json) as {
-                items: {
-                    id: string;
-                    name: string;
-                    avatar_url: string | null;
-                }[];
-            };
+  const handleBulk = (action: BulkAction) => {
+    if (action === "delete") {
+      setConfirm({
+        title: `Supprimer ${selected.length} campagne${selected.length > 1 ? "s" : ""} ?`,
+        message: "Cette action applique les mêmes règles que la suppression ligne à ligne.",
+        onConfirm: () => {
+          runCampaignBulk(selected.map((id) => ({ op: "delete", id }) as CampaignJobBulkOperation));
+          setConfirm(null);
         },
-        enabled: !!workspaceId,
-        staleTime: 30_000,
-    });
+      });
+      return;
+    }
+    if (action === "pause") {
+      const ops = selected
+        .filter((id) => campaigns.find((x) => x.id === id)?.status === "running")
+        .map((id) => ({ op: "set_status" as const, id, status: "paused" as const }));
+      runCampaignBulk(ops);
+      return;
+    }
+    if (action === "duplicate") {
+      runCampaignBulk(selected.map((id) => ({ op: "duplicate" as const, id }) as CampaignJobBulkOperation));
+      return;
+    }
+    toast.message("Export bientôt disponible");
+    setSelected([]);
+  };
 
-    const memberNames = useMemo(
-        () => new Map((membersData?.items ?? []).map((m) => [m.id, m.name])),
-        [membersData]
-    );
-    const memberAvatars = useMemo(
-        () =>
-            new Map(
-                (membersData?.items ?? []).map((m) => [
-                    m.id,
-                    m.avatar_url ?? null,
-                ])
-            ),
-        [membersData]
-    );
+  const isEmpty = totalCount === 0;
+  const isFilteredEmpty = !isEmpty && counts.all === 0;
+  const filtersActive =
+    filters.channels.length > 0 ||
+    filters.statuses.length > 0 ||
+    filters.period !== "all" ||
+    filters.creators.length > 0 ||
+    filters.search.length > 0;
 
-    const fetchProspectsForBdd = useCallback(async (bddId: string) => {
-        const pageSize = 100;
-        let page = 1;
-        const acc: Prospect[] = [];
-        const MAX_TOTAL = 2000;
-        while (true) {
-            const res = await fetch(
-                `/api/prospects?page=${page}&pageSize=${pageSize}&bdd_id=${encodeURIComponent(bddId)}`,
-                { credentials: 'include' }
-            );
-            if (!res.ok) {
-                throw new Error(String(res.status));
-            }
-            const json = await res.json();
-            const data = json?.data ?? json;
-            const items = (data?.items ?? []) as Prospect[];
-            acc.push(...items);
+  const TABS: { id: Tab; label: string; count: number }[] = [
+    { id: "campaigns", label: "Campagnes", count: counts.campaigns },
+    { id: "sessions", label: "Sessions d'appels", count: counts.sessions },
+    { id: "all", label: "Tous", count: counts.all },
+  ];
 
-            const hasMore = Boolean(data?.hasMore);
-            if (!hasMore || items.length === 0) break;
-            if (acc.length >= MAX_TOTAL) {
-                acc.splice(MAX_TOTAL);
-                break;
-            }
-            page++;
+  const onDraftCampaign = async (data: CreateCampaignPayload) => {
+    try {
+      const payload = await postJson("/api/campaigns/jobs", {
+        type: mapLinkedInCampaignType(data.type),
+        prospect_ids: [] as string[],
+        name: data.name.trim(),
+        launch_now: false,
+      });
+      const createdId = unwrapCreatedEntityId(payload);
+      toast.success("Brouillon enregistré", { description: "Ajoutez des prospects puis lancez la campagne." });
+      setCreateOpen(false);
+      void qc.invalidateQueries({ queryKey: ["campaigns", "jobs", workspaceId] });
+      if (createdId) router.push(`/campaigns/${createdId}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Impossible de créer la campagne");
+    }
+  };
+
+  const onCreateCampaign = async (data: CreateCampaignPayload) => {
+    try {
+      const payload = await postJson("/api/campaigns/jobs", {
+        type: mapLinkedInCampaignType(data.type),
+        prospect_ids: [] as string[],
+        name: data.name.trim(),
+        launch_now: false,
+      });
+      const createdId = unwrapCreatedEntityId(payload);
+      toast.success("Campagne créée", {
+        description: "Sans prospects, la campagne reste en brouillon jusqu’au prochain assistant.",
+      });
+      setCreateOpen(false);
+      void qc.invalidateQueries({ queryKey: ["campaigns", "jobs", workspaceId] });
+      if (createdId) router.push(`/campaigns/${createdId}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Impossible de créer la campagne");
+    }
+  };
+
+  const onCreateSession = async (data: CreateSessionPayload) => {
+    try {
+      let scheduled_at: string | undefined;
+      if (data.scheduleMode === "later") {
+        if (!data.scheduleDate || !data.scheduleTime) {
+          toast.error("Merci de choisir une date et une heure.");
+          return;
         }
-        return acc;
-    }, []);
+        scheduled_at = new Date(`${data.scheduleDate}T${data.scheduleTime}:00`).toISOString();
+      }
 
-    const startCampaignFromSelection = useCallback(
-        async (config: CampaignConfig) => {
-            if (selectedListes.length === 0) {
-                toast.error('Sélectionnez une liste d&apos;abord.');
-                return;
-            }
+      const payload = await postJson("/api/call-sessions", {
+        title: data.name.trim(),
+        schedule_mode: data.scheduleMode,
+        scheduled_at,
+      });
 
-            // Per design: on démarre à partir d&apos;une seule liste (la première sélectionnée).
-            const bddId = selectedListes[0]?.id;
-            if (!bddId) return;
+      const createdId = unwrapCreatedEntityId(payload);
+      toast.success("Session créée");
+      setBookingOpen(false);
+      void qc.invalidateQueries({ queryKey: ["campaigns", "sessions", workspaceId] });
+      if (createdId) router.push(`/campaigns/sessions/${createdId}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Impossible de créer la session");
+    }
+  };
 
-            setPreparingCampaign(true);
-            try {
-                const prospects = await fetchProspectsForBdd(bddId);
-                if (prospects.length === 0) {
-                    toast.error('Aucun prospect trouvé pour cette liste.');
-                    return;
-                }
-                setCampaignProspects(prospects);
-                setCampaignListName(selectedListes[0]?.name ?? null);
-                setCampaignConfig(config);
-                setShowCampaignModal(true);
-                setListPickerOpen(false);
-            } catch (e) {
-                toast.error(
-                    e instanceof Error
-                        ? e.message
-                        : 'Impossible de préparer la campagne'
-                );
-            } finally {
-                setPreparingCampaign(false);
-            }
-        },
-        [fetchProspectsForBdd, selectedListes]
-    );
-
-    const startCallSessionFromSelection = useCallback(async () => {
-        if (selectedListes.length === 0) {
-            toast.error('Sélectionnez une liste d&apos;abord.');
-            return;
-        }
-
-        const bddIds = selectedListes.map((l) => l.id);
-        setPreparingCallSession(true);
-        try {
-            const res = await fetch('/api/call-sessions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ bdd_ids: bddIds }),
-            });
-            if (!res.ok) {
-                const json = await res.json().catch(() => ({}));
-                const err = json?.error;
-                const details = err?.details as
-                    | { errors?: Record<string, string> }
-                    | undefined;
-                const msg =
-                    details?.errors?.prospect_ids ??
-                    err?.message ??
-                    'Impossible de créer la session';
-                toast.error(msg);
-                return;
-            }
-
-            const data = await res.json();
-            const session = data?.data ?? data;
-            if (session?.id) {
-                setListPickerOpen(false);
-                router.push(`/call-sessions/${session.id}`);
-            } else {
-                toast.error('Réponse invalide du serveur');
-            }
-        } catch (e) {
-            toast.error(
-                e instanceof Error
-                    ? e.message
-                    : 'Erreur réseau lors de la création de la session'
-            );
-        } finally {
-            setPreparingCallSession(false);
-        }
-    }, [router, selectedListes]);
-
-    const filteredRows = useMemo(() => {
-        if (filter === 'campaigns')
-            return rows.filter((r) => r.type === 'campaign');
-        if (filter === 'sessions')
-            return rows.filter((r) => r.type === 'call_session');
-        return rows;
-    }, [rows, filter]);
-
-    const handleLaunch = async (jobId: string) => {
-        setLaunchingId(jobId);
-        try {
-            const res = await fetch(`/api/campaigns/jobs/${jobId}/launch`, {
-                method: 'POST',
-                credentials: 'include',
-            });
-            if (!res.ok) {
-                const json = await res.json().catch(() => ({}));
-                toast.error(
-                    json?.error?.message ?? 'Impossible de lancer la campagne'
-                );
-                return;
-            }
-            toast.success('Campagne lancée !');
-            void queryClient.invalidateQueries({
-                queryKey: ['campaign-jobs', workspaceId],
-            });
-        } catch {
-            toast.error('Erreur réseau');
-        } finally {
-            setLaunchingId(null);
-        }
-    };
-
-    const optimisticallyUpdateJobStatus = (jobId: string, newStatus: CampaignJobStatus) => {
-        queryClient.setQueryData<CampaignJob[]>(['campaign-jobs', workspaceId], (old) =>
-            old?.map((j) => j.id === jobId ? { ...j, status: newStatus } : j)
-        );
-    };
-
-    const handlePatchStatus = async (jobId: string, newStatus: CampaignJobStatus, label: string) => {
-        setActionPending({ id: jobId, action: newStatus });
-        optimisticallyUpdateJobStatus(jobId, newStatus);
-        try {
-            const res = await fetch(`/api/campaigns/jobs/${jobId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ status: newStatus }),
-            });
-            if (!res.ok) {
-                const json = await res.json().catch(() => ({}));
-                toast.error(json?.error?.message ?? `Impossible de ${label} la campagne`);
-                // Revert optimistic update
-                void queryClient.invalidateQueries({ queryKey: ['campaign-jobs', workspaceId] });
-                return;
-            }
-            void queryClient.invalidateQueries({ queryKey: ['campaign-jobs', workspaceId] });
-        } catch {
-            toast.error('Erreur réseau');
-            void queryClient.invalidateQueries({ queryKey: ['campaign-jobs', workspaceId] });
-        } finally {
-            setActionPending(null);
-        }
-    };
-
-    const handleDeleteSession = async (sessionId: string) => {
-        if (!window.confirm("Supprimer cette session d'appels ? Cette action est irréversible.")) return;
-        setActionPending({ id: sessionId, action: 'delete' });
-        try {
-            const res = await fetch(`/api/call-sessions/${sessionId}`, {
-                method: 'DELETE',
-                credentials: 'include',
-            });
-            if (!res.ok) {
-                const json = await res.json().catch(() => ({}));
-                toast.error(json?.error?.message ?? 'Impossible de supprimer la session');
-                return;
-            }
-            toast.success('Session supprimée');
-            void queryClient.invalidateQueries({ queryKey: ['call-sessions', workspaceId] });
-        } catch {
-            toast.error('Erreur réseau');
-        } finally {
-            setActionPending(null);
-        }
-    };
-
-    const handleCancelJob = async (jobId: string) => {
-        setActionPending({ id: jobId, action: 'cancel' });
-        optimisticallyUpdateJobStatus(jobId, 'failed');
-        try {
-            const res = await fetch(`/api/campaigns/jobs/${jobId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ status: 'failed' }),
-            });
-            if (!res.ok) {
-                const json = await res.json().catch(() => ({}));
-                toast.error(json?.error?.message ?? 'Impossible d\'annuler la campagne');
-                void queryClient.invalidateQueries({ queryKey: ['campaign-jobs', workspaceId] });
-                return;
-            }
-            toast.success('Campagne annulée');
-            void queryClient.invalidateQueries({ queryKey: ['campaign-jobs', workspaceId] });
-        } catch {
-            toast.error('Erreur réseau');
-            void queryClient.invalidateQueries({ queryKey: ['campaign-jobs', workspaceId] });
-        } finally {
-            setActionPending(null);
-        }
-    };
-
-    const formatDate = (iso: string) =>
-        new Date(iso).toLocaleDateString('fr-FR', {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-        });
-
-    const isConnected = isAnyUnipileMessagingConnected(linkedInAccount);
-
-    return (
-        <div className="flex flex-col gap-6 p-6 lg:p-8">
-        {!isConnected && (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
-                <span>Connecte LinkedIn ou WhatsApp dans les <Link href="/settings" className="font-medium underline underline-offset-2">paramètres</Link> pour envoyer des messages.</span>
-            </div>
-        )}
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex flex-wrap rounded-lg border bg-muted/30 p-1">
-                    <button
-                        type="button"
-                        onClick={() => setFilter('all')}
-                        className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                            filter === 'all'
-                                ? 'bg-background shadow-sm text-foreground'
-                                : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-                        }`}
-                    >
-                        Tous
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setFilter('campaigns')}
-                        className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                            filter === 'campaigns'
-                                ? 'bg-background shadow-sm text-foreground'
-                                : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-                        }`}
-                    >
-                        <Megaphone className="h-3.5 w-3.5" />
-                        Campagnes
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setFilter('sessions')}
-                        className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                            filter === 'sessions'
-                                ? 'bg-background shadow-sm text-foreground'
-                                : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-                        }`}
-                    >
-                        <Phone className="h-3.5 w-3.5" />
-                        Sessions d&apos;appels
-                    </button>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                        type="button"
-                        variant="outline"
-                        className="inline-flex items-center gap-2 rounded-lg border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10"
-                        onClick={() => {
-                            setListPickerMode('campaign');
-                            setListPickerOpen(true);
-                        }}
-                    >
-                        <Megaphone className="h-4 w-4" />
-                        Créer une campagne
-                    </Button>
-
-                    <Button
-                        type="button"
-                        className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                        onClick={() => {
-                            setListPickerMode('call_session');
-                            setListPickerOpen(true);
-                        }}
-                    >
-                        <Phone className="h-4 w-4" />
-                        Session d&apos;appels
-                    </Button>
-                </div>
-            </div>
-
-            {isLoading ? (
-                <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    Chargement...
-                </div>
-            ) : filteredRows.length === 0 ? (
-                <EmptyState
-                    icon={filter === 'sessions' ? Phone : Megaphone}
-                    title={
-                        filter === 'all'
-                            ? 'Aucune campagne ni session'
-                            : filter === 'campaigns'
-                              ? 'Aucune campagne'
-                              : "Aucune session d'appels"
-                    }
-                    description={
-                        filter === 'sessions'
-                            ? 'Sélectionnez des prospects avec un numéro de téléphone dans le CRM pour démarrer une session.'
-                            : "Vos campagnes LinkedIn et sessions d'appels apparaîtront ici."
-                    }
-                    action={
-                        filter === 'sessions'
-                            ? {
-                                  label: 'Démarrer une session',
-                                  onClick: () => {
-                                      setListPickerMode('call_session');
-                                      setListPickerOpen(true);
-                                  },
-                              }
-                            : undefined
-                    }
-                />
-            ) : (
-                <div className="rounded-xl border bg-card shadow-xs overflow-hidden">
-                    <table className="w-full text-sm">
-                        <thead className="bg-muted/40 border-b-2 border-border">
-                            <tr>
-                                <th className="px-4 py-3 text-left font-medium">
-                                    Type
-                                </th>
-                                <th className="px-4 py-3 text-left font-medium">
-                                    Action
-                                </th>
-                                <th className="px-4 py-3 text-left font-medium min-w-[140px]">
-                                    Message (extrait)
-                                </th>
-                                <th className="px-4 py-3 text-left font-medium">
-                                    Canal / envoi
-                                </th>
-                                <th className="px-4 py-3 text-left font-medium">
-                                    Date
-                                </th>
-                                <th className="px-4 py-3 text-left font-medium">
-                                    Statut
-                                </th>
-                                <th className="px-4 py-3 text-left font-medium">
-                                    Cibles
-                                </th>
-                                <th className="px-4 py-3 text-left font-medium w-28">
-                                    Actions
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredRows.map((row) => (
-                                <tr
-                                    key={`${row.type}-${row.id}`}
-                                    className="border-b hover:bg-muted/30 transition-colors cursor-pointer"
-                                    onClick={() => router.push(row.href)}
-                                >
-                                    <td className="px-4 py-3">
-                                        {row.type === 'campaign' ? (
-                                            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                                                <Megaphone className="h-3.5 w-3.5" />
-                                                Campagne
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                                                <Phone className="h-3.5 w-3.5" />
-                                                Session
-                                            </span>
-                                        )}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <span className="font-medium">
-                                            {row.label}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3 max-w-[220px] text-muted-foreground">
-                                        <span
-                                            className="line-clamp-2 text-xs"
-                                            title={
-                                                row.type === 'campaign'
-                                                    ? (row.messageSnippet ?? '')
-                                                    : ''
-                                            }
-                                        >
-                                            {row.type === 'campaign'
-                                                ? row.messageSnippet
-                                                : '—'}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                                        {row.type === 'campaign' ? (
-                                            <>
-                                                <span className="font-medium text-foreground">
-                                                    {row.jobType === 'whatsapp'
-                                                        ? 'WhatsApp'
-                                                        : 'LinkedIn'}
-                                                </span>
-                                                <span className="mx-1">·</span>
-                                                {row.sendMode}
-                                            </>
-                                        ) : (
-                                            <span className="font-medium text-foreground">
-                                                Téléphone
-                                            </span>
-                                        )}
-                                    </td>
-                                    <td className="px-4 py-3 text-muted-foreground">
-                                        {formatDate(row.date)}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <span
-                                            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                                                row.status === 'completed' ||
-                                                row.status === 'Terminée'
-                                                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                                                    : row.status === 'active' ||
-                                                        row.status === 'running'
-                                                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                                                      : row.status === 'failed'
-                                                        ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-                                                        : row.status === 'draft'
-                                                          ? 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'
-                                                          : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-                                            }`}
-                                        >
-                                            {STATUS_LABELS[row.status] ??
-                                                row.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-muted-foreground tabular-nums">
-                                        {row.type === 'campaign'
-                                            ? row.prospectCount
-                                            : '—'}
-                                    </td>
-                                    <td
-                                        className="px-4 py-3"
-                                        onClick={(e) => e.stopPropagation()}
-                                    >
-                                        {row.type === 'call_session' && (
-                                            <div className="flex items-center gap-1">
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    disabled={actionPending?.id === row.id}
-                                                    onClick={() => void handleDeleteSession(row.id)}
-                                                    className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                                    title="Supprimer la session"
-                                                >
-                                                    {actionPending?.id === row.id && actionPending.action === 'delete' ? (
-                                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                                    ) : (
-                                                        <Trash2 className="h-3 w-3" />
-                                                    )}
-                                                </Button>
-                                            </div>
-                                        )}
-                                        {row.type === 'campaign' && (
-                                            <div className="flex items-center gap-1">
-                                                {/* Play: draft → launch, paused → resume */}
-                                                {(row.status === 'draft' || row.status === 'paused') && (
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        disabled={launchingId === row.id || actionPending?.id === row.id}
-                                                        onClick={() =>
-                                                            row.status === 'draft'
-                                                                ? void handleLaunch(row.id)
-                                                                : void handlePatchStatus(row.id as string, 'pending', 'reprendre')
-                                                        }
-                                                        className="h-7 w-7 p-0"
-                                                        title={row.status === 'draft' ? 'Lancer' : 'Reprendre'}
-                                                    >
-                                                        {launchingId === row.id || (actionPending?.id === row.id && actionPending.action === 'pending') ? (
-                                                            <Loader2 className="h-3 w-3 animate-spin" />
-                                                        ) : (
-                                                            <Play className="h-3 w-3" />
-                                                        )}
-                                                    </Button>
-                                                )}
-                                                {/* Pause: pending/running */}
-                                                {(row.status === 'pending' || row.status === 'running') && (
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        disabled={actionPending?.id === row.id}
-                                                        onClick={() => void handlePatchStatus(row.id as string, 'paused', 'mettre en pause')}
-                                                        className="h-7 w-7 p-0"
-                                                        title="Mettre en pause"
-                                                    >
-                                                        {actionPending?.id === row.id && actionPending.action === 'paused' ? (
-                                                            <Loader2 className="h-3 w-3 animate-spin" />
-                                                        ) : (
-                                                            <Pause className="h-3 w-3" />
-                                                        )}
-                                                    </Button>
-                                                )}
-                                                {/* Cancel/Delete: draft, pending, paused, running */}
-                                                {['draft', 'pending', 'paused', 'running'].includes(row.status) && (
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        disabled={actionPending?.id === row.id}
-                                                        onClick={() => void handleCancelJob(row.id)}
-                                                        className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                                        title="Annuler"
-                                                    >
-                                                        {actionPending?.id === row.id && actionPending.action === 'cancel' ? (
-                                                            <Loader2 className="h-3 w-3 animate-spin" />
-                                                        ) : (
-                                                            <Trash2 className="h-3 w-3" />
-                                                        )}
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        )}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
-
-            <Dialog open={listPickerOpen} onOpenChange={setListPickerOpen}>
-                <DialogContent className="sm:max-w-6xl">
-                    <DialogHeader>
-                        <DialogTitle>
-                            {listPickerMode === 'call_session'
-                                ? 'Sélectionner une liste pour une session'
-                                : 'Créer une campagne'}
-                        </DialogTitle>
-                        <DialogDescription>
-                            {listPickerMode === 'call_session'
-                                ? "Choisissez une liste. Une session d'appels sera créée pour les prospects de la liste avec un numéro."
-                                : 'Choisissez une liste, puis le canal (LinkedIn ou WhatsApp).'}
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="h-[70vh] w-full">
-                        <CrmTable
-                            mode="listes"
-                            workspaceId={workspaceId}
-                            prospectFilters={defaultProspectFilters}
-                            listesFilters={defaultListesFilters}
-                            onSelectList={() => {}}
-                            memberNames={memberNames}
-                            memberAvatars={memberAvatars}
-                            onListesSelectionChange={(listes) =>
-                                setSelectedListes(listes.slice(0, 1))
-                            }
-                        />
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-end gap-2 pt-4 border-t">
-                        <div className="mr-auto text-xs text-muted-foreground">
-                            {selectedListes.length > 0
-                                ? `${selectedListes.length} liste(s) sélectionnée(s)`
-                                : 'Aucune liste sélectionnée'}
-                        </div>
-
-                        {listPickerMode === 'campaign' ? (
-                            <>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    disabled={
-                                        preparingCampaign ||
-                                        selectedListes.length === 0
-                                    }
-                                    className="border-primary text-primary hover:bg-primary/10"
-                                    onClick={() =>
-                                        void startCampaignFromSelection({
-                                            channel: 'linkedin',
-                                        })
-                                    }
-                                >
-                                    <Megaphone className="h-4 w-4 mr-2" />
-                                    {preparingCampaign
-                                        ? 'Préparation…'
-                                        : 'Continuer avec LinkedIn'}
-                                </Button>
-                                <Button
-                                    type="button"
-                                    disabled={
-                                        preparingCampaign ||
-                                        selectedListes.length === 0
-                                    }
-                                    className="bg-[#25D366] hover:bg-[#20BD5A] text-white border-0"
-                                    onClick={() =>
-                                        void startCampaignFromSelection({
-                                            channel: 'whatsapp',
-                                        })
-                                    }
-                                >
-                                    <MessageCircle className="h-4 w-4 mr-2" />
-                                    {preparingCampaign
-                                        ? 'Préparation…'
-                                        : 'Continuer avec WhatsApp'}
-                                </Button>
-                            </>
-                        ) : (
-                            <Button
-                                type="button"
-                                disabled={
-                                    preparingCallSession ||
-                                    selectedListes.length === 0
-                                }
-                                onClick={() =>
-                                    void startCallSessionFromSelection()
-                                }
-                            >
-                                <Phone className="h-4 w-4 mr-2" />
-                                {preparingCallSession
-                                    ? 'Création…'
-                                    : "Démarrer l'appel"}
-                            </Button>
-                        )}
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            <CampaignModal
-                open={showCampaignModal}
-                onOpenChange={(open) => {
-                    if (!open) {
-                        setShowCampaignModal(false);
-                        setCampaignConfig(null);
-                        setCampaignProspects([]);
-                        setCampaignListName(null);
-                    }
-                }}
-                config={campaignConfig}
-                prospects={campaignProspects}
-                listName={campaignListName}
-                onSuccess={() => {
-                    setShowCampaignModal(false);
-                    setCampaignConfig(null);
-                    setCampaignProspects([]);
-                    setCampaignListName(null);
-                    void queryClient.invalidateQueries({
-                        queryKey: ['campaign-jobs', workspaceId],
-                    });
-                }}
-                isPremium={isPremium}
-            />
+  return (
+    <div className="flex min-w-0 flex-1 flex-col bg-[#FAFAFB] dark:bg-background">
+      <div className="flex flex-wrap items-start justify-between gap-4 px-6 pt-6 lg:px-8">
+        <div className="min-w-0 max-w-xl lg:max-w-2xl">
+          <p className="m-0 text-sm leading-relaxed text-muted-foreground sm:text-[15px]">
+            Pilotez votre prospection LinkedIn, WhatsApp et téléphone depuis un seul hub.
+          </p>
         </div>
-    );
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setBookingOpen(true)}>
+            <Phone className="size-3.5" />
+            Nouvelle session d&apos;appels
+          </Button>
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="size-3.5" />
+            Créer une campagne
+          </Button>
+        </div>
+      </div>
+
+      <div className="px-6 pt-5 lg:px-8">
+        <KpiBar period={filters.period} creators={filters.creators} />
+      </div>
+
+      <div className="flex flex-wrap items-end justify-between gap-4 px-6 pt-6 lg:px-8">
+        <div className="flex items-center gap-0.5 border-b">
+          {TABS.map((t) => {
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={`relative inline-flex items-center gap-1.5 px-3.5 py-2.5 text-[13.5px] transition-colors ${
+                  active ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t.label}
+                <span
+                  className={`rounded-full px-1.5 py-px text-[11.5px] font-semibold tabular-nums ${
+                    active ? "bg-[#E8F0FD] text-[#003EA3]" : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {t.count}
+                </span>
+                {active ? (
+                  <span className="absolute inset-x-0 -bottom-px h-0.5 rounded bg-foreground" />
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+        <div className="relative pb-2 sm:min-w-[280px]">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={filters.search}
+            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+            placeholder="Rechercher une campagne…"
+            className="h-[34px] pl-8"
+          />
+          {filters.search ? (
+            <button
+              type="button"
+              onClick={() => setFilters({ ...filters, search: "" })}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-accent"
+            >
+              <X className="size-3.5" />
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="px-6 lg:px-8">
+        <FiltersBar
+          filters={filters}
+          setFilters={setFilters}
+          totalCount={totalCount}
+          filteredCount={counts.all}
+        />
+      </div>
+
+      <div className="flex-1 px-6 pb-20 pt-1 lg:px-8">
+        {isEmpty ? (
+          <div className="rounded-xl border bg-card px-6 py-20 text-center">
+            <div className="mx-auto mb-4 inline-flex size-16 items-center justify-center rounded-2xl bg-[#E8F0FD] text-[#0052D9]">
+              <Target className="size-7" />
+            </div>
+            <div className="text-lg font-semibold tracking-tight">Aucune campagne pour l&apos;instant</div>
+            <p className="mx-auto mt-1.5 max-w-md text-[13.5px] text-muted-foreground">
+              Lancez votre première séquence d&apos;outreach LinkedIn ou WhatsApp, ou démarrez une session d&apos;appels téléphoniques.
+            </p>
+            <div className="mt-6 flex justify-center gap-2">
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus className="size-3.5" />
+                Créer une campagne
+              </Button>
+              <Button variant="outline" onClick={() => setBookingOpen(true)}>
+                <Phone className="size-3.5" />
+                Lancer une session d&apos;appels
+              </Button>
+            </div>
+          </div>
+        ) : isFilteredEmpty ? (
+          <div className="rounded-xl border bg-card px-6 py-16 text-center">
+            <div className="mx-auto mb-4 inline-flex size-14 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+              <Search className="size-6" />
+            </div>
+            <div className="text-base font-semibold">Aucun résultat pour ces filtres</div>
+            <p className="mt-1.5 text-[13.5px] text-muted-foreground">
+              Essayez d&apos;élargir vos critères ou réinitialisez tous les filtres.
+            </p>
+            <Button
+              variant="outline"
+              className="mt-5"
+              onClick={() => setFilters(DEFAULT_FILTERS)}
+            >
+              <RotateCcw className="size-3.5" />
+              Réinitialiser les filtres
+            </Button>
+          </div>
+        ) : tab === "campaigns" ? (
+          filteredCampaigns.length > 0 ? (
+            <CampaignsTable
+              items={filteredCampaigns}
+              selected={selected}
+              setSelected={setSelected}
+              onAction={handleAction}
+              sortBy={sortBy}
+              setSortBy={setSortBy}
+              flashedId={flashedId}
+            />
+          ) : (
+            <FilteredEmpty onReset={() => setFilters(DEFAULT_FILTERS)} active={filtersActive} />
+          )
+        ) : tab === "sessions" ? (
+          filteredSessions.length > 0 ? (
+            <SessionsGrid
+              sessions={filteredSessions}
+              onAction={(a, s) => {
+                if (a === "delete") {
+                  deleteSession.mutate(s.id, {
+                    onSuccess: () => toast.success("Session supprimée"),
+                  });
+                }
+              }}
+            />
+          ) : (
+            <FilteredEmpty onReset={() => setFilters(DEFAULT_FILTERS)} active={filtersActive} />
+          )
+        ) : (
+          <Timeline items={allItems} />
+        )}
+      </div>
+
+      <BulkActionBar
+        count={tab === "campaigns" ? selected.length : 0}
+        onAction={handleBulk}
+        onClear={() => setSelected([])}
+      />
+
+      <CreateCampaignModal
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreate={onCreateCampaign}
+        onDraft={onDraftCampaign}
+      />
+
+      <CallSessionModal
+        open={bookingOpen}
+        onOpenChange={setBookingOpen}
+        onCreate={onCreateSession}
+      />
+
+      <ConfirmDialog
+        open={!!confirm}
+        onOpenChange={(o) => {
+          if (!o) setConfirm(null);
+        }}
+        title={confirm?.title ?? ""}
+        description={confirm?.message ?? ""}
+        confirmLabel="Supprimer"
+        variant="destructive"
+        onConfirm={() => confirm?.onConfirm()}
+      />
+    </div>
+  );
+}
+
+function FilteredEmpty({ onReset, active }: { onReset: () => void; active: boolean }) {
+  return (
+    <div className="rounded-xl border bg-card px-6 py-16 text-center">
+      <div className="text-base font-semibold">Aucun résultat</div>
+      <p className="mt-1 text-[13px] text-muted-foreground">
+        {active ? "Aucun élément ne correspond aux filtres actuels." : "Aucun élément à afficher."}
+      </p>
+      {active ? (
+        <Button variant="outline" className="mt-4" onClick={onReset}>
+          <RotateCcw className="size-3.5" />
+          Réinitialiser les filtres
+        </Button>
+      ) : null}
+    </div>
+  );
 }

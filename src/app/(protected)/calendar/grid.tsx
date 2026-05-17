@@ -170,30 +170,30 @@ function WeekView({ visible, onSelectEvent, onCreate, events, weekDays, weekOffs
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         {/* Sticky day-header row — same grid template as body, no scrollbar offset */}
-        <div style={{ position: "sticky", top: 0, zIndex: 10, display: "grid", gridTemplateColumns: cols, background: "#fff", borderBottom: "1px solid #EDF1F5" }}>
+        <div style={{ position: "sticky", top: 0, zIndex: 10, display: "grid", gridTemplateColumns: cols, background: "var(--cal2-surface)", borderBottom: "1px solid var(--cal2-border-faint)" }}>
           <div />
           {weekDays.map((d, i) => {
             const allDay = allDayByDay.get(i) ?? [];
             const lead = allDay[0];
             const leadTok = lead ? resolveEventColor(lead, calendarColors) : null;
-            const headerBg = leadTok?.tint ?? (d.weekend ? "#F1F5F9" : "#fff");
+            const headerBg = leadTok?.tint ?? (d.weekend ? "var(--cal2-surface-2)" : "var(--cal2-surface)");
             return (
               <div
                 key={i}
                 style={{
                   padding: "10px 8px 8px",
                   textAlign: "center",
-                  borderLeft: "1px solid #F1F5F9",
+                  borderLeft: "1px solid var(--cal2-border-faint)",
                   background: headerBg,
                   borderTop: leadTok ? `2px solid ${leadTok.color}` : "none",
                   marginTop: leadTok ? -2 : 0,
                 }}
               >
-                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: d.isToday ? "#0052D9" : "#94A3B8", textTransform: "uppercase", marginBottom: 4 }}>{d.short}</div>
+                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: d.isToday ? "#0052D9" : "var(--cal2-text-faint)", textTransform: "uppercase", marginBottom: 4 }}>{d.short}</div>
                 {d.isToday ? (
                   <div style={{ width: 28, height: 28, margin: "0 auto", borderRadius: "50%", background: "#0052D9", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 500 }}>{d.num}</div>
                 ) : (
-                  <div style={{ fontSize: 16, color: d.weekend ? "#94A3B8" : "#475569", lineHeight: "28px" }}>{d.num}</div>
+                  <div style={{ fontSize: 16, color: d.weekend ? "var(--cal2-text-faint)" : "var(--cal2-text-soft)", lineHeight: "28px" }}>{d.num}</div>
                 )}
                 {allDay.length > 0 && (
                   <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 2 }}>
@@ -226,7 +226,7 @@ function WeekView({ visible, onSelectEvent, onCreate, events, weekDays, weekOffs
                       );
                     })}
                     {allDay.length > 2 && (
-                      <span style={{ fontSize: 10, color: "#64748B" }}>
+                      <span style={{ fontSize: 10, color: "var(--cal2-text-muted)" }}>
                         +{allDay.length - 2} autre{allDay.length - 2 > 1 ? "s" : ""}
                       </span>
                     )}
@@ -260,10 +260,10 @@ function WeekView({ visible, onSelectEvent, onCreate, events, weekDays, weekOffs
             const colBg = leadTok
               ? leadTok.tint
               : day.weekend
-                ? "#F1F5F9"
+                ? "var(--cal2-surface-2)"
                 : "transparent";
             return (
-              <div key={dIdx} style={{ position: "relative", borderLeft: "1px solid #F1F5F9", background: colBg }}>
+              <div key={dIdx} style={{ position: "relative", borderLeft: "1px solid var(--cal2-border-faint)", background: colBg }}>
                 {HOURS.map((h) => {
                   const isLunch = !day.weekend && (h === 12 || h === 13);
                   return (

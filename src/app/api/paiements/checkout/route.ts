@@ -1,21 +1,34 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { stripeService } from "@/lib/services/stripe-service";
-import { STRIPE_CONFIG } from "@/lib/config/stripe-config";
-import { BILLING_CONFIG } from "@/lib/config/billing-config";
-import { formatDefaultOrganizationName } from "@/lib/organizations/default-org-name";
+import { performPaiementsCheckout } from "@/lib/billing/paiements-checkout";
 
-type Frequency = "monthly" | "yearly";
-
+/**
+ * POST /api/paiements/checkout
+ *
+ * Authenticated entry-point used by `/onboarding/plan` (and any in-app upgrade
+ * CTA) to start a Stripe Checkout session against the user's organization.
+ *
+ * Body:
+ *   {
+ *     planId   : "solo" | "team" | legacy aliases essential/pro/business,
+ *     billing? : "monthly" | "annual" | "yearly",
+ *     seats?   : number               // Team only, clamped 3..20
+ *   }
+ *
+ * GET /api/paiements/checkout?plan=solo|team&billing=monthly|annual&seats=N
+ *
+ * Same behavior as POST for logged-in browsers (used by `/checkout` after auth).
+ */
 export async function POST(request: NextRequest) {
   let planId: string | undefined;
-  let frequency: Frequency = "monthly";
+  let billing: unknown;
+  let frequency: unknown;
+  let seats: number | undefined;
   let userId: string | undefined;
 
   try {
     const supabase = await createClient();
 
-    // Verify authentication
     const {
       data: { user },
       error: authError,
@@ -23,382 +36,121 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
     userId = user.id;
 
     const body = await request.json();
-    planId = body.planId;
-    const bodyFrequency = body.frequency;
-    frequency =
-      bodyFrequency === "yearly" || bodyFrequency === "monthly"
-        ? bodyFrequency
-        : "monthly";
+    planId =
+      typeof body.planId === "string"
+        ? body.planId
+        : typeof body.plan === "string"
+          ? body.plan
+          : undefined;
+    seats = typeof body.seats === "number" ? body.seats : undefined;
+    billing = body.billing;
+    frequency = body.frequency;
 
-    if (!planId) {
-      return NextResponse.json(
-        { error: "Plan ID is required" },
-        { status: 400 }
-      );
+    const result = await performPaiementsCheckout({
+      supabase,
+      user,
+      planRaw: planId,
+      billingRaw: billing,
+      frequencyRaw: frequency,
+      seats,
+    });
+
+    if (!result.ok) {
+      return NextResponse.json(result.payload, { status: result.httpStatus });
     }
-
-    // Get price ID for the plan
-    const priceId = stripeService.getPriceId(planId, frequency);
-    if (!priceId) {
-      return NextResponse.json(
-        { error: "Invalid plan or frequency" },
-        { status: 400 }
-      );
+    if (result.mode === "trial") {
+      return NextResponse.json({
+        redirect_url: result.redirectUrl,
+        trial_started: true,
+        trial_ends_at: result.trialEndsAt,
+      });
     }
-
-    // Get user profile, create if it doesn't exist
-    let { data: profile } = await supabase
-      .from("profiles")
-      .select("email, full_name, active_organization_id")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (!profile) {
-      // Profile doesn't exist - create it
-      const { data: newProfile, error: createError } = await supabase
-        .from("profiles")
-        .insert({
-          id: user.id,
-          email: user.email || "",
-          full_name: user.user_metadata?.full_name || null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .select("email, full_name, active_organization_id")
-        .single();
-
-      if (createError || !newProfile) {
-        console.error("Error creating profile during checkout:", createError);
-        return NextResponse.json(
-          { error: "Failed to create user profile" },
-          { status: 500 }
-        );
-      }
-
-      profile = newProfile;
-    }
-
-    if (!profile) {
-      return NextResponse.json({ error: "Profile required" }, { status: 500 });
-    }
-
-    // Get organization ID - use active_organization_id if available
-    let organizationId: string | null | undefined =
-      profile.active_organization_id;
-
-    // If no active organization, check for existing pending organization first
-    if (!organizationId) {
-      // Check if user already has a pending organization (to reuse it)
-      const { data: existingPendingOrg } = await supabase
-        .from("organizations")
-        .select("id, status, stripe_subscription_id, plan")
-        .eq("owner_id", user.id)
-        .eq("status", "pending")
-        .is("stripe_subscription_id", null) // No subscription yet
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (existingPendingOrg) {
-        // Reuse existing pending organization
-        organizationId = existingPendingOrg.id;
-
-        // Update plan if different
-        if (existingPendingOrg.plan !== planId) {
-          await supabase.from("organizations").update({ plan: planId }).eq("id", organizationId);
-        }
-
-        // Ensure it's set as active organization
-        await supabase
-          .from("profiles")
-          .update({ active_organization_id: organizationId })
-          .eq("id", user.id);
-      } else {
-        // No pending organization found, create new one
-        // Generate a default organization name
-        const orgName = formatDefaultOrganizationName(
-          profile.full_name || profile.email || ""
-        );
-
-        // Create organization with status "pending" (will become "active" after payment)
-        // subscription_status is null because no Stripe subscription exists yet
-        const { data: newOrg, error: createOrgError } = await supabase
-          .from("organizations")
-          .insert({
-            name: orgName,
-            owner_id: user.id, // owner_id cannot be null
-            plan: planId,
-            status: "pending", // Status métier: pending until payment is confirmed
-            subscription_status: null, // Pas encore d'abonnement Stripe créé
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .select("id")
-          .single();
-
-        if (createOrgError || !newOrg) {
-          console.error("Error creating organization:", createOrgError);
-          return NextResponse.json(
-            { error: "Failed to create organization" },
-            { status: 500 }
-          );
-        }
-
-        organizationId = newOrg.id;
-
-        // Create membership (Owner)
-        const { error: membershipError } = await supabase
-          .from("organization_members")
-          .insert({
-            organization_id: organizationId,
-            user_id: user.id,
-            role: "owner",
-          });
-
-        if (membershipError) {
-          console.error("Error creating membership:", membershipError);
-          // Cleanup: delete the organization if membership creation fails
-          await supabase
-            .from("organizations")
-            .delete()
-            .eq("id", organizationId);
-          return NextResponse.json(
-            { error: "Failed to create organization membership" },
-            { status: 500 }
-          );
-        }
-
-        // Set as active organization in profile
-        const { error: profileUpdateError } = await supabase
-          .from("profiles")
-          .update({ active_organization_id: organizationId })
-          .eq("id", user.id);
-
-        if (profileUpdateError) {
-          console.error("Error updating profile:", profileUpdateError);
-        }
-      }
-
-      // TODO: Nettoyage périodique des organisations en pending abandonnées (> 7 jours)
-      // À implémenter plus tard via un job cron ou une tâche planifiée
-      // const sevenDaysAgo = new Date();
-      // sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      // await supabase
-      //   .from("organizations")
-      //   .delete()
-      //   .eq("owner_id", user.id)
-      //   .eq("status", "pending")
-      //   .is("stripe_subscription_id", null)
-      //   .lt("created_at", sevenDaysAgo.toISOString());
-    } else {
-      // User has active organization, update plan if needed
-      const { data: existingOrg } = await supabase
-        .from("organizations")
-        .select("plan, status, subscription_status")
-        .eq("id", organizationId)
-        .single();
-
-      if (existingOrg) {
-        // Update plan if different
-        if (existingOrg.plan !== planId) {
-          const updates: {
-            plan: string;
-            status?: string;
-            subscription_status?: string | null;
-          } = { plan: planId };
-
-          // Preserve status: if org was active, keep it active. If pending, keep pending.
-          if (existingOrg.status) {
-            updates.status = existingOrg.status;
-          }
-
-          // Preserve subscription_status if it exists, otherwise keep null
-          // Only update if organization already has a subscription
-          if (existingOrg.subscription_status) {
-            updates.subscription_status = existingOrg.subscription_status;
-          } else {
-            updates.subscription_status = null;
-          }
-
-          await supabase
-            .from("organizations")
-            .update(updates)
-            .eq("id", organizationId);
-        }
-      }
-    }
-
-    // Create or retrieve Stripe customer
-    // ALWAYS use organization's customer ID (facturation par organisation)
-    if (!organizationId) {
-      return NextResponse.json(
-        { error: "Organization is required for billing" },
-        { status: 400 }
-      );
-    }
-
-    let customer;
-    let customerId: string | null = null;
-
-    // Get organization with customer ID
-    const { data: org } = await supabase
-      .from("organizations")
-      .select("stripe_customer_id, name")
-      .eq("id", organizationId)
-      .single();
-
-    if (!org) {
-      return NextResponse.json(
-        { error: "Organization not found" },
-        { status: 404 }
-      );
-    }
-
-    customerId = org.stripe_customer_id || null;
-
-    if (customerId) {
-      customer = await stripeService.getCustomer(customerId);
-    } else {
-      // Create new Stripe customer for the organization
-      customer = await stripeService.createOrRetrieveCustomer(
-        profile.email ?? "",
-        org.name || profile.full_name || undefined
-      );
-
-      // Update organization with Stripe customer ID
-      const { error: updateError } = await supabase
-        .from("organizations")
-        .update({ stripe_customer_id: customer.id })
-        .eq("id", organizationId);
-
-      if (updateError) {
-        console.error(
-          "Error updating organization with customer ID:",
-          updateError
-        );
-        return NextResponse.json(
-          { error: "Failed to update organization" },
-          { status: 500 }
-        );
-      }
-    }
-
-    // Check organization status
-    const { data: orgStatus } = await supabase
-      .from("organizations")
-      .select("status, subscription_status, trial_ends_at, stripe_subscription_id")
-      .eq("id", organizationId)
-      .single();
-
-    // Organization is pending if status is "pending" (no Stripe subscription yet)
-    // subscription_status is null when no subscription exists
-    const isPending = orgStatus?.status === "pending";
-    void isPending;
-
-    // Essential onboarding trial: no card required for first 14-day trial per organization.
-    // If the organization already consumed a trial (trial_ends_at set), fall back to Stripe checkout.
-    if (planId === "essential") {
-      const trialAlreadyUsed = Boolean(orgStatus?.trial_ends_at);
-      const hasExistingStripeSub = Boolean(orgStatus?.stripe_subscription_id);
-      const canStartTrialNow = !trialAlreadyUsed && !hasExistingStripeSub;
-
-      if (canStartTrialNow) {
-        const trialEndsAt = new Date(
-          Date.now() + STRIPE_CONFIG.trial.durationDays * 24 * 60 * 60 * 1000
-        ).toISOString();
-
-        const { error: trialErr } = await supabase
-          .from("organizations")
-          .update({
-            plan: "essential",
-            status: "active",
-            subscription_status: "trialing",
-            trial_ends_at: trialEndsAt,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", organizationId);
-
-        if (trialErr) {
-          console.error("Error starting organization trial:", trialErr, {
-            organizationId,
-            userId: user.id,
-          });
-          return NextResponse.json(
-            { error: "Failed to start trial" },
-            { status: 500 }
-          );
-        }
-
-        return NextResponse.json({
-          redirect_url: "/dashboard?trial=started",
-          trial_started: true,
-          trial_ends_at: trialEndsAt,
-        });
-      }
-    }
-
-    // Create checkout session
-    // Success URL includes organization_id for webhook processing
-    // Note: STRIPE_CONFIG.urls.success already contains session_id={CHECKOUT_SESSION_ID}
-    // So we need to replace it and add both parameters
-    const baseSuccessUrl = STRIPE_CONFIG.urls.success.replace(
-      "?session_id={CHECKOUT_SESSION_ID}",
-      ""
-    );
-    const successUrl = `${baseSuccessUrl}?organization_id=${organizationId}&session_id={CHECKOUT_SESSION_ID}`;
-
-    // Calculate quantity based on billing model
-    let quantity = 1;
-    if (BILLING_CONFIG.isPerSeat()) {
-      quantity = await BILLING_CONFIG.getSeatCount(organizationId);
-    }
-
-    // Prepare metadata for Stripe
-    const metadata: Record<string, string> = {
-      user_id: user.id,
-      plan_id: planId,
-      frequency: frequency,
-      billing_model: BILLING_CONFIG.model,
-      quantity: quantity.toString(),
-    };
-
-    if (organizationId) {
-      metadata.organization_id = organizationId;
-      metadata.organization_status = orgStatus?.status || "pending";
-    }
-
-    const subscriptionTrialData =
-      planId === "essential"
-        ? { trial_period_days: STRIPE_CONFIG.trial.durationDays }
-        : undefined;
-
-    const checkoutSession = await stripeService.createCheckoutSession(
-      priceId,
-      customer.id,
-      successUrl,
-      STRIPE_CONFIG.urls.cancel,
-      metadata,
-      subscriptionTrialData,
-      quantity
-    );
-
     return NextResponse.json({
-      sessionId: checkoutSession.id,
-      url: checkoutSession.url,
+      sessionId: result.sessionId,
+      url: result.url,
     });
   } catch (error) {
     console.error("Error creating checkout session:", error, {
       planId,
-      frequency,
+      billing,
+      seats,
       userId,
     });
     return NextResponse.json(
       { error: "Failed to create checkout session" },
       { status: 500 }
+    );
+  }
+}
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const planRaw =
+    searchParams.get("plan") ?? searchParams.get("planId") ?? undefined;
+  const billing = searchParams.get("billing") ?? undefined;
+  const frequency = searchParams.get("frequency") ?? undefined;
+  const seatsRaw = searchParams.get("seats");
+  const seats =
+    seatsRaw != null && seatsRaw.trim() !== "" ? Number(seatsRaw) : undefined;
+
+  const loginNext = `/checkout${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
+
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.redirect(
+        new URL(
+          `/auth/login?next=${encodeURIComponent(loginNext)}`,
+          request.url
+        )
+      );
+    }
+
+    const result = await performPaiementsCheckout({
+      supabase,
+      user,
+      planRaw,
+      billingRaw: billing,
+      frequencyRaw: frequency ?? billing,
+      seats: Number.isFinite(seats) ? seats : undefined,
+    });
+
+    if (!result.ok) {
+      const msg =
+        typeof result.payload.error === "string"
+          ? result.payload.error
+          : "checkout_error";
+      return NextResponse.redirect(
+        new URL(
+          `/pricing?checkout_error=${encodeURIComponent(msg)}`,
+          request.url
+        )
+      );
+    }
+
+    if (result.mode === "trial") {
+      return NextResponse.redirect(new URL(result.redirectUrl, request.url));
+    }
+
+    if (!result.url) {
+      return NextResponse.redirect(
+        new URL("/pricing?checkout_error=missing_session", request.url)
+      );
+    }
+
+    return NextResponse.redirect(result.url, 303);
+  } catch (error) {
+    console.error("[GET /api/paiements/checkout]", error);
+    return NextResponse.redirect(
+      new URL("/pricing?checkout_error=server", request.url)
     );
   }
 }

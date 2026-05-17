@@ -1,67 +1,81 @@
-"use client";
+import type { Metadata } from "next";
+import { FloatingNav, type NavItem } from "@/components/marketing/aceternity/floating-nav";
+import { ScrollProgress } from "@/components/marketing/ui/scroll-progress";
+import { SmoothScroll } from "@/components/marketing/smooth-scroll";
+import { HomeIntro } from "@/components/marketing/home-intro";
+import { Footer } from "@/components/marketing/footer";
+import { MarketingHero } from "@/components/marketing/sections/hero";
+import { MarketingProblemeSection } from "@/components/marketing/sections/probleme";
+import { MarketingSolutionSection } from "@/components/marketing/sections/solution";
+import { MarketingPersonasSection } from "@/components/marketing/sections/personas";
+import { MarketingParcoursSection } from "@/components/marketing/sections/parcours";
+import { MarketingModulesBentoSection } from "@/components/marketing/modules-bento";
+import { MarketingWorkflowPromiseSection } from "@/components/marketing/sections/workflow-promise";
+import { MarketingPricingSection } from "@/components/marketing/sections/pricing";
+import { MarketingFinalCtaSection } from "@/components/marketing/sections/final-cta";
 
-/**
- * Page d'accueil principale - Design v3
- *
- * Structure :
- * - Header avec navigation et authentification
- * - Hero section avec CTA
- * - Section fonctionnalités
- * - Section tarifs
- * - Section à propos
- * - Footer
- *
- * Background : 18 formes floutées animées pour créer un effet visuel dynamique
- */
+export const metadata: Metadata = {
+  title: "Andoxa, une seule stack, deux fois moins de no-shows",
+  description:
+    "Andoxa unifie LinkedIn, WhatsApp, le booking et votre CRM dans une seule plateforme. Vos commerciaux arrêtent de copier-coller, vos no-shows divisent par deux.",
+  openGraph: {
+    title: "Andoxa, le revenue engine pour les équipes sales",
+    description: "Une seule stack. Deux fois moins de no-shows.",
+    locale: "fr_FR",
+    type: "website",
+  },
+};
 
-import { HeroSectionV3 } from "@/components/v3/homepage/HeroSectionV3";
-import { UnifiedHeader } from "@/components/v3/homepage/UnifiedHeader";
-import { FeaturesSection } from "@/components/v3/homepage/FeaturesSection";
-import { TarifsSection } from "@/components/v3/homepage/TarifsSection";
-import { AboutSection } from "@/components/v3/homepage/AboutSection";
-import { ContactSection } from "@/components/v3/homepage/ContactSection";
-import AndoxaFooter from "@/components/content/AndoxaFooter";
-import NewComponent from "@/components/newcomponent";
-
+// English slugs per the route-reconciliation decision. `/resources/*` routes
+// are created in a follow-up; `/demo` resolves to `/contact?objet=demo`.
+const NAV_ITEMS: NavItem[] = [
+  { name: "Tarifs", href: "/pricing" },
+  {
+    name: "Ressources",
+    href: "/resources",
+    children: [
+      {
+        name: "Guide détaillé d'Andoxa",
+        href: "/resources/guide",
+        description: "Tour complet du produit, module par module.",
+      },
+      {
+        name: "Calculateur de ROI",
+        href: "/resources/roi-calculator",
+        description: "Estimez le gain mensuel pour votre équipe.",
+      },
+      {
+        name: "Blog",
+        href: "/resources/blog",
+        description: "Outbound, no-shows, conformité, par les sales.",
+      },
+    ],
+  },
+  { name: "À propos", href: "/about" },
+  { name: "Contact", href: "/contact" },
+];
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-white dark:bg-slate-900">
-      {/* Header avec navigation - V2 avec effets de scroll et menu mobile */}
-      <UnifiedHeader showMobileMenu={true} enableScrollEffect={true} />
-
-      {/* Conteneur principal avec formes floutées en arrière-plan */}
-      <div className="relative w-full overflow-hidden">
-        {/* 18 formes floutées animées - définies dans globals.css */}
-        <div className="absolute inset-0 pointer-events-none z-0">
-          {Array.from({ length: 18 }).map((_, i) => (
-            <div key={i} className="color" />
-          ))}
-        </div>
-
-        {/* Contenu des sections - au-dessus des formes floutées */}
-        <div className="relative z-10">
-          {/* Hero section - Section principale avec titre et CTA */}
-          <HeroSectionV3 />
-
-          {/* Section fonctionnalités - Scroll anchor pour navigation */}
-          <div id="features" className="scroll-mt-24">
-            <FeaturesSection />
-          </div>
-
-          {/* Section tarifs - Plans et pricing */}
-          <TarifsSection />
-
-          {/* Section à propos - Mission, vision, valeurs */}
-          <AboutSection />
-
-          {/* Section contact - Formulaire de contact */}
-          <ContactSection />
-        </div>
-      </div>
-
-      {/* Footer */}
-      <AndoxaFooter />
-    </main>
+    <>
+      <HomeIntro />
+      <SmoothScroll />
+      <ScrollProgress />
+      <FloatingNav navItems={NAV_ITEMS} />
+      <main>
+        <MarketingHero />
+        <MarketingProblemeSection />
+        <MarketingSolutionSection />
+        <MarketingPersonasSection />
+        <MarketingParcoursSection />
+        <section id="modules">
+          <MarketingModulesBentoSection />
+        </section>
+        <MarketingWorkflowPromiseSection />
+        <MarketingPricingSection />
+        <MarketingFinalCtaSection />
+      </main>
+      <Footer />
+    </>
   );
 }

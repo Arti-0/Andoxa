@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, ExternalLink, Linkedin, Sparkles } from "lucide-react";
+import { Loader2, ExternalLink, Linkedin, Sparkles, User } from "lucide-react";
 import { toast } from "sonner";
 import {
     SettingsCard,
@@ -146,7 +146,8 @@ export function ProfileSettingsSection({
     return (
         <SettingsCard
             title="Profil"
-            description="Nom et e-mail"
+            description="Informations de connexion et profil public"
+            icon={<User />}
         >
             <div className="flex flex-col gap-4">
                 <div className="space-y-2">

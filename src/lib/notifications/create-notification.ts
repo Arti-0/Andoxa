@@ -11,6 +11,11 @@ export interface CreateNotificationInput {
   organization_id: string;
   target_url?: string | null;
   metadata?: Record<string, unknown>;
+  /**
+   * When set, insert uses UPSERT ON CONFLICT DO NOTHING on (organization_id, dedupe_key).
+   * Omit for notifications that must always insert (no dedupe).
+   */
+  dedupe_key?: string | null;
 }
 
 /**
@@ -25,7 +30,7 @@ export async function createNotification(
   input: CreateNotificationInput
 ): Promise<void> {
   try {
-    await supabase.from("notifications").insert({
+    const row = {
       title: input.title,
       message: input.message,
       type: input.type ?? "internal",
@@ -35,7 +40,20 @@ export async function createNotification(
       organization_id: input.organization_id,
       target_url: input.target_url ?? null,
       metadata: input.metadata ?? {},
-    });
+      dedupe_key: input.dedupe_key?.trim() || null,
+    };
+
+    const key = row.dedupe_key;
+    if (key) {
+      const { error } = await supabase.from("notifications").upsert(row, {
+        onConflict: "organization_id,dedupe_key",
+        ignoreDuplicates: true,
+      });
+      if (error) throw error;
+    } else {
+      const { error } = await supabase.from("notifications").insert(row);
+      if (error) throw error;
+    }
   } catch {
     // Notification failure must not break the calling route
   }

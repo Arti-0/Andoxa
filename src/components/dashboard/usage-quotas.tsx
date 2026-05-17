@@ -115,7 +115,7 @@ export function UsageQuotas({ workspaceId }: UsageQuotasProps) {
     );
   }
 
-  const weeklyCap = getLinkedInInviteWeeklyUsageCap(linkedIn.linkedin_is_premium);
+  const weeklyCap = getLinkedInInviteWeeklyUsageCap(linkedIn.linkedin_tier);
   const weeklyNote = (
     <>
       {usage.invitations_week} / {weeklyCap} cette semaine

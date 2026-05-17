@@ -155,7 +155,7 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
   const [canvasPositions, setCanvasPositions] = useState<WorkflowCanvasPositions>({});
   const canvasCommitTimer = useRef<number | null>(null);
   const { data: linkedInAccount } = useLinkedInAccount();
-  const linkedinIsPremium = linkedInAccount?.linkedin_is_premium ?? false;
+  const linkedInTier = linkedInAccount?.linkedin_tier ?? "standard";
 
   const [runsLoading, setRunsLoading] = useState(false);
   const [runs, setRuns] = useState<
@@ -1108,7 +1108,7 @@ export function WorkflowDetailClient({ workflowId }: WorkflowDetailClientProps) 
               (steps[editMsgIndex].config as { messageTemplate?: string }).messageTemplate ?? ""
             }
             onSave={(msg) => updateStepConfig(editMsgIndex, { messageTemplate: msg })}
-            isPremium={linkedinIsPremium}
+            linkedInTier={linkedInTier}
           />
         )}
 

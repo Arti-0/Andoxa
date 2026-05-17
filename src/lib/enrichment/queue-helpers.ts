@@ -6,12 +6,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizePlanIdForRoutes } from "@/lib/billing/effective-plan";
 import type { PlanId } from "@/lib/config/plans-config";
-import { checkPlanLimit, getPlanLimits } from "@/lib/config/plans-config";
+import { checkPlanLimit, getPlanLimits, isPaidPlan } from "@/lib/config/plans-config";
 import type { Database } from "@/lib/types/supabase";
 
 /**
- * When `subscriptionStatus` is passed (including `null`), uses the same plan resolution as routes
- * (e.g. Essential + trialing → Business when `TRIAL_ESSENTIAL_PROMO_FULL_ACCESS` is enabled in effective-plan).
+ * Auto-enrichment on import is available on every paid plan
+ * (Solo / Team / Custom + Demo for QA). Trial accounts inherit `solo` via
+ * `normalizePlanIdForRoutes`, so they pass too.
  */
 export function planAllowsAutoEnrichOnImport(
   planId: PlanId | string | null | undefined,
@@ -21,9 +22,7 @@ export function planAllowsAutoEnrichOnImport(
     subscriptionStatus !== undefined
       ? normalizePlanIdForRoutes(planId, subscriptionStatus)
       : (planId ?? "");
-  return (
-    effective === "pro" || effective === "business" || effective === "demo"
-  );
+  return isPaidPlan(effective);
 }
 
 function startOfUtcMonth(): string {

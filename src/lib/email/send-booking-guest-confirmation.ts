@@ -11,6 +11,8 @@ export async function sendBookingGuestConfirmationEmail(params: {
   slotStartIso: string;
   slotEndIso: string;
   meetUrl: string | null;
+  /** Optional text/calendar part (UTF-8) — attached as `rendez-vous.ics`. */
+  icsInvitation?: string | null;
 }): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY?.trim();
   const from = process.env.RESEND_FROM_EMAIL?.trim();
@@ -32,6 +34,17 @@ export async function sendBookingGuestConfirmationEmail(params: {
   const subject = "Votre rendez-vous est confirmé";
 
   const resend = new Resend(apiKey);
+  const icsTrimmed = params.icsInvitation?.trim();
+  const attachments =
+    icsTrimmed && icsTrimmed.length > 0
+      ? [
+          {
+            filename: "rendez-vous.ics",
+            content: Buffer.from(icsTrimmed, "utf-8"),
+          },
+        ]
+      : undefined;
+
   const { error } = await resend.emails.send({
     from,
     to: params.to,
@@ -42,6 +55,7 @@ export async function sendBookingGuestConfirmationEmail(params: {
       timeLine,
       meetUrl: params.meetUrl,
     }),
+    ...(attachments?.length ? { attachments } : {}),
   });
 
   if (error) {

@@ -232,6 +232,14 @@ export function definitionRequiresLinkedIn(def: WorkflowDefinition): boolean {
   );
 }
 
+/**
+ * Outbound messaging steps that must not overlap with an active batch campaign
+ * on the same prospect (see `prospect_in_active_campaign` + enrollment docs).
+ */
+export function definitionHasOutboundMessaging(def: WorkflowDefinition): boolean {
+  return definitionRequiresLinkedIn(def) || definitionRequiresWhatsApp(def);
+}
+
 export function definitionRequiresWhatsApp(def: WorkflowDefinition): boolean {
   return def.steps.some((s) => s.type === "whatsapp_message");
 }

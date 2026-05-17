@@ -1,35 +1,49 @@
 import type { LucideIcon } from "lucide-react";
-import { CreditCard, Sparkles, Crown, Building2 } from "lucide-react";
+import { Sparkles, Crown, Building2, Clock, BadgeCheck } from "lucide-react";
 
+/**
+ * Visual presentation for each plan id. The key is the DB plan column value
+ * (post M-PLAN-1: trial | solo | team | custom | demo). All callers should
+ * look up by `(plan ?? "trial").toLowerCase()` to stay safe.
+ */
 export const PLAN_DISPLAY: Record<
     string,
     { label: string; icon: LucideIcon; accent: string }
 > = {
-    free: {
-        label: "Gratuit",
-        icon: CreditCard,
+    trial: {
+        label: "Essai gratuit",
+        icon: Clock,
         accent:
-            "border-zinc-200 text-zinc-600 dark:border-white/10 dark:text-zinc-400",
+            "border-blue-500/40 text-blue-600 dark:border-blue-500/30 dark:text-blue-400",
     },
-    starter: {
-        label: "Starter",
+    solo: {
+        label: "Solo",
         icon: Sparkles,
         accent:
             "border-blue-500/40 text-blue-600 dark:border-blue-500/30 dark:text-blue-400",
     },
-    pro: {
-        label: "Pro",
+    team: {
+        label: "Team",
         icon: Crown,
         accent:
             "border-zinc-900/30 text-zinc-900 dark:border-white/30 dark:text-white",
     },
-    enterprise: {
-        label: "Enterprise",
+    custom: {
+        label: "Custom",
         icon: Building2,
         accent:
             "border-amber-500/40 text-amber-700 dark:border-amber-500/30 dark:text-amber-400",
     },
+    demo: {
+        label: "Démo",
+        icon: BadgeCheck,
+        accent:
+            "border-purple-500/40 text-purple-700 dark:border-purple-500/30 dark:text-purple-400",
+    },
 };
+
+/** Fallback used when the DB column is null / unknown. */
+export const PLAN_DISPLAY_FALLBACK = PLAN_DISPLAY.trial;
 
 export const STATUS_DISPLAY: Record<string, string> = {
     active: "Actif",
@@ -40,4 +54,5 @@ export const STATUS_DISPLAY: Record<string, string> = {
     incomplete_expired: "Expiré",
     unpaid: "Impayé",
     paused: "En pause",
+    pending: "En attente",
 };

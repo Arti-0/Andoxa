@@ -10,7 +10,7 @@ import type { Json } from "@/lib/types/supabase";
 
 export type WorkspaceType = 'freelance' | 'team';
 
-export type WorkspacePlan = 'free' | 'essential' | 'pro' | 'business' | 'demo';
+export type WorkspacePlan = 'trial' | 'solo' | 'team' | 'custom' | 'demo';
 
 export type SubscriptionStatus =
   | 'active'

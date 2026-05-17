@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import { Check, Loader2, AlertTriangle, Link2 } from "lucide-react";
+import { Check, Loader2, AlertTriangle, Link2, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { SettingsCard } from "./settings-card";
@@ -104,6 +104,7 @@ export function WhatsAppSettingsSection() {
     <SettingsCard
       title="WhatsApp"
       description="Messagerie instantanée depuis votre CRM"
+      icon={<MessageCircle />}
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">

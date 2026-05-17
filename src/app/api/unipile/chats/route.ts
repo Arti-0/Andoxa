@@ -158,6 +158,29 @@ async function enrichChatsWithCache(
   });
 }
 
+/** Merge `pinned_at` from CRM linkage rows for sorting + pin UX. */
+async function attachPinnedAt<T extends UnipileChat>(
+  supabase: SupabaseClient<Database>,
+  organizationId: string,
+  items: T[],
+): Promise<(T & { pinned_at: string | null })[]> {
+  if (items.length === 0) return [];
+  const ids = [...new Set(items.map((c) => c.id))];
+  const { data, error } = await supabase
+    .from("unipile_chat_prospects")
+    .select("unipile_chat_id, pinned_at")
+    .eq("organization_id", organizationId)
+    .in("unipile_chat_id", ids);
+
+  if (error || !data) {
+    return items.map((c) => ({ ...c, pinned_at: null }));
+  }
+  const map = new Map(
+    data.map((r) => [r.unipile_chat_id, r.pinned_at as string | null]),
+  );
+  return items.map((c) => ({ ...c, pinned_at: map.get(c.id) ?? null }));
+}
+
 /**
  * GET /api/unipile/chats
  * List chats – proxy to Unipile API.
@@ -173,7 +196,7 @@ export const GET = createApiHandler(async (req, ctx) => {
 
   const { searchParams } = new URL(req.url);
   const channelFilter = searchParams.get("channel"); // "all", "LINKEDIN", "WHATSAPP"
-  const limit = searchParams.get("limit");
+  const limit = searchParams.get("limit") ?? "120";
   const cursor = searchParams.get("cursor");
   const unread = searchParams.get("unread");
   const before = searchParams.get("before");
@@ -183,7 +206,7 @@ export const GET = createApiHandler(async (req, ctx) => {
     const q = new URLSearchParams();
     q.set("account_id", accountId);
     q.set("account_type", accountType);
-    if (limit) q.set("limit", limit);
+    q.set("limit", limit);
     if (cursor) q.set("cursor", cursor);
     if (unread !== null && unread !== undefined) q.set("unread", unread);
     if (before) q.set("before", before);
@@ -222,7 +245,8 @@ export const GET = createApiHandler(async (req, ctx) => {
 
     // Enrich all chats via cache — no arbitrary cap
     const enriched = await enrichChatsWithCache(ctx.supabase, ctx.workspaceId, allItems);
-    return { items: enriched };
+    const withPins = await attachPinnedAt(ctx.supabase, ctx.workspaceId, enriched);
+    return { items: withPins };
   } catch (err) {
     if (err instanceof UnipileApiError) {
       throw Errors.internal(err.message);

@@ -137,7 +137,9 @@ export const POST = createApiHandler(
     );
 
     let published: Json | null = null;
-    const built = await tryBuildPublishedDefinition(ctx.supabase, ctx.userId!, draft);
+    const built = await tryBuildPublishedDefinition(ctx.supabase, ctx.userId!, draft, {
+      organizationId: ctx.workspaceId,
+    });
     if (built.ok) {
       published = built.definition as Json;
     }

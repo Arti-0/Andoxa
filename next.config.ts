@@ -10,6 +10,26 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
+        source: "/login",
+        destination: "/auth/login",
+        permanent: false,
+      },
+      {
+        source: "/campaigns2",
+        destination: "/campaigns",
+        permanent: true,
+      },
+      {
+        source: "/campaigns2/:id",
+        destination: "/campaigns/:id",
+        permanent: true,
+      },
+      {
+        source: "/call-sessions2/:id",
+        destination: "/campaigns/sessions/:id",
+        permanent: true,
+      },
+      {
         source: "/installation",
         destination: "/settings",
         permanent: true,

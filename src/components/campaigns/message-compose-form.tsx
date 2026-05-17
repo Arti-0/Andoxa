@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { getMaxCharsForMode } from "@/lib/linkedin/limits";
+import type { LinkedInAccountTier } from "@/lib/linkedin/tier";
 import {
   CAMPAIGN_VARIABLE_KEYS,
   CAMPAIGN_VARIABLE_META,
@@ -52,10 +53,10 @@ export interface MessageComposeFormProps {
   variablesFooterNote?: ReactNode;
   /** When false, compose UI is disabled visually */
   disabled?: boolean;
-  /** Surcharge de la limite de caractères (calculée depuis isPremium si absent) */
+  /** Surcharge de la limite de caractères (calculée depuis linkedInTier si absent) */
   maxLength?: number;
-  /** Statut Premium LinkedIn de l'utilisateur connecté */
-  isPremium?: boolean;
+  /** Palier LinkedIn — défaut standard */
+  linkedInTier?: LinkedInAccountTier;
 }
 
 /**
@@ -70,14 +71,14 @@ export function MessageComposeForm({
   variablesFooterNote,
   disabled = false,
   maxLength,
-  isPremium,
+  linkedInTier = "standard",
 }: MessageComposeFormProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const effectiveMaxLength =
     maxLength ??
     (channel === "linkedin"
-      ? getMaxCharsForMode(linkedinMode ?? "contact", isPremium ?? false)
+      ? getMaxCharsForMode(linkedinMode ?? "contact", linkedInTier)
       : 2000);
 
   const placeholder =

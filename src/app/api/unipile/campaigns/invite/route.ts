@@ -1,4 +1,5 @@
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
+import { LinkedInInviteWeeklyQuotaError } from "@/lib/linkedin/weekly-invite-quota";
 import { getAccountIdForUser } from "@/lib/unipile/account";
 import { UnipileApiError } from "@/lib/unipile/client";
 import { sendLinkedInInviteForProspect } from "@/lib/unipile/linkedin-single-invite";
@@ -60,18 +61,28 @@ export const POST = createApiHandler(async (req, ctx) => {
 
   const accountId = await getAccountIdForUser(ctx);
 
+  // Quota enforcement is atomic inside the helper (consumeLinkedInInviteQuota).
+  // On cap reached → LinkedInInviteWeeklyQuotaError; stop the loop with a
+  // single explanatory line rather than spamming one error per prospect.
   let successCount = 0;
   const errors: string[] = [];
+  let capReached = false;
 
   const byProspect = body.message_by_prospect ?? {};
 
   for (const p of prospects as ProspectRow[]) {
+    if (capReached) break;
     try {
       const override = byProspect[p.id]?.trim() || null;
       await sendLinkedInInviteForProspect(ctx, p, accountId, message, override);
       successCount++;
       await new Promise((r) => setTimeout(r, 300 + Math.random() * 500));
     } catch (err) {
+      if (err instanceof LinkedInInviteWeeklyQuotaError) {
+        errors.push(err.message);
+        capReached = true;
+        break;
+      }
       const slugHint = p.linkedin ?? p.id;
       const msg = err instanceof UnipileApiError ? err.message : String(err);
       errors.push(`${p.full_name ?? slugHint}: ${msg}`);

@@ -33,7 +33,7 @@ export function CrmContent() {
     ? "prospects"
     : initialStatus
       ? "pipeline"
-      : "listes";
+      : "prospects";
   const [tab, setTab] = useState<Tab>(initialTab);
   const [bddFilter, setBddFilterState] = useState<string | null>(initialBddId);
 

@@ -35,6 +35,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Popover,
@@ -43,6 +44,11 @@ import {
 } from "@/components/ui/popover";
 import { ProspectCreateDialog } from "@/components/crm/prospect-create-dialog";
 import { ProspectImportDialog } from "@/components/crm/prospect-import-dialog";
+import {
+  FloatingSelectionBar,
+  floatingSelectionToolbarButtonClass,
+} from "@/components/ui/floating-selection-bar";
+import { cn } from "@/lib/utils";
 import {
   useProspectActions,
   type ProspectMenuItem,
@@ -294,10 +300,7 @@ export function ProspectsTab({
       {/* Header */}
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3 sm:gap-6">
         <div className="min-w-0">
-          <h1 className="m-0 text-xl font-semibold tracking-tight sm:text-[22px]">
-            Prospects
-          </h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">
+          <p className="m-0 text-[13px] text-muted-foreground">
             {allProspects.length} prospects ·{" "}
             <span className="font-medium text-blue-700">{enCours} en cours</span>{" "}
             · {signed} signé{signed > 1 ? "s" : ""} · {lost} perdus
@@ -387,8 +390,9 @@ export function ProspectsTab({
             </PopoverContent>
           </Popover>
           <button
+            type="button"
             onClick={() => setShowImport(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-card px-3 py-1.5 text-[13px] font-medium text-blue-700 hover:bg-blue-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-primary/35 bg-background px-3 py-1.5 text-[13px] font-medium text-primary shadow-sm transition-colors hover:bg-accent dark:border-primary/45"
           >
             <Upload className="h-3.5 w-3.5" />
             Importer un CSV
@@ -471,99 +475,94 @@ export function ProspectsTab({
         </button>
       </div>
 
-      {/* Bulk action bar */}
-      {selected.size > 0 && (
-        <div className="mb-2.5 flex flex-wrap items-center gap-2 rounded-xl bg-foreground px-3 py-2.5 text-[13px] text-background sm:gap-2.5 sm:px-3.5">
-          <span className="font-semibold">
-            {selected.size} sélectionné{selected.size > 1 ? "s" : ""}
-          </span>
-          <span className="hidden h-4 w-px bg-foreground/30 sm:block" />
-
-          {/* Add to list */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <button className="rounded-md px-2.5 py-1 text-[12.5px] hover:bg-foreground/10">
-                Ajouter à une liste
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="start"
-              className="z-tooltip max-h-[300px] w-[260px] overflow-y-auto p-1"
+      <FloatingSelectionBar
+        count={selected.size}
+        onClear={() => setSelected(new Set())}
+      >
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className={floatingSelectionToolbarButtonClass(false)}
             >
-              <div className="px-2 pb-1 pt-0.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Ajouter à la liste
-              </div>
-              {(bddOptions?.items ?? []).length === 0 ? (
-                <div className="px-2 py-2 text-[12.5px] text-muted-foreground">
-                  Aucune liste
-                </div>
-              ) : (
-                (bddOptions?.items ?? []).map((b) => (
-                  <button
-                    key={b.id}
-                    onClick={() =>
-                      bulkMutation.mutate({ action: "bdd", value: b.id })
-                    }
-                    className="block w-full truncate rounded-md px-2.5 py-1.5 text-left text-[12.5px] hover:bg-accent"
-                  >
-                    {b.name}
-                  </button>
-                ))
-              )}
-            </PopoverContent>
-          </Popover>
-
-          <button
-            onClick={() => toast.info("Parcours WhatsApp — bientôt")}
-            className="rounded-md px-2.5 py-1 text-[12.5px] hover:bg-foreground/10"
+              Ajouter à une liste
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            className="z-tooltip max-h-[300px] w-[260px] overflow-y-auto p-1"
           >
-            Ajouter à un parcours WhatsApp
-          </button>
-
-          {/* Change status */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <button className="rounded-md px-2.5 py-1 text-[12.5px] hover:bg-foreground/10">
-                Changer le statut
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="start"
-              className="z-tooltip max-h-[300px] w-[200px] overflow-y-auto p-1"
-            >
-              <div className="px-2 pb-1 pt-0.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Déplacer vers
+            <div className="px-2 pb-1 pt-0.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Ajouter à la liste
+            </div>
+            {(bddOptions?.items ?? []).length === 0 ? (
+              <div className="px-2 py-2 text-[12.5px] text-muted-foreground">
+                Aucune liste
               </div>
-              {PROSPECT_STATUSES.map((s) => (
+            ) : (
+              (bddOptions?.items ?? []).map((b) => (
                 <button
-                  key={s}
+                  key={b.id}
+                  type="button"
                   onClick={() =>
-                    bulkMutation.mutate({ action: "status", value: s })
+                    bulkMutation.mutate({ action: "bdd", value: b.id })
                   }
                   className="block w-full truncate rounded-md px-2.5 py-1.5 text-left text-[12.5px] hover:bg-accent"
                 >
-                  {PROSPECT_STATUS_LABELS[s]}
+                  {b.name}
                 </button>
-              ))}
-            </PopoverContent>
-          </Popover>
+              ))
+            )}
+          </PopoverContent>
+        </Popover>
 
-          <button
-            onClick={() => setBulkConfirmDelete(true)}
-            className="rounded-md px-2.5 py-1 text-[12.5px] text-red-300 hover:bg-foreground/10"
-          >
-            Supprimer
-          </button>
+        <button
+          type="button"
+          onClick={() => toast.info("Parcours WhatsApp — bientôt")}
+          className={floatingSelectionToolbarButtonClass(false)}
+        >
+          Ajouter à un parcours WhatsApp
+        </button>
 
-          <div className="hidden flex-1 sm:block" />
-          <button
-            onClick={() => setSelected(new Set())}
-            className="rounded-md px-2.5 py-1 text-[12.5px] text-foreground/60 hover:bg-foreground/10"
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className={floatingSelectionToolbarButtonClass(false)}
+            >
+              Changer le statut
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            className="z-tooltip max-h-[300px] w-[200px] overflow-y-auto p-1"
           >
-            Annuler
-          </button>
-        </div>
-      )}
+            <div className="px-2 pb-1 pt-0.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Déplacer vers
+            </div>
+            {PROSPECT_STATUSES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() =>
+                  bulkMutation.mutate({ action: "status", value: s })
+                }
+                className="block w-full truncate rounded-md px-2.5 py-1.5 text-left text-[12.5px] hover:bg-accent"
+              >
+                {PROSPECT_STATUS_LABELS[s]}
+              </button>
+            ))}
+          </PopoverContent>
+        </Popover>
+
+        <button
+          type="button"
+          onClick={() => setBulkConfirmDelete(true)}
+          className={floatingSelectionToolbarButtonClass(true)}
+        >
+          Supprimer
+        </button>
+      </FloatingSelectionBar>
 
       <ConfirmDialog
         open={bulkConfirmDelete}
@@ -650,33 +649,46 @@ function TableView({
   menuItems,
   onSourceClick,
 }: ViewProps) {
+  const allSelected =
+    rows.length > 0 && rows.every((p) => selected.has(p.id));
+  const someSelected =
+    rows.length > 0 && !allSelected && rows.some((p) => selected.has(p.id));
+
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-card">
+    <div className="overflow-x-auto rounded-xl border bg-card">
       <table className="w-full min-w-[920px] border-collapse text-[13.5px]">
         <thead>
-          <tr className="border-b border-border bg-muted/40">
-            <ProTh className="w-9">
-              <input
-                type="checkbox"
-                checked={selected.size === rows.length && rows.length > 0}
-                onChange={toggleAll}
-                className="accent-blue-600"
+          <tr>
+            <th className="h-[38px] w-[42px] border-b bg-muted/40 pl-3.5 align-middle">
+              <Checkbox
+                checked={
+                  rows.length === 0
+                    ? false
+                    : allSelected
+                      ? true
+                      : someSelected
+                        ? "indeterminate"
+                        : false
+                }
+                onCheckedChange={() => toggleAll()}
               />
-            </ProTh>
+            </th>
             <ProTh>Prospect</ProTh>
             <ProTh>Statut pipeline</ProTh>
             <ProTh>Source</ProTh>
             <ProTh>Dernière activité</ProTh>
             <ProTh>Workflow</ProTh>
             <ProTh>Canaux</ProTh>
-            <ProTh className="w-[120px] text-right" />
+            <ProTh className="w-[120px]" />
           </tr>
         </thead>
         <tbody>
-          {rows.map((p) => (
+          {rows.map((p, i) => (
             <ProspectRow
               key={p.id}
               p={p}
+              rowCount={rows.length}
+              rowIndex={i}
               selected={selected.has(p.id)}
               toggle={() => toggleSelect(p.id)}
               hovered={hoverRow === p.id}
@@ -692,11 +704,11 @@ function TableView({
         </tbody>
       </table>
       {rows.length === 0 && (
-        <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+        <div className="px-6 py-8 text-center text-sm text-muted-foreground">
           Aucun prospect.
         </div>
       )}
-      <div className="flex items-center justify-between border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+      <div className="flex items-center justify-between border-t px-6 py-2.5 text-xs text-muted-foreground">
         <span>{rows.length} prospects · Page 1 sur 1</span>
         <div />
       </div>
@@ -713,7 +725,10 @@ function ProTh({
 }) {
   return (
     <th
-      className={`px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground ${className}`}
+      className={cn(
+        "h-[38px] border-b bg-muted/40 px-3.5 text-left align-middle text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground",
+        className,
+      )}
     >
       {children}
     </th>
@@ -722,6 +737,8 @@ function ProTh({
 
 interface RowProps {
   p: Prospect;
+  rowCount: number;
+  rowIndex: number;
   selected: boolean;
   toggle: () => void;
   hovered: boolean;
@@ -736,6 +753,8 @@ interface RowProps {
 
 function ProspectRow({
   p,
+  rowCount,
+  rowIndex,
   selected,
   toggle,
   hovered,
@@ -751,28 +770,35 @@ function ProspectRow({
   const tier = silenceTier(activityLabel);
   const tCls = silenceTierClasses(tier);
   const channels = channelKindsFor(p);
+  const rowEdge = rowIndex !== rowCount - 1;
 
   return (
     <tr
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
       onClick={(e) => {
-        if ((e.target as HTMLElement).closest("input,button,a,[data-stop]"))
+        if ((e.target as HTMLElement).closest("button,a,[data-stop]"))
           return;
         onOpen();
       }}
-      className={`border-b border-border/60 cursor-pointer ${hovered ? "bg-muted/30" : ""}`}
+      className={cn(
+        "cursor-pointer transition-colors",
+        rowEdge && "border-b",
+        selected
+          ? "bg-[#E8F0FD] dark:bg-blue-950/55"
+          : "hover:bg-muted/40",
+      )}
     >
-      <td className="px-4 py-3 align-middle">
-        <input
-          type="checkbox"
+      <td
+        className="py-3.5 pl-3.5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Checkbox
           checked={selected}
-          onChange={toggle}
-          onClick={(e) => e.stopPropagation()}
-          className="accent-blue-600"
+          onCheckedChange={() => toggle()}
         />
       </td>
-      <td className="px-4 py-3 align-middle">
+      <td className="p-3.5">
         <div className="flex items-center gap-2.5">
           <NameAvatar name={p.full_name ?? "?"} size={34} />
           <div className="min-w-0">
@@ -786,10 +812,10 @@ function ProspectRow({
           </div>
         </div>
       </td>
-      <td className="px-4 py-3 align-middle">
+      <td className="p-3.5">
         <StatusPill status={p.status} />
       </td>
-      <td className="px-4 py-3 align-middle">
+      <td className="p-3.5">
         <SourcePill
           source={p.source}
           list={listName}
@@ -797,7 +823,7 @@ function ProspectRow({
           onClick={onSourceClick}
         />
       </td>
-      <td className="px-4 py-3 align-middle">
+      <td className="p-3.5">
         {tier ? (
           <span
             className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[12.5px] font-medium ${tCls.bg} ${tCls.text}`}
@@ -811,7 +837,7 @@ function ProspectRow({
           </span>
         )}
       </td>
-      <td className="px-4 py-3 align-middle">
+      <td className="p-3.5">
         {p.workflow ? (
           <span
             data-stop
@@ -825,7 +851,7 @@ function ProspectRow({
           <span className="text-xs text-muted-foreground/50">—</span>
         )}
       </td>
-      <td className="px-4 py-3 align-middle">
+      <td className="p-3.5">
         <div data-stop className="flex gap-1">
           {channels.length === 0 ? (
             <span className="text-xs text-muted-foreground/50">—</span>
@@ -834,7 +860,7 @@ function ProspectRow({
           )}
         </div>
       </td>
-      <td className="relative px-4 py-3 text-right align-middle">
+      <td className="relative p-3.5 text-right align-middle">
         <div data-stop className="inline-flex items-center justify-end gap-0.5">
           {(hovered || menuOpen) && (
             <>
@@ -939,20 +965,33 @@ function CompactView({
   selected,
   toggleSelect,
   toggleAll,
-  hoverRow,
+  hoverRow: _hoverRow,
   setHoverRow,
   onOpen,
   onSourceClick,
 }: ViewProps) {
+  const allSelected =
+    rows.length > 0 && rows.every((p) => selected.has(p.id));
+  const someSelected =
+    rows.length > 0 && !allSelected && rows.some((p) => selected.has(p.id));
+
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-card">
+    <div className="overflow-x-auto rounded-xl border bg-card">
       <div className="min-w-[820px]">
-      <div className="grid grid-cols-[32px_1fr_130px_100px_150px_160px_70px_40px] items-center gap-3 border-b border-border bg-muted/40 px-3.5 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-        <input
-          type="checkbox"
-          checked={selected.size === rows.length && rows.length > 0}
-          onChange={toggleAll}
-          className="accent-blue-600"
+      <div
+        className="grid h-[38px] grid-cols-[42px_1fr_130px_100px_150px_160px_70px_40px] items-center gap-3 border-b bg-muted/40 px-3.5 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground"
+      >
+        <Checkbox
+          checked={
+            rows.length === 0
+              ? false
+              : allSelected
+                ? true
+                : someSelected
+                  ? "indeterminate"
+                  : false
+          }
+          onCheckedChange={() => toggleAll()}
         />
         <span>Prospect</span>
         <span>Statut</span>
@@ -962,34 +1001,41 @@ function CompactView({
         <span>Canaux</span>
         <span />
       </div>
-      {rows.map((p) => {
+      {rows.map((p, i) => {
         const activityLabel = lastActivityLabel(p);
         const tier = silenceTier(activityLabel);
         const tCls = silenceTierClasses(tier);
-        const isHovered = hoverRow === p.id;
         const channels = channelKindsFor(p);
         const listName = p.bdd_name ?? null;
+        const isSel = selected.has(p.id);
+        const rowEdge = i !== rows.length - 1;
         return (
           <div
             key={p.id}
             onMouseEnter={() => setHoverRow(p.id)}
             onMouseLeave={() => setHoverRow(null)}
             onClick={(e) => {
-              if ((e.target as HTMLElement).closest("input,button,a,[data-stop]"))
+              if ((e.target as HTMLElement).closest("button,a,[data-stop]"))
                 return;
               onOpen(p);
             }}
-            className={`grid cursor-pointer grid-cols-[32px_1fr_130px_100px_150px_160px_70px_40px] items-center gap-3 border-b border-border/60 px-3.5 py-1.5 text-[12.5px] ${
-              isHovered ? "bg-muted/30" : ""
-            }`}
+            className={cn(
+              "grid cursor-pointer grid-cols-[42px_1fr_130px_100px_150px_160px_70px_40px] items-center gap-3 px-3.5 py-2 text-[13.5px] transition-colors",
+              rowEdge && "border-b",
+              isSel
+                ? "bg-[#E8F0FD] dark:bg-blue-950/55"
+                : "hover:bg-muted/40",
+            )}
           >
-            <input
-              type="checkbox"
-              checked={selected.has(p.id)}
-              onChange={() => toggleSelect(p.id)}
+            <div
+              className="flex items-center"
               onClick={(e) => e.stopPropagation()}
-              className="accent-blue-600"
-            />
+            >
+              <Checkbox
+                checked={isSel}
+                onCheckedChange={() => toggleSelect(p.id)}
+              />
+            </div>
             <div className="flex min-w-0 items-center gap-2">
               <NameAvatar name={p.full_name ?? "?"} size={24} />
               <span className="whitespace-nowrap font-medium">
@@ -1055,12 +1101,9 @@ export function ProspectsEmpty() {
     <div>
       <div className="mb-4 flex items-start justify-between gap-6">
         <div>
-          <h1 className="m-0 text-[22px] font-semibold tracking-tight">
-            Prospects
-          </h1>
-          <div className="mt-1 text-[13px] text-muted-foreground">
+          <p className="m-0 text-[13px] text-muted-foreground">
             Aucun prospect pour le moment
-          </div>
+          </p>
         </div>
       </div>
       <div className="relative overflow-hidden rounded-2xl border border-border bg-card px-8 pb-14 pt-16">

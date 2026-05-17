@@ -23,7 +23,7 @@ export async function bookSlot(
     slot_start: string;
     slot_end: string;
     guest_name: string;
-    guest_email: string;
+    guest_email?: string | null;
     guest_linkedin?: string | null;
     guest_phone?: string | null;
   }

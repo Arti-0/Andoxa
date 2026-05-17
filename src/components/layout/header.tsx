@@ -1,36 +1,20 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import { Bell, CheckCheck } from "lucide-react";
 import { useWorkspace } from "../../lib/workspace";
 import { useNotifications } from "../../hooks/use-notifications";
 import { HeaderProspectSearch } from "./header-prospect-search";
-
-const PAGE_TITLES: Record<string, string> = {
-  "/dashboard": "Tableau de bord",
-  "/crm": "CRM",
-  "/calendar": "Calendrier",
-  "/settings": "Paramètres",
-  "/messagerie": "Messagerie",
-  "/campaigns": "Campagnes & Appels",
-  "/call-sessions": "Campagnes & Appels",
-  "/workflows": "Workflows",
-};
+import { HeaderBreadcrumbs } from "./breadcrumbs";
 
 export function Header() {
-  const pathname = usePathname();
   const router = useRouter();
   const { isTrialing, daysUntilTrialEnd } = useWorkspace();
   const { notifications, unreadCount, loading, markAsRead, markAllAsRead } =
     useNotifications();
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  const pageTitle =
-    Object.entries(PAGE_TITLES).find(([path]) =>
-      pathname?.startsWith(path)
-    )?.[1] || "Andoxa";
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -47,8 +31,8 @@ export function Header() {
 
   return (
     <header className="flex h-16 min-w-0 items-center justify-between gap-3 border-b bg-card px-4 sm:gap-4 sm:px-6">
-      <div className="flex min-w-0 shrink-0 items-center gap-3 sm:gap-4">
-        <h1 className="truncate text-lg font-semibold">{pageTitle}</h1>
+      <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
+        <HeaderBreadcrumbs />
 
         {isTrialing && daysUntilTrialEnd !== null && (
           <div className="hidden shrink-0 rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800 sm:block dark:bg-amber-900 dark:text-amber-200">

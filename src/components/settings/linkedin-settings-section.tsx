@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Link2,
   Sparkles,
+  Linkedin,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -51,7 +52,7 @@ function LinkedInDailyActivitySection({ workspaceId }: { workspaceId: string | n
   }
 
   const weeklyCap = getLinkedInInviteWeeklyUsageCap(
-    unipileMe?.linkedin_is_premium ?? false
+    unipileMe?.linkedin_tier ?? "standard"
   );
 
   if (isLoading || !usage) {
@@ -363,6 +364,7 @@ export function LinkedInSettingsSection() {
     <SettingsCard
       title="LinkedIn"
       description="Connexion pour la prospection et l'automatisation"
+      icon={<Linkedin />}
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
@@ -426,7 +428,7 @@ export function LinkedInSettingsSection() {
                 Enrichissement automatique à l&apos;import
               </span>
               <PremiumBadge variant="small" showStar={false}>
-                Pro+
+                Payant
               </PremiumBadge>
             </div>
             <p className="text-xs text-zinc-500 dark:text-zinc-400">

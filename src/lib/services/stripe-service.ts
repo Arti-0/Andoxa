@@ -1,10 +1,25 @@
-import Stripe from 'stripe';
-import { STRIPE_CONFIG } from '@/lib/config/stripe-config';
+import Stripe from "stripe";
+import { STRIPE_CONFIG } from "@/lib/config/stripe-config";
+import {
+  priceIdFor,
+  normalizeBillingCadence,
+  isPaidPlanId,
+  type BillingCadence,
+  type PaidPlan,
+} from "@/lib/config/stripe-plans";
 
-// Initialize Stripe only if API key is available
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
   : null;
+
+function requireStripe(): Stripe {
+  if (!stripe) {
+    throw new Error(
+      "Stripe is not configured. Set STRIPE_SECRET_KEY (and STRIPE_PRICE_* env vars)."
+    );
+  }
+  return stripe;
+}
 
 export class StripeService {
   private static instance: StripeService;
@@ -18,67 +33,37 @@ export class StripeService {
     return StripeService.instance;
   }
 
-  /**
-   * Créer ou récupérer un customer Stripe
-   */
+  /** Find or create a Stripe customer by email. */
   async createOrRetrieveCustomer(
     email: string,
     name?: string
   ): Promise<Stripe.Customer> {
-    if (!stripe) {
-      throw new Error(
-        "Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable."
-      );
+    const stripe = requireStripe();
+
+    const existing = await stripe.customers.list({ email, limit: 1 });
+    if (existing.data.length > 0) {
+      return existing.data[0];
     }
 
-    try {
-      // Essayer de trouver un customer existant
-      const customers = await stripe.customers.list({
-        email: email,
-        limit: 1,
-      });
-
-      if (customers.data.length > 0) {
-        return customers.data[0];
-      }
-
-      // Créer un nouveau customer
-      const customer = await stripe.customers.create({
-        email: email,
-        name: name,
-        metadata: {
-          source: "andoxa_app",
-        },
-      });
-
-      return customer;
-    } catch (error) {
-      console.error("Error creating/retrieving customer:", error);
-      throw error;
-    }
+    return stripe.customers.create({
+      email,
+      name,
+      metadata: { source: "andoxa_app" },
+    });
   }
 
-  /**
-   * Récupérer un customer par ID
-   */
   async getCustomer(customerId: string): Promise<Stripe.Customer> {
-    if (!stripe) {
-      throw new Error(
-        "Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable."
-      );
-    }
-
-    try {
-      return (await stripe.customers.retrieve(customerId)) as Stripe.Customer;
-    } catch (error) {
-      console.error("Error retrieving customer:", error);
-      throw error;
-    }
+    const stripe = requireStripe();
+    return (await stripe.customers.retrieve(customerId)) as Stripe.Customer;
   }
 
   /**
-   * Créer une session de checkout
-   * @param quantity - Nombre de sièges (pour per-seat) ou 1 (pour organization-based)
+   * Create a Checkout Session for a Solo/Team subscription.
+   *
+   * @param priceId  Stripe price ID resolved by the caller (env-driven).
+   * @param customerId Stripe customer ID.
+   * @param quantity Number of seats. Solo collapses to 1; Team starts at 3.
+   * @param subscriptionData Optional trial / billing options.
    */
   async createCheckoutSession(
     priceId: string,
@@ -89,89 +74,57 @@ export class StripeService {
     subscriptionData?: { trial_period_days?: number },
     quantity: number = 1
   ): Promise<Stripe.Checkout.Session> {
-    if (!stripe) {
-      throw new Error(
-        "Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable."
-      );
-    }
+    const stripe = requireStripe();
 
-    try {
-      const sessionConfig: Stripe.Checkout.SessionCreateParams = {
-        customer: customerId,
-        payment_method_types: ["card"],
-        line_items: [
-          {
-            price: priceId,
-            quantity: quantity,
-          },
-        ],
-        mode: "subscription",
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        metadata: metadata || {},
-        allow_promotion_codes: STRIPE_CONFIG.payment.allowPromotionCodes,
-        billing_address_collection: STRIPE_CONFIG.payment
-          .billingAddressCollection as Stripe.Checkout.SessionCreateParams.BillingAddressCollection,
+    const sessionConfig: Stripe.Checkout.SessionCreateParams = {
+      customer: customerId,
+      // NB: omit payment_method_types intentionally so Stripe applies the
+      // payment method configuration from the dashboard (best practice).
+      line_items: [{ price: priceId, quantity }],
+      mode: "subscription",
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      metadata: metadata || {},
+      allow_promotion_codes: STRIPE_CONFIG.payment.allowPromotionCodes,
+      billing_address_collection: STRIPE_CONFIG.payment
+        .billingAddressCollection as Stripe.Checkout.SessionCreateParams.BillingAddressCollection,
+      automatic_tax: { enabled: true },
+    };
+
+    if (subscriptionData?.trial_period_days) {
+      sessionConfig.subscription_data = {
+        trial_period_days: subscriptionData.trial_period_days,
       };
-
-      // Add trial period if specified
-      if (subscriptionData?.trial_period_days) {
-        sessionConfig.subscription_data = {
-          trial_period_days: subscriptionData.trial_period_days,
-        };
-      }
-
-      const session = await stripe.checkout.sessions.create(sessionConfig);
-
-      return session;
-    } catch (error) {
-      console.error("Error creating checkout session:", error);
-      throw error;
     }
+
+    return stripe.checkout.sessions.create(sessionConfig);
   }
 
-  /**
-   * Créer une session de portail de facturation
-   */
   async createBillingPortalSession(
     customerId: string,
     returnUrl: string
   ): Promise<Stripe.BillingPortal.Session> {
-    if (!stripe) {
-      throw new Error(
-        "Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable."
-      );
-    }
-
-    try {
-      const session = await stripe.billingPortal.sessions.create({
-        customer: customerId,
-        return_url: returnUrl,
-      });
-
-      return session;
-    } catch (error) {
-      console.error("Error creating billing portal session:", error);
-      throw error;
-    }
+    const stripe = requireStripe();
+    return stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: returnUrl,
+    });
   }
 
   /**
-   * Obtenir le Price ID pour un plan et une fréquence
+   * Resolve the Stripe price ID for a plan + frequency.
+   *
+   * Plans that don't have a Stripe price (custom / trial / demo) return null.
+   * The legacy `yearly` value is accepted as a synonym for `annual`.
    */
-  getPriceId(planId: string, frequency: "monthly" | "yearly"): string | null {
-    const priceIds = STRIPE_CONFIG.priceIds;
-    const plan = priceIds[planId as keyof typeof priceIds];
-    if (!plan) return null;
-
-    return frequency === "monthly" ? plan.monthly : plan.yearly;
-  }
-
-  /**
-   * Obtenir les détails d'un plan
-   */
-  getPlanDetails(planId: string) {
-    return STRIPE_CONFIG.plans[planId as keyof typeof STRIPE_CONFIG.plans];
+  getPriceId(
+    planId: string,
+    frequency: "monthly" | "yearly" | "annual"
+  ): string | null {
+    if (!isPaidPlanId(planId)) return null;
+    const cadence: BillingCadence | null = normalizeBillingCadence(frequency);
+    if (!cadence) return null;
+    return priceIdFor(planId as PaidPlan, cadence);
   }
 }
 

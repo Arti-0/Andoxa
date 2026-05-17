@@ -1,4 +1,5 @@
 import { createApiHandler } from "@/lib/api";
+import { inferLinkedInAccountTier } from "@/lib/linkedin/tier";
 import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";
 
 function isUnipileAccountGoneError(e: unknown): boolean {
@@ -8,6 +9,11 @@ function isUnipileAccountGoneError(e: unknown): boolean {
     );
   }
   return false;
+}
+
+function toStringArray(features: unknown): string[] {
+  if (!Array.isArray(features)) return [];
+  return features.map((x) => String(x));
 }
 
 /**
@@ -78,6 +84,11 @@ export const GET = createApiHandler(
       }
     }
 
+    const linkedinTier = inferLinkedInAccountTier(
+      linkedin?.is_premium ?? false,
+      toStringArray(linkedin?.premium_features)
+    );
+
     return {
       connected: !!linkedin?.unipile_account_id,
       account_id: linkedin?.unipile_account_id ?? undefined,
@@ -86,7 +97,8 @@ export const GET = createApiHandler(
         : (linkedin?.status ?? "unknown"),
       linkedin_error: linkedin?.error_message ?? null,
       linkedin_is_premium: linkedin?.is_premium ?? false,
-      linkedin_premium_features: linkedin?.premium_features ?? [],
+      linkedin_premium_features: toStringArray(linkedin?.premium_features),
+      linkedin_tier: linkedinTier,
       whatsapp_connected: !!whatsapp?.unipile_account_id,
       whatsapp_status: whatsappClearedStale
         ? "disconnected"

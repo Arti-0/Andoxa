@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Archive, ArrowLeft } from "lucide-react";
+import { Archive, ArrowLeft, Pin } from "lucide-react";
 import type { Conversation, Channel } from "./data";
 import { Avatar, ChannelMark, StagePill } from "./components";
 
@@ -12,6 +12,7 @@ export function ConvList({
   conversations,
   activeId,
   onSelect,
+  onTogglePin,
   filter,
   setFilter,
   channel,
@@ -23,6 +24,7 @@ export function ConvList({
   conversations: Conversation[];
   activeId: string;
   onSelect: (id: string) => void;
+  onTogglePin?: (chatId: string, pinned: boolean) => void;
   filter: Filter;
   setFilter: (f: Filter) => void;
   channel: ChannelFilter;
@@ -245,6 +247,43 @@ export function ConvList({
                   )}
                 </div>
               </div>
+              {onTogglePin && (
+                <button
+                  type="button"
+                  className="m2-icon-btn"
+                  aria-label={
+                    c.pinnedAt
+                      ? "Désépingler la conversation"
+                      : "Épingler la conversation en haut de liste"
+                  }
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTogglePin(c.id, !c.pinnedAt);
+                  }}
+                  style={{
+                    flexShrink: 0,
+                    width: 30,
+                    height: 30,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "1px solid var(--m2-slate-200)",
+                    borderRadius: 8,
+                    background: "var(--m2-surface-elevated)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Pin
+                    size={14}
+                    strokeWidth={2}
+                    fill={c.pinnedAt ? "currentColor" : "none"}
+                    style={{
+                      color: c.pinnedAt ? "#0052D9" : "var(--m2-slate-500)",
+                      opacity: c.pinnedAt ? 1 : 0.5,
+                    }}
+                  />
+                </button>
+              )}
               {c.unread > 0 && (
                 <span
                   style={{
@@ -293,7 +332,7 @@ export function ConvList({
             gap: 8,
             padding: "10px 14px",
             borderTop: "1px solid var(--m2-slate-150)",
-            background: "white",
+            background: "var(--m2-surface-elevated)",
             color: archivedCount === 0
               ? "var(--m2-slate-400)"
               : "var(--m2-slate-700)",

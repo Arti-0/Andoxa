@@ -9,6 +9,7 @@ import { createNotification } from "@/lib/notifications/create-notification";
 import { normalizePhoneForWhatsApp } from "@/lib/utils/phone";
 import { getWhatsAppAccountIdForUserId } from "@/lib/unipile/account";
 import { unipileFetch } from "@/lib/unipile/client";
+import { buildBookingInviteIcs } from "@/lib/booking/build-booking-invite-ics";
 
 function looksLikeEmail(s: string): boolean {
   const t = s.trim();
@@ -16,10 +17,14 @@ function looksLikeEmail(s: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
 }
 
+function guestPhoneLooksValid(normalizedDigits: string): boolean {
+  return normalizedDigits.length >= 10;
+}
+
 /**
  * POST /api/booking/[slug]/book
  * Public - creates a booking (event) for the prospect.
- * Optionally creates a Google Meet link and emails the host and guest (Resend).
+ * Optionally creates a Google Meet link and notifies host + guest (email and/or WhatsApp).
  */
 export async function POST(
   request: NextRequest,
@@ -42,14 +47,24 @@ export async function POST(
     if (
       typeof slot_start !== "string" ||
       typeof slot_end !== "string" ||
-      typeof guest_name !== "string" ||
-      typeof guest_email !== "string"
+      typeof guest_name !== "string"
     ) {
       return NextResponse.json(
         {
           success: false,
-          error: "slot_start, slot_end, nom et adresse e-mail sont requis",
+          error: "slot_start, slot_end et nom sont requis",
         },
+        { status: 400 }
+      );
+    }
+
+    if (
+      guest_email !== undefined &&
+      guest_email !== null &&
+      typeof guest_email !== "string"
+    ) {
+      return NextResponse.json(
+        { success: false, error: "Format de l’adresse e-mail invalide" },
         { status: 400 }
       );
     }
@@ -68,16 +83,48 @@ export async function POST(
     }
 
     const name = guest_name.trim();
-    const email = guest_email.trim();
+    const emailRaw =
+      typeof guest_email === "string" ? guest_email.trim() : "";
     const linkedinRaw = typeof guest_linkedin === "string" ? guest_linkedin.trim() : "";
-    const phone = typeof guest_phone === "string" ? guest_phone.trim() : "";
+    const phoneRaw = typeof guest_phone === "string" ? guest_phone.trim() : "";
+    const normalizedPhone = phoneRaw ? normalizePhoneForWhatsApp(phoneRaw) : "";
 
-    if (!name || !email || !looksLikeEmail(email)) {
+    if (!name) {
       return NextResponse.json(
-        { success: false, error: "Nom et adresse e-mail valides sont requis" },
+        { success: false, error: "Le nom est requis" },
         { status: 400 }
       );
     }
+
+    if (emailRaw.length > 0 && !looksLikeEmail(emailRaw)) {
+      return NextResponse.json(
+        { success: false, error: "Adresse e-mail invalide" },
+        { status: 400 }
+      );
+    }
+
+    if (phoneRaw.length > 0 && !guestPhoneLooksValid(normalizedPhone)) {
+      return NextResponse.json(
+        { success: false, error: "Numéro de téléphone invalide" },
+        { status: 400 }
+      );
+    }
+
+    const hasEmail = emailRaw.length > 0 && looksLikeEmail(emailRaw);
+    const hasPhone = phoneRaw.length > 0 && guestPhoneLooksValid(normalizedPhone);
+
+    if (!hasEmail && !hasPhone) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Indiquez au moins une adresse e-mail ou un numéro WhatsApp",
+        },
+        { status: 400 }
+      );
+    }
+
+    const emailForDb = hasEmail ? emailRaw : null;
+    const phoneForDb = hasPhone ? phoneRaw : null;
 
     const linkedin = linkedinRaw ? validateAndNormalizeLinkedIn(linkedinRaw) : null;
     if (linkedinRaw && !linkedin) {
@@ -172,9 +219,9 @@ export async function POST(
             organization_id: orgId,
             user_id: profile.id,
             full_name: name,
-            email,
+            email: emailForDb,
             linkedin,
-            phone: phone || null,
+            phone: phoneForDb,
             source: "booking",
           })
           .select("id")
@@ -192,16 +239,37 @@ export async function POST(
         prospectId = newProspect?.id ?? null;
       }
     } else {
-      const { data: existingByEmail } = await supabase
-        .from("prospects")
-        .select("id")
-        .eq("organization_id", orgId)
-        .eq("user_id", profile.id)
-        .ilike("email", email)
-        .maybeSingle();
+      let matchedId: string | null = null;
 
-      if (existingByEmail?.id) {
-        prospectId = existingByEmail.id;
+      if (hasEmail) {
+        const { data: existingByEmail } = await supabase
+          .from("prospects")
+          .select("id")
+          .eq("organization_id", orgId)
+          .eq("user_id", profile.id)
+          .ilike("email", emailRaw)
+          .maybeSingle();
+        if (existingByEmail?.id) matchedId = existingByEmail.id;
+      }
+
+      if (!matchedId && hasPhone) {
+        const { data: withPhones } = await supabase
+          .from("prospects")
+          .select("id, phone")
+          .eq("organization_id", orgId)
+          .eq("user_id", profile.id)
+          .not("phone", "is", null);
+
+        const hit = (withPhones ?? []).find((p) => {
+          const ph = p.phone?.trim();
+          if (!ph) return false;
+          return normalizePhoneForWhatsApp(ph) === normalizedPhone;
+        });
+        if (hit?.id) matchedId = hit.id;
+      }
+
+      if (matchedId) {
+        prospectId = matchedId;
       } else {
         const { data: newProspect, error: prospectError } = await supabase
           .from("prospects")
@@ -209,9 +277,9 @@ export async function POST(
             organization_id: orgId,
             user_id: profile.id,
             full_name: name,
-            email,
+            email: emailForDb,
             linkedin: null,
-            phone: phone || null,
+            phone: phoneForDb,
             source: "booking",
           })
           .select("id")
@@ -219,7 +287,7 @@ export async function POST(
 
         if (prospectError) {
           captureRouteError(route, prospectError, {
-            extra: { slug, step: "prospect_create", branch: "email" },
+            extra: { slug, step: "prospect_create", branch: "contact" },
           });
           return NextResponse.json(
             { success: false, error: "Impossible de créer le prospect" },
@@ -234,10 +302,10 @@ export async function POST(
       "Rendez-vous réservé via le lien de prise de RDV.",
       "",
       `Invité : ${name}`,
-      `E-mail : ${email}`,
     ];
+    if (emailForDb) descriptionLines.push(`E-mail : ${emailForDb}`);
     if (linkedin) descriptionLines.push(`LinkedIn : ${linkedin}`);
-    if (phone) descriptionLines.push(`Téléphone : ${phone}`);
+    if (phoneForDb) descriptionLines.push(`Téléphone : ${phoneForDb}`);
     const description = descriptionLines.join("\n");
 
     const { data: event, error: eventError } = await supabase
@@ -253,9 +321,9 @@ export async function POST(
         is_all_day: false,
         source: "booking",
         guest_name: name,
-        guest_email: email,
+        guest_email: emailForDb,
         guest_linkedin: linkedin,
-        guest_phone: phone || null,
+        guest_phone: phoneForDb,
       })
       .select("id, start_time, end_time, title")
       .single();
@@ -278,9 +346,10 @@ export async function POST(
       const accessToken = await getValidGoogleAccessToken(supabase, profile.id);
       if (accessToken) {
         const ownerEmail = profile.email?.trim();
-        const attendeeRaw = [ownerEmail, email].filter(
-          (e): e is string => !!e && e.includes("@")
-        );
+        const attendeeRaw = [
+          ownerEmail,
+          ...(hasEmail ? [emailRaw] : []),
+        ].filter((e): e is string => !!e && e.includes("@"));
         const seen = new Set<string>();
         const uniqueAttendees: string[] = [];
         for (const e of attendeeRaw) {
@@ -329,9 +398,9 @@ export async function POST(
         confirmationSent = await sendBookingOwnerConfirmationEmail({
           to: ownerEmail,
           guestName: name,
-          guestEmail: email,
+          guestEmail: emailForDb,
           guestLinkedin: linkedin,
-          guestPhone: phone || null,
+          guestPhone: phoneForDb,
           slotStartIso: slot_start,
           slotEndIso: slot_end,
           meetUrl,
@@ -354,24 +423,9 @@ export async function POST(
         .eq("id", eventId);
     }
 
-    try {
-      await sendBookingGuestConfirmationEmail({
-        to: email,
-        hostName: profile.full_name?.trim() || ownerEmail || "Votre hôte",
-        slotStartIso: slot_start,
-        slotEndIso: slot_end,
-        meetUrl,
-      });
-    } catch (e) {
-      captureRouteError(route, e, {
-        extra: { slug, step: "guest_confirmation_email", eventId },
-      });
-    }
-
-    // Post-booking WhatsApp confirmation to the guest (best-effort, must NOT block)
-    if (phone) {
+    // Guest WhatsApp first when applicable (priority channel), then optional email.
+    if (hasPhone) {
       try {
-        const normalizedPhone = normalizePhoneForWhatsApp(phone);
         const waAccountId = await getWhatsAppAccountIdForUserId(supabase, profile.id);
         if (waAccountId && normalizedPhone) {
           const dateStr = new Intl.DateTimeFormat("fr-FR", {
@@ -399,14 +453,46 @@ export async function POST(
           });
         }
       } catch (e) {
-        // WA failure must not block booking confirmation
         captureRouteError(route, e, {
           extra: { slug, step: "whatsapp_confirmation", eventId },
         }, "warn");
       }
     }
 
-    // Trigger "Nouveau rendez-vous" notification for all org members
+    if (hasEmail) {
+      try {
+        const host =
+          process.env.NEXT_PUBLIC_APP_URL?.replace(/^https?:\/\//, "").split("/")[0] ??
+          "andoxa.app";
+        const hostDisplay = profile.full_name?.trim() || ownerEmail || "Hôte";
+        const guestIcsLines = [
+          `Rendez-vous avec ${hostDisplay}`,
+          meetUrl ? `Visioconférence : ${meetUrl}` : "",
+        ].filter(Boolean);
+        const guestIcs = buildBookingInviteIcs({
+          uid: `${eventId}@${host}`,
+          startUtc: slotStartDate,
+          endUtc: slotEndDate,
+          summary: `RDV — ${hostDisplay}`,
+          description: guestIcsLines.join("\n"),
+          organizerName: hostDisplay,
+          organizerEmail: ownerEmail && ownerEmail.includes("@") ? ownerEmail : null,
+        });
+        await sendBookingGuestConfirmationEmail({
+          to: emailRaw,
+          hostName: profile.full_name?.trim() || ownerEmail || "Votre hôte",
+          slotStartIso: slot_start,
+          slotEndIso: slot_end,
+          meetUrl,
+          icsInvitation: guestIcs,
+        });
+      } catch (e) {
+        captureRouteError(route, e, {
+          extra: { slug, step: "guest_confirmation_email", eventId },
+        });
+      }
+    }
+
     const ownerName = profile.full_name?.trim() || "vous";
     await createNotification(supabase, {
       title: "Nouveau rendez-vous",
@@ -416,6 +502,7 @@ export async function POST(
       actor_id: null,
       organization_id: orgId,
       target_url: "/calendar",
+      dedupe_key: `booking:new:${eventId}`,
     });
 
     return NextResponse.json({

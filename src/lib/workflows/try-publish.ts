@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/supabase";
-import { getLinkedInAccountIdForUserId, getWhatsAppAccountIdForUserId } from "@/lib/unipile/account";
+import {
+  getLinkedInAccountIdForUserId,
+  getWhatsAppAccountIdForUserId,
+  resolveWhatsAppAccountIdForOrganization,
+} from "@/lib/unipile/account";
 import {
   definitionRequiresLinkedIn,
   definitionRequiresWhatsApp,
@@ -20,7 +24,8 @@ export type TryPublishResult =
 export async function tryBuildPublishedDefinition(
   supabase: SupabaseClient<Database>,
   userId: string,
-  draft: WorkflowDefinition
+  draft: WorkflowDefinition,
+  opts?: { organizationId?: string | null }
 ): Promise<TryPublishResult> {
   const v = validateDefinitionForPublish(draft);
   if (v) {
@@ -40,13 +45,16 @@ export async function tryBuildPublishedDefinition(
   }
 
   if (definitionRequiresWhatsApp(draft)) {
-    const wa = await getWhatsAppAccountIdForUserId(supabase, userId);
+    const orgId = opts?.organizationId?.trim();
+    const wa = orgId
+      ? await resolveWhatsAppAccountIdForOrganization(supabase, orgId, userId)
+      : await getWhatsAppAccountIdForUserId(supabase, userId);
     if (!wa) {
       return {
         ok: false,
         reason: "whatsapp",
         message:
-          "Connectez WhatsApp (Installation) pour enregistrer un parcours avec des messages WhatsApp.",
+          "Connectez WhatsApp depuis Installation pour enregistrer ce parcours (un autre membre peut avoir la boîte connectée).",
       };
     }
   }

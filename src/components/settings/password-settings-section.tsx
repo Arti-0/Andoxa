@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -57,6 +57,7 @@ export function PasswordSettingsSection() {
     <SettingsCard
       title="Mot de passe"
       description="Définir ou modifier votre mot de passe"
+      icon={<ShieldCheck />}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">

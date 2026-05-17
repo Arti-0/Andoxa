@@ -164,7 +164,7 @@ export function useWorkspacePlan() {
   const { workspace, subscription, hasActivePlan, isTrialing, daysUntilTrialEnd } = useWorkspace();
 
   return {
-    plan: workspace?.plan ?? 'free',
+    plan: workspace?.plan ?? 'trial',
     status: subscription?.status ?? null,
     hasActivePlan,
     isTrialing,

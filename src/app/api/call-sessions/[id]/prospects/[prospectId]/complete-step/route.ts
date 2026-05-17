@@ -2,6 +2,9 @@ import { createApiHandler, Errors, parseBody } from "@/lib/api";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { performSessionQuickBooking } from "@/lib/call-sessions/session-booking";
+import type { Database } from "@/lib/types/supabase";
+
+type ProspectUpdateRow = Database["public"]["Tables"]["prospects"]["Update"];
 
 function getIds(req: NextRequest) {
   const segments = new URL(req.url).pathname.replace(/\/+$/, "").split("/");
@@ -72,7 +75,7 @@ export const POST = createApiHandler(async (req: NextRequest, ctx) => {
   if (!prospectRow) throw Errors.notFound("Prospect");
 
   if (body.prospect) {
-    const patch: Record<string, string> = {};
+    const patch: ProspectUpdateRow = {};
     if (body.prospect.email !== undefined) {
       const e = body.prospect.email.trim();
       if (e.length > 0) patch.email = e.toLowerCase();

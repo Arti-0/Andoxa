@@ -9,11 +9,17 @@ export function Whatsapp2Styles() {
       @keyframes andoxa-pulse { 0%,100% { opacity:1; } 50% { opacity:.5; } }
       .ws2-root *::-webkit-scrollbar { width: 6px; height: 6px; }
       .ws2-root *::-webkit-scrollbar-track { background: transparent; }
-      .ws2-root *::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+      .ws2-root *::-webkit-scrollbar-thumb {
+        background: color-mix(in oklab, var(--muted-foreground) 42%, transparent);
+        border-radius: 3px;
+      }
+      .dark .ws2-root *::-webkit-scrollbar-thumb {
+        background: rgb(255 255 255 / 0.14);
+      }
       .ws2-root input:focus, .ws2-root textarea:focus, .ws2-root select:focus {
         outline: none !important;
-        border-color: #0052D9 !important;
-        box-shadow: 0 0 0 3px rgba(0,82,217,0.1) !important;
+        border-color: var(--brand-blue) !important;
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-blue) 22%, transparent) !important;
       }
     `}</style>
   );

@@ -6,15 +6,38 @@ import { Crown, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/hooks/use-user";
 import { useRouter } from "next/navigation";
-// import { redirectToCheckout } from "@/lib/stripe/client";
+import type { PlanId } from "@/lib/config/plans-config";
 
 interface UpgradeButtonProps {
-  currentPlan: "trial" | "essential" | "pro" | "business";
+  /** Where the user is today. Drives target plan + label. */
+  currentPlan: PlanId;
   variant?: "default" | "outline" | "ghost";
   size?: "default" | "sm" | "lg";
   className?: string;
   children?: React.ReactNode;
   showIcon?: boolean;
+}
+
+/**
+ * Route the user toward the next sensible upgrade step.
+ *
+ *   trial → solo  (the very first paid step)
+ *   solo  → team  (more seats, collab)
+ *   team  → custom (contact sales)
+ *   custom/demo → no-op (already at the top of the funnel)
+ */
+function getTargetPlan(currentPlan: PlanId): PlanId | null {
+  switch (currentPlan) {
+    case "trial":
+      return "solo";
+    case "solo":
+      return "team";
+    case "team":
+      return "custom";
+    case "custom":
+    case "demo":
+      return null;
+  }
 }
 
 export function UpgradeButton({
@@ -29,39 +52,23 @@ export function UpgradeButton({
   const { isAuthenticated } = useUser();
   const router = useRouter();
 
-  // Déterminer le plan cible basé sur le plan actuel
-  const getTargetPlan = () => {
-    switch (currentPlan) {
-      case "trial":
-        return "essential";
-      case "essential":
-        return "pro";
-      case "pro":
-        return "business";
-      default:
-        return "essential";
-    }
-  };
-
-  const targetPlan = getTargetPlan();
+  const targetPlan = getTargetPlan(currentPlan);
 
   const handleUpgrade = async () => {
+    if (!targetPlan) return;
     setIsLoading(true);
-
     try {
-      if (targetPlan === "business") {
-        // Rediriger vers Calendly pour Business
-        window.open("https://calendly.com/andoxa/30min", "_blank");
+      if (targetPlan === "custom") {
+        router.push("/contact?objet=custom");
       } else {
-        // Si l'utilisateur est déjà connecté, rediriger directement vers billing
+        // Solo/Team go through the authenticated checkout flow.
         if (isAuthenticated) {
-          router.push(`/settings?upgrade=${targetPlan}`);
+          router.push(`/onboarding/plan?upgrade=${targetPlan}`);
         } else {
-          // Sinon, rediriger vers page de connexion puis checkout
-        const returnUrl = `/settings?upgrade=${targetPlan}`;
-        window.location.href = `/auth/login?redirect=${encodeURIComponent(
-          returnUrl
-        )}`;
+          const returnUrl = `/onboarding/plan?upgrade=${targetPlan}`;
+          window.location.href = `/auth/login?redirect=${encodeURIComponent(
+            returnUrl
+          )}`;
         }
       }
     } catch (error) {
@@ -73,30 +80,25 @@ export function UpgradeButton({
 
   const getButtonText = () => {
     if (children) return children;
-
     switch (targetPlan) {
-      case "essential":
-        return currentPlan === "trial"
-          ? "Passer à Essential"
-          : "Passer à Essential";
-      case "pro":
-        return "Passer au Pro";
-      case "business":
+      case "solo":
+        return "Passer à Solo";
+      case "team":
+        return "Passer à Team";
+      case "custom":
         return "Contactez-nous";
       default:
-        return "Upgrade";
+        return "Plan max atteint";
     }
   };
 
   const getIcon = () => {
     if (!showIcon) return null;
-
     switch (targetPlan) {
-      case "essential":
+      case "solo":
+      case "team":
         return <Crown className="h-4 w-4" />;
-      case "pro":
-        return <Crown className="h-4 w-4" />;
-      case "business":
+      case "custom":
         return <Sparkles className="h-4 w-4" />;
       default:
         return null;
@@ -105,11 +107,10 @@ export function UpgradeButton({
 
   const getButtonStyle = () => {
     switch (targetPlan) {
-      case "essential":
+      case "solo":
         return "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-0";
-      case "pro":
-        return "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white border-0";
-      case "business":
+      case "team":
+      case "custom":
         return "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white border-0";
       default:
         return "";
@@ -121,7 +122,7 @@ export function UpgradeButton({
       onClick={handleUpgrade}
       variant={variant}
       size={size}
-      disabled={isLoading}
+      disabled={isLoading || !targetPlan}
       className={cn(
         "font-semibold transition-all duration-200 hover:scale-105 hover:shadow-lg",
         getButtonStyle(),

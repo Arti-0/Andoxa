@@ -20,6 +20,8 @@ import { LinkedInPremiumBadge } from "@/components/ui/linkedin-premium-badge";
 import { toast } from "sonner";
 import type { WorkflowStepType } from "@/lib/workflows/schema";
 import { getMaxCharsForMode } from "@/lib/linkedin/limits";
+import type { LinkedInAccountTier } from "@/lib/linkedin/tier";
+import { tierSupportsPremiumInviteFeatures } from "@/lib/linkedin/tier";
 
 async function postMessageTemplate(
   name: string,
@@ -51,7 +53,7 @@ interface WorkflowStepMessageModalProps {
   stepType: "linkedin_invite" | "linkedin_message" | "whatsapp_message";
   initialMessage: string;
   onSave: (message: string) => void;
-  isPremium?: boolean;
+  linkedInTier?: LinkedInAccountTier;
 }
 
 export function WorkflowStepMessageModal({
@@ -60,7 +62,7 @@ export function WorkflowStepMessageModal({
   stepType,
   initialMessage,
   onSave,
-  isPremium = false,
+  linkedInTier = "standard",
 }: WorkflowStepMessageModalProps) {
   const queryClient = useQueryClient();
   const [message, setMessage] = useState(initialMessage);
@@ -72,7 +74,7 @@ export function WorkflowStepMessageModal({
 
   const maxChars =
     channel === "linkedin"
-      ? getMaxCharsForMode(linkedinMode, isPremium)
+      ? getMaxCharsForMode(linkedinMode, linkedInTier)
       : 2000;
 
   const wasOpenRef = useRef(false);
@@ -148,9 +150,9 @@ export function WorkflowStepMessageModal({
             <DialogDescription className="flex flex-wrap items-center gap-1.5">
               <LinkedInPremiumBadge size="sm" />
               <span>
-                {isPremium
-                  ? `Note facultative — jusqu'à ${maxChars} caractères (Premium).`
-                  : `Note facultative — jusqu'à ${maxChars} caractères. Limite étendue à 300 caractères avec LinkedIn Premium.`}
+                {tierSupportsPremiumInviteFeatures(linkedInTier)
+                  ? `Note facultative — jusqu'à ${maxChars} caractères (Premium / Sales Navigator).`
+                  : `Note facultative — jusqu'à ${maxChars} caractères. Limite étendue à 300 caractères avec LinkedIn Premium ou Sales Navigator.`}
               </span>
             </DialogDescription>
           ) : null}
@@ -174,7 +176,7 @@ export function WorkflowStepMessageModal({
             onMessageChange={setMessage}
             channel={channel}
             linkedinMode={linkedinMode}
-            isPremium={isPremium}
+            linkedInTier={linkedInTier}
             maxLength={maxChars}
           />
           {saveAsTemplate ? (

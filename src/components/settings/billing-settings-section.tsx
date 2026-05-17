@@ -6,7 +6,7 @@ import {
     settingsSaveButtonClass,
 } from "@/components/settings/settings-card";
 import { cn } from "@/lib/utils";
-import { PLAN_DISPLAY, STATUS_DISPLAY } from "@/lib/billing/display";
+import { PLAN_DISPLAY, PLAN_DISPLAY_FALLBACK, STATUS_DISPLAY } from "@/lib/billing/display";
 
 export function BillingSettingsSection({
     plan,
@@ -18,8 +18,8 @@ export function BillingSettingsSection({
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const planKey = (plan ?? "free").toLowerCase();
-    const display = PLAN_DISPLAY[planKey] ?? PLAN_DISPLAY.free;
+    const planKey = (plan ?? "trial").toLowerCase();
+    const display = PLAN_DISPLAY[planKey] ?? PLAN_DISPLAY_FALLBACK;
     const PlanIcon = display.icon;
     const statusLabel =
         STATUS_DISPLAY[subscriptionStatus ?? ""] ??

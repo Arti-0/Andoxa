@@ -1,13 +1,17 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { Button } from '@/components/ui/button';
-import { TarifsSection } from '@/components/v3/homepage/TarifsSection';
+import {
+    MarketingPricingSection,
+    type PricingPlanChoice,
+} from '@/components/marketing/sections/pricing';
+import type { Billing } from '@/components/marketing/pricing/billing-toggle';
 import {
     type OrgDashboardGateRow,
     userDashboardEntitlement,
@@ -17,11 +21,12 @@ import {
     isMeaningfulPostgrestError,
     serializePostgrestError,
 } from '@/lib/supabase/postgrest-error';
+import { toast } from 'sonner';
 
 const PLAN_BACK_HREF = '/onboarding?step=9';
 
 const planShellClass =
-    'flex min-h-dvh w-full flex-col bg-zinc-50 transition-colors duration-300 dark:bg-[#0A0A0A]';
+    'flex min-h-dvh w-full flex-col bg-background transition-colors duration-300';
 
 function PlanBackHeader() {
     return (
@@ -30,7 +35,7 @@ function PlanBackHeader() {
                 asChild
                 variant="ghost"
                 size="sm"
-                className="-ml-2 text-sm font-medium text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                className="-ml-2 text-sm font-medium text-muted-foreground hover:text-foreground"
             >
                 <Link href={PLAN_BACK_HREF}>
                     <ChevronLeft className="size-4" />
@@ -49,6 +54,9 @@ function PlanPageContent() {
 
     const [loading, setLoading] = useState(true);
     const [hasPlan, setHasPlan] = useState(false);
+    const [loadingPlan, setLoadingPlan] = useState<PricingPlanChoice | null>(
+        null
+    );
 
     useEffect(() => {
         let isMounted = true;
@@ -63,9 +71,7 @@ function PlanPageContent() {
                 } = await supabase.auth.getUser();
 
                 if (authError || !user) {
-                    if (isMounted) {
-                        setLoading(false);
-                    }
+                    if (isMounted) setLoading(false);
                     return;
                 }
 
@@ -111,20 +117,14 @@ function PlanPageContent() {
                                 ...serializePostgrestError(orgError),
                             }
                         );
-                    } else if (orgError) {
-                        logger.warn(
-                            'onboarding/plan: organization fetch returned non-actionable error',
-                            {
-                                organizationId: profile.active_organization_id,
-                            }
-                        );
                     } else if (orgData) {
                         orgGate = orgData as OrgDashboardGateRow;
                     }
                 }
 
-                let subscription: { plan_id?: string; status?: string } | null =
-                    null;
+                let subscription:
+                    | { plan_id?: string; status?: string }
+                    | null = null;
                 try {
                     const { data: subData, error: subError } = await supabase
                         .from('user_subscriptions')
@@ -140,7 +140,7 @@ function PlanPageContent() {
                         } | null;
                     }
                 } catch {
-                    // Continue
+                    // ignore
                 }
 
                 const { allowed: entitledToDashboard } =
@@ -168,9 +168,7 @@ function PlanPageContent() {
                 logger.warn('onboarding/plan: checkPlan failed', {
                     ...serializePostgrestError(error),
                 });
-                if (isMounted) {
-                    setLoading(false);
-                }
+                if (isMounted) setLoading(false);
             }
         }
 
@@ -180,6 +178,90 @@ function PlanPageContent() {
             isMounted = false;
         };
     }, [router]);
+
+    const handleSelectPlan = useCallback(
+        async (plan: PricingPlanChoice, billing: Billing) => {
+            if (plan === 'custom') {
+                router.push('/contact?objet=custom');
+                return;
+            }
+
+            setLoadingPlan(plan);
+            try {
+                // Detect existing active subscription → send to billing portal
+                // to upgrade/downgrade. Otherwise start a fresh checkout.
+                const subRes = await fetch('/api/subscription/info', {
+                    method: 'GET',
+                    credentials: 'include',
+                });
+
+                let hasActiveStripeSub = false;
+                if (subRes.ok) {
+                    const info = (await subRes.json()) as {
+                        hasActivePlan?: boolean;
+                    };
+                    hasActiveStripeSub = Boolean(info.hasActivePlan);
+                }
+
+                if (hasActiveStripeSub) {
+                    const portalRes = await fetch('/api/paiements/portal', {
+                        method: 'POST',
+                        credentials: 'include',
+                    });
+                    const portalJson = (await portalRes.json()) as {
+                        url?: string;
+                        error?: string;
+                    };
+                    if (!portalRes.ok || !portalJson.url) {
+                        throw new Error(
+                            portalJson.error ??
+                                'Impossible d’ouvrir le portail de facturation.'
+                        );
+                    }
+                    window.location.href = portalJson.url;
+                    return;
+                }
+
+                const checkoutRes = await fetch('/api/paiements/checkout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ planId: plan, billing }),
+                });
+                const checkoutJson = (await checkoutRes.json()) as {
+                    url?: string;
+                    redirect_url?: string;
+                    error?: string;
+                };
+
+                if (!checkoutRes.ok) {
+                    throw new Error(
+                        checkoutJson.error ??
+                            'Impossible de démarrer le checkout.'
+                    );
+                }
+
+                if (checkoutJson.redirect_url) {
+                    // Solo: instant trial activation, no Stripe redirect.
+                    router.push(checkoutJson.redirect_url);
+                    return;
+                }
+                if (checkoutJson.url) {
+                    window.location.href = checkoutJson.url;
+                    return;
+                }
+                throw new Error('Réponse de checkout vide.');
+            } catch (err) {
+                const message =
+                    err instanceof Error
+                        ? err.message
+                        : 'Une erreur est survenue.';
+                toast.error(message);
+                setLoadingPlan(null);
+            }
+        },
+        [router]
+    );
 
     if (loading || hasPlan) {
         return (
@@ -195,13 +277,12 @@ function PlanPageContent() {
     return (
         <div className={planShellClass}>
             <PlanBackHeader />
-            <div className="flex flex-1 flex-col text-foreground dark:text-[#f7f7f8]">
-                <div className="flex flex-1 flex-col py-10 sm:py-12">
-                    <div className="mx-auto w-full max-w-6xl space-y-8 px-4 sm:px-6 lg:px-10">
-                        <TarifsSection />
-                    </div>
-                </div>
-            </div>
+            <main className="flex flex-1 flex-col">
+                <MarketingPricingSection
+                    onSelectPlan={handleSelectPlan}
+                    loadingPlan={loadingPlan}
+                />
+            </main>
         </div>
     );
 }

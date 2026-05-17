@@ -1,14 +1,19 @@
 import { env } from "@/lib/config/environment";
 import {
   getLinkedInAccountIdForUserId,
-  getWhatsAppAccountIdForUserId,
+  resolveWhatsAppAccountIdForOrganization,
 } from "@/lib/unipile/account";
 import {
   UnipileApiError,
   UnipileRateLimitError,
   unipileFetch,
 } from "@/lib/unipile/client";
-import { applyMessageVariables, extractLinkedInSlug } from "@/lib/unipile/campaign";
+import {
+  applyMessageVariables,
+  extractLinkedInSlug,
+  sendWhatsAppMessage,
+} from "@/lib/unipile/campaign";
+import { normalizePhoneForWhatsApp } from "@/lib/utils/phone";
 import type { UnipileChat } from "@/lib/unipile/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/supabase";
@@ -19,8 +24,20 @@ import {
   THROTTLE_MS,
   weeklyPeriodKey,
 } from "./throttle";
+import { insertProspectActivity } from "@/lib/prospect-activity";
+import {
+  consumeLinkedInInviteQuota,
+  fetchLinkedInInviteWeeklyQuotaState,
+} from "@/lib/linkedin/weekly-invite-quota";
 
 const LOCK_STALE_SECONDS = 900;
+
+/** Inline preview stored in prospect_activity.details (CRM timeline). */
+function clipDetailMessage(text: string, maxLen: number): string {
+  const t = text.trim();
+  if (t.length <= maxLen) return t;
+  return `${t.slice(0, maxLen - 1)}…`;
+}
 
 export type ProcessCampaignJobBatchOptions = {
   bypassDelay?: boolean;
@@ -186,6 +203,16 @@ async function runBatchLinkedIn(
     (inboundRows ?? []).map((r) => r.prospect_id)
   );
 
+  // Invite-type batches go through atomic per-prospect consume below; we still
+  // fetch the cap once so the per-iteration consume call knows the limit.
+  const weekKey = weeklyPeriodKey();
+  const isInviteBatch =
+    job.type === "invite" || job.type === "invite_with_note";
+  const inviteCap = isInviteBatch
+    ? (await fetchLinkedInInviteWeeklyQuotaState(supabase, job.created_by, weekKey))
+        .cap
+    : 0;
+
   let batchSuccess = 0;
   let batchError = 0;
   let rateLimited = false;
@@ -230,6 +257,21 @@ async function runBatchLinkedIn(
         .eq("id", cjp.id);
       batchError++;
       continue;
+    }
+
+    // Atomic invite-quota reservation: must happen BEFORE the Unipile call.
+    // Two concurrent batches for the same user no longer race past the cap.
+    if (isInviteBatch) {
+      const consumed = await consumeLinkedInInviteQuota(
+        supabase,
+        job.created_by,
+        inviteCap,
+        weekKey
+      );
+      if (!consumed.ok) {
+        rateLimited = true;
+        break;
+      }
     }
 
     try {
@@ -291,13 +333,36 @@ async function runBatchLinkedIn(
       batchSuccess++;
 
       if (job.type === "invite" || job.type === "invite_with_note") {
-        void incrementUsageCounter(
-          supabase,
-          job.created_by,
-          "linkedin_invite",
-          weeklyPeriodKey()
-        );
+        void insertProspectActivity(supabase, {
+          organization_id: job.organization_id,
+          prospect_id: cjp.prospect_id,
+          actor_id: job.created_by,
+          campaign_job_id: jobId,
+          action: "linkedin_invite_sent",
+          details: {
+            message:
+              job.type === "invite_with_note"
+                ? clipDetailMessage(text ?? "", 500)
+                : "",
+            campaign_job_id: jobId,
+          },
+        });
+      } else if (job.type === "contact") {
+        void insertProspectActivity(supabase, {
+          organization_id: job.organization_id,
+          prospect_id: cjp.prospect_id,
+          actor_id: job.created_by,
+          campaign_job_id: jobId,
+          action: "linkedin_message_outbound",
+          details: {
+            message: clipDetailMessage(text ?? "", 500),
+            campaign_job_id: jobId,
+          },
+        });
       }
+
+      // Note: linkedin_invite counter already incremented atomically above via
+      // consumeLinkedInInviteQuota — do not increment again here.
       if (job.type === "contact") {
         void incrementUsageCounter(
           supabase,
@@ -418,7 +483,11 @@ async function runBatchWhatsApp(
     };
   }
 
-  const accountId = await getWhatsAppAccountIdForUserId(supabase, job.created_by);
+  const accountId = await resolveWhatsAppAccountIdForOrganization(
+    supabase,
+    job.organization_id,
+    job.created_by
+  );
   if (!accountId) {
     return { ok: true, skipped: true, reason: "no_account" };
   }
@@ -465,7 +534,9 @@ async function runBatchWhatsApp(
       continue;
     }
 
-    const phone = prospect.phone.replace(/[\s\-().]/g, "").replace(/^00/, "");
+    // Normalised consistently with the workflow path: strips +/spaces, maps
+    // 0033→33 and French local 0X→33X. Unipile WhatsApp needs this exact form.
+    const phone = normalizePhoneForWhatsApp(prospect.phone);
 
     try {
       await supabase
@@ -481,14 +552,8 @@ async function runBatchWhatsApp(
               bookingLink: bookingLink ?? undefined,
             });
 
-      const chatRes = await unipileFetch<{ id?: string }>("/chats", {
-        method: "POST",
-        body: JSON.stringify({
-          account_id: accountId,
-          attendees_ids: [phone],
-          text,
-        }),
-      });
+      // multipart/form-data + WhatsApp JID — see sendWhatsAppMessage().
+      const chatRes = await sendWhatsAppMessage({ accountId, phone, text });
 
       const chatId = chatRes?.id;
       if (chatId) {
@@ -516,6 +581,18 @@ async function runBatchWhatsApp(
         "whatsapp_new_chat",
         dailyPeriodKey()
       );
+
+      void insertProspectActivity(supabase, {
+        organization_id: job.organization_id,
+        prospect_id: cjp.prospect_id,
+        actor_id: job.created_by,
+        campaign_job_id: jobId,
+        action: "whatsapp_message_outbound",
+        details: {
+          message: clipDetailMessage(text ?? "", 500),
+          campaign_job_id: jobId,
+        },
+      });
 
       batchSuccess++;
     } catch (err) {

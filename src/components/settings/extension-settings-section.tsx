@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Copy, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
+import { Copy, ExternalLink, ChevronDown, ChevronUp, Puzzle } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -66,6 +66,7 @@ export function ExtensionSettingsSection({
         <SettingsCard
             title="Extension Andoxa"
             description="Capturez des prospects depuis LinkedIn directement dans votre CRM"
+            icon={<Puzzle />}
         >
             <div className="space-y-4">
                 <div className="flex items-center justify-between gap-4 rounded-lg border bg-zinc-50 p-3 dark:bg-black/30">

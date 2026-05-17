@@ -1,5 +1,6 @@
 // Bridges the backend workflow shape ↔ the Claude Design's view models.
 
+import type { WorkflowTriggerKind } from "@/lib/workflows/trigger-kind";
 import type { WfNodeType } from "./node-types";
 
 export type DesignStatus = "active" | "draft" | "paused" | "error";
@@ -15,6 +16,9 @@ export interface BackendWorkflowRow {
   draft_definition: { steps?: { type: string }[] } | null;
   published_definition: { steps?: { type: string }[] } | null;
   metadata?: unknown;
+  /** DB column `workflows.trigger_kind` */
+  trigger_kind?: WorkflowTriggerKind;
+  run_mode?: "terminating" | "evergreen";
   active_runs_count?: number;
   total_runs_count?: number;
   runs_completed_count?: number;

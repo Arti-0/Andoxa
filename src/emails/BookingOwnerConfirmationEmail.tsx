@@ -1,6 +1,6 @@
 export type BookingOwnerConfirmationEmailProps = {
   guestName: string;
-  guestEmail: string;
+  guestEmail: string | null;
   guestLinkedin: string | null;
   guestPhone: string | null;
   dateLine: string;
@@ -27,7 +27,7 @@ export function BookingOwnerConfirmationEmail({
   crmProspectUrl,
 }: BookingOwnerConfirmationEmailProps) {
   const safeName = esc(guestName);
-  const safeEmail = esc(guestEmail);
+  const safeEmail = guestEmail?.trim() ? esc(guestEmail.trim()) : null;
   const safeLi = guestLinkedin ? esc(guestLinkedin) : null;
   const safePhone = guestPhone ? esc(guestPhone) : null;
   const safeDate = esc(dateLine);
@@ -95,10 +95,12 @@ export function BookingOwnerConfirmationEmail({
                               <td style={{ padding: "6px 0", fontWeight: 600, width: 140 }}>Nom</td>
                               <td style={{ padding: "6px 0" }}>{safeName}</td>
                             </tr>
-                            <tr>
-                              <td style={{ padding: "6px 0", fontWeight: 600 }}>E-mail</td>
-                              <td style={{ padding: "6px 0", wordBreak: "break-all" }}>{safeEmail}</td>
-                            </tr>
+                            {safeEmail ? (
+                              <tr>
+                                <td style={{ padding: "6px 0", fontWeight: 600 }}>E-mail</td>
+                                <td style={{ padding: "6px 0", wordBreak: "break-all" }}>{safeEmail}</td>
+                              </tr>
+                            ) : null}
                             {safeLi ? (
                               <tr>
                                 <td style={{ padding: "6px 0", fontWeight: 600 }}>LinkedIn</td>

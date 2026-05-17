@@ -7,7 +7,15 @@ import {
 } from "@/lib/utils/image-optimization";
 import { logger } from "@/lib/utils/logger";
 
-export const DEFAULT_PLAN_FOR_PENDING_ORG = "essential" as const;
+/**
+ * Default plan recorded on a freshly created (pending) organization, before
+ * the user picks a tier at `/onboarding/plan`. We use `trial` because:
+ *
+ *  - It's a valid value of the new CHECK constraint on `organizations.plan`.
+ *  - It pins the row to the trial caps in `PLAN_LIMITS` until checkout.
+ *  - The Stripe webhook will overwrite it once the user pays.
+ */
+export const DEFAULT_PLAN_FOR_PENDING_ORG = "trial" as const;
 
 export function slugifyOrganizationName(input: string): string {
   const s = input

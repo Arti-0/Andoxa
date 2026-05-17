@@ -1,5 +1,8 @@
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
 import { NextRequest } from "next/server";
+import type { Database, Json } from "@/lib/types/supabase";
+
+type CampaignJobUpdate = Database["public"]["Tables"]["campaign_jobs"]["Update"];
 
 function extractJobId(req: NextRequest) {
   const parts = new URL(req.url).pathname.split("/");
@@ -60,7 +63,7 @@ export const PATCH = createApiHandler(async (req, ctx) => {
   const id = extractJobId(req);
 
   const body = await parseBody<{ status?: string; name?: string }>(req);
-  const updates: Record<string, unknown> = {};
+  const updates: CampaignJobUpdate = {};
 
   if (body.status !== undefined) {
     if (!["paused", "running", "failed"].includes(body.status)) {
@@ -80,10 +83,11 @@ export const PATCH = createApiHandler(async (req, ctx) => {
     const existingMeta = (existing?.metadata as Record<string, unknown> | null) ?? {};
     const trimmed = body.name.trim();
     if (trimmed) {
-      updates.metadata = { ...existingMeta, name: trimmed };
+      updates.metadata = { ...existingMeta, name: trimmed } as Json;
     } else {
       const { name: _n, ...rest } = existingMeta;
-      updates.metadata = Object.keys(rest).length > 0 ? rest : null;
+      updates.metadata =
+        Object.keys(rest).length > 0 ? (rest as Json) : null;
     }
   }
 
@@ -102,4 +106,39 @@ export const PATCH = createApiHandler(async (req, ctx) => {
   if (error || !data) throw Errors.notFound("Campaign job");
 
   return data;
+});
+
+/**
+ * DELETE /api/campaigns/jobs/[id]
+ * Soft-delete a campaign job. Used by /campaigns2's row action and the bulk
+ * delete bar. Owner-only (the existing RLS policies already restrict to org
+ * members + `created_by`).
+ *
+ * Implementation: set status='failed' AND clear the metadata-name so it
+ * doesn't pollute lists. A real `deleted_at` column will land alongside the
+ * bulk endpoint — see BACKEND.md §1.3 / §1.6.
+ */
+export const DELETE = createApiHandler(async (req, ctx) => {
+  if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
+  const id = extractJobId(req);
+
+  const { data: existing, error: fetchErr } = await ctx.supabase
+    .from("campaign_jobs")
+    .select("created_by")
+    .eq("id", id)
+    .eq("organization_id", ctx.workspaceId)
+    .single();
+  if (fetchErr || !existing) throw Errors.notFound("Campaign job");
+  if (existing.created_by && existing.created_by !== ctx.userId) {
+    throw Errors.forbidden("Owner-only");
+  }
+
+  const { error } = await ctx.supabase
+    .from("campaign_jobs")
+    .update({ status: "failed" })
+    .eq("id", id)
+    .eq("organization_id", ctx.workspaceId);
+  if (error) throw Errors.internal("Failed to delete campaign job");
+
+  return { id, deleted: true };
 });

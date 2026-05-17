@@ -290,7 +290,7 @@ function ProspectsTableContent({
   });
 
   const inviteCap = getLinkedInInviteWeeklyUsageCap(
-    linkedInAccount?.linkedin_is_premium ?? false
+    linkedInAccount?.linkedin_tier ?? "standard"
   );
 
   const inviteQuota = usageData

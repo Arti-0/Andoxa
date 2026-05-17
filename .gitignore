@@ -66,6 +66,10 @@ test-results/
 # database
 *.sql
 /supabase/
+!/supabase/migrations/
+!/supabase/migrations/**
+!/supabase/SCHEMA.md
+!/supabase/config.toml
 src/supabase_issues
 
 # vscode

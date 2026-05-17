@@ -1,6 +1,9 @@
 /**
- * Unipile Campaign utilities – variable replacement, LinkedIn slug extraction
+ * Unipile Campaign utilities – variable replacement, LinkedIn slug extraction,
+ * WhatsApp send helper.
  */
+
+import { unipileFetch } from "./client";
 
 export interface ProspectForVariables {
   full_name: string | null;
@@ -72,7 +75,7 @@ export function applyMessageVariables(
   context?: MessageVariablesContext
 ): string {
   const { firstName, lastName } = deriveNameParts(prospect.full_name);
-  let result = template
+  const result = template
     .replace(/\{\{firstName\}\}/g, firstName)
     .replace(/\{\{lastName\}\}/g, lastName)
     .replace(/\{\{company\}\}/g, prospect.company ?? "")
@@ -96,4 +99,40 @@ export function extractLinkedInSlug(url: string | null | undefined): string | nu
     const match = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
     return match?.[1]?.replace(/\/$/, "") ?? null;
   }
+}
+
+/**
+ * Provider JID expected by Unipile's `attendees_ids` for WhatsApp.
+ * `33600000000` → `33600000000@s.whatsapp.net`
+ */
+export function whatsappJid(normalizedPhone: string): string {
+  const clean = normalizedPhone.trim();
+  return clean.includes("@") ? clean : `${clean}@s.whatsapp.net`;
+}
+
+/**
+ * Start a WhatsApp chat through Unipile.
+ *
+ * Unipile's `POST /api/v1/chats` (startNewChat) requires:
+ *   - `multipart/form-data` — NOT `application/json` (which `unipileFetch`
+ *     would otherwise force). Passing a `FormData` body makes the client
+ *     leave the Content-Type to `fetch` so the multipart boundary is set.
+ *   - `attendees_ids` in WhatsApp provider-JID format (`<phone>@s.whatsapp.net`),
+ *     not a bare phone number.
+ *
+ * `phone` MUST already be run through `normalizePhoneForWhatsApp()`.
+ */
+export async function sendWhatsAppMessage(opts: {
+  accountId: string;
+  phone: string;
+  text: string;
+}): Promise<{ id?: string }> {
+  const form = new FormData();
+  form.append("account_id", opts.accountId);
+  form.append("attendees_ids", whatsappJid(opts.phone));
+  form.append("text", opts.text);
+  return unipileFetch<{ id?: string }>("/chats", {
+    method: "POST",
+    body: form,
+  });
 }

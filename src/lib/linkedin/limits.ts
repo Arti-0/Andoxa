@@ -1,58 +1,72 @@
-/** Limites LinkedIn par type d'action et niveau de compte */
+/**
+ * Limites LinkedIn par type d'action et par palier produit LinkedIn (Standard / Premium / Sales Navigator).
+ * Les valeurs restent indicatives ; Phase 9+ affinera (import listes Navigator, quotas réels observés).
+ */
+import type { LinkedInAccountTier } from "@/lib/linkedin/tier";
+
 export const LINKEDIN_LIMITS = {
   invite: {
     maxChars: {
+      standard: 200,
       premium: 300,
-      free: 200,
+      sales_navigator: 300,
     },
     perWeek: {
+      standard: "~15 / semaine (avec note) · ~150 / semaine (sans note)",
       premium: "jusqu'à 100 / jour",
-      free: "~15 / semaine (avec note) · ~150 / semaine (sans note)",
+      sales_navigator: "pools Navigator (voir docs produit)",
     },
   },
   contact: {
-    maxChars: { premium: 2000, free: 2000 },
-    perHour: { premium: "~30–50", free: "~20–30" },
+    maxChars: {
+      standard: 2000,
+      premium: 2000,
+      sales_navigator: 2000,
+    },
+    perHour: {
+      standard: "~20–30",
+      premium: "~30–50",
+      sales_navigator: "~35–55",
+    },
   },
 } as const;
 
-export function getInviteMaxChars(isPremium: boolean): number {
-  return isPremium
-    ? LINKEDIN_LIMITS.invite.maxChars.premium
-    : LINKEDIN_LIMITS.invite.maxChars.free;
+/** Plafonds hebdo pour `usage_counters` (action `linkedin_invite`) — CRM + campagnes */
+export const LINKEDIN_INVITE_WEEKLY_USAGE_CAP: Record<
+  LinkedInAccountTier,
+  number
+> = {
+  standard: 15,
+  premium: 200,
+  sales_navigator: 280,
+} as const;
+
+export function getInviteMaxChars(tier: LinkedInAccountTier): number {
+  return LINKEDIN_LIMITS.invite.maxChars[tier];
 }
 
-export function getContactMaxChars(): number {
-  return LINKEDIN_LIMITS.contact.maxChars.free;
+export function getContactMaxChars(tier: LinkedInAccountTier): number {
+  return LINKEDIN_LIMITS.contact.maxChars[tier];
 }
 
 export function getMaxCharsForMode(
   mode: "invite" | "contact",
-  isPremium: boolean
+  tier: LinkedInAccountTier
 ): number {
-  return mode === "invite" ? getInviteMaxChars(isPremium) : getContactMaxChars();
+  return mode === "invite" ? getInviteMaxChars(tier) : getContactMaxChars(tier);
 }
 
-export function getInviteLimitLabel(isPremium: boolean): string {
-  return isPremium
-    ? LINKEDIN_LIMITS.invite.perWeek.premium
-    : LINKEDIN_LIMITS.invite.perWeek.free;
+export function getInviteLimitLabel(tier: LinkedInAccountTier): string {
+  return LINKEDIN_LIMITS.invite.perWeek[tier];
 }
 
-export function getContactLimitLabel(isPremium: boolean): string {
-  return isPremium
-    ? `messages ~${LINKEDIN_LIMITS.contact.perHour.premium} / heure`
-    : `messages ~${LINKEDIN_LIMITS.contact.perHour.free} / heure`;
+export function getContactLimitLabel(tier: LinkedInAccountTier): string {
+  const pace = LINKEDIN_LIMITS.contact.perHour[tier];
+  return `messages ~${pace} / heure`;
 }
 
-/** Plafonds hebdo pour `usage_counters` (action `linkedin_invite`) — CRM + campagnes */
-export const LINKEDIN_INVITE_WEEKLY_USAGE_CAP = {
-  free: 15,
-  premium: 200,
-} as const;
-
-export function getLinkedInInviteWeeklyUsageCap(isPremium: boolean): number {
-  return isPremium
-    ? LINKEDIN_INVITE_WEEKLY_USAGE_CAP.premium
-    : LINKEDIN_INVITE_WEEKLY_USAGE_CAP.free;
+export function getLinkedInInviteWeeklyUsageCap(
+  tier: LinkedInAccountTier
+): number {
+  return LINKEDIN_INVITE_WEEKLY_USAGE_CAP[tier];
 }

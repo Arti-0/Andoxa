@@ -1,30 +1,26 @@
-import { PlanId } from '@/lib/config/stripe-config';
+import { type PlanId, toPlanId } from '@/lib/config/plans-config';
 import { createClient } from '@/lib/supabase/client';
 
 /**
- * Get organization plan with fallback logic
- * Priority: organizations.plan > user_subscriptions.plan_id via owner_id
- * 
- * @param organizationId - The organization ID
- * @returns The plan ID or 'essential' as final fallback
+ * Get the effective plan for an organization, falling back to the owner's
+ * personal `user_subscriptions` row if the org column is missing/canceled.
+ *
+ * Returns a coerced PlanId (defaults to `trial` when nothing matches).
  */
 export async function getOrganizationPlan(organizationId: string): Promise<PlanId> {
   const supabase = createClient();
-  
+
   try {
-    // 1. Get organization with plan and owner_id
     const { data: organization } = await supabase
       .from('organizations')
       .select('plan, subscription_status, owner_id')
       .eq('id', organizationId)
       .maybeSingle();
 
-    // 2. If organization has a plan and is not canceled, use it
     if (organization?.plan && organization.subscription_status !== 'canceled') {
-      return organization.plan as PlanId;
+      return toPlanId(organization.plan);
     }
 
-    // 3. Fallback: get plan from user_subscriptions via owner_id
     if (organization?.owner_id) {
       const { data: subscription } = await supabase
         .from('user_subscriptions')
@@ -34,15 +30,13 @@ export async function getOrganizationPlan(organizationId: string): Promise<PlanI
         .maybeSingle();
 
       if (subscription?.plan_id) {
-        return subscription.plan_id as PlanId;
+        return toPlanId(subscription.plan_id);
       }
     }
 
-    // 4. Final fallback
-    return 'essential';
+    return 'trial';
   } catch (error) {
     console.error('Error getting organization plan:', error);
-    return 'essential';
+    return 'trial';
   }
 }
-

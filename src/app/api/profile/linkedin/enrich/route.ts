@@ -2,6 +2,9 @@ import { createApiHandler, Errors } from "@/lib/api";
 import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";
 import { getAccountIdForUser } from "@/lib/unipile/account";
 import { extractLinkedInSlug } from "@/lib/unipile/campaign";
+import type { Database } from "@/lib/types/supabase";
+
+type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
 
 interface UnipileUserProfile {
   first_name?: string | null;
@@ -71,7 +74,7 @@ export const POST = createApiHandler(
       .full_name;
     const currentAvatar = (profile as { avatar_url?: string | null }).avatar_url;
 
-    const updates: Record<string, unknown> = {
+    const updates: ProfileUpdate = {
       updated_at: new Date().toISOString(),
     };
     if (!currentFullName?.trim() && fullNameFromUnipile) {

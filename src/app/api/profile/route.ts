@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
 import { planAllowsAutoEnrichOnImport } from "@/lib/enrichment/queue-helpers";
+import type { Database, Json } from "@/lib/types/supabase";
+
+type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
 
 /**
  * PATCH /api/profile - Update user profile
@@ -48,7 +51,7 @@ export const PATCH = createApiHandler(
       }
     }
 
-    const patch: Record<string, unknown> = {
+    const patch: ProfileUpdate = {
       updated_at: new Date().toISOString(),
     };
     if (hasFullName) {
@@ -68,7 +71,7 @@ export const PATCH = createApiHandler(
         .eq("id", ctx.userId)
         .single();
       const existing = (currentProfile?.metadata as Record<string, unknown> | null) ?? {};
-      patch.metadata = { ...existing, ...body.metadata };
+      patch.metadata = { ...existing, ...body.metadata } as Json;
     }
 
     const { error } = await ctx.supabase

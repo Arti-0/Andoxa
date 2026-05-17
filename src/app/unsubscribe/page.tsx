@@ -1,7 +1,4 @@
-"use client";
-
-import { useSearchParams } from 'next/navigation';
-import { useState, Suspense } from "react";
+import Link from "next/link";
 import {
   Card,
   CardContent,
@@ -9,144 +6,50 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { CheckCircle2, Mail } from "lucide-react";
+import { Mail } from "lucide-react";
 
-function UnsubscribeContent() {
-  const searchParams = useSearchParams();
-  const recipientId = searchParams.get("recipient");
-  const campaignId = searchParams.get("campaign");
-
-  const [loading, setLoading] = useState(false);
-  const [unsubscribed, setUnsubscribed] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleUnsubscribe = async () => {
-    if (!recipientId || !campaignId) {
-      setError("Lien invalide");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch("/api/campaigns/unsubscribe", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ recipientId, campaignId }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Échec de la désinscription");
-      }
-
-      setUnsubscribed(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Une erreur est survenue");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (unsubscribed) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-4">
-              <CheckCircle2 className="w-6 h-6 text-green-600" />
-            </div>
-            <CardTitle>Désinscription confirmée</CardTitle>
-            <CardDescription>
-              Vous ne recevrez plus d&apos;emails de notre part.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-center text-sm text-muted-foreground">
-            <p>
-              Si vous avez des questions, contactez-nous à{" "}
-              <a
-                href="mailto:support@andoxa.fr"
-                className="text-primary hover:underline"
-              >
-                support@andoxa.fr
-              </a>
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
+/**
+ * Legacy marketing-email unsubscribe URLs pointed at `/unsubscribe`.
+ * Phase 8: outbound product campaigns are LinkedIn / WhatsApp; the old API
+ * route was removed. This page replaces the broken flow with honest guidance.
+ */
+export default function UnsubscribePage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-4">
-            <Mail className="w-6 h-6 text-blue-600" />
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+            <Mail className="h-6 w-6 text-primary" />
           </div>
-          <CardTitle>Se désabonner des emails</CardTitle>
-          <CardDescription>
-            Êtes-vous sûr de vouloir vous désabonner de nos emails ?
+          <CardTitle>Préférences email</CardTitle>
+          <CardDescription className="text-pretty">
+            Les liens de désinscription des anciennes campagnes email ne sont plus
+            pris en charge. Andoxa n&apos;utilise plus ce mécanisme pour ses
+            campagnes sortantes (LinkedIn et WhatsApp).
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
-              {error}
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Button
-              onClick={handleUnsubscribe}
-              disabled={loading}
-              className="w-full"
-              variant="destructive"
+        <CardContent className="space-y-4 text-center text-sm text-muted-foreground">
+          <p>
+            Pour une demande relative à vos données personnelles ou pour arrêter
+            des emails transactionnels (invitations calendrier, etc.), écrivez-nous à{" "}
+            <a
+              href="mailto:support@andoxa.fr"
+              className="font-medium text-primary underline-offset-4 hover:underline"
             >
-              {loading ? "En cours..." : "Confirmer la désinscription"}
-            </Button>
-
-            <Button
-              onClick={() => window.history.back()}
-              variant="outline"
-              className="w-full"
+              support@andoxa.fr
+            </a>
+            .
+          </p>
+          <p>
+            <Link
+              href="/privacy"
+              className="font-medium text-primary underline-offset-4 hover:underline"
             >
-              Annuler
-            </Button>
-          </div>
-
-          <p className="text-xs text-muted-foreground text-center">
-            Vous ne recevrez plus d&apos;emails marketing de notre part. Les
-            emails transactionnels (confirmations, etc.) peuvent toujours être
-            envoyés.
+              Politique de confidentialité
+            </Link>
           </p>
         </CardContent>
       </Card>
     </div>
   );
 }
-
-export default function UnsubscribePage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-          <Card className="w-full max-w-md">
-            <CardContent className="p-6 text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Chargement...
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      }
-    >
-      <UnsubscribeContent />
-    </Suspense>
-  );
-}
-

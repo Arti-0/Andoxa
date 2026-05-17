@@ -1,6 +1,5 @@
 import { ApiError, createApiHandler, Errors, parseBody } from "@/lib/api";
-import { weeklyPeriodKey } from "@/lib/campaigns/throttle";
-import { getLinkedInInviteWeeklyUsageCap } from "@/lib/linkedin/limits";
+import { LinkedInInviteWeeklyQuotaError } from "@/lib/linkedin/weekly-invite-quota";
 import { UnipileApiError } from "@/lib/unipile/client";
 import { getAccountIdForUser } from "@/lib/unipile/account";
 import { sendLinkedInInviteForProspect } from "@/lib/unipile/linkedin-single-invite";
@@ -18,34 +17,6 @@ export const POST = createApiHandler(async (req, ctx) => {
   const prospectId = body?.prospect_id?.trim();
   if (!prospectId) {
     throw Errors.validation({ prospect_id: "Requis" });
-  }
-
-  const week = weeklyPeriodKey();
-
-  const { data: acct } = await ctx.supabase
-    .from("user_unipile_accounts")
-    .select("is_premium")
-    .eq("user_id", ctx.userId)
-    .eq("account_type", "LINKEDIN")
-    .maybeSingle();
-
-  const cap = getLinkedInInviteWeeklyUsageCap(!!acct?.is_premium);
-
-  const { data: counterRow } = await ctx.supabase
-    .from("usage_counters")
-    .select("count")
-    .eq("user_id", ctx.userId)
-    .eq("action", "linkedin_invite")
-    .eq("period_key", week)
-    .maybeSingle();
-
-  const used = counterRow?.count ?? 0;
-  if (used >= cap) {
-    throw new ApiError(
-      "RATE_LIMIT",
-      `Limite hebdomadaire d'invitations LinkedIn atteinte (${cap}). Réessayez la semaine prochaine.`,
-      429
-    );
   }
 
   const { data: prospect, error: pErr } = await ctx.supabase
@@ -66,12 +37,18 @@ export const POST = createApiHandler(async (req, ctx) => {
 
   const accountId = await getAccountIdForUser(ctx);
 
+  // Quota is enforced atomically inside sendLinkedInInviteForProspect via
+  // consumeLinkedInInviteQuota. If the cap is reached we get a typed error.
   try {
     await sendLinkedInInviteForProspect(ctx, prospect, accountId, body.message);
   } catch (err) {
+    if (err instanceof LinkedInInviteWeeklyQuotaError) {
+      throw new ApiError("RATE_LIMIT", err.message, 429);
+    }
     const msg = err instanceof UnipileApiError ? err.message : String(err);
     throw Errors.badRequest(msg);
   }
 
-  return { ok: true as const, used: used + 1, cap };
+  return { ok: true as const };
 });
+

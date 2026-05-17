@@ -16,10 +16,12 @@ import type { UnipileChat, UnipileMessage } from "@/lib/unipile/types";
 import type { Prospect } from "@/lib/types/prospects";
 import { PROSPECT_STATUS_LABELS } from "@/lib/types/prospects";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 import {
   accountTypeToChannel,
   buildThreadEntries,
   formatChatTimestamp,
+  parseTemplateCategory,
   resolveVars,
   silentDaysFrom,
   statusToStage,
@@ -77,7 +79,7 @@ interface ChatsPayload {
 
 async function fetchChats(): Promise<UnipileChat[]> {
   const data = await getJson<ChatsPayload | UnipileChat[]>(
-    "/api/unipile/chats?channel=all",
+    "/api/unipile/chats?channel=all&limit=120",
   );
   if (Array.isArray(data)) return data;
   return data.items ?? [];
@@ -115,7 +117,7 @@ function mergeConversations(
   chatToProspect: Record<string, string>,
   prospects: Map<string, Prospect>,
 ): Conversation[] {
-  return chats.flatMap<Conversation>((c) => {
+  const rows = chats.flatMap<Conversation>((c) => {
     const prospectId = chatToProspect[c.id] ?? null;
     // Hide conversations that have no linked prospect (hors CRM)
     if (!prospectId) return [];
@@ -124,6 +126,7 @@ function mergeConversations(
     const enrichedPicture =
       (p?.enrichment_metadata as { profile_picture_url?: string | null } | undefined)
         ?.profile_picture_url ?? null;
+    const pinnedRaw = (c as { pinned_at?: string | null }).pinned_at;
     return [{
       id: c.id,
       prospectId,
@@ -134,11 +137,59 @@ function mergeConversations(
       channel: accountTypeToChannel(c.account_type),
       stage: statusToStage(p?.status),
       lastTime: formatChatTimestamp(c.timestamp),
+      lastMessageAt: c.timestamp,
+      pinnedAt:
+        typeof pinnedRaw === "string" && pinnedRaw.trim().length > 0
+          ? pinnedRaw
+          : null,
       unread: c.unread_count ?? 0,
       silentDays: silentDaysFrom(c.timestamp),
       // Prefer enriched profile picture; fall back to Unipile attendee picture.
       pictureUrl: enrichedPicture ?? c.picture_url ?? null,
     }];
+  });
+
+  rows.sort((a, b) => {
+    const ap = a.pinnedAt ? 1 : 0;
+    const bp = b.pinnedAt ? 1 : 0;
+    if (ap !== bp) return bp - ap;
+    const ta = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+    const tb = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+    return tb - ta;
+  });
+  return rows;
+}
+
+export function useToggleChatPin() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { chatId: string; pinned: boolean }) => {
+      const res = await fetch(
+        `/api/unipile/chats/${encodeURIComponent(vars.chatId)}/pin`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ pinned: vars.pinned }),
+        },
+      );
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        const msg =
+          (j as { error?: { message?: string } })?.error?.message ??
+          `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+    },
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: messagerieKeys.chats() });
+      toast.success(
+        vars.pinned ? "Conversation épinglée" : "Conversation désépinglée",
+      );
+    },
+    onError: (e: Error) => {
+      toast.error(e.message);
+    },
   });
 }
 
@@ -401,6 +452,7 @@ interface TemplatePayload {
   id: string;
   name: string;
   channel: "linkedin" | "whatsapp" | "email";
+  category?: string | null;
   content: string;
 }
 
@@ -424,6 +476,7 @@ export function useTemplates(): UseQueryResult<QuickTemplate[]> {
           id: t.id,
           name: t.name,
           channel: backendChannelToDesign(t.channel),
+          category: parseTemplateCategory(t.category),
           content: t.content,
         }),
       );

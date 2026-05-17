@@ -8,13 +8,7 @@
     "src/app/api/**/*.ts": {
       "maxDuration": 300
     },
-    "src/app/api/notifications/[...queue]/route.ts": {
-      "maxDuration": 300
-    },
     "src/app/api/workflows/**/*.ts": {
-      "maxDuration": 300
-    },
-    "src/app/api/queues/**/*.ts": {
       "maxDuration": 300
     },
     "src/app/api/cron/**/*.ts": {

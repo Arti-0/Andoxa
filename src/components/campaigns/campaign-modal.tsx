@@ -53,6 +53,8 @@ import {
     estimateCampaignDurationMs,
     formatDurationLabel,
 } from '@/lib/campaigns/throttle';
+import type { LinkedInAccountTier } from '@/lib/linkedin/tier';
+import { tierSupportsPremiumInviteFeatures } from '@/lib/linkedin/tier';
 
 const INVITE_NOTE_PLACEHOLDER = `Bonjour {{firstName}},
 
@@ -115,7 +117,8 @@ export interface CampaignModalProps {
     prospects: Prospect[];
     listName?: string | null;
     onSuccess?: (jobId: string) => void;
-    isPremium?: boolean;
+    /** Palier LinkedIn (Standard / Premium / Sales Navigator) — défaut standard */
+    linkedInTier?: LinkedInAccountTier;
 }
 
 async function trySaveAsTemplate(
@@ -151,9 +154,10 @@ export function CampaignModal({
     prospects,
     listName: _listName,
     onSuccess,
-    isPremium = false,
+    linkedInTier = 'standard',
 }: CampaignModalProps) {
     const queryClient = useQueryClient();
+    const hasPaidLinkedIn = tierSupportsPremiumInviteFeatures(linkedInTier);
     const [message, setMessage] = useState('');
     const [sending, setSending] = useState(false);
     const [step, setStep] = useState<'name' | 'compose' | 'gaps' | 'preview'>('name');
@@ -205,13 +209,13 @@ export function CampaignModal({
         if (!open || !config) return;
         if (config.channel === 'linkedin') {
             let next: LinkedInAction = config.linkedInAction ?? 'contact';
-            if (!isPremium && next === 'invite_with_note') next = 'invite';
+            if (!hasPaidLinkedIn && next === 'invite_with_note') next = 'invite';
             setLinkedInAction(next);
         }
-    }, [open, config, isPremium]);
+    }, [open, config, hasPaidLinkedIn]);
 
     useEffect(() => {
-        if (!open || config?.channel !== 'linkedin' || isPremium) {
+        if (!open || config?.channel !== 'linkedin' || hasPaidLinkedIn) {
             setAlreadyInvitedIds(new Set());
             return;
         }
@@ -229,7 +233,7 @@ export function CampaignModal({
                 setAlreadyInvitedIds(new Set(raw));
             })
             .catch(() => {});
-    }, [open, config?.channel, isPremium, prospectIdsParam]);
+    }, [open, config?.channel, hasPaidLinkedIn, prospectIdsParam]);
 
     const channel = config?.channel ?? 'linkedin';
     const isLinkedIn = channel === 'linkedin';
@@ -252,7 +256,7 @@ export function CampaignModal({
           ? 0
           : getMaxCharsForMode(
                 isInviteWithNote ? 'invite' : 'contact',
-                isPremium
+                linkedInTier
             );
 
     const count = prospects.length;
@@ -280,8 +284,8 @@ export function CampaignModal({
     const durationLabel = formatDurationLabel(durationMs);
 
     const availableOptions = useMemo(
-        () => LINKEDIN_OPTIONS.filter((o) => !o.premiumOnly || isPremium),
-        [isPremium]
+        () => LINKEDIN_OPTIONS.filter((o) => !o.premiumOnly || hasPaidLinkedIn),
+        [hasPaidLinkedIn]
     );
 
     const notInvitedCount = prospects.filter(
@@ -404,6 +408,16 @@ export function CampaignModal({
                 return;
             }
             const jobId = (json?.data?.id ?? json?.id) as string | undefined;
+            const skipped =
+              (json?.data?.skipped as
+                | { prospect_id: string; reason: string }[]
+                | undefined)?.length ?? 0;
+            if (skipped) {
+              toast.message(`${skipped} prospect(s) ignoré(s)`, {
+                description:
+                  "Déjà dans un parcours actif avec envoi LinkedIn ou WhatsApp.",
+              });
+            }
             if (saveAsTemplate && templateName.trim() && templateText.trim()) {
                 const ok = await trySaveAsTemplate(
                     templateName,
@@ -493,8 +507,8 @@ export function CampaignModal({
                         </DialogDescription>
                     ) : step === 'compose' && isLinkedIn && isInviteWithNote ? (
                         <DialogDescription>
-                            {isPremium
-                                ? `Note d'invitation — jusqu'à ${maxChars} caractères (compte Premium).`
+                            {hasPaidLinkedIn
+                                ? `Note d'invitation — jusqu'à ${maxChars} caractères (compte Premium ou Sales Navigator).`
                                 : `Note d'invitation — jusqu'à ${maxChars} caractères.`}
                         </DialogDescription>
                     ) : step === 'compose' && isLinkedIn ? (
@@ -565,7 +579,7 @@ export function CampaignModal({
                         )}
 
                         {isLinkedIn &&
-                            !isPremium &&
+                            linkedInTier === 'standard' &&
                             isContact &&
                             notInvitedCount > 0 && (
                                 <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
@@ -631,7 +645,7 @@ export function CampaignModal({
                                 linkedinMode={
                                     isInviteWithNote ? 'invite' : 'contact'
                                 }
-                                isPremium={isPremium}
+                                linkedInTier={linkedInTier}
                                 maxLength={maxChars}
                             />
                         )}
@@ -781,8 +795,8 @@ export function CampaignModal({
                                     {isWhatsApp
                                         ? "Évitez d'initier trop de nouveaux chats sans réponse — WhatsApp surveille ce ratio."
                                         : isInvitePlain || isInviteWithNote
-                                          ? getInviteLimitLabel(isPremium)
-                                          : getContactLimitLabel(isPremium)}
+                                          ? getInviteLimitLabel(linkedInTier)
+                                          : getContactLimitLabel(linkedInTier)}
                                 </li>
                             </ul>
                         </div>

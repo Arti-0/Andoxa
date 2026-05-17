@@ -6,6 +6,7 @@
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { WF_NODE_TYPES, type WfNodeType } from "./node-types";
+import { cn } from "@/lib/utils";
 
 export interface StepNodeData {
   /** Node type — drives stripe color and label. */
@@ -28,38 +29,25 @@ export function StepNode({ data, selected }: NodeProps) {
   const d = data as unknown as StepNodeData;
   const cfg = WF_NODE_TYPES[d.type];
 
+  const borderCls = selected
+    ? "border-[var(--brand-blue)] shadow-md shadow-black/10 dark:shadow-black/40"
+    : d.needsConfig
+      ? "border-amber-500 shadow-sm dark:border-amber-500"
+      : "border-border shadow-sm";
+
   return (
     <div
-      style={{
-        width: d.type === "condition" ? COND_W : NODE_W,
-        height: NODE_H,
-        background: "white",
-        border: `1.5px solid ${
-          selected ? "#0052D9" : d.needsConfig ? "#F59E0B" : "#E2E8F0"
-        }`,
-        borderRadius: 12,
-        boxShadow: selected
-          ? "0 0 0 3px rgba(0,82,217,0.15), 0 4px 12px rgba(0,0,0,0.08)"
-          : "0 1px 4px rgba(0,0,0,0.06)",
-        display: "flex",
-        alignItems: "center",
-        gap: 0,
-        overflow: "hidden",
-        userSelect: "none",
-        cursor: "pointer",
-        transition: "border-color 120ms, box-shadow 120ms",
-      }}
+      className={cn(
+        "relative flex h-[68px] cursor-pointer select-none items-center gap-0 overflow-hidden rounded-xl border-[1.5px] bg-card text-card-foreground transition-[border-color,box-shadow] duration-150",
+        d.type === "condition" ? "w-[320px]" : "w-[252px]",
+        borderCls
+      )}
     >
       <Handle
         type="target"
         position={Position.Top}
-        style={{
-          background: "#CBD5E1",
-          width: 6,
-          height: 6,
-          border: "1px solid white",
-          top: -3,
-        }}
+        className="!size-1.5 !border-2 !border-background !bg-muted-foreground/60 dark:!border-background"
+        style={{ top: -3 }}
       />
       {/* Color stripe + icon */}
       <div
@@ -67,68 +55,31 @@ export function StepNode({ data, selected }: NodeProps) {
           width: 44,
           height: "100%",
           background: cfg.bg,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-          borderRight: `1px solid ${cfg.border}22`,
+          borderRightColor: `${cfg.border}22`,
         }}
+        className="flex shrink-0 items-center justify-center border-r border-transparent"
       >
         {cfg.iconFn(16)}
       </div>
       {/* Text */}
-      <div style={{ flex: 1, padding: "0 12px", minWidth: 0 }}>
+      <div className="min-w-0 flex-1 px-3">
         <div
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            color: cfg.color,
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
-            marginBottom: 2,
-          }}
+          style={{ color: cfg.color }}
+          className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide"
         >
           {cfg.label}
         </div>
-        <div
-          style={{
-            fontSize: 12.5,
-            fontWeight: 600,
-            color: "#0F172A",
-            lineHeight: 1.3,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
+        <div className="truncate text-[13px] font-semibold leading-snug text-foreground">
           {d.label}
         </div>
         {d.sub && (
-          <div
-            style={{
-              fontSize: 11,
-              color: "#64748B",
-              marginTop: 1,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
+          <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
             {d.sub}
           </div>
         )}
       </div>
       {selected && (
-        <div
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: "#0052D9",
-            marginRight: 10,
-            flexShrink: 0,
-          }}
-        />
+        <div className="mr-2.5 size-1.5 shrink-0 rounded-full bg-[var(--brand-blue)]" />
       )}
       {/* Source handles — conditions emit Oui (left) / Non (right). */}
       {d.type === "condition" ? (
@@ -137,40 +88,23 @@ export function StepNode({ data, selected }: NodeProps) {
             id="true"
             type="source"
             position={Position.Bottom}
-            style={{
-              left: "30%",
-              background: "#10B981",
-              width: 6,
-              height: 6,
-              border: "1px solid white",
-              bottom: -3,
-            }}
+            className="!size-1.5 !border-2 !border-background !bg-emerald-500"
+            style={{ left: "30%", bottom: -3 }}
           />
           <Handle
             id="false"
             type="source"
             position={Position.Bottom}
-            style={{
-              left: "70%",
-              background: "#F43F5E",
-              width: 6,
-              height: 6,
-              border: "1px solid white",
-              bottom: -3,
-            }}
+            className="!size-1.5 !border-2 !border-background !bg-rose-500"
+            style={{ left: "70%", bottom: -3 }}
           />
         </>
       ) : (
         <Handle
           type="source"
           position={Position.Bottom}
-          style={{
-            background: "#CBD5E1",
-            width: 6,
-            height: 6,
-            border: "1px solid white",
-            bottom: -3,
-          }}
+          className="!size-1.5 !border-2 !border-background !bg-muted-foreground/60"
+          style={{ bottom: -3 }}
         />
       )}
     </div>

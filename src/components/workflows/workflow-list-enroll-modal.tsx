@@ -145,7 +145,14 @@ export function WorkflowListEnrollModal({
                 throw new Error(json?.error?.message ?? 'Échec');
             }
             const created = json.data?.created_run_ids?.length ?? 0;
-            const skipped = json.data?.skipped?.length ?? 0;
+            const skipRows =
+                (json.data?.skipped as
+                    | { prospect_id: string; reason: string }[]
+                    | undefined) ?? [];
+            const skipped = skipRows.length;
+            const inCampaign = skipRows.filter(
+                (s) => s.reason === "in_active_campaign",
+            ).length;
             if (created) {
                 toast.success(
                     created === 1
@@ -155,7 +162,9 @@ export function WorkflowListEnrollModal({
             }
             if (skipped) {
                 toast.message(`${skipped} ignoré(s)`, {
-                    description: 'Déjà dans ce parcours ou hors sélection.',
+                    description: inCampaign
+                        ? `${inCampaign} dans une campagne active. Autres : parcours déjà lancé pour ce contact ou hors sélection.`
+                        : 'Déjà dans ce parcours ou hors sélection.',
                 });
             }
             if (!created && !skipped) {

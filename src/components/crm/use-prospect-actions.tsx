@@ -5,6 +5,7 @@
  * Prospects + Pipeline tabs. Encapsulates:
  *   • Modifier            → navigates to /prospect/[id]
  *   • Inviter sur LinkedIn → POST /api/unipile/prospects/invite
+ *   • Enrichir (LinkedIn)  → POST /api/prospects/:id/enrich
  *   • Ajouter à un parcours → opens WorkflowEnrollModal (via a dialog
  *                              hosted at the page level)
  *   • Ajouter à une liste  → opens a list picker (Popover)
@@ -107,10 +108,35 @@ export function useProspectActions(invalidateKey: string) {
     onError: () => toast.error("Suppression impossible"),
   });
 
+  const enrichMutation = useMutation({
+    mutationFn: async (prospect: Prospect) => {
+      const res = await fetch(`/api/prospects/${prospect.id}/enrich`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: { message?: string };
+      };
+      if (!res.ok) {
+        throw new Error(json?.error?.message ?? `Erreur ${res.status}`);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [invalidateKey] });
+      toast.success("Profil LinkedIn enrichi");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const menu = (p: Prospect): ProspectMenuItem[] => [
     {
       label: "Modifier",
       onClick: () => router.push(`/prospect/${p.id}`),
+    },
+    {
+      label: "Enrichir (LinkedIn)",
+      disabled: !p.linkedin?.trim(),
+      onClick: () => enrichMutation.mutate(p),
     },
     {
       label: "Inviter sur LinkedIn",

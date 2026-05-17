@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { useParseCSV } from "@/hooks/use-parse-csv";
 import { useParseExcel } from "@/hooks/use-parse-excel";
-import { getImportMaxRows, type PlanId } from "@/lib/config/plans-config";
+import { getImportMaxRows, isPlanId, toPlanId, type PlanId } from "@/lib/config/plans-config";
 import { mapProspectRow } from "@/lib/utils/deduplicateProspects";
 
 interface ProspectRow {
@@ -52,7 +52,6 @@ const TARGET_FIELD_LABELS: Record<TargetField, string> = {
 const NONE_OPTION = "__none__";
 const MAX_CLIENT_ROWS = 5000;
 
-const VALID_PLANS: PlanId[] = ["trial", "essential", "pro", "business", "demo"];
 
 function inferMapping(target: TargetField, fields: string[]): string {
   const lower = fields.map((f) => ({ original: f, normalized: f.trim().toLowerCase() }));
@@ -120,7 +119,7 @@ export function ProspectImportDialog({
   const planId: PlanId = useMemo(() => {
     const raw =
       subscriptionInfo?.limitsPlanId ?? subscriptionInfo?.currentPlan;
-    return raw && VALID_PLANS.includes(raw as PlanId) ? (raw as PlanId) : "trial";
+    return isPlanId(raw) ? raw : toPlanId(raw);
   }, [subscriptionInfo?.limitsPlanId, subscriptionInfo?.currentPlan]);
 
   const maxRows = getImportMaxRows(planId);

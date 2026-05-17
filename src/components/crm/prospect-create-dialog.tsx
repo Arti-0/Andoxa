@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
 interface ProspectCreateDialogProps {
   open: boolean;
@@ -79,6 +80,7 @@ export function ProspectCreateDialog({
       }
 
       queryClient.invalidateQueries({ queryKey: ["prospects"] });
+      toast.success("Prospect créé");
       resetForm();
       onOpenChange(false);
     } catch (err) {

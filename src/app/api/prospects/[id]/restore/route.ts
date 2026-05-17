@@ -1,4 +1,5 @@
 import { createApiHandler, Errors } from "@/lib/api";
+import { invalidate } from "@/lib/cache/redis";
 import { NextRequest } from "next/server";
 
 /**
@@ -21,6 +22,8 @@ export const POST = createApiHandler(async (req: NextRequest, ctx) => {
     .single();
 
   if (error || !data) throw Errors.notFound("Prospect");
+
+  await invalidate.prospects(ctx.workspaceId);
 
   return data;
 });

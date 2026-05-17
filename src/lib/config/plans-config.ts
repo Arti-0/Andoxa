@@ -1,30 +1,46 @@
 /**
- * Configuration centralisée des plans et limites
+ * Centralized plan configuration (Solo / Team / Custom — the marketing model).
  *
- * Ce fichier centralise toutes les informations sur les plans :
- * - Limites (utilisateurs, prospects, campagnes, crédits, imports)
- * - Fonctionnalités (routes, features)
- * - Pricing (défini dans stripe-config.ts mais référencé ici)
+ * Going forward there are five plan IDs in the DB column `organizations.plan`:
  *
- * Pour ajouter une fonctionnalité à un plan, ajoutez-la dans features[planId]
- * Pour modifier une limite, changez la valeur dans limits[planId]
+ *   - `trial`  : 14-day Stripe trial on Solo — same feature set + caps below.
+ *   - `solo`   : single-user paid plan. Everything in the product, 1 seat.
+ *   - `team`   : 3-20 paid seats. Adds collab features + manager dashboard.
+ *   - `custom` : 20+ seats, SSO, SLA — contact-sales, no Stripe checkout.
+ *   - `demo`   : internal demo accounts, unlimited everything.
+ *
+ * Feature gating in the new model is intentionally simple: every paid plan
+ * (solo|team|custom) gets every feature. Plans differentiate on
+ * **seats + support**, not on feature flags. The few helpers below (`isPaidPlan`,
+ * `isMultiSeatPlan`) capture that semantic so callers stop hard-coding plan IDs.
+ *
+ * Stripe price IDs are NOT stored here — see `lib/config/stripe-plans.ts`,
+ * which reads them from env vars (`STRIPE_PRICE_SOLO_MONTHLY` etc.) so you
+ * can create the products in the Stripe dashboard and ship without a code
+ * change.
  */
 
-export type PlanId = 'trial' | 'essential' | 'pro' | 'business' | 'demo';
+export type PlanId = 'trial' | 'solo' | 'team' | 'custom' | 'demo';
 
 export interface PlanLimits {
-    users: number; // -1 pour illimité
-    prospects: number; // -1 pour illimité
-    campaigns: number; // -1 pour illimité
-    enrichment_credits: number; // -1 pour illimité
-    import_csv_xlsx_max_rows: number; // Limite de lignes pour import CSV/XLSX (-1 pour illimité)
-    organizations: number; // -1 pour illimité (nombre d'organizations qu'un utilisateur peut créer)
+    /** Max paying seats (-1 = unlimited). */
+    users: number;
+    /** Max prospects in the workspace (-1 = unlimited). */
+    prospects: number;
+    /** Max simultaneous campaigns (-1 = unlimited). */
+    campaigns: number;
+    /** Enrichment credits per calendar month (-1 = unlimited, 0 = none). */
+    enrichment_credits: number;
+    /** Max rows accepted in a single CSV/XLSX import (-1 = unlimited). */
+    import_csv_xlsx_max_rows: number;
+    /** Max organizations a single owner can create (-1 = unlimited). */
+    organizations: number;
 }
 
 export interface PlanFeatures {
-    // Routes de navigation (pour contrôler l'accès dans la sidebar)
+    /** Sidebar / route gating allow-list. */
     routes: string[];
-    // Fonctionnalités textuelles (pour affichage dans pricing/step2)
+    /** Marketing-style bullet list (used in pricing UI). */
     features: string[];
 }
 
@@ -37,63 +53,66 @@ export interface PlanConfig {
     isRecommended?: boolean;
 }
 
-/**
- * Limites par plan
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Limits
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const PLAN_LIMITS: Record<PlanId, PlanLimits> = {
     trial: {
-        // Trial = Essential avec 14 jours gratuits, mêmes limites que Essential
-        users: 2,
+        // Same surface as Solo, capped for tire-kickers.
+        users: 1,
         prospects: 1000,
         campaigns: 5,
         enrichment_credits: 0,
-        import_csv_xlsx_max_rows: -1, // Pas de limite sur les lignes, mais limité par prospects totaux
+        import_csv_xlsx_max_rows: -1,
         organizations: 1,
     },
-    essential: {
-        users: 2,
+    solo: {
+        users: 1,
         prospects: -1,
         campaigns: -1,
         enrichment_credits: 0,
-        import_csv_xlsx_max_rows: -1, // Pas de limite sur les lignes, mais limité par prospects totaux
+        import_csv_xlsx_max_rows: -1,
         organizations: 1,
     },
-    pro: {
-        users: 10,
+    team: {
+        // Team is sold from 3 seats; per-seat billing handles the upper bound.
+        // Marketing cap is 20 seats; above that → custom.
+        users: 20,
         prospects: -1,
         campaigns: -1,
-        enrichment_credits: 500,
-        import_csv_xlsx_max_rows: -1, // Pas de limite sur les lignes, mais limité par prospects totaux (5000)
-        organizations: 3,
+        enrichment_credits: 0,
+        import_csv_xlsx_max_rows: -1,
+        organizations: 1,
     },
-    business: {
-        users: 30,
-        prospects: -1, // Illimité
+    custom: {
+        users: -1,
+        prospects: -1,
         campaigns: -1,
-        enrichment_credits: 1000,
-        import_csv_xlsx_max_rows: -1, // Pas de limite sur les lignes (prospects illimités)
-        organizations: 5,
+        enrichment_credits: -1,
+        import_csv_xlsx_max_rows: -1,
+        organizations: -1,
     },
     demo: {
-        users: -1, // Illimité pendant la démo
+        users: -1,
         prospects: -1,
         campaigns: -1,
-        enrichment_credits: -1, // Basé sur les crédits réels disponibles
+        enrichment_credits: -1,
         import_csv_xlsx_max_rows: -1,
         organizations: -1,
     },
 };
 
-/**
- * Routes de l’app (protected) accessibles selon le plan.
- * Pro / Business : messagerie centralisée + modèles (onglet Templates dans /messagerie).
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Routes
+// ─────────────────────────────────────────────────────────────────────────────
+
 const CORE_APP_ROUTES: string[] = [
     '/dashboard',
     '/crm',
     '/prospect',
     '/campaigns',
-    '/campaigns2',
+    '/campaigns',
     '/call-sessions',
     '/calendar',
     '/settings',
@@ -104,133 +123,151 @@ const CORE_APP_ROUTES: string[] = [
     '/messagerie',
 ];
 
-// const PRO_PLUS_EXTRA = [];
-
 export const PLAN_ROUTES: Record<PlanId, string[]> = {
     trial: [...CORE_APP_ROUTES],
-    essential: [...CORE_APP_ROUTES],
-    pro: [...CORE_APP_ROUTES],
-    business: [...CORE_APP_ROUTES],
+    solo: [...CORE_APP_ROUTES],
+    team: [...CORE_APP_ROUTES],
+    custom: [...CORE_APP_ROUTES],
     demo: [...CORE_APP_ROUTES],
 };
 
-/**
- * Fonctionnalités textuelles par plan (pour affichage dans pricing/step2)
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Marketing feature bullets (mirrors `marketing/sections/pricing.tsx` — keep in sync)
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const PLAN_FEATURES_TEXT: Record<PlanId, string[]> = {
     trial: [
-        "14 jours d'essai Stripe sur le plan Essential",
-        'CRM, import et listes',
-        "Campagnes et sessions d'appels",
-        'Calendrier',
-        "Jusqu'à 1 000 prospects",
-        '2 utilisateurs',
+        '14 jours offerts sur le plan Solo',
+        'Extension Chrome LinkedIn',
+        'CRM complet (listes, pipeline, kanban)',
+        'Inbox unifiée LinkedIn et WhatsApp',
+        'Calendrier avec lien de booking',
+        'Jusqu’à 1 000 prospects',
     ],
-    essential: [
-        'CRM, import et listes',
-        'Campagnes (LinkedIn / multicanal)',
-        "Sessions d'appels",
-        'Calendrier',
-        "Prospects illimités (hors période d'essai)",
-        '2 utilisateurs · 1 organisation',
+    solo: [
+        'Extension Chrome LinkedIn',
+        'CRM complet (listes, pipeline, kanban)',
+        'Inbox unifiée LinkedIn et WhatsApp',
+        'Calendrier avec lien de booking',
+        'Séquences WhatsApp pré et post-RDV',
+        'Workflows custom illimités + 3 templates',
+        '800 invitations LinkedIn / mois (200/sem.)',
+        '1 utilisateur',
     ],
-    pro: [
-        'Tout Essential',
-        'Messagerie centralisée LinkedIn et WhatsApp',
-        "500 crédits d'enrichissement / mois",
-        "Enrichissement automatique à l'import (opt-in)",
-        'Modèles de messages pour campagnes',
-        "Jusqu'à 10 utilisateurs · 3 organisations",
+    team: [
+        'Tout du plan Solo, plus :',
+        'Multi-utilisateurs (3 à 20)',
+        'Pipeline kanban partagé',
+        'Listes de prospects partagées',
+        'Sessions d’appels collaboratives',
+        'Dashboard manager équipe',
+        'Rôles et permissions granulaires',
+        'Support prioritaire (réponse < 24 h)',
     ],
-    business: [
-        'Tout Pro',
-        "1 000 crédits d'enrichissement / mois",
-        'Limites étendues : 30 utilisateurs · 5 organisations',
-        'Support prioritaire',
+    custom: [
+        'Tout du plan Team, plus :',
+        'Au-delà de 20 utilisateurs',
+        'SSO (Google, Okta, Microsoft)',
+        'SLA contractuel + DPA',
+        'Intégrations sur-mesure (HubSpot, Salesforce…)',
+        'Onboarding accompagné par un CSM',
+        'Formation équipe sur site',
+        'Facturation virement annuel',
     ],
-    demo: ['Accès démo aux fonctionnalités Pro / Business', 'Durée limitée'],
+    demo: ['Accès démo à toutes les fonctionnalités', 'Durée limitée'],
 };
 
-/**
- * Configuration complète des plans
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Full config
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const PLANS_CONFIG: Record<PlanId, PlanConfig> = {
     trial: {
         id: 'trial',
-        name: 'Essai Gratuit',
-        description: "14 jours sur le périmètre Essential (limites d'essai)",
+        name: 'Essai gratuit',
+        description: '14 jours sur le périmètre Solo (caps essai).',
         limits: PLAN_LIMITS.trial,
-        features: {
-            routes: PLAN_ROUTES.trial,
-            features: PLAN_FEATURES_TEXT.trial,
-        },
+        features: { routes: PLAN_ROUTES.trial, features: PLAN_FEATURES_TEXT.trial },
     },
-    essential: {
-        id: 'essential',
-        name: 'Essential',
-        description: 'CRM, campagnes et appels — sans messagerie centralisée.',
-        limits: PLAN_LIMITS.essential,
-        features: {
-            routes: PLAN_ROUTES.essential,
-            features: PLAN_FEATURES_TEXT.essential,
-        },
+    solo: {
+        id: 'solo',
+        name: 'Solo',
+        description: 'Pour les commerciaux indépendants — 1 utilisateur, tout inclus.',
+        limits: PLAN_LIMITS.solo,
+        features: { routes: PLAN_ROUTES.solo, features: PLAN_FEATURES_TEXT.solo },
     },
-    pro: {
-        id: 'pro',
-        name: 'Pro',
-        description:
-            'Messagerie centralisée, enrichissement et modèles — pour équipes qui scalent.',
-        limits: PLAN_LIMITS.pro,
-        features: {
-            routes: PLAN_ROUTES.pro,
-            features: PLAN_FEATURES_TEXT.pro,
-        },
+    team: {
+        id: 'team',
+        name: 'Team',
+        description: 'Pour les équipes commerciales — multi-utilisateurs, collab et manager dashboard.',
+        limits: PLAN_LIMITS.team,
+        features: { routes: PLAN_ROUTES.team, features: PLAN_FEATURES_TEXT.team },
         isRecommended: true,
     },
-    business: {
-        id: 'business',
-        name: 'Business',
-        description:
-            'Tout Pro, plus de crédits et de sièges pour les grandes équipes.',
-        limits: PLAN_LIMITS.business,
-        features: {
-            routes: PLAN_ROUTES.business,
-            features: PLAN_FEATURES_TEXT.business,
-        },
+    custom: {
+        id: 'custom',
+        name: 'Custom',
+        description: 'Pour les équipes au-delà de 20 — SSO, SLA, intégrations sur-mesure.',
+        limits: PLAN_LIMITS.custom,
+        features: { routes: PLAN_ROUTES.custom, features: PLAN_FEATURES_TEXT.custom },
     },
     demo: {
         id: 'demo',
         name: 'Démo',
-        description: "Période d'essai démo avec toutes les fonctionnalités",
+        description: 'Compte de démonstration interne (non facturé).',
         limits: PLAN_LIMITS.demo,
-        features: {
-            routes: PLAN_ROUTES.demo,
-            features: PLAN_FEATURES_TEXT.demo,
-        },
+        features: { routes: PLAN_ROUTES.demo, features: PLAN_FEATURES_TEXT.demo },
     },
 };
 
-/**
- * Helper functions
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Obtenir les limites d'un plan
- */
+const VALID_PLAN_IDS: ReadonlySet<PlanId> = new Set<PlanId>([
+    'trial',
+    'solo',
+    'team',
+    'custom',
+    'demo',
+]);
+
+/** Type-guard: narrows an arbitrary string to a known PlanId. */
+export function isPlanId(value: string | null | undefined): value is PlanId {
+    return typeof value === 'string' && VALID_PLAN_IDS.has(value as PlanId);
+}
+
+/** Coerce any value to a PlanId, defaulting to `trial`. */
+export function toPlanId(value: string | null | undefined): PlanId {
+    return isPlanId(value) ? value : 'trial';
+}
+
+/** True for any plan that's actively being paid for (solo|team|custom|demo). */
+export function isPaidPlan(value: string | null | undefined): boolean {
+    const p = toPlanId(value);
+    return p === 'solo' || p === 'team' || p === 'custom' || p === 'demo';
+}
+
+/** True for plans where the workspace can hold more than one paying seat. */
+export function isMultiSeatPlan(value: string | null | undefined): boolean {
+    const p = toPlanId(value);
+    return p === 'team' || p === 'custom' || p === 'demo';
+}
+
+/** True for plans that should NOT hit Stripe checkout (custom is contact-sales). */
+export function isStripeCheckoutPlan(value: string | null | undefined): boolean {
+    const p = toPlanId(value);
+    return p === 'solo' || p === 'team';
+}
+
 export function getPlanLimits(planId: PlanId): PlanLimits {
     return PLAN_LIMITS[planId] || PLAN_LIMITS.trial;
 }
 
-/**
- * Obtenir les routes disponibles pour un plan
- */
 export function getPlanRoutes(planId: PlanId): string[] {
     return PLAN_ROUTES[planId] || PLAN_ROUTES.trial;
 }
 
-/**
- * Vérifier si une route est accessible pour un plan
- */
 export function canAccessRoute(planId: PlanId, route: string): boolean {
     const normalized = (route.split('?')[0] || '').replace(/\/$/, '') || '/';
     const routes = getPlanRoutes(planId);
@@ -239,27 +276,14 @@ export function canAccessRoute(planId: PlanId, route: string): boolean {
     );
 }
 
-/**
- * Obtenir les fonctionnalités textuelles d'un plan
- */
 export function getPlanFeatures(planId: PlanId): string[] {
     return PLAN_FEATURES_TEXT[planId] || PLAN_FEATURES_TEXT.trial;
 }
 
-/**
- * Obtenir la configuration complète d'un plan
- */
 export function getPlanConfig(planId: PlanId): PlanConfig {
     return PLANS_CONFIG[planId] || PLANS_CONFIG.trial;
 }
 
-/**
- * Vérifier si un plan peut utiliser une limite
- * @param planId Plan ID
- * @param resource Type de ressource (users, prospects, campaigns, enrichment_credits)
- * @param currentUsage Utilisation actuelle
- * @returns Object avec used, limit, canUse
- */
 export function checkPlanLimit(
     planId: PlanId,
     resource: keyof PlanLimits,
@@ -268,13 +292,8 @@ export function checkPlanLimit(
     const limits = getPlanLimits(planId);
     const limit = limits[resource];
 
-    // -1 signifie illimité
     if (limit === -1) {
-        return {
-            used: currentUsage,
-            limit: -1,
-            canUse: true,
-        };
+        return { used: currentUsage, limit: -1, canUse: true };
     }
 
     return {
@@ -284,21 +303,13 @@ export function checkPlanLimit(
     };
 }
 
-/**
- * Obtenir le nombre maximum de lignes qu'on peut importer pour un plan
- * Note: Cette limite s'applique AVANT la vérification de la limite de prospects
- */
 export function getImportMaxRows(planId: PlanId): number {
     const limits = getPlanLimits(planId);
     return limits.import_csv_xlsx_max_rows;
 }
 
-/**
- * Vérifier si on peut importer un nombre de lignes donné
- */
 export function canImportRows(planId: PlanId, numberOfRows: number): boolean {
     const maxRows = getImportMaxRows(planId);
-    // -1 signifie pas de limite sur les lignes
     if (maxRows === -1) {
         return true;
     }

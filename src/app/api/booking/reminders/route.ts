@@ -12,11 +12,15 @@ import { captureRouteError } from "@/lib/sentry/route-error";
 export async function POST(req: Request) {
   const route = "api/booking/reminders";
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get("Authorization")?.replace("Bearer ", "");
-    if (auth !== secret) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!secret) {
+    captureRouteError(route, new Error("CRON_SECRET not configured"), {
+      extra: { step: "auth" },
+    });
+    return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
+  }
+  const auth = req.headers.get("Authorization")?.replace("Bearer ", "");
+  if (auth !== secret) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
@@ -29,6 +33,7 @@ export async function POST(req: Request) {
   const { data: bookings, error: bookingsError } = await supabase
     .from("quick_bookings")
     .select("id, prospect_id, organization_id, booked_by, scheduled_for, notes")
+    .is("reminder_sent_at", null)
     .gte("scheduled_for", from.toISOString())
     .lte("scheduled_for", to.toISOString());
 
@@ -92,6 +97,25 @@ export async function POST(req: Request) {
           text: message,
         }),
       });
+      // `reminder_sent_at` was added in migration 20260517120000; cast until
+      // generated types are regenerated.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: markErr } = await (supabase as any)
+        .from("quick_bookings")
+        .update({ reminder_sent_at: new Date().toISOString() })
+        .eq("id", booking.id)
+        .is("reminder_sent_at", null);
+      if (markErr) {
+        // Reminder sent but marker write failed — surface to Sentry; next tick
+        // would re-send. Better than silently double-sending without warning.
+        captureRouteError(route, markErr, {
+          extra: {
+            step: "mark_sent",
+            bookingId: booking.id,
+            prospectId: prospect.id,
+          },
+        });
+      }
       sent++;
     } catch (err) {
       captureRouteError(route, err, {

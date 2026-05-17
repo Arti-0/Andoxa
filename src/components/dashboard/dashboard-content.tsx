@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Dashboard v2 — applies the Andoxa "Tableau de bord" cockpit design.
+ * Dashboard (cockpit) — Andoxa "Tableau de bord" UX.
  *
  * Visual reference: design/Tableau de bord.html + app.jsx (Claude Design).
  *
@@ -61,7 +61,7 @@ import { DAILY_QUOTAS } from "@/lib/linkedin/quotas";
    API TYPES
    ============================================================ */
 
-interface DashboardStatsV2 {
+interface DashboardStatsPayload {
   prospects: number;
   campaignsThisMonth: number;
   rdvEffectues: number;
@@ -197,8 +197,8 @@ async function jsonFetch<T>(url: string): Promise<T> {
   return (json.data ?? json) as T;
 }
 
-const fetchStatsV2 = (period: ApiPeriod) =>
-  jsonFetch<DashboardStatsV2>(`/api/dashboard/stats?period=${period}`);
+const fetchDashboardStats = (period: ApiPeriod) =>
+  jsonFetch<DashboardStatsPayload>(`/api/dashboard/stats?period=${period}`);
 const fetchPriorities = () =>
   jsonFetch<PrioritiesPayload>("/api/dashboard/priorities");
 const fetchFunnel = (period: ApiPeriod) =>
@@ -489,19 +489,24 @@ function PageHeader({
   return (
     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6 mb-5 sm:mb-6">
       <div className="min-w-0">
-        <h1 className="text-[22px] sm:text-[28px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100 leading-tight">
-          Tableau de bord
-        </h1>
-        <div className="mt-1.5 text-[12.5px] sm:text-[13.5px] text-slate-500 dark:text-zinc-400 flex items-center gap-1.5 flex-wrap">
+        <h1 className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[22px] font-semibold leading-tight tracking-tight text-slate-900 dark:text-zinc-100 sm:text-[28px]">
           <span>
             Bonjour{" "}
-            <span className="text-slate-700 dark:text-zinc-300 font-medium">{firstName}</span>
+            <span className="text-slate-900 dark:text-zinc-100">{firstName}</span>
           </span>
-          <span className="text-slate-300 dark:text-zinc-600">·</span>
-          <span>{formatLongDate(today)}</span>
-          <span className="text-slate-300 dark:text-zinc-600">·</span>
-          <span>Semaine {getISOWeek(today)}</span>
-        </div>
+          <span className="text-slate-300 dark:text-zinc-600" aria-hidden>
+            ·
+          </span>
+          <span className="text-[17px] font-normal text-slate-600 dark:text-zinc-400 sm:text-xl">
+            {formatLongDate(today)}
+          </span>
+          <span className="text-slate-300 dark:text-zinc-600" aria-hidden>
+            ·
+          </span>
+          <span className="text-[17px] font-normal text-slate-600 dark:text-zinc-400 sm:text-xl">
+            Semaine {getISOWeek(today)}
+          </span>
+        </h1>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap sm:flex-shrink-0">
@@ -795,7 +800,7 @@ function KpiGrid({
   stats,
   isLoading,
 }: {
-  stats: DashboardStatsV2 | undefined;
+  stats: DashboardStatsPayload | undefined;
   isLoading: boolean;
 }) {
   const cards: (KpiCardData | null)[] = useMemo(() => {
@@ -1022,7 +1027,7 @@ function LegendStat({
 function ActivityVolumeCard({
   stats,
 }: {
-  stats: DashboardStatsV2 | undefined;
+  stats: DashboardStatsPayload | undefined;
 }) {
   const data = stats?.charts?.activityVolume ?? [];
   const max = Math.max(
@@ -1345,7 +1350,7 @@ function LinkedInQuotasCard({
     );
   }
 
-  const weeklyCap = getLinkedInInviteWeeklyUsageCap(linkedIn.linkedin_is_premium);
+  const weeklyCap = getLinkedInInviteWeeklyUsageCap(linkedIn.linkedin_tier);
 
   const rows = [
     {
@@ -1828,7 +1833,7 @@ export function DashboardContent() {
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ["dashboard-stats", workspace?.id, apiPeriod],
-    queryFn: () => fetchStatsV2(apiPeriod),
+    queryFn: () => fetchDashboardStats(apiPeriod),
     enabled: !!workspace?.id,
   });
 
@@ -1853,7 +1858,7 @@ export function DashboardContent() {
       const { exportDashboardPDF } = await import("./dashboard-pdf");
       const apiP = PERIOD_TO_API[chosenPeriod];
       const [exportStats, exportFunnel, exportTopDeals] = await Promise.all([
-        fetchStatsV2(apiP),
+        fetchDashboardStats(apiP),
         fetchFunnel(apiP),
         fetchTopDeals(),
       ]);
@@ -1883,7 +1888,7 @@ export function DashboardContent() {
       `}</style>
       <div className="max-w-[1480px] mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-7">
         <PageHeader
-          firstName={firstName || "Bonjour"}
+          firstName={firstName || "vous"}
           period={period}
           setPeriod={setPeriod}
           onExport={handleExport}

@@ -98,6 +98,9 @@ export type Conversation = {
   channel: Channel;
   stage: Stage;
   lastTime: string;
+  /** ISO timestamps from Unipile / DB — drives list ordering */
+  lastMessageAt: string | null;
+  pinnedAt: string | null;
   unread: number;
   silentDays: number;
   pictureUrl: string | null;
@@ -116,12 +119,40 @@ export type ThreadEntry =
     }
   | { kind: "auto"; time: string; text: string };
 
+/** Aligned with `message_templates.category` CHECK constraint */
+export type TemplateCategory =
+  | "first"
+  | "relance"
+  | "rdv"
+  | "suivi"
+  | "other";
+
 export type QuickTemplate = {
   id: string;
   name: string;
   channel: "li" | "wa" | "both";
+  /** DB `message_templates.category` — drives quick-insert filter chips */
+  category: TemplateCategory;
   content: string;
 };
+
+const TEMPLATE_CATEGORY_VALUES: TemplateCategory[] = [
+  "first",
+  "relance",
+  "rdv",
+  "suivi",
+  "other",
+];
+
+/** Map API/DB string to a valid template category (migration default is often `other`). */
+export function parseTemplateCategory(
+  raw: string | null | undefined,
+): TemplateCategory {
+  const s = (raw ?? "").trim();
+  return TEMPLATE_CATEGORY_VALUES.includes(s as TemplateCategory)
+    ? (s as TemplateCategory)
+    : "other";
+}
 
 // Variable resolution for template insertion. Backend stores `{{firstName}}`
 // style; we accept both the `{{x}}` canonical form and the older `{x}` French

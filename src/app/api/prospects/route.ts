@@ -5,6 +5,7 @@ import {
   getPagination,
   getSearchParams,
 } from "../../../lib/api";
+import { invalidate } from "@/lib/cache/redis";
 import { enrichProspects } from "../../../lib/crm/enrich-prospects";
 import type { Prospect } from "../../../lib/types/prospects";
 
@@ -15,7 +16,9 @@ function sanitizeIlikeTerm(raw: string): string {
 
 /**
  * GET /api/prospects
- * List prospects with filtering and pagination (no cache to avoid redis dependency when not installed)
+ * List prospects with filtering and pagination.
+ * Listing is not wrapped in cache yet; prospect mutation routes still call
+ * `invalidate.prospects` so keys stay coherent when list caching is enabled.
  */
 export const GET = createApiHandler(async (req, ctx) => {
   if (!ctx.workspaceId) {
@@ -198,6 +201,8 @@ export const POST = createApiHandler(async (req, ctx) => {
     console.error("[API] Prospect create error:", error);
     throw Errors.internal("Failed to create prospect");
   }
+
+  await invalidate.prospects(ctx.workspaceId);
 
   return data;
 });
