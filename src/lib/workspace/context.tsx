@@ -104,7 +104,10 @@ function mapMembersFromApi(rows: MemberApiRow[] | null | undefined): WorkspaceMe
 }
 
 async function fetchWorkspaceMe(): Promise<WorkspaceMeData> {
-  const res = await fetch("/api/workspace/me", { credentials: "include" });
+  const res = await fetch("/api/workspace/me", {
+    credentials: "include",
+    cache: "no-store",
+  });
 
   if (res.status === 401) {
     return EMPTY_WORKSPACE_ME;
@@ -265,9 +268,26 @@ export function WorkspaceProvider({
     [user, supabase, queryClient]
   );
 
+  const patchWorkspace = useCallback(
+    (patch: Partial<Pick<Workspace, "logo_url" | "name" | "slug">>) => {
+      queryClient.setQueryData<WorkspaceMeData>(WORKSPACE_ME_QUERY_KEY, (old) => {
+        if (!old?.workspace) return old;
+        return {
+          ...old,
+          workspace: {
+            ...old.workspace,
+            ...patch,
+            updated_at: new Date().toISOString(),
+          },
+        };
+      });
+    },
+    [queryClient]
+  );
+
   const refresh = useCallback(async () => {
     if (!user) return;
-    await queryClient.invalidateQueries({ queryKey: WORKSPACE_ME_QUERY_KEY });
+    await queryClient.refetchQueries({ queryKey: WORKSPACE_ME_QUERY_KEY });
   }, [user, queryClient]);
 
   const signOut = useCallback(async () => {
@@ -319,6 +339,7 @@ export function WorkspaceProvider({
     daysUntilTrialEnd,
     permissions,
     switchWorkspace,
+    patchWorkspace,
     refresh,
     signOut,
   };

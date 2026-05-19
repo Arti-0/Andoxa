@@ -50,6 +50,7 @@ export function AndoxaWordmark({
         height={height}
         priority
         className="block h-full w-auto dark:hidden"
+        style={{ width: "auto", height: "auto" }}
       />
       <Image
         src={WORDMARK_DARK}
@@ -58,6 +59,7 @@ export function AndoxaWordmark({
         height={height}
         priority
         className="hidden h-full w-auto dark:block"
+        style={{ width: "auto", height: "auto" }}
       />
     </span>
   );

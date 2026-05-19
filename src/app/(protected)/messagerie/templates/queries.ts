@@ -23,8 +23,13 @@ import {
 export type AdminTemplate = {
   id: string;
   name: string;
+  /** Legacy enum (first | relance | …) kept as a fallback display value. */
   category: TemplateCategory;
-  /** First entry mirrors `category` until multi-tag templates are supported server-side */
+  /** Dynamic FK into template_categories. Preferred over `category` going forward. */
+  categoryId: string | null;
+  /** Joined name from template_categories — undefined for legacy rows. */
+  categoryName: string | null;
+  /** First entry holds the active-filter id — categoryId when set, else the enum. */
   tags?: string[];
   channel: "li" | "wa" | "both";
   content: string;
@@ -38,10 +43,29 @@ interface BackendTemplate {
   id: string;
   name: string;
   channel: "linkedin" | "whatsapp" | "email";
-  category?: string | null;
+  /** Foreign key to template_categories(id). Replaces the legacy enum string. */
+  category_id?: string | null;
+  /**
+   * The /api/message-templates SELECT aliases the FK join as `category`. It's
+   * either the joined row OR the legacy enum string for older payloads that
+   * don't include the join.
+   */
+  category?:
+    | { id: string; name: string; sort_order: number }
+    | string
+    | null;
   content: string;
   variables_used: string[];
   is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Server-side category row from /api/template-categories. */
+export interface TemplateCategoryRow {
+  id: string;
+  name: string;
+  sort_order: number;
   created_at: string;
   updated_at: string;
 }
@@ -63,16 +87,28 @@ function designToBackendChannel(
 }
 
 function designSaveCategory(tpl: Pick<AdminTemplate, "category" | "tags">): TemplateCategory {
-  return parseTemplateCategory(tpl.tags?.[0] ?? tpl.category);
+  // Legacy enum fallback — only used when the saved tag isn't a UUID
+  // (older templates without category_id, or "all" sentinel).
+  const first = tpl.tags?.[0];
+  return parseTemplateCategory(typeof first === "string" ? first : tpl.category);
 }
 
 function backendToAdmin(t: BackendTemplate): AdminTemplate {
-  const category = parseTemplateCategory(t.category);
+  // Prefer the dynamic category (id from the FK join) — fall back to the
+  // legacy enum text only when no join exists. The page uses tags[0] as the
+  // active-filter id, so we put the dynamic UUID there when available.
+  const joined =
+    typeof t.category === "object" && t.category !== null ? t.category : null;
+  const legacyEnum = typeof t.category === "string" ? t.category : null;
+  const tagId = joined?.id ?? legacyEnum ?? "other";
+  const enumCategory = parseTemplateCategory(legacyEnum);
   return {
     id: t.id,
     name: t.name,
-    category,
-    tags: [category],
+    category: enumCategory,
+    categoryId: t.category_id ?? joined?.id ?? null,
+    categoryName: joined?.name ?? null,
+    tags: [tagId],
     channel: backendToDesignChannel(t.channel),
     content: t.content,
     usage: 0,           // TODO(BACKEND.md §7.2): wire to template_usages
@@ -108,20 +144,45 @@ export function useAdminTemplates() {
   });
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function buildCategoryPayload(tpl: {
+  category?: TemplateCategory;
+  categoryId?: string | null;
+  tags?: string[];
+}): Record<string, unknown> {
+  // Send the new dynamic FK when we have one; fall back to the legacy enum
+  // string so old callers / seeded categories still work.
+  if (tpl.categoryId) return { category_id: tpl.categoryId };
+  const tag = tpl.tags?.[0];
+  if (tag && UUID_RE.test(tag)) return { category_id: tag };
+  // designSaveCategory requires `category` to be a real value — fall back to
+  // parsing the tag (or "other") when called from create paths that don't set it.
+  return {
+    category: parseTemplateCategory(tpl.category ?? tag ?? "other"),
+  };
+}
+
 export function useSaveTemplate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (
-      tpl: Omit<AdminTemplate, "id" | "usage"> & {
+      // categoryId/categoryName are optional on input — categoryId can be
+      // derived from `tags[0]` when it's a UUID, and the server doesn't
+      // accept categoryName separately (use `category_name` for inline create
+      // — surfaced as a future enhancement once the modal needs it).
+      tpl: Omit<AdminTemplate, "id" | "usage" | "categoryId" | "categoryName"> & {
         id?: string;
         usage?: number;
+        categoryId?: string | null;
+        categoryName?: string | null;
       },
     ): Promise<AdminTemplate> => {
       const payload = {
         name: tpl.name,
         channel: designToBackendChannel(tpl.channel),
         content: tpl.content,
-        category: designSaveCategory(tpl),
+        ...buildCategoryPayload(tpl),
       };
       if (tpl.id) {
         const updated = await getJson<BackendTemplate>(
@@ -147,6 +208,67 @@ export function useSaveTemplate() {
       void qc.invalidateQueries({
         queryKey: ["messagerie", "templates"],
       });
+    },
+  });
+}
+
+// ─── Dynamic categories (template_categories table) ─────────────────────────
+
+const CATEGORIES_KEY = ["messagerie", "template-categories"] as const;
+
+export function useTemplateCategories() {
+  return useQuery({
+    queryKey: CATEGORIES_KEY,
+    queryFn: () =>
+      getJson<{ items: TemplateCategoryRow[] }>("/api/template-categories").then(
+        (r) => r.items ?? [],
+      ),
+    staleTime: FIVE_MIN,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useCreateTemplateCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string; sort_order?: number }) =>
+      getJson<TemplateCategoryRow>("/api/template-categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: CATEGORIES_KEY });
+    },
+  });
+}
+
+export function useDeleteTemplateCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      getJson<{ success: boolean }>(`/api/template-categories/${id}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: CATEGORIES_KEY });
+      void qc.invalidateQueries({ queryKey: TEMPLATES_KEY });
+    },
+  });
+}
+
+export function useRenameTemplateCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      getJson<TemplateCategoryRow>(`/api/template-categories/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: CATEGORIES_KEY });
+      void qc.invalidateQueries({ queryKey: TEMPLATES_KEY });
     },
   });
 }
@@ -181,7 +303,7 @@ export function useDuplicateTemplate() {
           name: tpl.name + " (copie)",
           channel: designToBackendChannel(tpl.channel),
           content: tpl.content,
-          category: designSaveCategory(tpl),
+          ...buildCategoryPayload(tpl),
         }),
       });
       return backendToAdmin(created);

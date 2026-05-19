@@ -16,9 +16,13 @@ import { toast } from "sonner";
 import { parseTemplateCategory } from "../data";
 import {
   useAdminTemplates,
+  useCreateTemplateCategory,
   useDeleteTemplate,
+  useDeleteTemplateCategory,
   useDuplicateTemplate,
+  useRenameTemplateCategory,
   useSaveTemplate,
+  useTemplateCategories,
   type AdminTemplate,
 } from "./queries";
 
@@ -32,14 +36,11 @@ const BASE_CATEGORY: CategoryEntry = { id: "all", emoji: "📁", label: "Tous le
 
 const CAT_EMOJIS = ["📂", "💼", "🤝", "🚀", "💡", "🎉", "📣", "🔥", "⭐", "🎯"];
 
-function loadCustomCategories(): CategoryEntry[] {
-  try { return JSON.parse(localStorage.getItem("tpl_custom_cats") ?? "[]") as CategoryEntry[]; }
-  catch { return []; }
-}
-
-function saveCustomCategories(cats: CategoryEntry[]) {
-  try { localStorage.setItem("tpl_custom_cats", JSON.stringify(cats)); } catch {}
-}
+// Categories were previously stored in localStorage; they now live in the
+// `template_categories` table (migration 20260517150000_*.sql) and are
+// fetched via useTemplateCategories(). The only piece still client-side is
+// the per-category emoji (the schema has no column for it) — see
+// `emojiById` state in TemplatesPage.
 
 // ─── Channel config ───────────────────────────────────────────────────────────
 
@@ -550,9 +551,43 @@ export default function TemplatesPage() {
   const deleteMutation = useDeleteTemplate();
   const duplicateMutation = useDuplicateTemplate();
 
-  const [customCats, setCustomCats] = useState<CategoryEntry[]>(() =>
-    typeof window !== "undefined" ? loadCustomCategories() : [],
+  // Server-side categories replace the previous localStorage store. Custom
+  // emojis aren't persisted server-side (no column for them) — we keep a
+  // local emoji-by-id map so the UI looks the same, but the source of truth
+  // for category existence + name is /api/template-categories.
+  const { data: serverCats } = useTemplateCategories();
+  const createCategoryMutation = useCreateTemplateCategory();
+  const renameCategoryMutation = useRenameTemplateCategory();
+  const deleteCategoryMutation = useDeleteTemplateCategory();
+
+  const [emojiById, setEmojiById] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      return JSON.parse(localStorage.getItem("tpl_cat_emojis") ?? "{}");
+    } catch {
+      return {};
+    }
+  });
+  const setEmoji = (id: string, emoji: string) => {
+    setEmojiById((m) => {
+      const next = { ...m, [id]: emoji };
+      try {
+        localStorage.setItem("tpl_cat_emojis", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const customCats: CategoryEntry[] = useMemo(
+    () =>
+      (serverCats ?? []).map((c) => ({
+        id: c.id,
+        emoji: emojiById[c.id] ?? "📂",
+        label: c.name,
+      })),
+    [serverCats, emojiById],
   );
+
   const [newCatOpen, setNewCatOpen] = useState(false);
 
   const categories: CategoryEntry[] = [BASE_CATEGORY, ...customCats];
@@ -564,24 +599,40 @@ export default function TemplatesPage() {
   const [editing, setEditing] = useState<EditingTemplate | null>(null);
 
   const handleNewCategory = (cat: CategoryEntry) => {
-    const next = [...customCats, cat];
-    setCustomCats(next); saveCustomCategories(next);
-    setActiveCat(cat.id);
-    toast.success(`Catégorie « ${cat.label} » créée`);
+    createCategoryMutation.mutate(
+      { name: cat.label },
+      {
+        onSuccess: (created) => {
+          setEmoji(created.id, cat.emoji);
+          setActiveCat(created.id);
+          toast.success(`Catégorie « ${created.name} » créée`);
+        },
+        onError: (err) =>
+          toast.error(err instanceof Error ? err.message : "Erreur"),
+      },
+    );
   };
 
   const handleRenameCategory = (id: string, label: string, emoji: string) => {
-    const next = customCats.map((c) => c.id === id ? { ...c, label, emoji } : c);
-    setCustomCats(next); saveCustomCategories(next);
-    toast.success("Catégorie mise à jour");
+    setEmoji(id, emoji);
+    renameCategoryMutation.mutate(
+      { id, name: label },
+      {
+        onSuccess: () => toast.success("Catégorie mise à jour"),
+        onError: (err) =>
+          toast.error(err instanceof Error ? err.message : "Erreur"),
+      },
+    );
   };
 
   const handleDeleteCategory = (id: string) => {
-    const cat = customCats.find((c) => c.id === id);
-    const next = customCats.filter((c) => c.id !== id);
-    setCustomCats(next); saveCustomCategories(next);
-    if (activeCat === id) setActiveCat("all");
-    toast.success(`Catégorie « ${cat?.label ?? "" } » supprimée`);
+    deleteCategoryMutation.mutate(id, {
+      onSuccess: () => {
+        if (activeCat === id) setActiveCat("all");
+        toast.success("Catégorie supprimée");
+      },
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Erreur"),
+    });
   };
 
   const counts = useMemo(() => {

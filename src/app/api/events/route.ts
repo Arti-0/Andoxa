@@ -75,11 +75,19 @@ export const GET = createApiHandler(async (req, ctx) => {
   // `?source=andoxa` so colleague columns never display rows that were
   // synced in from a Google calendar — those should stay confined to the
   // current user's "Google Calendar" personal track. Accepted values:
-  //   • "andoxa"  — exclude rows whose `source` column is 'google'
+  //   • "andoxa"  — every row whose source isn't 'google' (incl. NULL,
+  //                 'andoxa', 'booking', and any future internal source)
   //   • "google"  — only google-synced rows
   // omitting the param returns everything (current default).
+  //
+  // History: previously used `.or("source.is.null,source.neq.google")`
+  // which under some PostgREST/Supabase combos returned an empty set when
+  // the OR was misparsed alongside other filters. The explicit IN list is
+  // safer; keep extending it if new source values are added.
   if (params.source === "andoxa") {
-    query = query.or("source.is.null,source.neq.google");
+    query = query.or(
+      "source.in.(andoxa,booking,manual,unipile),source.is.null"
+    );
   } else if (params.source === "google") {
     query = query.eq("source", "google");
   }

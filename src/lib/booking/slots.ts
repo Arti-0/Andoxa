@@ -59,6 +59,11 @@ export interface AvailabilityConfig {
   workingDays?: number[];
   daysAhead?: number;
   /**
+   * Minimum lead time in hours before a slot can be booked. Default 4 (set
+   * in the slots endpoint). 0 = bookable up to slot start.
+   */
+  minNoticeHours?: number;
+  /**
    * Per-day-of-week schedule keyed by JS getDay() (0=Sun..6=Sat).
    * When present, overrides startHour/endHour/workingDays.
    */

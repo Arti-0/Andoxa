@@ -43,6 +43,10 @@ export function BookingModal({ open, onClose }: Props) {
   const [description, setDescription] = useState("");
   const [slotMinutes, setSlotMinutes] = useState(30);
   const [daysAhead, setDaysAhead] = useState(14);
+  /** Lead time before a slot can be booked (default 4h, set in slots route). */
+  const [minNoticeHours, setMinNoticeHours] = useState(4);
+  /** Toggle for the "Un WhatsApp post-RDV sera envoyé" notice (default true). */
+  const [showPostBookingWaNotice, setShowPostBookingWaNotice] = useState(true);
   const [schedules, setSchedules] = useState<Record<number, BookingDaySchedule>>(DEFAULT_SCHEDULES);
   const [exceptions, setExceptions] = useState<BookingException[]>([]);
   const [copyOpen, setCopyOpen] = useState<number | null>(null);
@@ -55,6 +59,8 @@ export function BookingModal({ open, onClose }: Props) {
       setDescription(settings.description);
       setSlotMinutes(settings.availability.slotMinutes);
       setDaysAhead(settings.availability.daysAhead);
+      setMinNoticeHours(settings.availability.minNoticeHours ?? 4);
+      setShowPostBookingWaNotice(settings.show_post_booking_wa_notice ?? true);
       setSchedules(settings.availability.daySchedules ?? DEFAULT_SCHEDULES);
       setExceptions(settings.availability.exceptions ?? []);
       setSaved(false);
@@ -167,7 +173,14 @@ export function BookingModal({ open, onClose }: Props) {
       {
         title: title.trim(),
         description: description.trim(),
-        availability: { slotMinutes, daysAhead, daySchedules: schedules, exceptions },
+        show_post_booking_wa_notice: showPostBookingWaNotice,
+        availability: {
+          slotMinutes,
+          daysAhead,
+          minNoticeHours,
+          daySchedules: schedules,
+          exceptions,
+        },
       },
       {
         onSuccess: () => {
@@ -226,6 +239,44 @@ export function BookingModal({ open, onClose }: Props) {
                     );
                   })}
                 </div>
+              </Field>
+
+              <Field
+                label="Fenêtre de réservation"
+                hint="Délai minimum avant qu'un créneau puisse être réservé"
+              >
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {[0, 2, 4, 8, 24, 48].map((h) => {
+                    const active = minNoticeHours === h;
+                    return (
+                      <button
+                        key={h}
+                        onClick={() => setMinNoticeHours(h)}
+                        style={{ padding: "6px 14px", background: active ? "var(--cal2-blue-tint)" : "var(--cal2-surface)", color: active ? "#0052D9" : "var(--cal2-text-muted)", border: `1px solid ${active ? "#0052D9" : "var(--cal2-border-soft)"}`, borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}
+                      >
+                        {h === 0 ? "Aucun" : `${h}h`}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+
+              <Field
+                label="WhatsApp post-RDV"
+                hint="Si un workflow « Réunion réservée » est actif, un WhatsApp peut être envoyé après la prise de RDV"
+              >
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                  <span
+                    onClick={() => setShowPostBookingWaNotice(!showPostBookingWaNotice)}
+                    style={{ position: "relative", width: 32, height: 18, background: showPostBookingWaNotice ? "#0052D9" : "var(--cal2-border)", borderRadius: 999, flexShrink: 0, transition: "background 140ms", cursor: "pointer" }}
+                  >
+                    <span style={{ position: "absolute", top: 2, left: showPostBookingWaNotice ? 16 : 2, width: 14, height: 14, background: "var(--cal2-surface)", borderRadius: "50%", transition: "left 140ms" }} />
+                  </span>
+                  <span style={{ fontSize: 12, color: "var(--cal2-text-soft)" }}>
+                    Afficher l&apos;indication « Un WhatsApp post-RDV sera envoyé »
+                    sur cette page
+                  </span>
+                </label>
               </Field>
 
               <Field

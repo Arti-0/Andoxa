@@ -127,7 +127,12 @@ export const PATCH = createApiHandler(async (req, ctx) => {
     if (!isWorkflowTriggerKind(body.trigger_kind)) {
       throw Errors.validation({ trigger_kind: "Déclencheur invalide" });
     }
-    updates.trigger_kind = body.trigger_kind;
+    // Generated supabase types haven't been regenerated since migration
+    // 20260517170000_workflow_on_booking_trigger added the 'on_booking'
+    // value to the CHECK constraint. Cast bridges the gap until next type
+    // regen — runtime is safe because the DB constraint validates.
+    updates.trigger_kind =
+      body.trigger_kind as WorkflowUpdateRow["trigger_kind"];
   }
 
   if (body.run_mode !== undefined) {

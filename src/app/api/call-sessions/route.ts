@@ -111,10 +111,14 @@ export const POST = createApiHandler(async (req, ctx) => {
         prospect_ids?: string[];
         bdd_ids?: string[];
         title?: string;
+        /** Free-text description shown on the session detail header. */
+        description?: string;
         /** Modal: "now" | "later" — when no prospects, creates an empty shell session. */
         schedule_mode?: 'now' | 'later';
         /** ISO8601 scheduled start when `schedule_mode === "later"` */
         scheduled_at?: string | null;
+        /** Wizard advanced settings: call_order, wa_followup, duration, etc. */
+        metadata?: Record<string, unknown>;
     }>(req);
 
     const prospectIdsProvided =
@@ -146,12 +150,15 @@ export const POST = createApiHandler(async (req, ctx) => {
         }
 
         const { data: session, error: sessionError } =
-            await ctx.supabase.from('call_sessions').insert({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await (ctx.supabase as any).from('call_sessions').insert({
                 organization_id: ctx.workspaceId,
                 created_by: ctx.userId,
                 title,
                 status,
                 scheduled_at,
+                description: body.description?.trim() || null,
+                metadata: body.metadata ?? null,
             }).select().single();
 
         if (sessionError || !session) {
@@ -242,7 +249,9 @@ export const POST = createApiHandler(async (req, ctx) => {
 
     const prospectIds = withPhone.map((p) => p.id);
 
-    const { data: session, error: sessionError } = await ctx.supabase
+    const { data: session, error: sessionError } =
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (ctx.supabase as any)
         .from('call_sessions')
         .insert({
             organization_id: ctx.workspaceId,
@@ -251,6 +260,8 @@ export const POST = createApiHandler(async (req, ctx) => {
                 body.title ??
                 `Session ${new Date().toLocaleDateString('fr-FR')}`,
             status: 'active',
+            description: body.description?.trim() || null,
+            metadata: body.metadata ?? null,
         })
         .select()
         .single();

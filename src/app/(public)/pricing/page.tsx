@@ -26,7 +26,7 @@ export default function PricingPage() {
   return (
     <>
       <FloatingNav navItems={SITE_NAV} />
-      <main className="pt-20">
+      <main>
         <MarketingPricingSection />
         <ComparisonSection />
         <ComparisonTable />

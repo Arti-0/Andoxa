@@ -8,6 +8,7 @@ import {
   useCreateEvent, useUpdateEvent, useProspectSearch, useOrgMembers,
   type CreateEventInput, type OrgMember,
 } from "./queries";
+import { useGoogleStatus } from "@/hooks/use-google-status";
 
 type Prefill = { day?: number; start?: number; end?: number } | null;
 
@@ -59,7 +60,15 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
 
   const [prospectQuery, setProspectQuery] = useState("");
   const [showProspectSuggest, setShowProspectSuggest] = useState(false);
-  const [selectedProspect, setSelectedProspect] = useState<{ id: string; name: string; company: string } | null>(null);
+  const [selectedProspect, setSelectedProspect] = useState<
+    { id: string; name: string; company: string; email: string | null } | null
+  >(null);
+  /**
+   * Email captured for a prospect that doesn't have one on record. Only
+   * used when Google Meet is selected (Meet invites need an email). Kept
+   * local — we don't PATCH the prospect row here, that's the CRM's job.
+   */
+  const [prospectEmailDraft, setProspectEmailDraft] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
@@ -84,7 +93,7 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
       setSelectedAttendees([]);
       // Best-effort: prospect prefill (we only have name/company, not id)
       if (editing.prospect) {
-        setSelectedProspect({ id: "", name: editing.prospect, company: editing.company });
+        setSelectedProspect({ id: "", name: editing.prospect, company: editing.company, email: null });
       } else {
         setSelectedProspect(null);
       }
@@ -102,6 +111,7 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
     setAttendeeQuery("");
     setProspectQuery("");
     setDebouncedQuery("");
+    setProspectEmailDraft("");
     setError(null);
   }, [open, editing, prefill]);
 
@@ -161,6 +171,16 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
 
     const attendeeUserIds = selectedAttendees.filter((a) => a.kind === "member").map((a) => a.id);
     const attendeeEmails  = selectedAttendees.filter((a) => a.kind === "email").map((a) => a.kind === "email" ? a.email : "");
+
+    // Add the prospect's email so Google Meet invites them. Prefer the email
+    // already on the prospect record; fall back to whatever the user typed
+    // into the inline prompt for this event.
+    if (platform === "meet" && selectedProspect) {
+      const prospectEmail = selectedProspect.email?.trim() || prospectEmailDraft.trim();
+      if (prospectEmail && isEmail(prospectEmail) && !attendeeEmails.includes(prospectEmail)) {
+        attendeeEmails.push(prospectEmail);
+      }
+    }
 
     if (isEdit && editing) {
       updateEvent.mutate({
@@ -283,27 +303,63 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
           <Field label="Prospect" hint="Optionnel">
             <div style={{ position: "relative" }}>
               {selectedProspect ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", background: "var(--cal2-surface-3)", border: "1px solid var(--cal2-border-faint)", borderRadius: 8 }}>
-                  <span style={{ width: 28, height: 28, borderRadius: "50%", background: `color-mix(in srgb, ${avatarColor(selectedProspect.name)} 35%, var(--cal2-surface-2))`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, color: "var(--cal2-text-soft)" }}>
-                    {initials(selectedProspect.name)}
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--cal2-text)" }}>{selectedProspect.name}</div>
-                    <div style={{ fontSize: 11, color: "var(--cal2-text-muted)" }}>{selectedProspect.company}</div>
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", background: "var(--cal2-surface-3)", border: "1px solid var(--cal2-border-faint)", borderRadius: 8 }}>
+                    <span style={{ width: 28, height: 28, borderRadius: "50%", background: `color-mix(in srgb, ${avatarColor(selectedProspect.name)} 35%, var(--cal2-surface-2))`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, color: "var(--cal2-text-soft)" }}>
+                      {initials(selectedProspect.name)}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--cal2-text)" }}>{selectedProspect.name}</div>
+                      <div style={{ fontSize: 11, color: "var(--cal2-text-muted)" }}>
+                        {selectedProspect.company}
+                        {selectedProspect.email ? ` · ${selectedProspect.email}` : ""}
+                      </div>
+                    </div>
+                    <button onClick={() => { setSelectedProspect(null); setProspectEmailDraft(""); }} style={{ background: "transparent", border: "none", color: "var(--cal2-text-faint)", cursor: "pointer", padding: 4, display: "flex" }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                    </button>
                   </div>
-                  <button onClick={() => setSelectedProspect(null)} style={{ background: "transparent", border: "none", color: "var(--cal2-text-faint)", cursor: "pointer", padding: 4, display: "flex" }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                  </button>
-                </div>
+
+                  {/* Prospect email prompt — appears only when:
+                      (a) Google Meet is the selected platform (otherwise
+                          the email isn't needed; no point asking)
+                      (b) the prospect has no email on file
+                      Layout shift is minimised: no reserved-space when the
+                      prospect already has an email; one-time push down when
+                      a prospect without an email is added. */}
+                  {platform === "meet" && !selectedProspect.email && (
+                    <div style={{ marginTop: 8, padding: "10px 12px", background: "color-mix(in srgb, #F59E0B 10%, var(--cal2-surface))", border: "1px solid color-mix(in srgb, #F59E0B 28%, var(--cal2-surface))", borderRadius: 8 }}>
+                      <label style={{ display: "block", fontSize: 11.5, fontWeight: 500, color: "var(--cal2-text-soft)", marginBottom: 6 }}>
+                        Email du prospect (requis pour l&apos;invitation Google Meet)
+                      </label>
+                      <input
+                        type="email"
+                        value={prospectEmailDraft}
+                        onChange={(e) => setProspectEmailDraft(e.target.value)}
+                        placeholder="prospect@entreprise.com"
+                        style={inputStyle}
+                      />
+                      <div style={{ marginTop: 5, fontSize: 11, color: "var(--cal2-text-faint)" }}>
+                        Cet email est utilisé pour cet événement uniquement. Pour le sauvegarder, modifiez la fiche prospect dans le CRM.
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
-                <input
-                  type="text" value={prospectQuery}
-                  onChange={(e) => { handleProspectInput(e.target.value); setShowProspectSuggest(true); }}
-                  onFocus={() => setShowProspectSuggest(true)}
-                  onBlur={() => setTimeout(() => setShowProspectSuggest(false), 180)}
-                  placeholder="Rechercher un prospect…"
-                  style={inputStyle}
-                />
+                // Same chip-input shell as Participants below — visually
+                // unifies the two pickers per the product spec ("unify how
+                // we add prospects and colleagues").
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, padding: 5, border: "1px solid var(--cal2-border-soft)", borderRadius: 8, background: "var(--cal2-surface)", minHeight: 36 }}>
+                  <input
+                    type="text"
+                    value={prospectQuery}
+                    onChange={(e) => { handleProspectInput(e.target.value); setShowProspectSuggest(true); }}
+                    onFocus={() => setShowProspectSuggest(true)}
+                    onBlur={() => setTimeout(() => setShowProspectSuggest(false), 180)}
+                    placeholder="Rechercher un prospect…"
+                    style={{ flex: 1, minWidth: 160, border: "none", outline: "none", fontSize: 12, padding: "4px 6px", fontFamily: "inherit", background: "transparent" }}
+                  />
+                </div>
               )}
               {showProspectSuggest && !selectedProspect && prospectQuery.length >= 2 && (
                 <div style={dropdownStyle}>
@@ -314,7 +370,12 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
                   {prospectResults.map((p) => (
                     <button
                       key={p.id}
-                      onMouseDown={() => { setSelectedProspect(p); setProspectQuery(""); setDebouncedQuery(""); }}
+                      onMouseDown={() => {
+                        setSelectedProspect(p);
+                        setProspectEmailDraft("");
+                        setProspectQuery("");
+                        setDebouncedQuery("");
+                      }}
                       style={dropdownItemStyle}
                       onMouseEnter={(e) => (e.currentTarget.style.background = "var(--cal2-surface-3)")}
                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
@@ -423,22 +484,31 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
             {platform === "inperson" && <input type="text" placeholder="Adresse ou lieu" style={{ ...inputStyle, marginTop: 9 }} />}
             {platform === "other" && <input type="text" placeholder="Précisez…" style={{ ...inputStyle, marginTop: 9 }} />}
             {platform === "phone" && <input type="text" placeholder="Numéro de téléphone" style={{ ...inputStyle, marginTop: 9 }} />}
+            {/* Google Meet requires a connected Google account — if missing,
+                the meet link won't be generated and we fall back silently.
+                Surface that here so the user knows why before clicking Save. */}
+            {platform === "meet" && <GoogleConnectHint />}
           </Field>
 
           <Field label="Description" hint="Optionnel">
             <textarea placeholder="Notes, ordre du jour, points à aborder…" style={{ ...inputStyle, minHeight: 90, resize: "vertical", fontFamily: "inherit" }} />
           </Field>
 
-          {/* Email invite toggle */}
-          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginBottom: 4 }}>
-            <span
-              onClick={() => setSendEmailInvite(!sendEmailInvite)}
-              style={{ position: "relative", width: 32, height: 18, background: sendEmailInvite ? "#0052D9" : "var(--cal2-border)", borderRadius: 999, flexShrink: 0, transition: "background 140ms", cursor: "pointer" }}
-            >
-              <span style={{ position: "absolute", top: 2, left: sendEmailInvite ? 16 : 2, width: 14, height: 14, background: "var(--cal2-surface)", borderRadius: "50%", transition: "left 140ms" }} />
-            </span>
-            <span style={{ fontSize: 12, color: "var(--cal2-text-soft)" }}>Envoyer une invitation par email aux participants</span>
-          </label>
+          {/* Email-invite toggle is meaningful only when Google Meet is the
+              platform (Google Calendar handles the actual sendUpdates flag
+              when we create the Meet event). Hidden otherwise to avoid
+              suggesting a behaviour we don't perform for in-person/phone. */}
+          {platform === "meet" && (
+            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginBottom: 4 }}>
+              <span
+                onClick={() => setSendEmailInvite(!sendEmailInvite)}
+                style={{ position: "relative", width: 32, height: 18, background: sendEmailInvite ? "#0052D9" : "var(--cal2-border)", borderRadius: 999, flexShrink: 0, transition: "background 140ms", cursor: "pointer" }}
+              >
+                <span style={{ position: "absolute", top: 2, left: sendEmailInvite ? 16 : 2, width: 14, height: 14, background: "var(--cal2-surface)", borderRadius: "50%", transition: "left 140ms" }} />
+              </span>
+              <span style={{ fontSize: 12, color: "var(--cal2-text-soft)" }}>Envoyer une invitation par email aux participants</span>
+            </label>
+          )}
 
           {error && (
             <div style={{ marginTop: 12, padding: "8px 12px", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 7, fontSize: 12.5, color: "#B91C1C" }}>
@@ -533,6 +603,43 @@ function Field({ label, required, hint, children }: { label: string; required?: 
         {hint && <span style={{ fontSize: 10.5, color: "var(--cal2-text-faint)" }}>{hint}</span>}
       </div>
       {children}
+    </div>
+  );
+}
+
+function GoogleConnectHint() {
+  const { data: status, isLoading } = useGoogleStatus();
+  if (isLoading || !status) return null;
+  if (status.connected) return null;
+  if (!status.configured) return null; // env not set up — don't shame the user
+  return (
+    <div
+      style={{
+        marginTop: 9,
+        padding: "9px 12px",
+        background: "color-mix(in srgb, #F59E0B 12%, var(--cal2-surface))",
+        border: "1px solid color-mix(in srgb, #F59E0B 30%, var(--cal2-surface))",
+        borderRadius: 8,
+        fontSize: 12,
+        lineHeight: 1.5,
+        color: "var(--cal2-text)",
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 8,
+      }}
+    >
+      <span style={{ marginTop: 1, color: "#B45309" }}>⚠</span>
+      <div>
+        Votre compte Google n&apos;est pas connecté. Le lien Google Meet ne
+        sera <strong>pas généré</strong>.{" "}
+        <a
+          href="/settings/integrations"
+          style={{ color: "#0052D9", textDecoration: "underline" }}
+        >
+          Connecter Google
+        </a>
+        .
+      </div>
     </div>
   );
 }

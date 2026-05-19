@@ -24,6 +24,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Conversation, ThreadEntry } from "./data";
 import { resolveVars } from "./data";
 import { useSendMessage, useTemplates, useMarkChatUnread } from "./queries";
+import { useTemplateCategories } from "./templates/queries";
 import { Avatar, StagePill } from "./components";
 import { useWorkspace } from "@/lib/workspace";
 import { uploadMessagerieAttachment } from "@/lib/messagerie/upload-attachment";
@@ -171,9 +172,17 @@ function ExternalLinkDialog({
 const URL_RE = /https?:\/\/[^\s<>'"]+/g;
 const TRUSTED_HOST = /^https?:\/\/([\w-]+\.)*linkedin\.com\//;
 
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|svg|bmp)(\?|#|$)/i;
+
+function isImageUrl(url: string): boolean {
+  return IMAGE_EXT_RE.test(url);
+}
+
 // Renders message text with clickable links. Untrusted links trigger the
 // ExternalLinkDialog before opening; trusted (LinkedIn) links open directly.
 // onExternalClick receives the URL and a callback to open it once confirmed.
+// Image URLs (png/jpg/webp/…) are rendered as inline previews — matches the
+// behaviour the user expects when a screenshot is shared in the conversation.
 function renderText(
   text: string,
   onExternalClick: (url: string, open: () => void) => void,
@@ -186,29 +195,68 @@ function renderText(
     if (m.index > last) parts.push(text.slice(last, m.index));
     const url = m[0].replace(/[.,;:!?)]+$/, "");
     const trusted = TRUSTED_HOST.test(url);
-    parts.push(
-      <a
-        key={m.index}
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={
-          !trusted
-            ? (e) => {
-                e.preventDefault();
-                onExternalClick(url, () => window.open(url, "_blank", "noopener,noreferrer"));
-              }
-            : undefined
-        }
-        style={{
-          color: "var(--m2-blue)",
-          textDecoration: "underline",
-          wordBreak: "break-all",
-        }}
-      >
-        {url}
-      </a>,
-    );
+
+    if (isImageUrl(url)) {
+      parts.push(
+        <a
+          key={m.index}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ display: "block", margin: "6px 0" }}
+          onClick={
+            !trusted
+              ? (e) => {
+                  e.preventDefault();
+                  onExternalClick(url, () =>
+                    window.open(url, "_blank", "noopener,noreferrer"),
+                  );
+                }
+              : undefined
+          }
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={url}
+            alt="Pièce jointe"
+            loading="lazy"
+            style={{
+              maxWidth: "100%",
+              maxHeight: 280,
+              borderRadius: 8,
+              border: "1px solid var(--m2-slate-200)",
+              display: "block",
+            }}
+          />
+        </a>,
+      );
+    } else {
+      parts.push(
+        <a
+          key={m.index}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={
+            !trusted
+              ? (e) => {
+                  e.preventDefault();
+                  onExternalClick(url, () =>
+                    window.open(url, "_blank", "noopener,noreferrer"),
+                  );
+                }
+              : undefined
+          }
+          style={{
+            color: "var(--m2-blue)",
+            textDecoration: "underline",
+            wordBreak: "break-all",
+          }}
+        >
+          {url}
+        </a>,
+      );
+    }
     last = m.index + url.length;
   }
   if (last < text.length) parts.push(text.slice(last));
@@ -459,28 +507,38 @@ function QuickInsertModal({
   onPick: (text: string) => void;
 }) {
   const [q, setQ] = useState("");
-  const [f, setF] = useState<
-    "all" | "first" | "relance" | "rdv" | "suivi" | "mine"
-  >("all");
+  // Filter id is dynamic — either "all", "mine", or a category UUID from
+  // template_categories. The legacy enum slugs (first/relance/...) still
+  // appear in older template rows; they're matched by category name lookup
+  // through the seeded rows so old data behaves identically.
+  const [f, setF] = useState<string>("all");
   const channelMeta = {
     li: { bg: "#EEF4FE", fg: "#0A4FA8", label: "LinkedIn" },
     wa: { bg: "#ECFDF5", fg: "#15803D", label: "WhatsApp" },
     both: { bg: "#F1F5F9", fg: "#475569", label: "Les deux" },
   };
-  const QUICK_FILTERS = [
-    { id: "all" as const, label: "Tous" },
-    { id: "first" as const, label: "Premier contact" },
-    { id: "relance" as const, label: "Relance" },
-    { id: "rdv" as const, label: "RDV" },
-    { id: "suivi" as const, label: "Suivi" },
-    { id: "mine" as const, label: "Mes templates" },
-  ];
 
   const { data: templates } = useTemplates();
+  const { data: categories } = useTemplateCategories();
+
+  // "All" + "Mine" are sentinels; the rest come from the per-org category
+  // table, ordered by sort_order (the API does this).
+  const QUICK_FILTERS = [
+    { id: "all", label: "Tous" },
+    ...(categories ?? []).map((c) => ({ id: c.id, label: c.name })),
+    { id: "mine", label: "Mes templates" },
+  ];
+
   const list = (templates ?? []).filter((t) => {
     // Hide templates from the wrong channel — keep "both" always visible.
     if (t.channel !== "both" && t.channel !== conv.channel) return false;
-    if (f !== "all" && f !== "mine" && t.category !== f) return false;
+    if (f !== "all" && f !== "mine") {
+      // Match the active filter id against either the dynamic category id
+      // (preferred) or the legacy enum slug surfaced in `category`.
+      const tagId = t.tags?.[0];
+      const matches = tagId === f || t.category === f;
+      if (!matches) return false;
+    }
     if (
       q &&
       !(t.name + " " + t.content).toLowerCase().includes(q.toLowerCase())
@@ -718,18 +776,23 @@ export function Thread({
   const markUnread = useMarkChatUnread();
   const { workspaceId } = useWorkspace();
 
-  /* Cache the user's booking slug so the Lien booking button is a no-wait. */
-  const { data: bookingSlug } = useQuery({
+  /* Cache the user's booking slug + org slug so the Lien booking button is
+     a no-wait and produces the long-form URL when both are available. */
+  const { data: bookingSlugRow } = useQuery({
     queryKey: ["booking-slug"],
     queryFn: async () => {
       const res = await fetch("/api/booking/slug", { credentials: "include" });
       if (!res.ok) return null;
       const json = await res.json();
-      return ((json.data ?? json) as { booking_slug: string | null })
-        .booking_slug;
+      return (json.data ?? json) as {
+        booking_slug: string | null;
+        org_slug?: string | null;
+      };
     },
     staleTime: 5 * 60 * 1000,
   });
+  const bookingSlug = bookingSlugRow?.booking_slug ?? null;
+  const bookingOrgSlug = bookingSlugRow?.org_slug ?? null;
 
   const insertBookingLink = () => {
     if (!bookingSlug) {
@@ -742,27 +805,18 @@ export function Thread({
       typeof window !== "undefined"
         ? window.location.origin
         : "https://andoxa.fr";
-    const url = `${origin}/booking/${bookingSlug}`;
+    const path = bookingOrgSlug
+      ? `/booking/${bookingOrgSlug}/${bookingSlug}`
+      : `/booking/${bookingSlug}`;
+    const url = `${origin}${path}`;
     setDraft((d) => (d ? `${d.trimEnd()}\n\n${url}` : url));
   };
 
-  const handleFilePicked = async (file: File | null) => {
-    if (!file) return;
-    if (!workspaceId) {
-      toast.error("Workspace non chargé");
-      return;
-    }
-    setUploading(true);
-    const uploaded = await uploadMessagerieAttachment(file, workspaceId);
-    setUploading(false);
-    if (!uploaded) {
-      toast.error("Envoi impossible (taille max 25 Mo)");
-      return;
-    }
-    const line = `📎 ${uploaded.name}\n${uploaded.url}`;
-    setDraft((d) => (d ? `${d.trimEnd()}\n\n${line}` : line));
-    toast.success(`${uploaded.name} prêt à envoyer`);
-  };
+  // The legacy `handleFilePicked` (Supabase storage upload → URL pasted
+  // into draft text) was removed. Attachments now go through the proper
+  // Unipile multipart pipeline via `pendingFile` + `useSendMessage`, so
+  // recipients see the image inline on LinkedIn / WhatsApp instead of a
+  // storage link as text.
 
   useEffect(() => {
     if (scrollRef.current)
@@ -1062,20 +1116,13 @@ export function Thread({
               <Calendar size={14} />
               <span className="m2-thread-btn-label">Lien booking</span>
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              hidden
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void handleFilePicked(file);
-                e.target.value = "";
-              }}
-            />
+            {/* No second input: the trigger button clicks the ref'd input
+                above, which routes the file through `pendingFile` and the
+                Unipile multipart send. */}
             <button
               className="m2-btn m2-btn-ghost"
               style={{ padding: "5px 8px" }}
-              title="Joindre un fichier (10 Mo max ; le lien est inséré dans le message)"
+              title="Joindre un fichier (10 Mo max)"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading || sendMutation.isPending}
             >

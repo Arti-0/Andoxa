@@ -29,6 +29,42 @@ export const GET = createApiHandler(async (req, ctx) => {
   const params = getSearchParams(req);
   const { page, pageSize, offset } = getPagination(req);
 
+  // ── Bulk-by-ids short-circuit (used by /messagerie to hydrate conversation
+  // rows in one round-trip instead of N x /api/prospects/[id]). Returns the
+  // raw rows without enrichProspects since the messagerie row only needs the
+  // display fields. Hard cap at 200 to avoid pathological queries.
+  const idsParam = params.ids?.trim();
+  if (idsParam) {
+    const ids = [
+      ...new Set(
+        idsParam
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+      ),
+    ].slice(0, 200);
+    if (ids.length === 0) {
+      return { items: [], total: 0, page: 1, pageSize: 0, hasMore: false };
+    }
+    const { data, error } = await ctx.supabase
+      .from("prospects")
+      .select("*")
+      .eq("organization_id", workspaceId)
+      .in("id", ids);
+    if (error) {
+      console.error("[API] Prospects bulk-ids fetch error:", error);
+      throw Errors.internal("Failed to fetch prospects");
+    }
+    const items = (data ?? []) as Prospect[];
+    return {
+      items,
+      total: items.length,
+      page: 1,
+      pageSize: items.length,
+      hasMore: false,
+    };
+  }
+
   const searchTrimmed = params.search?.trim() ?? "";
 
   // Recherche : RPC insensible à la casse et aux accents (extension unaccent — voir migrations/003)

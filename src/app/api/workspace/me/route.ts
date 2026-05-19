@@ -26,10 +26,9 @@ export async function GET() {
 
   const userWithIdentities = { ...user, identities: user.identities ?? [] };
 
-  // Per-user browser cache: workspace memberships rarely change inside 30s.
-  // `private` ensures no shared/CDN caching of authenticated content.
+  // Session-scoped data (logo, plan, members) can change at any time from the UI.
   const cacheHeaders = {
-    "Cache-Control": "private, max-age=30, stale-while-revalidate=60",
+    "Cache-Control": "private, no-cache, no-store, must-revalidate",
   } as const;
 
   if (!profile?.active_organization_id) {

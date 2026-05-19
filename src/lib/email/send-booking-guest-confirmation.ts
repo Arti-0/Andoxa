@@ -23,13 +23,23 @@ export async function sendBookingGuestConfirmationEmail(params: {
 
   const start = new Date(params.slotStartIso);
   const end = new Date(params.slotEndIso);
+  // Vercel runs Node in UTC. Without an explicit timeZone, toLocaleTimeString
+  // returns UTC and the user sees the booking 1-2h earlier than it actually
+  // is (CET/CEST offset). Force Europe/Paris until per-org TZ ships.
+  const PARIS_TZ = "Europe/Paris" as const;
   const dateLine = start.toLocaleDateString("fr-FR", {
     weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
+    timeZone: PARIS_TZ,
   });
-  const timeLine = `${start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} – ${end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
+  const timeOpts: Intl.DateTimeFormatOptions = {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: PARIS_TZ,
+  };
+  const timeLine = `${start.toLocaleTimeString("fr-FR", timeOpts)} – ${end.toLocaleTimeString("fr-FR", timeOpts)}`;
 
   const subject = "Votre rendez-vous est confirmé";
 

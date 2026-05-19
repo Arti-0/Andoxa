@@ -10,6 +10,7 @@ import { normalizePhoneForWhatsApp } from "@/lib/utils/phone";
 import { getWhatsAppAccountIdForUserId } from "@/lib/unipile/account";
 import { unipileFetch } from "@/lib/unipile/client";
 import { buildBookingInviteIcs } from "@/lib/booking/build-booking-invite-ics";
+import { enrollOnBooking } from "@/lib/workflows/enroll-on-booking";
 
 function looksLikeEmail(s: string): boolean {
   const t = s.trim();
@@ -195,107 +196,136 @@ export async function POST(
       );
     }
 
+    // ── Prospect dedup + additive merge ────────────────────────────────────
+    // Order of precedence: LinkedIn URL (most specific) → email → normalized
+    // phone. On a hit, we UPDATE the existing row by filling NULL fields with
+    // the values the guest just provided (additive merge — never overwrite
+    // existing data). On no match, INSERT a new booking-source prospect.
+    // Failures here are fatal: a missing prospect_id is a data-integrity bug
+    // for downstream workflows + activity logs, so we 500 the whole booking.
     let prospectId: string | null = null;
 
-    if (linkedin) {
-      const { data: prospectsWithLinkedin } = await supabase
+    // Pull all candidate matches in one query so we can compare in JS without
+    // multiple round-trips. Restrict to this user's prospects (same scope as
+    // before).
+    const orFilters: string[] = [];
+    if (linkedin) orFilters.push(`linkedin.not.is.null`);
+    if (hasEmail) orFilters.push(`email.ilike.${emailRaw}`);
+    if (hasPhone) orFilters.push(`phone.not.is.null`);
+
+    let candidates: Array<{
+      id: string;
+      full_name: string | null;
+      email: string | null;
+      linkedin: string | null;
+      phone: string | null;
+    }> = [];
+    if (orFilters.length > 0) {
+      const { data, error: lookupErr } = await supabase
         .from("prospects")
-        .select("id, linkedin")
+        .select("id, full_name, email, linkedin, phone")
         .eq("organization_id", orgId)
         .eq("user_id", profile.id)
-        .not("linkedin", "is", null);
-
-      const existingProspect = (prospectsWithLinkedin ?? []).find((p) => {
-        const normalized = validateAndNormalizeLinkedIn(p.linkedin);
-        return normalized && normalized.toLowerCase() === linkedin.toLowerCase();
-      });
-
-      if (existingProspect) {
-        prospectId = existingProspect.id;
-      } else {
-        const { data: newProspect, error: prospectError } = await supabase
-          .from("prospects")
-          .insert({
-            organization_id: orgId,
-            user_id: profile.id,
-            full_name: name,
-            email: emailForDb,
-            linkedin,
-            phone: phoneForDb,
-            source: "booking",
-          })
-          .select("id")
-          .single();
-
-        if (prospectError) {
-          captureRouteError(route, prospectError, {
-            extra: { slug, step: "prospect_create", branch: "linkedin" },
-          });
-          return NextResponse.json(
-            { success: false, error: "Impossible de créer le prospect" },
-            { status: 500 }
-          );
-        }
-        prospectId = newProspect?.id ?? null;
-      }
-    } else {
-      let matchedId: string | null = null;
-
-      if (hasEmail) {
-        const { data: existingByEmail } = await supabase
-          .from("prospects")
-          .select("id")
-          .eq("organization_id", orgId)
-          .eq("user_id", profile.id)
-          .ilike("email", emailRaw)
-          .maybeSingle();
-        if (existingByEmail?.id) matchedId = existingByEmail.id;
-      }
-
-      if (!matchedId && hasPhone) {
-        const { data: withPhones } = await supabase
-          .from("prospects")
-          .select("id, phone")
-          .eq("organization_id", orgId)
-          .eq("user_id", profile.id)
-          .not("phone", "is", null);
-
-        const hit = (withPhones ?? []).find((p) => {
-          const ph = p.phone?.trim();
-          if (!ph) return false;
-          return normalizePhoneForWhatsApp(ph) === normalizedPhone;
+        .is("deleted_at", null)
+        .or(orFilters.join(","));
+      if (lookupErr) {
+        // Dedup failure is fatal — without it we might silently create dupes.
+        captureRouteError(route, lookupErr, {
+          extra: { slug, step: "prospect_dedup_lookup" },
         });
-        if (hit?.id) matchedId = hit.id;
+        return NextResponse.json(
+          { success: false, error: "Impossible de vérifier les doublons" },
+          { status: 500 }
+        );
       }
+      candidates = data ?? [];
+    }
 
-      if (matchedId) {
-        prospectId = matchedId;
-      } else {
-        const { data: newProspect, error: prospectError } = await supabase
+    let match: (typeof candidates)[number] | null = null;
+    if (linkedin) {
+      match =
+        candidates.find((p) => {
+          const norm = validateAndNormalizeLinkedIn(p.linkedin);
+          return norm && norm.toLowerCase() === linkedin.toLowerCase();
+        }) ?? null;
+    }
+    if (!match && hasEmail) {
+      match =
+        candidates.find((p) => p.email?.toLowerCase() === emailRaw.toLowerCase()) ??
+        null;
+    }
+    if (!match && hasPhone) {
+      match =
+        candidates.find((p) => {
+          const ph = p.phone?.trim();
+          return ph && normalizePhoneForWhatsApp(ph) === normalizedPhone;
+        }) ?? null;
+    }
+
+    if (match) {
+      // Additive merge — only set fields the existing row doesn't have.
+      const merge: {
+        full_name?: string;
+        email?: string;
+        linkedin?: string;
+        phone?: string;
+      } = {};
+      if (!match.full_name && name) merge.full_name = name;
+      if (!match.email && emailForDb) merge.email = emailForDb;
+      if (!match.linkedin && linkedin) merge.linkedin = linkedin;
+      if (!match.phone && phoneForDb) merge.phone = phoneForDb;
+      if (Object.keys(merge).length > 0) {
+        const { error: mergeErr } = await supabase
           .from("prospects")
-          .insert({
-            organization_id: orgId,
-            user_id: profile.id,
-            full_name: name,
-            email: emailForDb,
-            linkedin: null,
-            phone: phoneForDb,
-            source: "booking",
-          })
-          .select("id")
-          .single();
-
-        if (prospectError) {
-          captureRouteError(route, prospectError, {
-            extra: { slug, step: "prospect_create", branch: "contact" },
+          .update(merge)
+          .eq("id", match.id)
+          .eq("organization_id", orgId);
+        if (mergeErr) {
+          // Non-fatal: we still have a valid prospect_id; log so we notice.
+          captureRouteError(route, mergeErr, {
+            extra: { slug, step: "prospect_merge", prospectId: match.id },
           });
-          return NextResponse.json(
-            { success: false, error: "Impossible de créer le prospect" },
-            { status: 500 }
-          );
         }
-        prospectId = newProspect?.id ?? null;
       }
+      prospectId = match.id;
+    } else {
+      const { data: newProspect, error: prospectError } = await supabase
+        .from("prospects")
+        .insert({
+          organization_id: orgId,
+          user_id: profile.id,
+          full_name: name,
+          email: emailForDb,
+          linkedin: linkedin || null,
+          phone: phoneForDb,
+          source: "booking",
+        })
+        .select("id")
+        .single();
+
+      if (prospectError || !newProspect?.id) {
+        captureRouteError(route, prospectError ?? new Error("missing_id"), {
+          extra: { slug, step: "prospect_create_after_dedup" },
+        });
+        return NextResponse.json(
+          { success: false, error: "Impossible de créer le prospect" },
+          { status: 500 }
+        );
+      }
+      prospectId = newProspect.id;
+    }
+
+    if (!prospectId) {
+      // Belt-and-suspenders: every branch above sets prospectId or returns 500.
+      // Reaching this means a logic bug — fail loudly instead of writing a
+      // booking with a null prospect link.
+      captureRouteError(route, new Error("prospect_id_resolution_failed"), {
+        extra: { slug, step: "prospect_resolution_guard" },
+      });
+      return NextResponse.json(
+        { success: false, error: "Erreur d'identification du prospect" },
+        { status: 500 }
+      );
     }
 
     const descriptionLines = [
@@ -504,6 +534,20 @@ export async function POST(
       target_url: "/calendar",
       dedupe_key: `booking:new:${eventId}`,
     });
+
+    // Fire `on_booking` workflows for the host. One run per
+    // (workflow, prospect, event) tuple — enforced by the unique partial
+    // index added in migration 20260517170000. Rebookings get a new event
+    // → new run, per product spec. Failures are non-fatal (the booking
+    // already succeeded by this point and the user got their confirmation).
+    if (prospectId) {
+      await enrollOnBooking(supabase, {
+        organizationId: orgId,
+        prospectId,
+        eventId,
+        startedByUserId: profile.id,
+      });
+    }
 
     return NextResponse.json({
       success: true,

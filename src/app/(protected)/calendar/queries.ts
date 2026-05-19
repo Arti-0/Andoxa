@@ -33,6 +33,7 @@ interface DbEvent {
   wa_workflow: boolean;
   pipeline_stage: string | null;
   attendee_user_ids: string[] | null;
+  internal_notes: string | null;
   prospect: {
     id: string;
     full_name: string | null;
@@ -88,6 +89,7 @@ function dbToCalEvents(ev: DbEvent, weekStart: Date, currentUserId?: string): Ca
     pipelineStage: ev.pipeline_stage ?? null,
     lastAction: "",
     googleMeetUrl: ev.google_meet_url ?? null,
+    internalNotes: ev.internal_notes ?? null,
     isAllDay: ev.is_all_day ?? false,
   };
 
@@ -209,6 +211,8 @@ export type UpdateEventInput = {
   id: string;
   title?: string;
   description?: string;
+  /** Host-only — never synced to Google. Separate from `description`. */
+  internal_notes?: string | null;
   start_time?: string;
   end_time?: string;
   location?: string;
@@ -281,9 +285,17 @@ export interface BookingSettings {
   title: string;
   description: string;
   slug: string | null;
+  /**
+   * Toggle for the "Un WhatsApp post-RDV sera envoyé" hint in the
+   * personnaliser modal. Backed by `metadata.booking.show_post_booking_wa_notice`.
+   * Default true.
+   */
+  show_post_booking_wa_notice?: boolean;
   availability: {
     slotMinutes: number;
     daysAhead: number;
+    /** Minimum lead time in hours before a slot can be booked (default 4). */
+    minNoticeHours?: number;
     daySchedules: Record<number, BookingDaySchedule>;
     exceptions: BookingException[];
   };
@@ -562,6 +574,9 @@ export interface ProspectOption {
   id: string;
   name: string;
   company: string;
+  /** Used by the event-modal Google Meet flow to know whether to prompt the
+   *  user for the prospect's email before sending Meet invites. */
+  email: string | null;
 }
 
 export function useProspectSearch(query: string) {
@@ -569,12 +584,18 @@ export function useProspectSearch(query: string) {
     queryKey: calendarKeys.prospectSearch(query),
     queryFn: async () => {
       const data = await getJson<{
-        items: Array<{ id: string; full_name: string | null; company?: string | null }>;
+        items: Array<{
+          id: string;
+          full_name: string | null;
+          company?: string | null;
+          email?: string | null;
+        }>;
       }>(`/api/prospects?search=${encodeURIComponent(query)}&per_page=8`);
       return (data.items ?? []).map((p) => ({
         id: p.id,
         name: p.full_name?.trim() || "Sans nom",
         company: p.company ?? "",
+        email: p.email?.trim() || null,
       })) as ProspectOption[];
     },
     staleTime: 30_000,

@@ -15,7 +15,7 @@ const DAY_LABELS = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
 // scheduling (daySchedules) is configured elsewhere; this section keeps
 // the simple workingDays + start/end hour model.
 type LegacyAvailabilityConfig = Required<
-  Omit<AvailabilityConfig, "daySchedules" | "exceptions">
+  Omit<AvailabilityConfig, "daySchedules" | "exceptions" | "minNoticeHours">
 >;
 
 const DEFAULT_CONFIG: LegacyAvailabilityConfig = {

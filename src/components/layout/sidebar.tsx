@@ -106,7 +106,7 @@ function OrgAvatar({
         >
             {logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={logoUrl} alt="" />
+                <img src={logoUrl} alt="" key={logoUrl} />
             ) : (
                 <span>{getInitials(name)}</span>
             )}
@@ -438,7 +438,7 @@ function UserBlock({ collapsed, name, email, avatarUrl }: UserBlockProps) {
                         role="menuitem"
                         onClick={() => {
                             setOpen(false);
-                            window.location.href = 'mailto:support@andoxa.app';
+                            router.push('/resources/guide');
                         }}
                     >
                         <HelpCircle className="h-4 w-4" /> Aide & support
@@ -466,6 +466,22 @@ export function Sidebar() {
     const [orgs, setOrgs] = useState<Organization[]>([]);
     const [orgsLoaded, setOrgsLoaded] = useState(false);
     const [addOrgOpen, setAddOrgOpen] = useState(false);
+
+    // Keep org-switcher logos in sync when workspace identity changes in context.
+    useEffect(() => {
+        if (!workspace?.id) return;
+        setOrgs((prev) =>
+            prev.map((org) =>
+                org.id === workspace.id
+                    ? {
+                          ...org,
+                          logo_url: workspace.logo_url,
+                          name: workspace.name,
+                      }
+                    : org
+            )
+        );
+    }, [workspace?.id, workspace?.logo_url, workspace?.name]);
 
     const { unseenCount, markAllSeen } = useMessagingRealtime();
     const { data: unipileMe, isPending: unipilePending } = useLinkedInAccount();
@@ -544,13 +560,15 @@ export function Sidebar() {
                             : undefined
                     }
                 >
+                    {/* Logo is purely decorative inside the app — no navigation.
+                        Users don't need a route to "home" once they're authed. */}
                     {!isCollapsed && (
-                        <Link href="/" className="sb-logo" aria-label="Accueil">
+                        <span className="sb-logo" aria-hidden="true">
                             <LogoDisplay
                                 collapsed={false}
                                 className="h-6 w-auto"
                             />
-                        </Link>
+                        </span>
                     )}
                     {!isCollapsed && (
                         <button
@@ -564,13 +582,9 @@ export function Sidebar() {
                         </button>
                     )}
                     {isCollapsed && (
-                        <Link
-                            href="/"
-                            aria-label="Accueil"
-                            className="inline-flex"
-                        >
+                        <span aria-hidden="true" className="inline-flex">
                             <LogoDisplay collapsed={true} className="h-8 w-8" />
-                        </Link>
+                        </span>
                     )}
                 </div>
 

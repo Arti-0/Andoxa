@@ -188,6 +188,10 @@ export function MarketingParcoursSection() {
           </div>
         </div>
 
+        {/* Lock the panel area so switching between flows with different
+            step counts doesn't shrink the section and trigger the scroll
+            header to reappear. */}
+        <div className="md:min-h-[420px] lg:min-h-[360px]">
         <AnimatePresence mode="wait">
           <motion.div
             key={`flow-${flow.id}`}
@@ -283,6 +287,7 @@ export function MarketingParcoursSection() {
             </div>
           </motion.div>
         </AnimatePresence>
+        </div>
       </Container>
     </section>
   );

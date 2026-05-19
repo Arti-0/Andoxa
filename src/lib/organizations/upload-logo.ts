@@ -31,6 +31,8 @@ export async function uploadOrgLogo(
   const contentType =
     uploadBody.type?.startsWith("image/") ? uploadBody.type : "image/png";
 
+  // upsert:true replaces an existing logo — requires INSERT + SELECT + UPDATE
+  // storage RLS policies (migration 20260519120000).
   const { error: upErr } = await supabase.storage
     .from("org-logos")
     .upload(storagePath, uploadBody, { upsert: true, contentType });

@@ -26,6 +26,8 @@ import { useParseCSV } from "@/hooks/use-parse-csv";
 import { useParseExcel } from "@/hooks/use-parse-excel";
 import { getImportMaxRows, isPlanId, toPlanId, type PlanId } from "@/lib/config/plans-config";
 import { mapProspectRow } from "@/lib/utils/deduplicateProspects";
+import { useWorkspace } from "@/lib/workspace";
+import { Sparkles, AlertTriangle } from "lucide-react";
 
 interface ProspectRow {
   name: string;
@@ -101,6 +103,34 @@ export function ProspectImportDialog({
     job_title: NONE_OPTION,
     linkedin: NONE_OPTION,
   });
+
+  // Enrichment preview: surfaces (a) whether the org has auto-enrich enabled
+  // and (b) how many of the rows about to import will actually queue an
+  // enrichment job (only those with a LinkedIn URL qualify). Closes the
+  // "why are some prospects enriched and others not?" UX gap.
+  const { workspace } = useWorkspace();
+  const autoEnrichEnabled = useMemo(() => {
+    const meta = (workspace?.metadata ?? {}) as Record<string, unknown>;
+    return meta?.auto_enrich_on_import === true;
+  }, [workspace?.metadata]);
+
+  const enrichmentPreview = useMemo(() => {
+    if (activeTab === "manual") {
+      const total = rows.filter((r) => r.name.trim() || r.url.trim()).length;
+      const withLinkedIn = rows.filter((r) => r.url.trim().length > 0).length;
+      return { total, withLinkedIn };
+    }
+    const total = parsedRows.length;
+    const liCol = mappings.linkedin;
+    if (!liCol || liCol === NONE_OPTION) {
+      return { total, withLinkedIn: 0 };
+    }
+    const withLinkedIn = parsedRows.reduce((acc, row) => {
+      const v = row[liCol];
+      return acc + (typeof v === "string" && v.trim().length > 0 ? 1 : 0);
+    }, 0);
+    return { total, withLinkedIn };
+  }, [activeTab, rows, parsedRows, mappings.linkedin]);
 
   const { data: subscriptionInfo } = useQuery({
     queryKey: ["subscription-info"],
@@ -484,6 +514,50 @@ export function ProspectImportDialog({
             </TabsContent>
           </Tabs>
           {error && <p className="text-sm text-destructive">{error}</p>}
+
+          {/* Enrichment preview — answers "why are some prospects enriched
+              and others not?" inline, before the user clicks Importer. */}
+          {enrichmentPreview.total > 0 && (
+            <div
+              className={
+                autoEnrichEnabled
+                  ? "rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/30 dark:text-blue-200"
+                  : "rounded-md border border-muted-foreground/20 bg-muted/40 px-3 py-2 text-xs leading-5 text-muted-foreground"
+              }
+            >
+              <div className="flex items-start gap-2">
+                {autoEnrichEnabled ? (
+                  <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                ) : (
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                )}
+                <div>
+                  {autoEnrichEnabled ? (
+                    <>
+                      <strong>Enrichissement automatique activé.</strong>{" "}
+                      {enrichmentPreview.withLinkedIn} sur{" "}
+                      {enrichmentPreview.total} prospect(s) seront enrichis via
+                      LinkedIn en arrière-plan.{" "}
+                      {enrichmentPreview.total - enrichmentPreview.withLinkedIn >
+                        0 && (
+                        <span className="opacity-80">
+                          Les autres n&apos;ont pas d&apos;URL LinkedIn et
+                          seront importés tels quels.
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      Enrichissement automatique <strong>désactivé</strong>.
+                      Les prospects seront importés sans enrichissement. Vous
+                      pouvez l&apos;activer dans Paramètres → Intégrations.
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           <DialogFooter className="gap-2 sm:gap-2">
             <Button
               type="button"

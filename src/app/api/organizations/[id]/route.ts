@@ -45,7 +45,13 @@ export async function PATCH(
     }
 
     const body = await request.json().catch(() => ({}));
-    const updates: { name?: string; logo_url?: string | null; updated_at: string } = {
+    const updates: {
+      name?: string;
+      logo_url?: string | null;
+      slug?: string;
+      metadata?: Record<string, unknown>;
+      updated_at: string;
+    } = {
       updated_at: new Date().toISOString(),
     };
     if (typeof body.name === "string" && body.name.trim()) {
@@ -55,11 +61,44 @@ export async function PATCH(
       updates.logo_url = body.logo_url ?? null;
     }
 
+    // slug: URL-safe kebab-case, 2-40 chars, unique across orgs (DB enforces).
+    if (typeof body.slug === "string") {
+      const sluggified = body.slug
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      if (sluggified.length < 2 || sluggified.length > 40) {
+        return NextResponse.json(
+          { error: "Slug must be 2-40 chars (a-z, 0-9, -)" },
+          { status: 400 }
+        );
+      }
+      updates.slug = sluggified;
+    }
+
+    // Metadata: merge-style updates (brand_color, auto_enrich_on_import, etc).
+    // We read-modify-write so partial keys don't blow away unrelated metadata.
+    if (body.metadata && typeof body.metadata === "object") {
+      const { data: existing } = await supabase
+        .from("organizations")
+        .select("metadata")
+        .eq("id", organizationId)
+        .maybeSingle();
+      const current =
+        (existing?.metadata as Record<string, unknown> | null) ?? {};
+      updates.metadata = { ...current, ...(body.metadata as Record<string, unknown>) };
+    }
+
     if (Object.keys(updates).length <= 1) {
       return NextResponse.json({ error: "No valid updates" }, { status: 400 });
     }
 
-    const { error } = await supabase
+    // Cast: generated Database types haven't been regenerated since
+    // `organizations.slug` landed (migration 20260518110000) and metadata is
+    // jsonb (Json type). Runtime is fine — the columns exist.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any)
       .from("organizations")
       .update(updates)
       .eq("id", organizationId);

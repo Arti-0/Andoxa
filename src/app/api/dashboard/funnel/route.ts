@@ -75,10 +75,19 @@ async function countInWindow(
       .filter("details->>step_type", "eq", "linkedin_invite")
       .gte("created_at", startIso)
       .lte("created_at", endIso),
+    // Date-windowed: previously this loaded EVERY chat row for the workspace
+    // (no filter), then filtered in JS. With chat history growing forever and
+    // this function being called twice per dashboard load (current + previous
+    // period), it dominated the funnel response time. The OR filter matches
+    // rows that overlap the [start, end] window on either timestamp.
     ctx.supabase
       .from("unipile_chat_prospects")
       .select("prospect_id, created_at, last_inbound_at")
-      .eq("organization_id", ctx.workspaceId!),
+      .eq("organization_id", ctx.workspaceId!)
+      .or(
+        `and(created_at.gte.${startIso},created_at.lte.${endIso}),` +
+          `and(last_inbound_at.gte.${startIso},last_inbound_at.lte.${endIso})`
+      ),
     ctx.supabase
       .from("events")
       .select("prospect_id, end_time")

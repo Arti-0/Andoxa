@@ -75,9 +75,22 @@ export const GET = createApiHandler(
       title: (booking.title as string | undefined) ?? `RDV avec ${profile?.full_name ?? "moi"}`,
       description: (booking.description as string | undefined) ?? "",
       slug: profile?.booking_slug ?? null,
+      /**
+       * When true, the personnaliser modal shows the "Un WhatsApp post-RDV
+       * sera envoyé" hint. Lets users hide the notice if they prefer the
+       * cleaner UI once they understand the on_booking workflow exists.
+       * Default true (show the hint).
+       */
+      show_post_booking_wa_notice:
+        (booking.show_post_booking_wa_notice as boolean | undefined) ?? true,
       availability: {
         slotMinutes: (availability.slotMinutes as number | undefined) ?? 30,
         daysAhead: (availability.daysAhead as number | undefined) ?? 14,
+        /** Minimum lead time in hours before a slot can be booked. Default 4. */
+        minNoticeHours:
+          typeof availability.minNoticeHours === "number" && (availability.minNoticeHours as number) >= 0
+            ? (availability.minNoticeHours as number)
+            : 4,
         daySchedules: normaliseDaySchedules(availability.daySchedules),
         exceptions: Array.isArray(availability.exceptions)
           ? (availability.exceptions as AvailabilityException[])
@@ -99,9 +112,13 @@ export const PATCH = createApiHandler(
     const body = await parseBody<{
       title?: string;
       description?: string;
+      /** Toggle for the on_booking WA workflow hint. */
+      show_post_booking_wa_notice?: boolean;
       availability?: {
         slotMinutes?: number;
         daysAhead?: number;
+        /** Minimum lead time in hours before a slot can be booked. */
+        minNoticeHours?: number;
         daySchedules?: DaySchedulesMap;
         exceptions?: AvailabilityException[];
       };
@@ -126,6 +143,9 @@ export const PATCH = createApiHandler(
         ...currentBooking,
         ...(body.title !== undefined ? { title: body.title } : {}),
         ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.show_post_booking_wa_notice !== undefined
+          ? { show_post_booking_wa_notice: body.show_post_booking_wa_notice }
+          : {}),
       },
       availability: {
         ...currentAvailability,

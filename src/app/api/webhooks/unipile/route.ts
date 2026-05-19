@@ -10,6 +10,7 @@ import { syncAllLinkedInRelations } from '@/lib/linkedin/sync-relations-full';
 import { processConnectionAccepted } from '@/lib/workflows/process-connection-accepted';
 import { createNotification } from '@/lib/notifications/create-notification';
 import { insertWebhookDedupe } from '@/lib/webhooks/dedupe';
+import { insertProspectActivity } from '@/lib/prospect-activity';
 
 const UNIPILE_MESSAGING_HANDLED_EVENTS = new Set([
     'message_received',
@@ -658,6 +659,56 @@ export async function POST(req: NextRequest) {
                     },
                     dedupe_key: dedupeInbound,
                 });
+
+                // Emit linkedin_message_inbound / whatsapp_message_inbound so
+                // /api/campaigns/jobs/stats (and the Performance column)
+                // counts replies. `campaign_job_id` is copied from the most
+                // recent outbound on the same prospect when present.
+                if (chatLinkRow.prospect_id) {
+                    try {
+                        const isWhatsApp =
+                            (accountRow?.account_type ?? 'LINKEDIN').toUpperCase() ===
+                            'WHATSAPP';
+                        const action = isWhatsApp
+                            ? ('whatsapp_message_inbound' as const)
+                            : ('linkedin_message_inbound' as const);
+                        const outboundActions = isWhatsApp
+                            ? ['whatsapp_message_outbound']
+                            : [
+                                  'linkedin_message_outbound',
+                                  'linkedin_invite_sent',
+                              ];
+
+                        const { data: lastOutbound } = await supabase
+                            .from('prospect_activity')
+                            .select('campaign_job_id')
+                            .eq('prospect_id', chatLinkRow.prospect_id)
+                            .in('action', outboundActions)
+                            .order('created_at', { ascending: false })
+                            .limit(1)
+                            .maybeSingle();
+
+                        await insertProspectActivity(supabase, {
+                            organization_id: chatLinkRow.organization_id,
+                            prospect_id: chatLinkRow.prospect_id,
+                            actor_id: null,
+                            campaign_job_id: lastOutbound?.campaign_job_id ?? null,
+                            action,
+                            details: {
+                                message: truncateInboundPreview(body.message, 500),
+                                chat_id: chatId,
+                                message_id: body.message_id ?? null,
+                                campaign_job_id: lastOutbound?.campaign_job_id ?? null,
+                            },
+                        });
+                    } catch (err) {
+                        console.error(
+                            '[Unipile webhook] inbound message activity:',
+                            err
+                        );
+                        Sentry.captureException(err);
+                    }
+                }
             }
         }
     }
@@ -745,6 +796,57 @@ export async function POST(req: NextRequest) {
                     Sentry.captureException(err);
                 }
             }
+        }
+
+        // Emit `linkedin_invite_accepted` activity for every campaign invite
+        // matching this attendee. process-job-batch.ts stamps `provider_id` and
+        // `account_id` into the invite's details so we can pair the acceptance
+        // back to the exact campaign job — which feeds `campaign_job_stats`
+        // and the /campaigns "Performance" column.
+        try {
+            const { data: matchingInvites } = await supabase
+                .from('prospect_activity')
+                .select(
+                    'id, prospect_id, organization_id, actor_id, campaign_job_id, details'
+                )
+                .eq('action', 'linkedin_invite_sent')
+                .filter('details->>provider_id', 'eq', attendeeId)
+                .filter('details->>account_id', 'eq', unipileAccountId)
+                .order('created_at', { ascending: false })
+                .limit(5);
+
+            for (const inv of matchingInvites ?? []) {
+                if (!inv.prospect_id) continue;
+                // Skip if we've already logged the acceptance for this prospect+job.
+                let dedupeQ = supabase
+                    .from('prospect_activity')
+                    .select('id')
+                    .eq('action', 'linkedin_invite_accepted')
+                    .eq('prospect_id', inv.prospect_id);
+                dedupeQ = inv.campaign_job_id
+                    ? dedupeQ.eq('campaign_job_id', inv.campaign_job_id)
+                    : dedupeQ.is('campaign_job_id', null);
+                const { data: existing } = await dedupeQ.limit(1).maybeSingle();
+                if (existing) continue;
+
+                await insertProspectActivity(supabase, {
+                    organization_id: inv.organization_id,
+                    prospect_id: inv.prospect_id,
+                    actor_id: inv.actor_id ?? userId,
+                    campaign_job_id: inv.campaign_job_id ?? null,
+                    action: 'linkedin_invite_accepted',
+                    details: {
+                        campaign_job_id: inv.campaign_job_id ?? null,
+                        provider_id: attendeeId,
+                    },
+                });
+            }
+        } catch (err) {
+            console.error(
+                '[Unipile webhook] new_relation invite-accepted activity:',
+                err
+            );
+            Sentry.captureException(err);
         }
 
         return NextResponse.json({ received: true }, { status: 200 });

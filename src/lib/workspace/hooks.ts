@@ -135,6 +135,9 @@ export function useWorkspace() {
     /** Switch to a different workspace */
     switchWorkspace: context.switchWorkspace,
 
+    /** Patch cached workspace fields (e.g. logo after upload) */
+    patchWorkspace: context.patchWorkspace,
+
     /** Refresh workspace data */
     refresh: context.refresh,
 

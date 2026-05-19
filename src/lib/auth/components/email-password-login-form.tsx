@@ -300,14 +300,62 @@ function EmailPasswordLoginFormInner() {
         }
     };
 
+    const handleGoogle = async () => {
+        // Supabase OAuth handles the round-trip — emailRedirectTo equivalent
+        // is `redirectTo`. We send users back to /auth/callback which finishes
+        // the code exchange and forwards to `safeNext` (or /onboarding when an
+        // invite is in play).
+        const base = appPublicOrigin();
+        const nextAfter = inviteToken ? '/onboarding' : safeNext;
+        const callbackQuery = inviteToken
+            ? `?invite_token=${encodeURIComponent(inviteToken)}&next=${encodeURIComponent(nextAfter)}`
+            : `?next=${encodeURIComponent(nextAfter)}`;
+        const redirectTo = base ? `${base}/auth/callback${callbackQuery}` : undefined;
+
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: redirectTo ? { redirectTo } : undefined,
+        });
+        if (error) {
+            toast.error(translateAuthError(error));
+        }
+        // No success-path navigation here — Supabase performs a full redirect.
+    };
+
     return (
         <Card className="backdrop-blur-xl bg-white/10 dark:bg-black/20 border-white/20 dark:border-white/10 shadow-xl rounded-2xl">
             <CardContent className="p-8 sm:p-10">
                 <div className="space-y-6">
                     <div className="text-center">
                         <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-200">
-                            E-mail et mot de passe
+                            Connexion ou création
                         </h2>
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                            Un seul formulaire — on détecte si vous avez déjà un compte.
+                        </p>
+                    </div>
+
+                    {/* Google OAuth — single click, no password to remember. The
+                        Supabase callback finishes the exchange via /auth/callback. */}
+                    <button
+                        type="button"
+                        onClick={handleGoogle}
+                        disabled={loading}
+                        className="flex h-11 w-full items-center justify-center gap-2.5 rounded-md border border-slate-200 bg-white text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-white/15 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10"
+                    >
+                        <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+                            <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z" />
+                            <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 19 13 24 13c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+                            <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.1 35 26.7 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z" />
+                            <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.2 4.2-4.1 5.6l6.2 5.2C40.9 35.3 44 30.2 44 24c0-1.3-.1-2.3-.4-3.5z" />
+                        </svg>
+                        Continuer avec Google
+                    </button>
+
+                    <div className="relative flex items-center gap-3 text-[10.5px] font-medium uppercase tracking-[0.14em] text-slate-400">
+                        <span className="h-px flex-1 bg-slate-200 dark:bg-white/10" />
+                        <span>ou</span>
+                        <span className="h-px flex-1 bg-slate-200 dark:bg-white/10" />
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
@@ -349,6 +397,11 @@ function EmailPasswordLoginFormInner() {
                             {loading ? 'Patientez…' : 'Continuer'}
                         </Button>
                     </form>
+
+                    <p className="text-center text-[11.5px] text-slate-500 dark:text-slate-400">
+                        Première fois ? On crée votre compte automatiquement.{' '}
+                        Déjà inscrit ? On vous connecte.
+                    </p>
                 </div>
             </CardContent>
         </Card>

@@ -789,14 +789,23 @@ function ProspectRow({
           : "hover:bg-muted/40",
       )}
     >
+      {/* Dedicated selection column. The td gets an explicit width so the
+          click-to-open handler on the row never fires when a user nudges the
+          checkbox by a pixel — the "miss zone" between the checkbox and the
+          next cell used to open the prospect detail. */}
       <td
-        className="py-3.5 pl-3.5"
+        className="w-10 py-3.5 pl-3.5 pr-2"
         onClick={(e) => e.stopPropagation()}
       >
-        <Checkbox
-          checked={selected}
-          onCheckedChange={() => toggle()}
-        />
+        <label
+          className="flex h-9 w-9 cursor-pointer items-center justify-center -m-1.5"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Checkbox
+            checked={selected}
+            onCheckedChange={() => toggle()}
+          />
+        </label>
       </td>
       <td className="p-3.5">
         <div className="flex items-center gap-2.5">

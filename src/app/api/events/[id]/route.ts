@@ -9,6 +9,8 @@ import * as Sentry from "@sentry/nextjs";
 type EventUpdateBody = {
   title?: string;
   description?: string;
+  /** Host-only notes — never pushed to Google Calendar. */
+  internal_notes?: string | null;
   start_time?: string;
   end_time?: string;
   location?: string;
@@ -45,6 +47,8 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
 
   if (body.title !== undefined) updates.title = body.title;
   if (body.description !== undefined) updates.description = body.description;
+  // internal_notes is intentionally never forwarded to Google Calendar.
+  if (body.internal_notes !== undefined) updates.internal_notes = body.internal_notes;
   if (body.start_time !== undefined) updates.start_time = body.start_time;
   if (body.end_time !== undefined) updates.end_time = body.end_time;
   if (body.location !== undefined) updates.location = body.location;

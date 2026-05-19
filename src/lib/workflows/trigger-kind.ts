@@ -6,7 +6,8 @@ export type WorkflowTriggerKind =
   | "manual"
   | "on_list_add"
   | "on_tag"
-  | "on_status_change";
+  | "on_status_change"
+  | "on_booking";
 
 export function isWorkflowTriggerKind(
   v: string | null | undefined
@@ -15,7 +16,8 @@ export function isWorkflowTriggerKind(
     v === "manual" ||
     v === "on_list_add" ||
     v === "on_tag" ||
-    v === "on_status_change"
+    v === "on_status_change" ||
+    v === "on_booking"
   );
 }
 
@@ -45,5 +47,11 @@ export const WORKFLOW_TRIGGER_KIND_OPTIONS: {
     id: "on_status_change",
     label: "Changement d’étape pipeline",
     description: "Réservé — quand le statut CRM ou le pipeline change.",
+  },
+  {
+    id: "on_booking",
+    label: "Réunion réservée",
+    description:
+      "Quand un prospect réserve un créneau via la page de booking. Un run par (prospect, événement) — un nouveau RDV redéclenche.",
   },
 ];

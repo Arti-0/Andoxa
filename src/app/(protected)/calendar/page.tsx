@@ -53,6 +53,10 @@ export default function Calendar2Page() {
   const { data: orgMembers = [] } = useOrgMembers();
   const externalEvents = useExternalCalendars(weekStart);
   const bookingSlug = slugData?.booking_slug ?? null;
+  // Org slug enables the long-form /booking/<org>/<user> URL. Falls back to
+  // the legacy short URL when no org slug is available.
+  const orgSlug =
+    (slugData as { org_slug?: string | null } | undefined)?.org_slug ?? null;
 
   // Merge Andoxa + Google + external (holidays / school vacances) events.
   // Each layer carries its own `owner` so the sidebar visibility map can
@@ -126,7 +130,7 @@ export default function Calendar2Page() {
               </svg>
             </button>
             <div style={{ flex: 1, minWidth: 0, maxWidth: 620 }}>
-              <BookingLink slug={bookingSlug} onCustomize={() => setBookingOpen(true)} />
+              <BookingLink slug={bookingSlug} orgSlug={orgSlug} onCustomize={() => setBookingOpen(true)} />
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -209,13 +213,23 @@ export default function Calendar2Page() {
 
 /* ─── Booking link strip ─── */
 
-function BookingLink({ slug, onCustomize }: { slug: string | null; onCustomize: () => void }) {
+function BookingLink({
+  slug,
+  orgSlug,
+  onCustomize,
+}: {
+  slug: string | null;
+  orgSlug: string | null;
+  onCustomize: () => void;
+}) {
   const [copied, setCopied] = useState(false);
-  // Build absolute URL from the current origin so localhost dev → localhost link,
-  // andoxa.fr → andoxa.fr/booking/{slug}.
+  // Prefer the long-form URL (/booking/<org>/<user>) when we have both
+  // segments. Falls back to the legacy short URL — both routes work, the
+  // legacy [slug] page resolves identically.
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const fullUrl = slug ? `${origin}/booking/${slug}` : null;
-  const display = slug ? `${origin.replace(/^https?:\/\//, "")}/booking/${slug}` : null;
+  const pathSuffix = slug && orgSlug ? `/booking/${orgSlug}/${slug}` : slug ? `/booking/${slug}` : null;
+  const fullUrl = pathSuffix ? `${origin}${pathSuffix}` : null;
+  const display = pathSuffix ? `${origin.replace(/^https?:\/\//, "")}${pathSuffix}` : null;
 
   const handleCopy = () => {
     if (!fullUrl) return;

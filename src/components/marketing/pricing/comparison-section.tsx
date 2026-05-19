@@ -20,8 +20,8 @@ import { cn } from "@/lib/utils";
  * up the per-user equivalent monthly cost, compare it to the Andoxa plan
  * auto-selected for that team size, and surface the annual savings.
  *
- * Logos live in /public/logos which isn't wired — we fall back to a coloured
- * letter tile on a white surface for every tool.
+ * Logos live in /public/logos/<id>.{svg,png,jpg,jpeg,webp} — the loader probes
+ * extensions in order and falls back to a coloured letter tile if none exist.
  */
 type Tool = {
   id: string;
@@ -314,26 +314,53 @@ function ToolToggle({
   );
 }
 
+const LOGO_EXTENSIONS = ["svg", "png", "jpg", "jpeg", "webp"] as const;
+
 function ToolBadge({
   tool,
   size = 22,
 }: {
-  tool: Pick<Tool, "name" | "letter" | "bg">;
+  tool: Pick<Tool, "id" | "name" | "letter" | "bg">;
   size?: number;
 }) {
   const tile = size + 8;
+  // Probe /logos/<id>.<ext> in order; on the final onError, switch to the
+  // letter-tile fallback. Keeps zero-broken-image guarantee for missing assets.
+  const [extIndex, setExtIndex] = React.useState(0);
+  const [exhausted, setExhausted] = React.useState(false);
+
+  const showLetter = exhausted;
+
   return (
     <span
       className="grid shrink-0 place-items-center overflow-hidden rounded-md bg-white shadow-[0_1px_3px_-1px_rgba(0,0,0,0.12)] ring-1 ring-black/5"
       style={{ height: tile, width: tile }}
     >
-      <span
-        aria-hidden="true"
-        className="grid place-items-center font-display font-semibold leading-none"
-        style={{ height: size, width: size, color: tool.bg, fontSize: Math.round(size * 0.78) }}
-      >
-        {tool.letter}
-      </span>
+      {showLetter ? (
+        <span
+          aria-hidden="true"
+          className="grid place-items-center font-display font-semibold leading-none"
+          style={{ height: size, width: size, color: tool.bg, fontSize: Math.round(size * 0.78) }}
+        >
+          {tool.letter}
+        </span>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`/logos/${tool.id}.${LOGO_EXTENSIONS[extIndex]}`}
+          alt={tool.name}
+          width={size}
+          height={size}
+          style={{ width: size, height: size, objectFit: "contain" }}
+          onError={() => {
+            if (extIndex < LOGO_EXTENSIONS.length - 1) {
+              setExtIndex(extIndex + 1);
+            } else {
+              setExhausted(true);
+            }
+          }}
+        />
+      )}
     </span>
   );
 }

@@ -90,25 +90,24 @@ async function fetchChatToProspect(): Promise<Record<string, string>> {
   return data.chatToProspect ?? {};
 }
 
-// Batch-fetch prospects by IDs through the prospect API. The list endpoint
-// doesn't accept an `ids` filter, so we issue one request per ID via React
-// Query's per-key cache — the heavy lifting is amortized on subsequent renders.
-//
-// In production, if the list grows large we should add `?ids=` server-side.
+// Batch-fetch prospects by IDs in a single round-trip via the `ids=` bulk
+// short-circuit on /api/prospects. Replaced the previous N x /api/prospects/[id]
+// fan-out which dominated first-paint for the messagerie (one Supabase-auth +
+// enrichProspects pass per chat row).
 async function fetchProspects(ids: string[]): Promise<Map<string, Prospect>> {
   const out = new Map<string, Prospect>();
   if (ids.length === 0) return out;
-  const results = await Promise.all(
-    ids.map(async (id) => {
-      try {
-        const p = await getJson<Prospect>(`/api/prospects/${id}`);
-        return [id, p] as const;
-      } catch {
-        return [id, null] as const;
-      }
-    }),
-  );
-  for (const [id, p] of results) if (p) out.set(id, p);
+  try {
+    const data = await getJson<{ items: Prospect[] }>(
+      `/api/prospects?ids=${encodeURIComponent(ids.join(","))}`,
+    );
+    for (const p of data.items ?? []) {
+      if (p?.id) out.set(p.id, p);
+    }
+  } catch {
+    // Best-effort: a failure leaves the messagerie rows partially-populated
+    // (interlocutor_name still resolves via the chat enrichment cache).
+  }
   return out;
 }
 
@@ -452,7 +451,13 @@ interface TemplatePayload {
   id: string;
   name: string;
   channel: "linkedin" | "whatsapp" | "email";
-  category?: string | null;
+  /** Joined category row (preferred) or legacy enum string. */
+  category?:
+    | { id: string; name: string; sort_order: number }
+    | string
+    | null;
+  /** Foreign key — populated after migration 20260517150000_*. */
+  category_id?: string | null;
   content: string;
 }
 
@@ -471,15 +476,24 @@ export function useTemplates(): UseQueryResult<QuickTemplate[]> {
       const data = await getJson<{ items?: TemplatePayload[] }>(
         "/api/message-templates",
       );
-      return (data.items ?? []).map(
-        (t): QuickTemplate => ({
+      return (data.items ?? []).map((t): QuickTemplate => {
+        const joined =
+          typeof t.category === "object" && t.category !== null
+            ? t.category
+            : null;
+        const legacyEnum = typeof t.category === "string" ? t.category : null;
+        // tag[0] is what the QuickInsertModal filter compares against — prefer
+        // the dynamic category UUID when present so per-org categories work.
+        const tagId = t.category_id ?? joined?.id ?? legacyEnum ?? undefined;
+        return {
           id: t.id,
           name: t.name,
           channel: backendChannelToDesign(t.channel),
-          category: parseTemplateCategory(t.category),
+          category: parseTemplateCategory(legacyEnum),
+          tags: tagId ? [tagId] : undefined,
           content: t.content,
-        }),
-      );
+        };
+      });
     },
     staleTime: FIVE_MIN,
     placeholderData: (prev) => prev,

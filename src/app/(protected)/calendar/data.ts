@@ -59,6 +59,8 @@ export type CalEvent = {
   lastAction: string;
   googleMeetUrl: string | null;
   gcalAttendees?: GcalAttendee[];
+  /** Host-only notes — never synced to Google Calendar. */
+  internalNotes?: string | null;
   /** True for events that span the entire day (e.g. holidays, school
    *  breaks, day-off). Rendered as a coloured band under the day number
    *  rather than as a time-grid block. */

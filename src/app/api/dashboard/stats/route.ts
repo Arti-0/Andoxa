@@ -194,50 +194,52 @@ export const GET = createApiHandler(async (req, ctx) => {
       .lte("created_at", sparkEndIso),
 
     // ── v2 RDV ─────────────────────────────────────────────────────
+    // Counted by START_TIME (when the meeting actually happens, not when
+    // it ended) and exclude `noshow` — confirmed product spec.
     supabase
       .from("events")
-      .select("start_time, end_time")
+      .select("start_time, status")
       .eq("organization_id", workspaceId)
-      .gte("end_time", sparkStartIso)
-      .lte("end_time", sparkEndIso),
-    supabase
-      .from("events")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", workspaceId)
-      .gte("end_time", curStart)
-      .lte("end_time", curEnd),
+      .neq("status", "noshow")
+      .gte("start_time", sparkStartIso)
+      .lte("start_time", sparkEndIso),
     supabase
       .from("events")
       .select("id", { count: "exact", head: true })
       .eq("organization_id", workspaceId)
-      .gte("end_time", prevStart)
-      .lte("end_time", prevEnd),
+      .neq("status", "noshow")
+      .gte("start_time", curStart)
+      .lte("start_time", curEnd),
+    supabase
+      .from("events")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", workspaceId)
+      .neq("status", "noshow")
+      .gte("start_time", prevStart)
+      .lte("start_time", prevEnd),
 
     // ── v2 closings ────────────────────────────────────────────────
+    // Counted by `prospect_activity.status_change` events whose `details.to`
+    // is "won" AND that flip is the prospect's LATEST status_change in the
+    // window (otherwise a prospect that flipped won→qualified→won would
+    // double-count). The "currently won" check happens against the
+    // prospects table further down. This gives the toggle-tolerant behavior
+    // the user asked for: flip-in → +1, flip-out → -1, flip-in again → +1.
+    supabase
+      .from("prospect_activity")
+      .select("prospect_id, created_at, details")
+      .eq("organization_id", workspaceId)
+      .eq("action", "status_change")
+      .gte("created_at", sparkStartIso)
+      .lte("created_at", sparkEndIso),
     supabase
       .from("prospects")
-      .select("updated_at")
+      .select("id")
       .eq("organization_id", workspaceId)
       .is("deleted_at", null)
-      .eq("status", "won")
-      .gte("updated_at", sparkStartIso)
-      .lte("updated_at", sparkEndIso),
-    supabase
-      .from("prospects")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", workspaceId)
-      .is("deleted_at", null)
-      .eq("status", "won")
-      .gte("updated_at", curStart)
-      .lte("updated_at", curEnd),
-    supabase
-      .from("prospects")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", workspaceId)
-      .is("deleted_at", null)
-      .eq("status", "won")
-      .gte("updated_at", prevStart)
-      .lte("updated_at", prevEnd),
+      .eq("status", "won"),
+    // Placeholder slot (kept to avoid renumbering destructure below).
+    Promise.resolve({ data: null, error: null, count: 0 }),
 
     // ── workspace targets ──────────────────────────────────────────
     supabase
@@ -297,17 +299,23 @@ export const GET = createApiHandler(async (req, ctx) => {
     ? 0
     : (rdvEffectuesResult.count ?? 0);
 
+  // Previously this fired one count(*) here and a second select() below for
+  // the 8-week histogram — two sequential round-trips both keyed on the same
+  // job_id list and time window. Collapsed into a single select() whose
+  // rowcount serves both purposes.
   let messagesEnvoyes = 0;
   const jobIds = (jobIdsResult.data ?? []).map((j: { id: string }) => j.id);
+  let msgRowsForWeekBuckets: Array<{ processed_at: string | null }> = [];
   if (jobIds.length > 0) {
-    const { count } = await supabase
+    const { data: msgData } = await supabase
       .from("campaign_job_prospects")
-      .select("id", { count: "exact", head: true })
+      .select("processed_at")
       .in("job_id", jobIds)
       .eq("status", "success")
       .not("processed_at", "is", null)
       .gte("processed_at", eightWeeksAgoIso);
-    messagesEnvoyes = count ?? 0;
+    msgRowsForWeekBuckets = (msgData ?? []) as typeof msgRowsForWeekBuckets;
+    messagesEnvoyes = msgRowsForWeekBuckets.length;
   }
 
   // ── v1 prospectsOverTime (6 months) ──────────────────────────────
@@ -375,19 +383,12 @@ export const GET = createApiHandler(async (req, ctx) => {
     if (entry) entry.bookings++;
   }
 
-  if (jobIds.length > 0) {
-    const { data: msgData } = await supabase
-      .from("campaign_job_prospects")
-      .select("processed_at")
-      .in("job_id", jobIds)
-      .eq("status", "success")
-      .not("processed_at", "is", null)
-      .gte("processed_at", eightWeeksAgoIso);
-    for (const m of msgData ?? []) {
-      const label = getWeekLabel(new Date(m.processed_at as string));
-      const entry = weekMap.get(label);
-      if (entry) entry.messages++;
-    }
+  // Reuse the rows fetched above for `messagesEnvoyes` — no second query.
+  for (const m of msgRowsForWeekBuckets) {
+    if (!m.processed_at) continue;
+    const label = getWeekLabel(new Date(m.processed_at));
+    const entry = weekMap.get(label);
+    if (entry) entry.messages++;
   }
 
   // Workflow + manual outbound messages (prospect_activity).
@@ -483,10 +484,12 @@ export const GET = createApiHandler(async (req, ctx) => {
   };
 
   // ── v2 — RDV ─────────────────────────────────────────────────────
+  // Sparkline bucketed by START_TIME (when the meeting happens) — matches
+  // the count query above. `status='noshow'` is excluded server-side.
   const rdvSparkline = new Array(weekBuckets.length).fill(0) as number[];
   for (const e of rdvHistoryResult.data ?? []) {
-    if (!e.end_time) continue;
-    const idx = bucketIndex(weekBuckets, new Date(e.end_time));
+    if (!e.start_time) continue;
+    const idx = bucketIndex(weekBuckets, new Date(e.start_time));
     if (idx >= 0) rdvSparkline[idx]++;
   }
   const rdvCurrent = rdvCurrentRes.count ?? 0;
@@ -505,14 +508,50 @@ export const GET = createApiHandler(async (req, ctx) => {
   };
 
   // ── v2 — closings ───────────────────────────────────────────────
-  const wonSparkline = new Array(weekBuckets.length).fill(0) as number[];
-  for (const w of wonHistoryResult.data ?? []) {
-    if (!w.updated_at) continue;
-    const idx = bucketIndex(weekBuckets, new Date(w.updated_at));
-    if (idx >= 0) wonSparkline[idx]++;
+  // Pipeline (renamed for clarity):
+  //   1. `wonHistoryResult` now holds every status_change row in the spark
+  //      window for this org.
+  //   2. For each prospect, find their LATEST status_change in the window.
+  //      If that latest flip's to-status is "won" AND the prospect is
+  //      currently in `won` state, count them as a closing AT that
+  //      flip-timestamp.
+  //   3. Period totals (current / previous) are derived from the same data.
+  // This is what makes the count toggle 0→1→0→1 cleanly as a user plays
+  // with the status, rather than locking on `updated_at` (which any edit bumps).
+  const currentlyWon = new Set<string>(
+    (wonCurrentRes.data ?? [])
+      .map((p) => (p as { id?: string }).id)
+      .filter((id): id is string => typeof id === "string"),
+  );
+
+  type StatusChangeRow = {
+    prospect_id: string | null;
+    created_at: string | null;
+    details: { to?: string } | null;
+  };
+  const flipsByProspect = new Map<string, StatusChangeRow>();
+  for (const raw of wonHistoryResult.data ?? []) {
+    const row = raw as StatusChangeRow;
+    if (!row.prospect_id || !row.created_at) continue;
+    const prev = flipsByProspect.get(row.prospect_id);
+    if (!prev || new Date(row.created_at) > new Date(prev.created_at!)) {
+      flipsByProspect.set(row.prospect_id, row);
+    }
   }
-  const wonCurrent = wonCurrentRes.count ?? 0;
-  const wonPrevious = wonPreviousRes.count ?? 0;
+
+  const wonSparkline = new Array(weekBuckets.length).fill(0) as number[];
+  let wonCurrent = 0;
+  let wonPrevious = 0;
+  for (const row of flipsByProspect.values()) {
+    if (row.details?.to !== "won") continue;
+    if (!currentlyWon.has(row.prospect_id!)) continue;
+    const t = new Date(row.created_at!);
+    const idx = bucketIndex(weekBuckets, t);
+    if (idx >= 0) wonSparkline[idx]++;
+    const ts = t.getTime();
+    if (ts >= current.start.getTime() && ts <= current.end.getTime()) wonCurrent++;
+    if (ts >= previous.start.getTime() && ts <= previous.end.getTime()) wonPrevious++;
+  }
   const closingsBlock: ClosingsBlock = {
     won_count: wonCurrent,
     target: targets.closings_per_month,
@@ -594,10 +633,19 @@ export const GET = createApiHandler(async (req, ctx) => {
       ? Math.round((acceptances / invitationsSent) * 100)
       : 0;
 
-  // Sparkline = response_rate per week (capped 0..100 for display sanity).
-  const linkedInSparkline = messagesByWeek.map((m, i) =>
-    m > 0 ? Math.min(100, Math.round((responseByWeek[i] / m) * 100)) : 0,
-  );
+  // Sparkline = 3-week rolling response rate (messages-to-messages),
+  // capped 0..100. Rolling avg smooths the jaggy per-week version when
+  // sample sizes are small (typical for orgs in their first month).
+  const ROLL = 3;
+  const linkedInSparkline = messagesByWeek.map((_, i) => {
+    let mSum = 0;
+    let rSum = 0;
+    for (let j = Math.max(0, i - ROLL + 1); j <= i; j++) {
+      mSum += messagesByWeek[j];
+      rSum += responseByWeek[j];
+    }
+    return mSum > 0 ? Math.min(100, Math.round((rSum / mSum) * 100)) : 0;
+  });
 
   // Trend pts = current rate − previous rate (raw point delta).
   let prevMessages = 0;

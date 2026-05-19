@@ -131,8 +131,14 @@ export type QuickTemplate = {
   id: string;
   name: string;
   channel: "li" | "wa" | "both";
-  /** DB `message_templates.category` — drives quick-insert filter chips */
+  /** DB `message_templates.category` — legacy enum slug, kept for back-compat. */
   category: TemplateCategory;
+  /**
+   * Active filter id used by QuickInsertModal. Holds the dynamic category
+   * UUID when the template is linked to template_categories(id), otherwise
+   * the legacy enum slug (matches `category`).
+   */
+  tags?: string[];
   content: string;
 };
 

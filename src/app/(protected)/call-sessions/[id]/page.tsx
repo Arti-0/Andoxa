@@ -18,8 +18,10 @@ import {
   CheckCircle2,
   Play,
   RotateCcw,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
+import { SessionScriptModal } from "@/components/call-sessions/session-script-modal";
 import { createClient } from "@/lib/supabase/client";
 import { extractCleanRole } from "@/lib/utils/extract-role";
 import {
@@ -150,6 +152,7 @@ export default function CallSessionPage() {
   const sessionId = params?.id as string;
 
   const [activeProspectId, setActiveProspectId] = useState<string | null>(null);
+  const [scriptOpen, setScriptOpen] = useState(false);
   const [quickNoteDraft, setQuickNoteDraft] = useState("");
   const [stepFlushPending, setStepFlushPending] = useState(false);
   const [noteSavePending, setNoteSavePending] = useState(false);
@@ -469,6 +472,10 @@ export default function CallSessionPage() {
   const isSessionCompleted = session.status === "completed";
 
   const activeProspect = session.prospects.find((p) => p.id === activeProspectId);
+  const activeProspectIndex = Math.max(
+    0,
+    session.prospects.findIndex((p) => p.id === activeProspectId),
+  );
   const processedCount = session.prospects.filter(isDoneCall).length;
   const total = session.prospects.length;
 
@@ -528,6 +535,16 @@ export default function CallSessionPage() {
         </div>
 
         {/* Header action button */}
+        {!isSessionCompleted && (
+          <button
+            type="button"
+            onClick={() => setScriptOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-accent"
+          >
+            <FileText className="h-4 w-4" />
+            Script
+          </button>
+        )}
         {isActive && (
           <button
             type="button"
@@ -841,6 +858,19 @@ export default function CallSessionPage() {
           </div>
         </main>
       </div>
+
+      <SessionScriptModal
+        open={scriptOpen}
+        onOpenChange={setScriptOpen}
+        sessionId={sessionId}
+        prospects={session.prospects.map((p) => ({
+          id: p.id,
+          full_name: p.full_name,
+          company: p.company,
+          job_title: p.job_title,
+        }))}
+        currentProspectIndex={activeProspectIndex}
+      />
     </div>
   );
 }

@@ -85,8 +85,10 @@ export async function POST(req: Request) {
     const scheduledDate = new Date(booking.scheduled_for!);
     const message = template
       .replace(/\{\{name\}\}/g, prospect.full_name ?? "")
-      .replace(/\{\{date\}\}/g, scheduledDate.toLocaleDateString("fr-FR"))
-      .replace(/\{\{time\}\}/g, scheduledDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }));
+      // Force Europe/Paris — Vercel runs UTC and would otherwise format
+      // the reminder 1-2h off (CET/CEST). Same fix as the booking emails.
+      .replace(/\{\{date\}\}/g, scheduledDate.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" }))
+      .replace(/\{\{time\}\}/g, scheduledDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }));
 
     try {
       await unipileFetch("/chats", {

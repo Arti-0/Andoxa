@@ -1,12 +1,19 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   TEAM_BY_ID, STATUS_TOKENS, PROSPECT_ACTIVITY,
   fmtTime, initials, avatarColor,
   type CalEvent, type WeekDay, type CalendarColorMap,
 } from "./data";
 import { useUpdateEvent, useDeleteEvent } from "./queries";
+
+/** Strip every HTML tag — internal notes are plain-text only. */
+function sanitizeNotes(raw: string): string {
+  return raw.replace(/<[^>]*>/g, "").slice(0, 5000);
+}
+
+type ConfirmAction = null | "done" | "noshow" | "delete";
 
 type Props = {
   event: CalEvent | null;
@@ -17,9 +24,18 @@ type Props = {
 };
 
 export function EventPanel({ event, onClose, onEdit, weekDays, calendarColors }: Props) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirm, setConfirm] = useState<ConfirmAction>(null);
+  const [notesDraft, setNotesDraft] = useState<string>("");
+  const [notesDirty, setNotesDirty] = useState(false);
   const updateEvent = useUpdateEvent();
   const deleteEvent = useDeleteEvent();
+
+  // Reset notes draft when the focused event changes.
+  useEffect(() => {
+    setNotesDraft(event?.internalNotes ?? "");
+    setNotesDirty(false);
+    setConfirm(null);
+  }, [event?.id, event?.internalNotes]);
 
   if (!event) return null;
 
@@ -37,8 +53,25 @@ export function EventPanel({ event, onClose, onEdit, weekDays, calendarColors }:
     updateEvent.mutate({ id: event.id, status: "done" }, { onSuccess: onClose });
   };
 
+  const handleMarkNoShow = () => {
+    if (event.status === "noshow") return;
+    updateEvent.mutate({ id: event.id, status: "noshow" }, { onSuccess: onClose });
+  };
+
   const handleDelete = () => {
     deleteEvent.mutate(event.id, { onSuccess: onClose });
+  };
+
+  const handleSaveNotes = () => {
+    const clean = sanitizeNotes(notesDraft);
+    updateEvent.mutate(
+      { id: event.id, internal_notes: clean },
+      {
+        onSuccess: () => {
+          setNotesDirty(false);
+        },
+      }
+    );
   };
 
   return (
@@ -188,12 +221,54 @@ export function EventPanel({ event, onClose, onEdit, weekDays, calendarColors }:
             )}
           </Block>
 
-          {/* Description */}
-          <Block label="Description">
-            <button style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "var(--cal2-surface-3)", border: "1px dashed var(--cal2-border)", borderRadius: 8, fontSize: 12.5, color: "var(--cal2-text-muted)", cursor: "pointer", fontFamily: "inherit" }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-              Ajouter une note
-            </button>
+          {/* Internal notes — host-only, never synced to Google Calendar. */}
+          <Block label="Notes (privées)">
+            <textarea
+              value={notesDraft}
+              onChange={(e) => {
+                setNotesDraft(e.target.value);
+                setNotesDirty((event.internalNotes ?? "") !== e.target.value);
+              }}
+              placeholder="Notes visibles uniquement dans Andoxa. Pas envoyées aux invités."
+              rows={4}
+              maxLength={5000}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                background: "var(--cal2-surface-3)",
+                border: "1px solid var(--cal2-border-soft)",
+                borderRadius: 10,
+                fontSize: 13,
+                lineHeight: 1.5,
+                color: "var(--cal2-text)",
+                fontFamily: "inherit",
+                resize: "vertical",
+                minHeight: 84,
+                outline: "none",
+              }}
+            />
+            {notesDirty && (
+              <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={handleSaveNotes}
+                  disabled={updateEvent.isPending}
+                  style={{ padding: "6px 14px", background: "#0052D9", color: "var(--cal2-surface)", border: "none", borderRadius: 7, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}
+                >
+                  {updateEvent.isPending ? "Enregistrement…" : "Enregistrer"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNotesDraft(event.internalNotes ?? "");
+                    setNotesDirty(false);
+                  }}
+                  style={{ padding: "6px 14px", background: "var(--cal2-surface)", color: "var(--cal2-text-soft)", border: "1px solid var(--cal2-border-soft)", borderRadius: 7, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}
+                >
+                  Annuler
+                </button>
+              </div>
+            )}
           </Block>
 
           {/* Activity */}
@@ -228,24 +303,21 @@ export function EventPanel({ event, onClose, onEdit, weekDays, calendarColors }:
           <div style={{ height: 24 }} />
         </div>
 
-        {/* Footer */}
+        {/* Footer — Modifier (safe) + 3 destructive actions, all confirmed. */}
         <div style={{ padding: "16px 28px", borderTop: "1px solid var(--cal2-border-faint)", background: "var(--cal2-canvas-soft)", flexShrink: 0 }}>
-          {confirmDelete ? (
-            <div style={{ background: "color-mix(in srgb, #DC2626 14%, var(--cal2-surface))", border: "1px solid color-mix(in srgb, #DC2626 32%, var(--cal2-surface))", borderRadius: 9, padding: "12px 16px", marginBottom: 10 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: "#DC2626", marginBottom: 8 }}>Supprimer cet événement ?</div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={handleDelete}
-                  disabled={deleteEvent.isPending}
-                  style={{ flex: 1, padding: "8px", background: "#DC2626", color: "var(--cal2-surface)", border: "none", borderRadius: 7, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}
-                >
-                  {deleteEvent.isPending ? "Suppression…" : "Confirmer"}
-                </button>
-                <button onClick={() => setConfirmDelete(false)} style={{ flex: 1, padding: "8px", background: "var(--cal2-surface)", color: "var(--cal2-text-soft)", border: "1px solid var(--cal2-border-soft)", borderRadius: 7, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
-                  Annuler
-                </button>
-              </div>
-            </div>
+          {confirm ? (
+            <ConfirmBanner
+              action={confirm}
+              busy={confirm === "delete" ? deleteEvent.isPending : updateEvent.isPending}
+              onConfirm={
+                confirm === "done"
+                  ? handleMarkDone
+                  : confirm === "noshow"
+                    ? handleMarkNoShow
+                    : handleDelete
+              }
+              onCancel={() => setConfirm(null)}
+            />
           ) : (
             <>
               <button
@@ -254,18 +326,26 @@ export function EventPanel({ event, onClose, onEdit, weekDays, calendarColors }:
               >
                 Modifier l&apos;événement
               </button>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
                 <button
-                  onClick={handleMarkDone}
-                  disabled={event.status === "done" || updateEvent.isPending}
-                  style={{ flex: 1, padding: "9px 12px", background: "var(--cal2-surface)", color: event.status === "done" ? "#10B981" : "var(--cal2-text-soft)", border: `1px solid ${event.status === "done" ? "#BBF7D0" : "var(--cal2-border-soft)"}`, borderRadius: 8, fontSize: 12.5, fontWeight: 500, cursor: event.status === "done" ? "default" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: updateEvent.isPending ? 0.6 : 1 }}
+                  onClick={() => setConfirm("done")}
+                  disabled={event.status === "done"}
+                  style={{ padding: "9px 8px", background: "var(--cal2-surface)", color: event.status === "done" ? "#10B981" : "var(--cal2-text-soft)", border: `1px solid ${event.status === "done" ? "#BBF7D0" : "var(--cal2-border-soft)"}`, borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: event.status === "done" ? "default" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
                   {event.status === "done" ? "Réalisé" : "Marquer réalisé"}
                 </button>
                 <button
-                  onClick={() => setConfirmDelete(true)}
-                  style={{ flex: 1, padding: "9px 12px", background: "var(--cal2-surface)", color: "#DC2626", border: "1px solid color-mix(in srgb, #DC2626 32%, var(--cal2-surface))", borderRadius: 8, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}
+                  onClick={() => setConfirm("noshow")}
+                  disabled={event.status === "noshow"}
+                  style={{ padding: "9px 8px", background: "var(--cal2-surface)", color: event.status === "noshow" ? "#F59E0B" : "var(--cal2-text-soft)", border: `1px solid ${event.status === "noshow" ? "color-mix(in srgb, #F59E0B 32%, var(--cal2-surface))" : "var(--cal2-border-soft)"}`, borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: event.status === "noshow" ? "default" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" /></svg>
+                  No-show
+                </button>
+                <button
+                  onClick={() => setConfirm("delete")}
+                  style={{ padding: "9px 8px", background: "var(--cal2-surface)", color: "#DC2626", border: "1px solid color-mix(in srgb, #DC2626 32%, var(--cal2-surface))", borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}
                 >
                   Supprimer
                 </button>
@@ -275,6 +355,73 @@ export function EventPanel({ event, onClose, onEdit, weekDays, calendarColors }:
         </div>
       </aside>
     </>
+  );
+}
+
+function ConfirmBanner({
+  action,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  action: Exclude<ConfirmAction, null>;
+  busy: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const config = {
+    done: {
+      tone: "#10B981",
+      title: "Marquer cet événement réalisé ?",
+      hint: "Le statut passera à \"réalisé\" et ne pourra pas être annulé en un clic.",
+      confirmLabel: "Confirmer",
+      busyLabel: "Mise à jour…",
+    },
+    noshow: {
+      tone: "#F59E0B",
+      title: "Marquer ce rendez-vous en no-show ?",
+      hint: "Indique que le prospect ne s'est pas présenté. Affecte vos KPIs.",
+      confirmLabel: "Confirmer",
+      busyLabel: "Mise à jour…",
+    },
+    delete: {
+      tone: "#DC2626",
+      title: "Supprimer cet événement ?",
+      hint: "L'événement sera retiré d'Andoxa et de Google Calendar. Cette action est irréversible.",
+      confirmLabel: "Supprimer",
+      busyLabel: "Suppression…",
+    },
+  }[action];
+
+  return (
+    <div
+      role="alertdialog"
+      style={{
+        background: `color-mix(in srgb, ${config.tone} 12%, var(--cal2-surface))`,
+        border: `1px solid color-mix(in srgb, ${config.tone} 32%, var(--cal2-surface))`,
+        borderRadius: 9,
+        padding: "12px 14px",
+      }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 600, color: config.tone, marginBottom: 4 }}>{config.title}</div>
+      <div style={{ fontSize: 12, color: "var(--cal2-text-muted)", lineHeight: 1.45, marginBottom: 10 }}>{config.hint}</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={onConfirm}
+          disabled={busy}
+          style={{ flex: 1, padding: "8px", background: config.tone, color: "var(--cal2-surface)", border: "none", borderRadius: 7, fontSize: 12.5, fontWeight: 500, cursor: busy ? "progress" : "pointer", fontFamily: "inherit" }}
+        >
+          {busy ? config.busyLabel : config.confirmLabel}
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={busy}
+          style={{ flex: 1, padding: "8px", background: "var(--cal2-surface)", color: "var(--cal2-text-soft)", border: "1px solid var(--cal2-border-soft)", borderRadius: 7, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}
+        >
+          Annuler
+        </button>
+      </div>
+    </div>
   );
 }
 

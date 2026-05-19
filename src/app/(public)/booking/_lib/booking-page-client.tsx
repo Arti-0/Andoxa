@@ -68,6 +68,38 @@ function sameDay(a: Date | null, b: Date | null): boolean {
     return !!a && !!b && a.toDateString() === b.toDateString();
 }
 
+/**
+ * Builds a Google Calendar TEMPLATE URL — opens calendar.google.com in a new
+ * tab with the event pre-filled. Works for any guest with a Google account;
+ * no API call or event ID needed (which we don't have for the guest side).
+ *
+ * Format: YYYYMMDDTHHmmssZ (UTC), no punctuation.
+ */
+function buildGoogleCalendarUrl({
+    startIso,
+    endIso,
+    title,
+    details,
+    location,
+}: {
+    startIso: string;
+    endIso: string;
+    title: string;
+    details?: string;
+    location?: string;
+}): string {
+    const toGcal = (iso: string) =>
+        new Date(iso).toISOString().replace(/[-:]|\.\d{3}/g, "");
+    const params = new URLSearchParams({
+        action: "TEMPLATE",
+        text: title,
+        dates: `${toGcal(startIso)}/${toGcal(endIso)}`,
+    });
+    if (details) params.set("details", details);
+    if (location) params.set("location", location);
+    return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
 function buildMonthGrid(
     year: number,
     month: number
@@ -117,9 +149,15 @@ function getInitials(name: string): string {
         .toUpperCase();
 }
 
-export default function BookingPage() {
+/**
+ * Shared booking client renderer. Used by:
+ *   - this route (/booking/[slug]) — slug comes from useParams.
+ *   - /booking/[org]/[user] — slug is resolved server-side and passed in.
+ * Pass `slug` to bypass the useParams read.
+ */
+export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
     const params = useParams<{ slug: string }>();
-    const slug = typeof params.slug === "string" ? params.slug : null;
+    const slug = slugProp ?? (typeof params.slug === "string" ? params.slug : null);
 
     const [slots, setSlots] = useState<Slot[]>([]);
     const [host, setHost] = useState<HostInfo | null>(null);
@@ -298,16 +336,7 @@ export default function BookingPage() {
         <div className="booking-page">
             <div className="booking-container">
                 <div className="topbar">
-                    <Link className="brand-logo" href="/" aria-label="Andoxa">
-                        <Image
-                            src="/assets/logofiles/logo_1.svg"
-                            alt="Andoxa"
-                            width={120}
-                            height={28}
-                            className="brand-logo-img"
-                            priority
-                        />
-                    </Link>
+                    {/* Brand logo removed — already shown in footer ("Propulsé par Andoxa"). */}
                     <nav className="stepper" aria-label="Étapes">
                         {([1, 2, 3] as const).map((n, i) => {
                             const label =
@@ -1010,15 +1039,20 @@ export default function BookingPage() {
                                     </div>
                                 </div>
                                 <div className="add-cal">
-                                    <button type="button" className="cal-btn">
+                                    <a
+                                        type="button"
+                                        className="cal-btn"
+                                        href={buildGoogleCalendarUrl({
+                                            startIso: selectedSlot.start,
+                                            endIso: selectedSlot.end,
+                                            title: `RDV avec ${hostName}`,
+                                            details: `Rendez-vous via Andoxa · ${meetingType.duration} min · ${meetingType.mode}`,
+                                        })}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
                                         <CalendarPlus /> Google Calendar
-                                    </button>
-                                    <button type="button" className="cal-btn">
-                                        <CalendarPlus /> Apple Calendar
-                                    </button>
-                                    <button type="button" className="cal-btn">
-                                        <CalendarPlus /> Outlook
-                                    </button>
+                                    </a>
                                 </div>
                             </div>
                         </div>
@@ -1059,3 +1093,6 @@ export default function BookingPage() {
         </div>
     );
 }
+
+// No default export here — this file lives under `_lib/` and is not a route.
+// Routes import `BookingPageClient` directly. Single source of truth.

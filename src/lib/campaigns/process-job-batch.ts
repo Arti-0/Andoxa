@@ -345,6 +345,11 @@ async function runBatchLinkedIn(
                 ? clipDetailMessage(text ?? "", 500)
                 : "",
             campaign_job_id: jobId,
+            // Stored so the Unipile new_relation webhook can match the
+            // acceptance back to this exact invite and emit
+            // linkedin_invite_accepted with the right campaign_job_id.
+            provider_id: providerId,
+            account_id: accountId,
           },
         });
       } else if (job.type === "contact") {

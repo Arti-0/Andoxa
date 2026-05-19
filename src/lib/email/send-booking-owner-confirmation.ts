@@ -25,15 +25,24 @@ export async function sendBookingOwnerConfirmationEmail(params: {
 
   const start = new Date(params.slotStartIso);
   const end = new Date(params.slotEndIso);
+  // Vercel server runs UTC; force Europe/Paris so the host sees the same
+  // wall-clock time they confirmed in the calendar. See guest email for ctx.
+  const PARIS_TZ = "Europe/Paris" as const;
   const dateLine = start.toLocaleDateString("fr-FR", {
     weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
+    timeZone: PARIS_TZ,
   });
-  const timeLine = `${start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} – ${end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
+  const timeOpts: Intl.DateTimeFormatOptions = {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: PARIS_TZ,
+  };
+  const timeLine = `${start.toLocaleTimeString("fr-FR", timeOpts)} – ${end.toLocaleTimeString("fr-FR", timeOpts)}`;
 
-  const subject = `Nouveau rendez-vous — ${params.guestName}, ${start.toLocaleDateString("fr-FR", { day: "numeric", month: "long" })} à ${start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
+  const subject = `Nouveau rendez-vous — ${params.guestName}, ${start.toLocaleDateString("fr-FR", { day: "numeric", month: "long", timeZone: PARIS_TZ })} à ${start.toLocaleTimeString("fr-FR", timeOpts)}`;
 
   const resend = new Resend(apiKey);
   const { error } = await resend.emails.send({

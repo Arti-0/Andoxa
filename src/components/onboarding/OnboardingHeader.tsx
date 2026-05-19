@@ -61,6 +61,7 @@ export function OnboardingHeader({
               width={120}
               height={40}
               className="h-8 w-auto dark:hidden"
+              style={{ width: "auto", height: "auto" }}
               priority
             />
             <Image
@@ -69,6 +70,7 @@ export function OnboardingHeader({
               width={120}
               height={40}
               className="h-8 w-auto hidden dark:block"
+              style={{ width: "auto", height: "auto" }}
               priority
             />
           </Link>

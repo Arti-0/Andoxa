@@ -156,9 +156,11 @@ export function MarketingPersonasSection() {
           </div>
         </div>
 
-        {/* min-h keeps the row from collapsing/jumping between personas with
-            different copy lengths — fixes the tab-click layout shift. */}
-        <div className="grid items-stretch gap-8 lg:min-h-[540px] lg:grid-cols-2 lg:gap-12">
+        {/* Lock the row to the tallest persona so switching to "Head of Sales"
+            or "Inbound" (shorter copy) doesn't shrink the layout and trigger
+            the scroll-driven header to reappear. 540px wasn't enough; the
+            tallest variants need ~640px on desktop. */}
+        <div className="grid items-stretch gap-8 md:min-h-[640px] lg:min-h-[640px] lg:grid-cols-2 lg:gap-12">
           <AnimatePresence mode="wait">
             <motion.div
               key={`copy-${persona.id}`}

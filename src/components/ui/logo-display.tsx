@@ -54,6 +54,7 @@ export function LogoDisplay({ className = "", collapsed }: LogoDisplayProps) {
           width={80}
           height={24}
           className={`h-5 w-auto ${logoClasses} ${className}`}
+          style={{ width: "auto", height: "auto" }}
           priority
         />
         <Image
@@ -62,6 +63,7 @@ export function LogoDisplay({ className = "", collapsed }: LogoDisplayProps) {
           width={32}
           height={32}
           className={`h-8 w-8 ${iconClasses} ${className}`}
+          style={{ width: "auto", height: "auto" }}
           priority
         />
       </>
@@ -76,6 +78,7 @@ export function LogoDisplay({ className = "", collapsed }: LogoDisplayProps) {
         width={80}
         height={24}
         className={`h-5 w-auto ${logoClasses} ${className}`}
+        style={{ width: "auto", height: "auto" }}
         priority
       />
       <Image
@@ -84,6 +87,7 @@ export function LogoDisplay({ className = "", collapsed }: LogoDisplayProps) {
         width={32}
         height={32}
         className={`h-8 w-8 ${iconClasses} ${className}`}
+        style={{ width: "auto", height: "auto" }}
         priority
       />
     </>

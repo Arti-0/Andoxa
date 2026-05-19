@@ -78,14 +78,25 @@ export async function GET(
     const allSlots = getDefaultSlotsForDateRange(from, availability);
     const availableSlots = excludeBookedSlots(allSlots, events ?? []);
 
+    // Booking window / minimum notice — defaults to 4h so a prospect can't
+    // book a slot that's about to start. Set `availability.minNoticeHours = 0`
+    // explicitly to disable. The "fenêtre de réservation" setting in the
+    // personnaliser modal writes here.
+    const minNoticeHours =
+      typeof availability.minNoticeHours === "number" && availability.minNoticeHours >= 0
+        ? availability.minNoticeHours
+        : 4;
     const now = new Date();
+    const earliestStart = new Date(now.getTime() + minNoticeHours * 3_600_000);
     const futureSlots = availableSlots.filter(
-      (s) => new Date(s.start) > now
+      (s) => new Date(s.start) > earliestStart
     );
 
-    // Optional meeting type — stored in profile.metadata.meetingType when set;
-    // otherwise we synthesize a sensible default derived from the availability
-    // slot length.
+    // Meeting type — the personnaliser modal saves into `meta.booking.{title,
+    // description}` via /api/booking/settings. The legacy path was
+    // `meta.meetingType.*` and we still read it as a fallback for older
+    // accounts (and for fields the new modal doesn't expose, like `mode`/
+    // `role`).
     type MeetingTypeMeta = {
       title?: string;
       description?: string;
@@ -94,12 +105,14 @@ export async function GET(
       role?: string;
     };
     const mt = (meta?.meetingType ?? {}) as MeetingTypeMeta;
+    const booking = (meta?.booking ?? {}) as { title?: string; description?: string };
     const slotMinutes =
       typeof availability.slotMinutes === "number" ? availability.slotMinutes : 30;
 
     const meetingType = {
-      title: mt.title ?? "Échange découverte",
+      title: booking.title ?? mt.title ?? "Échange découverte",
       description:
+        booking.description ??
         mt.description ??
         "Un premier échange pour faire connaissance et voir comment je peux vous aider.",
       duration: mt.duration ?? slotMinutes,

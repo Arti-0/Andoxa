@@ -13,7 +13,10 @@ const TemplateCategoryEnum = z.enum([
 const UpdateTemplateSchema = z.object({
   name: z.string().min(1).max(100).trim().optional(),
   channel: z.enum(["linkedin", "whatsapp", "email"]).optional(),
+  /** Legacy text slug — accepted but new code should use category_id. */
   category: TemplateCategoryEnum.optional(),
+  /** Re-assign to a dynamic template_categories row; null clears the link. */
+  category_id: z.string().uuid().nullable().optional(),
   content: z
     .string()
     .min(1)
@@ -83,20 +86,28 @@ export const PATCH = createApiHandler(async (req, ctx) => {
     throw Errors.validation(fieldErrors);
   }
 
-  const { data, error } = await ctx.supabase
+  // Only include keys actually present in the payload so we don't accidentally
+  // null fields the caller didn't mean to touch.
+  const updates: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (parsed.data.name !== undefined) updates.name = parsed.data.name;
+  if (parsed.data.channel !== undefined) updates.channel = parsed.data.channel;
+  if (parsed.data.category !== undefined) updates.category = parsed.data.category;
+  if (parsed.data.category_id !== undefined) updates.category_id = parsed.data.category_id;
+  if (parsed.data.content !== undefined) {
+    updates.content = parsed.data.content;
+    updates.variables_used = extractVariables(parsed.data.content);
+  }
+  if (parsed.data.is_default !== undefined) updates.is_default = parsed.data.is_default;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (ctx.supabase as any)
     .from("message_templates")
-    .update({
-      name: parsed.data.name,
-      channel: parsed.data.channel,
-      category: parsed.data.category,
-      content: parsed.data.content,
-      variables_used: parsed.data.content ? extractVariables(parsed.data.content) : undefined,
-      is_default: parsed.data.is_default,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updates)
     .eq("id", id)
     .eq("organization_id", ctx.workspaceId)
-    .select()
+    .select("*, category:category_id(id, name, sort_order)")
     .single();
 
   if (error || !data) throw Errors.notFound("Template");

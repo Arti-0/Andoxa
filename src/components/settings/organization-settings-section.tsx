@@ -84,7 +84,7 @@ export function OrganizationSettingsSection({
 }: {
     onSwitch?: () => void;
 }) {
-    const { user, workspace, workspaceId, isOwner, switchWorkspace, refresh } =
+    const { user, workspace, workspaceId, isOwner, switchWorkspace, patchWorkspace, refresh } =
         useWorkspace();
     const [orgs, setOrgs] = useState<Organization[]>([]);
     const [loadingOrgs, setLoadingOrgs] = useState(false);
@@ -318,6 +318,43 @@ export function OrganizationSettingsSection({
         }
     };
 
+    // URL slug — used in /booking/<org>/<user>. Editable so orgs can pick
+    // their preferred URL fragment; uniqueness enforced by the DB.
+    const currentSlug =
+        ((workspace as { slug?: string | null } | null | undefined)?.slug as
+            | string
+            | undefined) ?? null;
+    const [slugInput, setSlugInput] = useState("");
+    const [slugSaving, setSlugSaving] = useState(false);
+    useEffect(() => {
+        if (currentSlug != null) setSlugInput(currentSlug);
+    }, [currentSlug]);
+
+    const handleSaveSlug = async () => {
+        if (!workspaceId || !isOwner) return;
+        const next = slugInput.trim().toLowerCase();
+        if (!next || next === currentSlug) return;
+        setSlugSaving(true);
+        try {
+            const res = await fetch(`/api/organizations/${workspaceId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ slug: next }),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error ?? "Erreur slug");
+            }
+            toast.success("URL mise à jour");
+            refresh?.();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Erreur");
+        } finally {
+            setSlugSaving(false);
+        }
+    };
+
     const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file || !workspaceId || !isOwner) return;
@@ -338,8 +375,14 @@ export function OrganizationSettingsSection({
                 const data = await res.json().catch(() => ({}));
                 throw new Error(data.error ?? "Erreur lors de la mise à jour du logo");
             }
+            patchWorkspace({ logo_url: logoUrl });
+            setOrgs((prev) =>
+                prev.map((o) =>
+                    o.id === workspaceId ? { ...o, logo_url: logoUrl } : o
+                )
+            );
             toast.success("Logo mis à jour");
-            refresh?.();
+            void refresh();
         } catch (err) {
             toast.error(err instanceof Error ? err.message : "Erreur");
         } finally {
@@ -407,6 +450,7 @@ export function OrganizationSettingsSection({
                         <div className="relative">
                             <Avatar className="h-16 w-16 rounded-xl border">
                                 <AvatarImage
+                                    key={workspace?.logo_url ?? "no-logo"}
                                     src={workspace?.logo_url ?? undefined}
                                     alt={workspace?.name ?? "Logo"}
                                 />
@@ -477,6 +521,48 @@ export function OrganizationSettingsSection({
                                 </button>
                             )}
                     </div>
+
+                    {/* URL slug — used in /booking/<org>/<user> public links. */}
+                    <Label className={settingsLabelClass}>
+                        URL de l&apos;organisation
+                    </Label>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <div className="flex flex-1 items-center rounded-md border bg-zinc-50 px-3 py-2 text-sm dark:bg-black">
+                            <span className="text-muted-foreground">
+                                andoxa.fr/booking/
+                            </span>
+                            <input
+                                type="text"
+                                value={slugInput}
+                                onChange={(e) =>
+                                    setSlugInput(
+                                        e.target.value
+                                            .toLowerCase()
+                                            .replace(/[^a-z0-9-]/g, "-"),
+                                    )
+                                }
+                                disabled={!isOwner}
+                                maxLength={40}
+                                className="flex-1 border-0 bg-transparent p-0 text-foreground outline-none disabled:cursor-not-allowed"
+                                placeholder="mon-orga"
+                            />
+                            <span className="text-muted-foreground">/&lt;user&gt;</span>
+                        </div>
+                        {isOwner && slugInput.trim() !== (currentSlug ?? "") && (
+                            <button
+                                type="button"
+                                onClick={handleSaveSlug}
+                                disabled={slugSaving}
+                                className={settingsSaveButtonClass}
+                            >
+                                {slugSaving ? "Enregistrement…" : "Enregistrer"}
+                            </button>
+                        )}
+                    </div>
+                    <p className="-mt-1 text-xs text-muted-foreground">
+                        2 à 40 caractères, lettres / chiffres / tirets. Doit
+                        être unique sur Andoxa.
+                    </p>
                 </div>
             )}
 

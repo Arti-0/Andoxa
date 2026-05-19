@@ -140,6 +140,10 @@ export interface WorkspaceContextData {
 
   // Actions
   switchWorkspace: (workspaceId: string) => Promise<void>;
+  /** Merge fields into the cached active workspace (instant UI updates). */
+  patchWorkspace: (
+    patch: Partial<Pick<Workspace, "logo_url" | "name" | "slug">>
+  ) => void;
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
 }

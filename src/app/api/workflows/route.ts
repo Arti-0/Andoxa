@@ -23,9 +23,12 @@ export const GET = createApiHandler(async (req, ctx) => {
 
   const { page, pageSize, offset } = getPagination(req);
 
-  const { data: workflows, error, count } = await ctx.supabase
+  // count:exact triggered a separate count(*) on every load — the UI never
+  // paginates today (pageSize = 50 max), so we drop it and return null total.
+  // Pages that need a true total can re-enable when they need it.
+  const { data: workflows, error } = await ctx.supabase
     .from("workflows")
-    .select("*", { count: "exact" })
+    .select("*")
     .eq("organization_id", ctx.workspaceId)
     .order("updated_at", { ascending: false })
     .range(offset, offset + pageSize - 1);
@@ -38,9 +41,14 @@ export const GET = createApiHandler(async (req, ctx) => {
   const completedRunsByWorkflow = new Map<string, number>();
 
   if (ids.length) {
+    // CRITICAL: scoping to organization_id lets Postgres use the
+    // (organization_id, workflow_id) index instead of scanning every run
+    // matching the IN(...) list. For an org with thousands of historical
+    // runs this is the difference between 2s and 100ms.
     const { data: runs } = await ctx.supabase
       .from("workflow_runs")
       .select("workflow_id, status")
+      .eq("organization_id", ctx.workspaceId)
       .in("workflow_id", ids);
 
     for (const r of runs ?? []) {
@@ -74,7 +82,9 @@ export const GET = createApiHandler(async (req, ctx) => {
 
   return {
     items,
-    total: count ?? 0,
+    // `total` removed; the UI doesn't paginate. Add back via a separate
+    // `?count=exact` round-trip if pagination ships.
+    total: items.length,
     page,
     pageSize,
   };

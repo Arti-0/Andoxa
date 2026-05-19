@@ -30,6 +30,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { WorkflowEnrollModal } from "@/components/workflows/workflow-enroll-modal";
+import { ProspectRdvModal } from "@/components/prospect/prospect-rdv-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   ArrowLeft,
@@ -178,6 +179,11 @@ function HeaderBanner({
   const queryClient = useQueryClient();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // "Programmer un RDV" now opens an inline modal (mounted right here) instead
+  // of routing to /calendar — the design's internal booking modal. Lives in
+  // this header banner because it's the action bar's natural sibling; can be
+  // hoisted later if other pages need it.
+  const [rdvOpen, setRdvOpen] = useState(false);
 
   const statusMutation = useMutation({
     mutationFn: async (next: ProspectStatus) => {
@@ -361,13 +367,14 @@ function HeaderBanner({
             <MessageSquare className="h-3.5 w-3.5" />
             Démarrer conversation
           </Link>
-          <Link
-            href={`/calendar?prospect_id=${prospect.id}`}
+          <button
+            type="button"
+            onClick={() => setRdvOpen(true)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-card px-3.5 py-2 text-[13px] font-medium text-blue-700 hover:bg-blue-50"
           >
             <Calendar className="h-3.5 w-3.5" />
             Programmer un RDV
-          </Link>
+          </button>
           <button
             onClick={() => setEnrollOpen(true)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-card px-3.5 py-2 text-[13px] font-medium text-blue-700 hover:bg-blue-50"
@@ -458,6 +465,21 @@ function HeaderBanner({
         onConfirm={() => {
           setConfirmDelete(false);
           deleteMutation.mutate();
+        }}
+      />
+
+      <ProspectRdvModal
+        open={rdvOpen}
+        onOpenChange={setRdvOpen}
+        prospect={{
+          id: prospect.id,
+          full_name: prospect.full_name,
+          email: prospect.email,
+        }}
+        onCreated={() => {
+          queryClient.invalidateQueries({
+            queryKey: ["prospect-events", prospect.id],
+          });
         }}
       />
     </Surface>

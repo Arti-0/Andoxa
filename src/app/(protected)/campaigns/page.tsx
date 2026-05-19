@@ -290,16 +290,31 @@ export default function CampaignsPage() {
     { id: "all", label: "Tous", count: counts.all },
   ];
 
+  /**
+   * Builds the API payload from the wizard data. `bdd_id` + refinement
+   * booleans let the server resolve the prospect list — the client only
+   * passes booleans, never raw ids.
+   */
+  const buildCampaignPayload = (data: CreateCampaignPayload, launchNow: boolean) => ({
+    type: mapLinkedInCampaignType(data.type),
+    name: data.name.trim(),
+    bdd_id: data.bdd_id,
+    refine_exclude_contacted: data.refine_exclude_contacted,
+    refine_only_with_phone: data.refine_only_with_phone,
+    refine_exclude_active: data.refine_exclude_active,
+    message_template:
+      data.type === "invitation_only" ? data.invitation_note : data.message,
+    launch_now: launchNow,
+  });
+
   const onDraftCampaign = async (data: CreateCampaignPayload) => {
     try {
-      const payload = await postJson("/api/campaigns/jobs", {
-        type: mapLinkedInCampaignType(data.type),
-        prospect_ids: [] as string[],
-        name: data.name.trim(),
-        launch_now: false,
-      });
+      const payload = await postJson(
+        "/api/campaigns/jobs",
+        buildCampaignPayload(data, false),
+      );
       const createdId = unwrapCreatedEntityId(payload);
-      toast.success("Brouillon enregistré", { description: "Ajoutez des prospects puis lancez la campagne." });
+      toast.success("Brouillon enregistré", { description: "Vous pouvez ajuster avant de lancer." });
       setCreateOpen(false);
       void qc.invalidateQueries({ queryKey: ["campaigns", "jobs", workspaceId] });
       if (createdId) router.push(`/campaigns/${createdId}`);
@@ -310,21 +325,51 @@ export default function CampaignsPage() {
 
   const onCreateCampaign = async (data: CreateCampaignPayload) => {
     try {
-      const payload = await postJson("/api/campaigns/jobs", {
-        type: mapLinkedInCampaignType(data.type),
-        prospect_ids: [] as string[],
-        name: data.name.trim(),
-        launch_now: false,
-      });
+      const payload = await postJson(
+        "/api/campaigns/jobs",
+        buildCampaignPayload(data, true),
+      );
       const createdId = unwrapCreatedEntityId(payload);
-      toast.success("Campagne créée", {
-        description: "Sans prospects, la campagne reste en brouillon jusqu’au prochain assistant.",
-      });
+
+      // The API returns a `skipped` array when prospects were filtered out
+      // (already in an active workflow / campaign). Surface it so the user
+      // doesn't wonder why the count is lower than expected.
+      const payloadRecord = payload as Record<string, unknown> | null;
+      const inner =
+        payloadRecord && typeof payloadRecord === "object" && "data" in payloadRecord
+          ? (payloadRecord["data"] as Record<string, unknown> | undefined)
+          : payloadRecord;
+      const skipped = Array.isArray(
+        (inner as Record<string, unknown> | undefined)?.["skipped"],
+      )
+        ? ((inner as { skipped: { reason?: string }[] }).skipped)
+        : [];
+
+      if (skipped.length > 0) {
+        const byReason = new Map<string, number>();
+        for (const s of skipped) {
+          const r = s.reason ?? "other";
+          byReason.set(r, (byReason.get(r) ?? 0) + 1);
+        }
+        const reasonLabel: Record<string, string> = {
+          in_active_workflow: "déjà dans un parcours",
+          in_active_campaign: "déjà dans une campagne active",
+        };
+        const description = [...byReason.entries()]
+          .map(([r, n]) => `${n} ${reasonLabel[r] ?? r}`)
+          .join(" · ");
+        toast.success("Campagne lancée", {
+          description: `${skipped.length} prospect(s) ignoré(s) : ${description}`,
+        });
+      } else {
+        toast.success("Campagne lancée");
+      }
+
       setCreateOpen(false);
       void qc.invalidateQueries({ queryKey: ["campaigns", "jobs", workspaceId] });
       if (createdId) router.push(`/campaigns/${createdId}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Impossible de créer la campagne");
+      toast.error(err instanceof Error ? err.message : "Impossible de lancer la campagne");
     }
   };
 
@@ -339,14 +384,30 @@ export default function CampaignsPage() {
         scheduled_at = new Date(`${data.scheduleDate}T${data.scheduleTime}:00`).toISOString();
       }
 
+      // bdd_ids[] when the wizard selected a list — server resolves prospects.
+      // Advanced settings (call order, wa follow-up, notify team, duration)
+      // are persisted under the session's metadata for the detail page to
+      // read; the call-sessions table doesn't have dedicated columns yet.
       const payload = await postJson("/api/call-sessions", {
         title: data.name.trim(),
+        description: data.description,
+        bdd_ids: data.bdd_id ? [data.bdd_id] : undefined,
         schedule_mode: data.scheduleMode,
         scheduled_at,
+        metadata: {
+          call_order: data.callOrder ?? "list",
+          wa_followup: data.waFollowup ?? true,
+          notify_team: data.notifyTeam ?? false,
+          duration_minutes: data.durationMinutes ?? 60,
+          refine_exclude_contacted: data.refine_exclude_contacted ?? false,
+          refine_exclude_active: data.refine_exclude_active ?? true,
+        },
       });
 
       const createdId = unwrapCreatedEntityId(payload);
-      toast.success("Session créée");
+      toast.success(
+        data.scheduleMode === "now" ? "Session démarrée" : "Session planifiée",
+      );
       setBookingOpen(false);
       void qc.invalidateQueries({ queryKey: ["campaigns", "sessions", workspaceId] });
       if (createdId) router.push(`/campaigns/sessions/${createdId}`);
