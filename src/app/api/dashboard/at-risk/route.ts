@@ -1,4 +1,5 @@
 import { createApiHandler, Errors } from "@/lib/api";
+import { isMockStatsEnabled, mockDashboardAtRisk } from "@/lib/mock-stats";
 import {
   PROSPECT_STATUS_LABELS,
   type ProspectStatus,
@@ -59,6 +60,7 @@ export const GET = createApiHandler(async (req, ctx): Promise<AtRiskRow[]> => {
     1,
     Math.min(20, Number(url.searchParams.get("limit") ?? 5)),
   );
+  if (isMockStatsEnabled()) return mockDashboardAtRisk(limit);
 
   // Cut-off date for "stale": last_contact (or updated_at fallback) older than
   // (now - minSilence days).

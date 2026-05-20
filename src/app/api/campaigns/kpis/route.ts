@@ -1,4 +1,5 @@
 import { createApiHandler, Errors } from "@/lib/api";
+import { isMockStatsEnabled, mockCampaignKpis } from "@/lib/mock-stats";
 
 /**
  * GET /api/campaigns/kpis?period=7|30|90|all&creators=id1,id2
@@ -79,6 +80,8 @@ export const GET = createApiHandler(async (req, ctx): Promise<KpiResponse> => {
   if (!(["7", "30", "90", "all"] as const).includes(period)) {
     throw Errors.validation({ period: "Must be 7, 30, 90 or all" });
   }
+  if (isMockStatsEnabled()) return mockCampaignKpis(period);
+
   const creatorsParam = url.searchParams.get("creators");
   const creators = creatorsParam ? creatorsParam.split(",").filter(Boolean) : [];
 
@@ -128,20 +131,29 @@ export const GET = createApiHandler(async (req, ctx): Promise<KpiResponse> => {
   let callsQuery = ctx.supabase
     .from("call_session_prospects")
     .select(
-      "created_at, called_at, outcome, call_sessions!inner(organization_id, created_by)",
+      "called_at, outcome, call_sessions!inner(organization_id, created_by, created_at)",
     )
-    .not("outcome", "is", null)
-    .gte("created_at", prevStart.toISOString());
+    .not("outcome", "is", null);
   if (creators.length > 0) {
     callsQuery = callsQuery.in("call_sessions.created_by", creators);
   }
   const { data: callsRaw, error: cErr } = await callsQuery;
   if (cErr) throw Errors.internal("Failed to load calls");
 
-  type CallRow = { created_at: string; called_at: string | null; call_sessions?: { organization_id?: string } | null };
+  type CallRow = {
+    called_at: string | null;
+    call_sessions?: { organization_id?: string; created_at?: string } | null;
+  };
+  const prevStartMs = prevStart.getTime();
   const calls = ((callsRaw ?? []) as unknown as CallRow[])
     .filter((row) => row.call_sessions?.organization_id === ctx.workspaceId)
-    .map((row) => ({ created_at: row.called_at ?? row.created_at }));
+    .map((row) => ({
+      created_at: row.called_at ?? row.call_sessions?.created_at ?? "",
+    }))
+    .filter((row) => {
+      if (!row.created_at) return false;
+      return new Date(row.created_at).getTime() >= prevStartMs;
+    });
 
   // ─── Compose ───────────────────────────────────────────────────────────────
 

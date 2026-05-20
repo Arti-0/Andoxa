@@ -1,4 +1,5 @@
 import { createApiHandler, Errors } from "@/lib/api";
+import { isMockStatsEnabled, mockCampaignJobStats } from "@/lib/mock-stats";
 
 /**
  * GET /api/campaigns/jobs/stats
@@ -23,5 +24,15 @@ export const GET = createApiHandler(async (_req, ctx) => {
     return { items: [] as { job_id: string; accepted: number; replied: number; meetings: number }[] };
   }
 
-  return { items: data ?? [] };
+  const rows = data ?? [];
+  if (isMockStatsEnabled()) {
+    return {
+      items: rows.map((row, i) => ({
+        job_id: row.job_id,
+        ...mockCampaignJobStats(row.accepted ?? 0, i),
+      })),
+    };
+  }
+
+  return { items: rows };
 });

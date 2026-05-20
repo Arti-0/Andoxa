@@ -1,4 +1,5 @@
 import { createApiHandler, Errors } from "@/lib/api";
+import { isMockStatsEnabled, mockDashboardActiveCampaigns } from "@/lib/mock-stats";
 
 /**
  * GET /api/dashboard/active-campaigns
@@ -47,6 +48,7 @@ function inferChannel(def: WorkflowDefinition | null | undefined): ActiveCampaig
 
 export const GET = createApiHandler(async (_req, ctx): Promise<ActiveCampaign[]> => {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
+  if (isMockStatsEnabled()) return mockDashboardActiveCampaigns();
 
   const { data: workflows, error: wfErr } = await ctx.supabase
     .from("workflows")

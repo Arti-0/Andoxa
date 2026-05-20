@@ -76,7 +76,10 @@ function ProtectedLayoutContentInner({ children }: { children: ReactNode }) {
         <DeletedOrganizationBanner />
         <UnipileAccountBanner />
 
-        <main className="flex-1 overflow-auto bg-background relative">
+        <main
+          className="flex-1 overflow-auto bg-background relative"
+          data-screenshot-ready={isInitialized && workspace ? "true" : undefined}
+        >
           {/* Barre de progression discrète en haut du contenu lors d'un rechargement */}
           {isSyncing && (
             <div className="absolute top-0 left-0 z-50 h-1 w-full overflow-hidden bg-primary/10">

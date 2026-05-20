@@ -4,6 +4,7 @@ import {
   type ProspectActivityAction,
 } from "@/lib/prospect-activity";
 import { PROSPECT_STATUS_LABELS } from "@/lib/types/prospects";
+import { isMockStatsEnabled, mockDashboardActivity } from "@/lib/mock-stats";
 
 // Federated activity types come from two sources:
 //   • dashboard-only synthetic events (prospect_added, prospect_imported,
@@ -51,6 +52,7 @@ export const GET = createApiHandler(async (req, ctx): Promise<Activity[]> => {
   if (!ctx.workspaceId) {
     throw Errors.badRequest("Workspace required");
   }
+  if (isMockStatsEnabled()) return mockDashboardActivity();
 
   const url = new URL(req.url);
   const rawScope = (url.searchParams.get("scope") ?? "all").toLowerCase();

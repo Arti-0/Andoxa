@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { logger } from '@/lib/utils/logger';
 import { translateAuthError } from '@/lib/utils/translate-auth-error';
+import { resolveClientAppOrigin } from '@/lib/config/app-url';
 import { toast } from 'sonner';
 
 const MIN_PASSWORD_LEN = 8;
@@ -48,10 +49,7 @@ function isDuplicateSignupError(message: string, code?: string): boolean {
 }
 
 function appPublicOrigin(): string {
-    const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '');
-    if (fromEnv) return fromEnv;
-    if (typeof window !== 'undefined') return window.location.origin;
-    return '';
+    return resolveClientAppOrigin();
 }
 
 async function postUpdatePassword(password: string): Promise<{

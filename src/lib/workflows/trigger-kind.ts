@@ -24,33 +24,40 @@ export function isWorkflowTriggerKind(
 export const WORKFLOW_TRIGGER_KIND_OPTIONS: {
   id: WorkflowTriggerKind;
   label: string;
+  /** Short line under the trigger node on the canvas. */
+  nodeSub: string;
   description: string;
 }[] = [
   {
     id: "manual",
     label: "Manuel",
+    nodeSub: "Lancement depuis vos listes",
     description:
       "Inscription via le bouton ou les listes — le comportement actuel.",
   },
   {
     id: "on_list_add",
     label: "À l’ajout dans une liste",
+    nodeSub: "Prospect ajouté à une liste surveillée",
     description:
       "Quand un prospect entre dans une liste surveillée (automatisation à brancher côté backend).",
   },
   {
     id: "on_tag",
     label: "Sur tag / étiquette",
+    nodeSub: "Quand un tag CRM est appliqué",
     description: "Réservé — déclenchement quand un tag CRM est appliqué.",
   },
   {
     id: "on_status_change",
     label: "Changement d’étape pipeline",
+    nodeSub: "Changement d’étape ou de statut CRM",
     description: "Réservé — quand le statut CRM ou le pipeline change.",
   },
   {
     id: "on_booking",
     label: "Réunion réservée",
+    nodeSub: "Créneau réservé via la page booking",
     description:
       "Quand un prospect réserve un créneau via la page de booking. Un run par (prospect, événement) — un nouveau RDV redéclenche.",
   },

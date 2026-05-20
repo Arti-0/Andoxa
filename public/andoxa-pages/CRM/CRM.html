@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=1440"/>
+<title>Andoxa — CRM</title>
+<link rel="stylesheet" href="colors_and_type.css"/>
+<style>
+  body { margin: 0; font-family: 'Geist','Inter',system-ui,-apple-system,sans-serif; background: #f6f7f9; color: #0f172a; min-width: 1280px; }
+  *, *::before, *::after { box-sizing: border-box; }
+  button { font-family: inherit; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; background-clip: padding-box; border: 2px solid transparent; }
+  ::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="crm-data.jsx"></script>
+<script type="text/babel" src="_andoxa-sidebar.jsx"></script>
+<script type="text/babel" src="crm-shell.jsx"></script>
+<script type="text/babel" src="crm-tab-prospects.jsx"></script>
+<script type="text/babel" src="crm-tab-pipeline.jsx"></script>
+<script type="text/babel" src="crm-tab-listes.jsx"></script>
+
+<script type="text/babel">
+const { useState } = React;
+
+function CrmTabs({ tab, setTab }) {
+  const tabs = [
+    { id: 'prospects', label: 'Prospects', icon: 'users' },
+    { id: 'pipeline',  label: 'Pipeline',  icon: 'columns' },
+    { id: 'listes',    label: 'Listes',    icon: 'list' },
+  ];
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 4,
+      padding: '0 28px', borderBottom: '1px solid #e5e7eb', background: 'white',
+      position: 'sticky', top: 56, zIndex: 20,
+    }}>
+      {tabs.map(t => {
+        const active = t.id === tab;
+        return (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 7,
+            padding: '14px 14px', border: 'none', background: 'transparent',
+            fontSize: 13.5, fontWeight: 500,
+            color: active ? '#0052D9' : '#475569',
+            borderBottom: active ? '2px solid #0052D9' : '2px solid transparent',
+            marginBottom: -1, cursor: 'pointer',
+          }}>
+            <Icon name={t.icon} size={14}/>{t.label}
+          </button>
+        );
+      })}
+      <div style={{ flex: 1 }}/>
+      <button onClick={() => setTab('corbeille')} style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '8px 11px', border: 'none', background: 'transparent',
+        fontSize: 12.5,
+        color: tab === 'corbeille' ? '#0052D9' : '#94a3b8',
+        cursor: 'pointer',
+      }}>
+        <Icon name="trash" size={13}/>Corbeille
+      </button>
+    </div>
+  );
+}
+
+function App() {
+  const [tab, setTab] = useState('prospects');
+  const [listFilter, setListFilter] = useState(null);
+  // Empty / no-extension states are driven by real data in production.
+  // For demo/QA: append ?demo=empty or ?demo=no-extension to the URL.
+  const demo = new URLSearchParams(location.search).get('demo') || 'populated';
+  const isEmpty = demo === 'empty';
+  const extensionMissing = demo === 'no-extension';
+
+  const openProspect = (id) => {
+    // open detailed profile in a new tab
+    window.open('Profil prospect.html?id=' + id, '_blank');
+  };
+
+  const openList = (list) => {
+    setListFilter(list.name);
+    setTab('prospects');
+  };
+
+  return (
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#f6f7f9' }}>
+      <Sidebar active="crm" extensionMissing={extensionMissing}/>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <TopBar title="CRM"/>
+        <CrmTabs tab={tab} setTab={setTab}/>
+        <div style={{ flex: 1 }} data-screen-label={tab}>
+          {tab === 'prospects' && (isEmpty ? <ProspectsEmpty/> : <ProspectsTab onOpenProspect={openProspect} listFilter={listFilter} onListFilter={setListFilter}/>)}
+          {tab === 'pipeline'  && <PipelineTab onOpenProspect={openProspect}/>}
+          {tab === 'listes'    && (isEmpty ? <ListesEmpty/> : <ListesTab onOpenList={openList}/>)}
+          {tab === 'corbeille' && <CorbeilleTab/>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import {
   PROSPECT_STATUS_LABELS,
+  type Prospect,
   type ProspectStatus,
 } from "@/lib/types/prospects";
 
@@ -436,6 +437,12 @@ export function initials(name: string): string {
     .slice(0, 2)
     .map((s) => s[0]?.toUpperCase() ?? "")
     .join("");
+}
+
+export function prospectPhotoFromEnrichment(
+  p: Pick<Prospect, "enrichment_metadata">,
+): string | null {
+  return p.enrichment_metadata?.profile_picture_url ?? null;
 }
 
 export function NameAvatar({

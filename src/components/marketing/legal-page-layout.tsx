@@ -1,8 +1,11 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { FloatingNav, type NavItem } from "@/components/marketing/aceternity/floating-nav";
 import { Footer } from "@/components/marketing/footer";
 import { Container } from "@/components/marketing/ui/container";
 import { Eyebrow } from "@/components/marketing/ui/eyebrow";
+import { ScrollProgress } from "@/components/marketing/ui/scroll-progress";
 
 // English slugs per the route-reconciliation decision.
 export const SITE_NAV: NavItem[] = [
@@ -44,17 +47,30 @@ export function LegalPageLayout({
 }) {
   return (
     <>
+      <ScrollProgress />
       <FloatingNav navItems={SITE_NAV} />
       <main>
-        <section className="border-b border-[var(--border)] pb-12 pt-32 sm:pt-40">
+        <section className="border-b border-[var(--border)] pb-16 pt-32 sm:pt-40">
           <Container>
             <div className="mx-auto max-w-3xl">
               <Eyebrow>Légal</Eyebrow>
-              <h1 className="font-display mt-4 text-4xl text-foreground sm:text-5xl">{title}</h1>
+              <nav
+                aria-label="Fil d'Ariane"
+                className="mt-5 flex items-center gap-1.5 text-[13px] text-muted-foreground"
+              >
+                <Link href="/" className="transition-colors hover:text-foreground">
+                  Accueil
+                </Link>
+                <ChevronRight size={12} strokeWidth={1.8} aria-hidden="true" className="text-muted-foreground/60" />
+                <span aria-current="page" className="text-foreground">
+                  {title}
+                </span>
+              </nav>
+              <h1 className="font-display mt-5 text-4xl text-foreground sm:text-5xl">{title}</h1>
               <p className="mt-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Dernière mise à jour&nbsp;: {updatedOn}
               </p>
-              <p className="mt-5 text-base leading-7 text-muted-foreground">{intro}</p>
+              <p className="mt-5 text-base leading-7 text-muted-foreground sm:text-lg">{intro}</p>
             </div>
           </Container>
         </section>
@@ -68,12 +84,12 @@ export function LegalPageLayout({
                   <p className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                     Sommaire
                   </p>
-                  <ul className="space-y-1.5">
+                  <ul className="space-y-1">
                     {sections.map((s) => (
                       <li key={s.id}>
                         <a
                           href={`#${s.id}`}
-                          className="block rounded-md py-1 text-[13px] text-muted-foreground transition-colors hover:text-[var(--brand-blue)]"
+                          className="block rounded-md px-2 py-1 text-[13px] text-muted-foreground transition-colors hover:bg-[var(--neutral-50)] hover:text-[var(--brand-blue)]"
                         >
                           {s.heading}
                         </a>
@@ -84,16 +100,35 @@ export function LegalPageLayout({
               </aside>
 
               {/* sections */}
-              <div className="min-w-0 space-y-12">
-                {sections.map((s) => (
-                  <section key={s.id} id={s.id} className="scroll-mt-28">
-                    <h2 className="font-display text-xl text-foreground sm:text-2xl">{s.heading}</h2>
-                    <div className="mt-4 space-y-3 text-[15px] leading-7 text-muted-foreground [&_a]:font-medium [&_a]:text-[var(--brand-blue)] [&_a]:underline [&_a]:underline-offset-2">
-                      {s.body}
-                    </div>
-                  </section>
-                ))}
-              </div>
+              <article className="min-w-0 max-w-3xl">
+                <div className="space-y-12">
+                  {sections.map((s) => (
+                    <section key={s.id} id={s.id} className="scroll-mt-28">
+                      <h2 className="font-display text-2xl text-foreground sm:text-3xl">{s.heading}</h2>
+                      <div className="mt-4 space-y-4 text-base leading-7 text-muted-foreground [&_a]:font-medium [&_a]:text-[var(--brand-blue)] [&_a]:underline [&_a]:underline-offset-2 [&_strong]:text-foreground">
+                        {s.body}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+
+                {/* End-of-page contact card */}
+                <aside className="mt-16 rounded-xl border border-[var(--border)] bg-[var(--neutral-50)] p-5">
+                  <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Une question&nbsp;?
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-foreground">
+                    Écrivez-nous à{" "}
+                    <a
+                      href="mailto:contact@andoxa.fr"
+                      className="font-medium text-[var(--brand-blue)] underline underline-offset-2"
+                    >
+                      contact@andoxa.fr
+                    </a>{" "}
+                    — on répond sous 48&nbsp;h ouvrées.
+                  </p>
+                </aside>
+              </article>
             </div>
           </Container>
         </section>

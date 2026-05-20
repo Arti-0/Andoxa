@@ -1,17 +1,19 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { BarChart3, Check, PhoneCall } from "lucide-react";
 import { Container } from "@/components/marketing/ui/container";
 import { Eyebrow } from "@/components/marketing/ui/eyebrow";
 import { LinkedinIcon } from "@/components/marketing/icons/brand-icons";
-import {
-  DashboardMockup,
-  ExtensionMockup,
-  SessionMockup,
-} from "@/components/marketing/mockups/product-mockups";
+import { EmbeddedPage } from "@/components/marketing/ui/embedded-page";
+import { ANDOXA_PAGE } from "@/lib/andoxa-pages";
 import { cn } from "@/lib/utils";
+
+type PersonaVisual =
+  | { kind: "image"; src: string; alt: string; objectPosition?: string }
+  | { kind: "embed"; src: string; alt: string };
 
 type Persona = {
   id: string;
@@ -22,7 +24,7 @@ type Persona = {
   description: string;
   bullets: { title: string; sub: string }[];
   metric: { value: string; label: string };
-  Mockup: React.ComponentType;
+  visual: PersonaVisual;
 };
 
 const PERSONAS: Persona[] = [
@@ -46,7 +48,12 @@ const PERSONAS: Persona[] = [
       { title: "Inbox unifiée", sub: "LinkedIn et WhatsApp dans la même boîte. Plus aucune réponse oubliée entre deux apps." },
     ],
     metric: { value: "×2", label: "prospects contactés par jour, à effort constant" },
-    Mockup: ExtensionMockup,
+    visual: {
+      kind: "image",
+      src: "/screenshots/01-extension-linkedin-profil.png",
+      alt: "Extension Chrome Andoxa active sur un profil LinkedIn",
+      objectPosition: "center top",
+    },
   },
   {
     id: "phone",
@@ -68,7 +75,11 @@ const PERSONAS: Persona[] = [
       { title: "Suivi temps réel par session", sub: "Prospects traités, RDV pris, qualifications, taux de décrochage : tout est tracé." },
     ],
     metric: { value: "1 h/jour", label: "récupérée par SDR sur la prospection téléphonique" },
-    Mockup: SessionMockup,
+    visual: {
+      kind: "embed",
+      src: ANDOXA_PAGE.callSession,
+      alt: "Sessions d'appels Andoxa, queue de prospects prête",
+    },
   },
   {
     id: "head",
@@ -89,7 +100,11 @@ const PERSONAS: Persona[] = [
       { title: "Workflows partagés", sub: "Templates, séquences, automations diffusées en un clic à toute l'équipe." },
     ],
     metric: { value: "0 reporting", label: "manuel, toute la performance équipe en un écran" },
-    Mockup: DashboardMockup,
+    visual: {
+      kind: "embed",
+      src: ANDOXA_PAGE.dashboard,
+      alt: "Tableau de bord Andoxa avec priorités du jour",
+    },
   },
 ];
 
@@ -226,7 +241,22 @@ export function MarketingPersonasSection() {
                   </div>
                 </div>
                 <div className="relative aspect-[16/10] w-full">
-                  <persona.Mockup />
+                  {persona.visual.kind === "embed" ? (
+                    <EmbeddedPage
+                      src={persona.visual.src}
+                      title={persona.visual.alt}
+                      className="h-full w-full"
+                    />
+                  ) : (
+                    <Image
+                      src={persona.visual.src}
+                      alt={persona.visual.alt}
+                      fill
+                      sizes="(min-width: 1024px) 50vw, 100vw"
+                      className="object-cover"
+                      style={{ objectPosition: persona.visual.objectPosition ?? "center" }}
+                    />
+                  )}
                 </div>
               </motion.div>
             </AnimatePresence>

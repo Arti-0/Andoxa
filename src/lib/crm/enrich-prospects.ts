@@ -167,7 +167,31 @@ export async function enrichProspects(
       if (!arr.includes("linkedin")) arr.push("linkedin");
       convsByProspect.set(row.prospect_id, arr);
     }
-    // TODO(future): WhatsApp + Booking once those tables expose prospect_id.
+
+    const { data: waRows } = await supabase
+      .from("prospect_activity")
+      .select("prospect_id")
+      .eq("organization_id", workspaceId)
+      .in("prospect_id", ids)
+      .in("action", ["whatsapp_message_outbound", "whatsapp_message_inbound"]);
+    for (const row of waRows ?? []) {
+      if (!row.prospect_id) continue;
+      const arr = convsByProspect.get(row.prospect_id) ?? [];
+      if (!arr.includes("whatsapp")) arr.push("whatsapp");
+      convsByProspect.set(row.prospect_id, arr);
+    }
+
+    const { data: bookingRows } = await supabase
+      .from("events")
+      .select("prospect_id")
+      .eq("organization_id", workspaceId)
+      .in("prospect_id", ids);
+    for (const row of bookingRows ?? []) {
+      if (!row.prospect_id) continue;
+      const arr = convsByProspect.get(row.prospect_id) ?? [];
+      if (!arr.includes("booking")) arr.push("booking");
+      convsByProspect.set(row.prospect_id, arr);
+    }
   }
 
   /* ---- last activity (CRM-6) -------------------------------------------- */

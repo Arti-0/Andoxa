@@ -1,4 +1,5 @@
 import { createApiHandler, Errors } from "@/lib/api";
+import { isMockStatsEnabled, mockDashboardTopDeals } from "@/lib/mock-stats";
 import {
   PROSPECT_STATUS_LABELS,
   type ProspectStatus,
@@ -71,6 +72,7 @@ export const GET = createApiHandler(async (req, ctx): Promise<TopDealRow[]> => {
     1,
     Math.min(20, Number(url.searchParams.get("limit") ?? 5)),
   );
+  if (isMockStatsEnabled()) return mockDashboardTopDeals(limit);
 
   // Pull a wider candidate set, score in JS, return top `limit`. Querying ~50
   // recent active prospects is cheap and avoids bespoke SQL ranking.

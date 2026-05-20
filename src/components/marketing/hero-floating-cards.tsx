@@ -6,9 +6,14 @@ import { Check, TrendingUp } from "lucide-react";
 import { LinkedinIcon, WhatsappIcon } from "@/components/marketing/icons/brand-icons";
 
 /**
- * Three notification-style mini-cards floating around the hero CTA zone.
- * lg+ only — decorative, aria-hidden.
+ * Three notification-style mini-cards floating around the central CTA zone
+ * of the hero. Visible on lg+ only (would crowd the H1 on mobile).
+ *
+ *  1. WhatsApp ✓ RDV confirmé · Mardi 14h
+ *  2. LinkedIn +12 invitations acceptées
+ *  3. Deal signé · +432 € MRR
  */
+
 type Card = {
   position: string;
   delay: number;
@@ -84,6 +89,7 @@ const CARDS: Card[] = [
 
 export function HeroFloatingCards() {
   const reduce = useReducedMotion();
+
   return (
     <div
       aria-hidden="true"

@@ -107,6 +107,15 @@ export function autoLayoutWorkflow(
   return out;
 }
 
+/** Recompute all canvas positions from the graph (ignores saved pins). */
+export function computeStraightenedLayout(
+  def: WorkflowDefinition,
+): WorkflowCanvasPositions {
+  const positions = autoLayoutWorkflow(def, {});
+  positions.__trigger__ = { x: 0, y: -140 };
+  return positions;
+}
+
 export const CANVAS_LAYOUT_CONSTANTS = {
   NODE_WIDTH,
   VERTICAL_GAP,

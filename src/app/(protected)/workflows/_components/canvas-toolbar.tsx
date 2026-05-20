@@ -7,6 +7,7 @@ import { useReactFlow } from "@xyflow/react";
 import { Icon, ICO } from "./icons";
 import { LaunchButton } from "./launch-button";
 import type { DesignStatus } from "./workflow-mapping";
+import type { WorkflowTriggerKind } from "@/lib/workflows";
 import { cn } from "@/lib/utils";
 
 const STATUS_CHIP: Record<
@@ -40,6 +41,9 @@ const STATUS_CHIP: Record<
 interface CanvasToolbarProps {
   status: DesignStatus;
   isTemplate: boolean;
+  /** Drives whether the manual "Lancer" enrolment button shows — only manual
+   *  triggers need it; the rest auto-enroll via their listener. */
+  triggerKind: WorkflowTriggerKind;
   saving: boolean;
   togglingActive: boolean;
   testing: boolean;
@@ -51,6 +55,7 @@ interface CanvasToolbarProps {
   onLaunch: () => void;
   onOpenRuns: () => void;
   onOpenSettings: () => void;
+  onStraightenLayout?: () => void;
 }
 
 const btnNeutral =
@@ -59,6 +64,7 @@ const btnNeutral =
 export function CanvasToolbar({
   status,
   isTemplate,
+  triggerKind,
   saving,
   togglingActive,
   testing,
@@ -69,6 +75,7 @@ export function CanvasToolbar({
   onLaunch,
   onOpenRuns,
   onOpenSettings,
+  onStraightenLayout,
 }: CanvasToolbarProps) {
   const sc = STATUS_CHIP[status];
   const flow = useReactFlow();
@@ -120,6 +127,21 @@ export function CanvasToolbar({
       <div className="flex items-center gap-1 rounded-lg border border-border bg-muted px-2 py-1">
         <button
           type="button"
+          onClick={() => {
+            onStraightenLayout?.();
+            window.setTimeout(() => {
+              flow.fitView?.({ duration: 280, padding: 0.28 });
+            }, 80);
+          }}
+          title="Réorganiser et aligner le parcours"
+          className="flex min-w-0 cursor-pointer items-center gap-1 border-none bg-transparent px-1.5 py-0.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+        >
+          <Icon size={13} color="currentColor" d={ICO.drag} />
+          Aligner
+        </button>
+        <span className="h-4 w-px bg-border" aria-hidden />
+        <button
+          type="button"
           onClick={() => flow.zoomOut?.({ duration: 150 })}
           className="flex border-none bg-transparent p-px text-muted-foreground hover:text-foreground"
           aria-label="Dézoomer"
@@ -164,19 +186,37 @@ export function CanvasToolbar({
         {saving ? "Enregistrement…" : "Enregistrer"}
       </button>
 
-      <LaunchButton
-        variant="outline"
-        size="md"
-        disabled={!canLaunch}
-        disabledReason={
-          !canLaunch
-            ? "Enregistrez le parcours d'abord pour le lancer."
-            : undefined
-        }
-        onClick={onLaunch}
-      />
+      {/* Manual workflows use "Lancer" as the primary CTA; other triggers
+          auto-enroll and only need Activer / pause. */}
+      {triggerKind === "manual" && status === "active" && (
+        <LaunchButton
+          variant="outline"
+          size="md"
+          disabled={!canLaunch}
+          disabledReason={
+            !canLaunch
+              ? "Enregistrez le parcours d'abord pour le lancer."
+              : undefined
+          }
+          onClick={onLaunch}
+        />
+      )}
 
-      {status !== "active" ? (
+      {triggerKind === "manual" && status !== "active" ? (
+        <LaunchButton
+          variant="primary"
+          size="md"
+          disabled={!canLaunch || togglingActive}
+          disabledReason={
+            !canLaunch
+              ? "Enregistrez le parcours d'abord pour le lancer."
+              : togglingActive
+                ? "Activation en cours…"
+                : undefined
+          }
+          onClick={onLaunch}
+        />
+      ) : status !== "active" ? (
         <button
           type="button"
           onClick={onToggleActive}

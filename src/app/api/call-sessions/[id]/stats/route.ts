@@ -1,5 +1,6 @@
 import { createApiHandler, Errors } from "@/lib/api";
 import { NextRequest } from "next/server";
+import { isMockStatsEnabled, mockCallSessionDetailStats } from "@/lib/mock-stats";
 
 /**
  * GET /api/call-sessions/[id]/stats
@@ -10,6 +11,7 @@ export const GET = createApiHandler(async (req: NextRequest, ctx) => {
   const sessionId = segments[segments.indexOf("call-sessions") + 1];
 
   if (!sessionId || !ctx.workspaceId) throw Errors.notFound("Call session");
+  if (isMockStatsEnabled()) return mockCallSessionDetailStats();
 
   const { data: session } = await ctx.supabase
     .from("call_sessions")

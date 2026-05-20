@@ -14,11 +14,11 @@ import {
   type Connection,
   type Edge,
   type EdgeMarker,
-  type EdgeMouseHandler,
   MarkerType,
   type Node,
   type NodeChange,
   type NodeMouseHandler,
+  type OnReconnect,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -28,8 +28,8 @@ import {
   type WorkflowDefinition,
   type WorkflowCanvasPositions,
   type WorkflowStep,
-  WORKFLOW_TRIGGERS,
-  type WorkflowTemplateTrigger,
+  WORKFLOW_TRIGGER_KIND_OPTIONS,
+  type WorkflowTriggerKind,
 } from "@/lib/workflows";
 import { StepNode } from "./step-node";
 import type { WfNodeType } from "./node-types";
@@ -61,8 +61,9 @@ export type ConnectInfo = {
 interface XyCanvasProps {
   definition: WorkflowDefinition;
   positions?: WorkflowCanvasPositions;
-  /** Optional trigger metadata from the workflow's `metadata.ui.trigger`. */
-  trigger?: WorkflowTemplateTrigger | null;
+  /** Backend trigger kind — drives both the node label and the canvas
+   *  toolbar's "Lancer" gating. Authoritative source for trigger identity. */
+  triggerKind?: WorkflowTriggerKind | null;
   selectedStepId?: string | null;
   readOnly?: boolean;
   onPositionsChange?: (positions: WorkflowCanvasPositions) => void;
@@ -129,30 +130,22 @@ function buildLabel(step: WorkflowStep): string {
   return "Étape";
 }
 
-function defHasGraphPointers(def: WorkflowDefinition): boolean {
-  if (def.entry_step_id) return true;
-  return def.steps.some(
-    (s) =>
-      ("next_id" in s && s.next_id !== undefined) ||
-      (s.type === "condition" &&
-        ((s as { on_true_id?: string }).on_true_id !== undefined ||
-          (s as { on_false_id?: string }).on_false_id !== undefined))
-  );
-}
-
 function buildNodes(
   def: WorkflowDefinition,
   positions: WorkflowCanvasPositions,
   selectedStepId: string | null | undefined,
-  trigger: WorkflowTemplateTrigger | null | undefined
+  triggerKind: WorkflowTriggerKind | null | undefined
 ): Node[] {
   const nodes: Node[] = [];
 
   // Synthetic trigger node at the top — backend doesn't model triggers as
-  // first-class steps, so we render a display-only node above the first real one.
-  const triggerLabel = trigger
-    ? (WORKFLOW_TRIGGERS.find((t) => t.id === trigger)?.label ?? "Déclencheur")
-    : "Déclencheur";
+  // first-class steps, so we render a display-only node above the first real
+  // one. Label comes straight from the trigger_kind option so picking
+  // "Réunion réservée" in the side panel updates the node immediately.
+  const triggerMeta = triggerKind
+    ? WORKFLOW_TRIGGER_KIND_OPTIONS.find((t) => t.id === triggerKind)
+    : undefined;
+  const triggerLabel = triggerMeta?.label ?? "Déclencheur";
   const triggerPos = positions[TRIGGER_NODE_ID] ?? { x: 0, y: -140 };
   nodes.push({
     id: TRIGGER_NODE_ID,
@@ -164,14 +157,25 @@ function buildNodes(
       type: "trigger" as WfNodeType,
       stepId: TRIGGER_NODE_ID,
       label: triggerLabel,
-      sub: trigger ? "Déclencheur configuré" : "À configurer",
-      needsConfig: !trigger,
+      sub: triggerMeta?.nodeSub ?? (triggerKind ? undefined : "À configurer"),
+      needsConfig: !triggerKind,
     },
   });
 
   for (const step of def.steps) {
     const nodeType = STEP_TO_NODE_TYPE[step.type] ?? "end";
     const pos = positions[step.id] ?? { x: 0, y: 0 };
+    const branchConnected =
+      step.type === "condition"
+        ? {
+            true: Boolean(
+              (step as { on_true_id?: string }).on_true_id,
+            ),
+            false: Boolean(
+              (step as { on_false_id?: string }).on_false_id,
+            ),
+          }
+        : undefined;
     nodes.push({
       id: step.id,
       type: "step",
@@ -184,6 +188,7 @@ function buildNodes(
         label: buildLabel(step),
         sub: buildSubtitle(step),
         needsConfig: !isWorkflowStepConfigured(step),
+        branchConnected,
       },
     });
   }
@@ -191,104 +196,138 @@ function buildNodes(
   return nodes;
 }
 
-function buildEdges(
-  def: WorkflowDefinition,
-  trigger: WorkflowTemplateTrigger | null | undefined
-): Edge[] {
+/* ── Edge styling ───────────────────────────────────────────────────────────
+   The base color matches the dot grid (`--workflow-dot-color`) but bumped to
+   slate-500 so connectors read clearly against the bright pane. Hover and
+   selected states are CSS-driven (see `.ws2-root .react-flow__edge` in
+   globals.css) so xyflow's internal `selected` flag controls the visual
+   without us having to rebuild edges. */
+const EDGE_STROKE = "#64748B";
+const EDGE_STROKE_WIDTH = 2;
+const EDGE_INTERACTION_WIDTH = 20; // invisible hit area for easier clicking
+
+function buildEdges(def: WorkflowDefinition): Edge[] {
   const edges: Edge[] = [];
   const marker: EdgeMarker = {
     type: MarkerType.ArrowClosed,
-    width: 16,
-    height: 16,
-    color: "#CBD5E1",
+    width: 18,
+    height: 18,
+    color: EDGE_STROKE,
   };
-  const baseStyle = { stroke: "#CBD5E1", strokeWidth: 1.5 };
+  const baseStyle = { stroke: EDGE_STROKE, strokeWidth: EDGE_STROKE_WIDTH };
+  const baseEdge = {
+    type: "smoothstep" as const,
+    style: baseStyle,
+    markerEnd: marker,
+    interactionWidth: EDGE_INTERACTION_WIDTH,
+    reconnectable: true as const,
+    pathOptions: { borderRadius: 14 },
+  };
 
   // Connect the synthetic trigger to the entry step.
   const entryId = def.entry_step_id ?? def.steps[0]?.id;
   if (entryId) {
     edges.push({
+      ...baseEdge,
       id: `trigger-${entryId}`,
       source: TRIGGER_NODE_ID,
       target: entryId,
-      type: "smoothstep",
-      style: baseStyle,
-      markerEnd: marker,
     });
-  }
-
-  if (!defHasGraphPointers(def)) {
-    // Linear fallback for legacy definitions: connect step[i] → step[i+1].
-    for (let i = 0; i < def.steps.length - 1; i++) {
-      const from = def.steps[i]!;
-      const to = def.steps[i + 1]!;
-      edges.push({
-        id: `${from.id}-seq-${to.id}`,
-        source: from.id,
-        target: to.id,
-        type: "smoothstep",
-        style: baseStyle,
-        markerEnd: marker,
-      });
-    }
-    // Hint that trigger metadata is missing — silenced for now (we just don't draw it).
-    void trigger;
-    return edges;
   }
 
   for (const step of def.steps) {
     if (step.type === "condition") {
       if (step.on_true_id) {
         edges.push({
+          ...baseEdge,
           id: `${step.id}-true`,
           source: step.id,
           sourceHandle: "true",
           target: step.on_true_id,
-          type: "smoothstep",
           label: "Oui",
           labelStyle: {
-            fontSize: 10,
-            fontWeight: 600,
+            fontSize: 11,
+            fontWeight: 700,
             fill: "#065F46",
           },
           labelBgPadding: [6, 3],
           labelBgBorderRadius: 999,
           labelBgStyle: { fill: "#ECFDF5", stroke: "#10B981", strokeWidth: 1 },
-          style: { stroke: "#CBD5E1", strokeWidth: 1.5, strokeDasharray: "5 3" },
-          markerEnd: marker,
+          style: {
+            stroke: "#10B981",
+            strokeWidth: EDGE_STROKE_WIDTH,
+            strokeDasharray: "6 4",
+          },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            width: 18,
+            height: 18,
+            color: "#10B981",
+          },
         });
       }
       if (step.on_false_id) {
         edges.push({
+          ...baseEdge,
           id: `${step.id}-false`,
           source: step.id,
           sourceHandle: "false",
           target: step.on_false_id,
-          type: "smoothstep",
           label: "Non",
           labelStyle: {
-            fontSize: 10,
-            fontWeight: 600,
+            fontSize: 11,
+            fontWeight: 700,
             fill: "#BE123C",
           },
           labelBgPadding: [6, 3],
           labelBgBorderRadius: 999,
           labelBgStyle: { fill: "#FFF1F2", stroke: "#F43F5E", strokeWidth: 1 },
-          style: { stroke: "#CBD5E1", strokeWidth: 1.5, strokeDasharray: "5 3" },
-          markerEnd: marker,
+          style: {
+            stroke: "#F43F5E",
+            strokeWidth: EDGE_STROKE_WIDTH,
+            strokeDasharray: "6 4",
+          },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            width: 18,
+            height: 18,
+            color: "#F43F5E",
+          },
         });
       }
     } else if ("next_id" in step && step.next_id) {
       edges.push({
+        ...baseEdge,
         id: `${step.id}-next`,
         source: step.id,
         target: step.next_id,
-        type: "smoothstep",
-        style: baseStyle,
-        markerEnd: marker,
       });
     }
   }
+
+  // Implicit sequential links for steps without an explicit outgoing edge.
+  const sourcesWithOutgoing = new Set(edges.map((e) => e.source));
+  const targetsWithIncoming = new Set(edges.map((e) => e.target));
+
+  for (let i = 0; i < def.steps.length - 1; i++) {
+    const from = def.steps[i]!;
+    if (from.type === "condition") continue;
+    if ("next_id" in from && from.next_id) continue;
+    if (sourcesWithOutgoing.has(from.id)) continue;
+    const to = def.steps[i + 1]!;
+    if (targetsWithIncoming.has(to.id)) continue;
+    const seqId = `${from.id}-seq-${to.id}`;
+    if (edges.some((e) => e.id === seqId)) continue;
+    edges.push({
+      ...baseEdge,
+      id: seqId,
+      source: from.id,
+      target: to.id,
+    });
+    sourcesWithOutgoing.add(from.id);
+    targetsWithIncoming.add(to.id);
+  }
+
   return edges;
 }
 
@@ -423,7 +462,7 @@ function settleNodes(nodes: Node[], pinnedIds: Set<string>): Node[] {
 function CanvasInner({
   definition,
   positions,
-  trigger,
+  triggerKind,
   selectedStepId,
   readOnly,
   onPositionsChange,
@@ -449,13 +488,10 @@ function CanvasInner({
   }, [positions]);
 
   const initialNodes = useMemo(() => {
-    const built = buildNodes(definition, resolvedPositions, selectedStepId, trigger);
+    const built = buildNodes(definition, resolvedPositions, selectedStepId, triggerKind);
     return settleNodes(built, pinnedIds);
-  }, [definition, resolvedPositions, selectedStepId, trigger, pinnedIds]);
-  const edges = useMemo(
-    () => buildEdges(definition, trigger),
-    [definition, trigger]
-  );
+  }, [definition, resolvedPositions, selectedStepId, triggerKind, pinnedIds]);
+  const edges = useMemo(() => buildEdges(definition), [definition]);
 
   const [nodes, setNodes] = useState<Node[]>(initialNodes);
   useEffect(() => {
@@ -532,19 +568,50 @@ function CanvasInner({
     [onConnect]
   );
 
-  // Click an edge to delete it.
-  const handleEdgeClick: EdgeMouseHandler = useCallback(
-    (event, edge) => {
-      if (readOnly) return;
-      event.stopPropagation();
-      if (!onDisconnect) return;
-      onDisconnect({
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: edge.sourceHandle ?? null,
-      });
+  // Clicking an edge selects it (xyflow handles the visual). We also clear
+  // the parent's selectedStepId so the canvas-wide keyboard-delete listener
+  // doesn't fire on a stale node selection.
+  const handleEdgeClick = useCallback(() => {
+    onSelectStep?.(null);
+  }, [onSelectStep]);
+
+  // Edges are removed via xyflow's built-in delete flow (Delete/Backspace).
+  // We listen for `onEdgesDelete` and forward each removed edge to the parent
+  // so the workflow definition's pointers get cleared.
+  const handleEdgesDelete = useCallback(
+    (removed: Edge[]) => {
+      if (readOnly || !onDisconnect) return;
+      for (const edge of removed) {
+        onDisconnect({
+          source: edge.source,
+          target: edge.target,
+          sourceHandle: edge.sourceHandle ?? null,
+        });
+      }
     },
     [readOnly, onDisconnect]
+  );
+
+  // Drag an existing edge's endpoint to a new node: swap the old pointer for
+  // a new one. Implemented as `disconnect(old) + connect(new)` so the parent
+  // doesn't need new wiring.
+  const handleReconnect: OnReconnect = useCallback(
+    (oldEdge, newConnection) => {
+      if (readOnly) return;
+      if (!newConnection.source || !newConnection.target) return;
+      if (newConnection.source === newConnection.target) return;
+      onDisconnect?.({
+        source: oldEdge.source,
+        target: oldEdge.target,
+        sourceHandle: oldEdge.sourceHandle ?? null,
+      });
+      onConnect?.({
+        source: newConnection.source,
+        target: newConnection.target,
+        sourceHandle: newConnection.sourceHandle ?? null,
+      });
+    },
+    [readOnly, onDisconnect, onConnect]
   );
 
   useEffect(() => {
@@ -563,11 +630,17 @@ function CanvasInner({
         onNodeClick={handleNodeClick}
         onPaneClick={handlePaneClick}
         onConnect={handleConnect}
+        onReconnect={handleReconnect}
         onEdgeClick={handleEdgeClick}
+        onEdgesDelete={handleEdgesDelete}
+        deleteKeyCode={readOnly ? null : ["Delete", "Backspace"]}
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}
         edgesFocusable={!readOnly}
         elementsSelectable
+        edgesReconnectable={!readOnly}
+        connectionRadius={56}
+        snapToGrid={false}
         fitView
         fitViewOptions={{ padding: 0.25, maxZoom: 1.1 }}
         proOptions={{ hideAttribution: true }}
@@ -577,8 +650,8 @@ function CanvasInner({
       >
         <Background
           variant={BackgroundVariant.Dots}
-          gap={24}
-          size={1}
+          gap={22}
+          size={1.6}
           color="var(--workflow-dot-color)"
         />
       </ReactFlow>

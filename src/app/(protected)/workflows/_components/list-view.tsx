@@ -7,13 +7,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Icon, ICO } from "./icons";
+import { WF_NODE_TYPES, type WfNodeType } from "./node-types";
 import {
   WORKFLOW_TEMPLATES,
   type WorkflowTemplate,
 } from "@/lib/workflows";
 import { toastFromApiError } from "@/lib/toast";
 import { LaunchButton } from "./launch-button";
-import type { DesignTag, DesignWorkflowCard } from "./workflow-mapping";
+import type {
+  DesignWorkflowCard,
+  PreviewBranchNode,
+  PreviewNode,
+} from "./workflow-mapping";
 import { cn } from "@/lib/utils";
 
 const STATUS_CFG = {
@@ -22,13 +27,6 @@ const STATUS_CFG = {
   paused: { label: "En pause", bg: "#FFF7ED", color: "#C2410C", dot: "#F97316" },
   error: { label: "Erreur", bg: "#FFF1F2", color: "#BE123C", dot: "#F43F5E" },
 } as const;
-
-const TAG_CFG: Record<DesignTag, { bg: string; color: string }> = {
-  WhatsApp: { bg: "#ECFDF5", color: "#065F46" },
-  LinkedIn: { bg: "#EFF6FF", color: "#0A66C2" },
-  CRM: { bg: "#EFF6FF", color: "#1E3A8A" },
-  IA: { bg: "#F0FDF4", color: "#047857" },
-};
 
 interface UserTemplate {
   id: string;
@@ -176,6 +174,198 @@ function TopBar({
 
 export type { UserTemplate };
 
+function ArrowConnector({ muted = true }: { muted?: boolean }) {
+  return (
+    <svg
+      width={18}
+      height={8}
+      viewBox="0 0 18 8"
+      aria-hidden
+      className={cn(
+        "shrink-0",
+        muted ? "text-muted-foreground/55" : "text-foreground/70",
+      )}
+    >
+      <path
+        d="M0 4 L14 4 M11 1 L14 4 L11 7"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function NodePill({
+  type,
+  size = "md",
+}: {
+  type: WfNodeType;
+  size?: "sm" | "md";
+}) {
+  const cfg = WF_NODE_TYPES[type];
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-[7px] border font-semibold",
+        size === "sm"
+          ? "px-2 py-[3px] text-[10.5px]"
+          : "px-2.5 py-1 text-[11.5px]",
+      )}
+      style={{
+        background: cfg.bg,
+        borderColor: `${cfg.border}55`,
+        color: cfg.color,
+      }}
+    >
+      {cfg.label}
+    </span>
+  );
+}
+
+function EllipsisPill({ size = "md" }: { size?: "sm" | "md" }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center rounded-[7px] border border-border bg-muted/70 font-semibold tracking-wider text-muted-foreground",
+        size === "sm" ? "px-2 py-[3px] text-[10.5px]" : "px-2.5 py-1 text-[11.5px]",
+      )}
+    >
+      …
+    </span>
+  );
+}
+
+function BranchRow({
+  branch,
+  label,
+  labelColor,
+}: {
+  branch: PreviewBranchNode[];
+  label: "oui" | "non";
+  labelColor: string;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span
+        className="shrink-0 text-[9.5px] font-bold uppercase tracking-wider"
+        style={{ color: labelColor }}
+      >
+        {label}
+      </span>
+      <ArrowConnector />
+      {branch.length === 0 ? (
+        <NodePill type="end" size="sm" />
+      ) : (
+        branch.map((n, i) => (
+          <span key={i} className="flex items-center gap-1.5">
+            {n.kind === "ellipsis" ? (
+              <EllipsisPill size="sm" />
+            ) : (
+              <NodePill type={n.type} size="sm" />
+            )}
+            {i < branch.length - 1 && <ArrowConnector />}
+          </span>
+        ))
+      )}
+    </div>
+  );
+}
+
+function WorkflowDiagram({ diagram }: { diagram: PreviewNode[] }) {
+  // We always prepend the trigger node so cards look identical to the canvas.
+  const nodes: PreviewNode[] = [{ kind: "step", type: "trigger" }, ...diagram];
+  return (
+    <div className="rounded-[10px] border border-border bg-muted/40 px-4 py-3.5 dark:bg-muted/25">
+      <div className="flex items-center gap-2 overflow-x-auto">
+        {nodes.map((n, i) => {
+          const last = i === nodes.length - 1;
+          if (n.kind === "ellipsis") {
+            return (
+              <span key={i} className="flex items-center gap-2">
+                <EllipsisPill />
+                {!last && <ArrowConnector />}
+              </span>
+            );
+          }
+          if (n.kind === "step") {
+            return (
+              <span key={i} className="flex items-center gap-2">
+                <NodePill type={n.type} />
+                {!last && <ArrowConnector />}
+              </span>
+            );
+          }
+          // condition: render the diamond pill, then a branching column.
+          return (
+            <span key={i} className="flex items-center gap-2">
+              <NodePill type="condition" />
+              <ArrowConnector />
+              <div className="flex flex-col gap-1.5">
+                <BranchRow
+                  branch={n.trueBranch}
+                  label="oui"
+                  labelColor="#059669"
+                />
+                <BranchRow
+                  branch={n.falseBranch}
+                  label="non"
+                  labelColor="#BE123C"
+                />
+              </div>
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StatusPill({ status }: { status: DesignWorkflowCard["status"] }) {
+  const sc = STATUS_CFG[status];
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold ring-1 ring-black/[0.04] dark:ring-white/10"
+      style={{ background: sc.bg, color: sc.color }}
+    >
+      <span
+        className="size-1.5 rounded-full"
+        style={{ background: sc.dot }}
+      />
+      {sc.label}
+    </span>
+  );
+}
+
+function InlineStats({ stats }: { stats: DesignWorkflowCard["stats"] }) {
+  const items: { label: string; value: number | string }[] = [];
+  if (stats.enrolled !== 0 && stats.enrolled !== "—")
+    items.push({ label: "prospects", value: stats.enrolled });
+  if (stats.replyRate !== "—")
+    items.push({ label: "taux de réponse", value: stats.replyRate });
+  if (stats.conversion !== "—")
+    items.push({ label: "conversion", value: stats.conversion });
+  if (items.length === 0) {
+    return (
+      <span className="text-[12px] italic text-muted-foreground/70">
+        Aucun prospect enrôlé pour l&apos;instant.
+      </span>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+      {items.map((s, i) => (
+        <span key={i} className="text-[12.5px]">
+          <span className="font-bold text-foreground">{s.value}</span>{" "}
+          <span className="text-muted-foreground">{s.label}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function WorkflowCard({
   wf,
   onOpen,
@@ -192,7 +382,6 @@ function WorkflowCard({
       : wf.status === "error"
         ? "Le parcours est en erreur."
         : undefined;
-  const sc = STATUS_CFG[wf.status];
   return (
     <div
       role="button"
@@ -204,93 +393,51 @@ function WorkflowCard({
           onOpen(wf.id);
         }
       }}
-      className="group/card cursor-pointer rounded-[14px] border border-border bg-card px-5 py-[18px] shadow-sm outline-none ring-offset-background transition-all hover:border-primary/45 hover:shadow-md hover:shadow-primary/10 focus-visible:ring-2 focus-visible:ring-ring dark:border-border dark:hover:border-primary/40 dark:hover:shadow-primary/15"
+      className="group/card cursor-pointer rounded-[14px] border border-border bg-card px-6 py-5 shadow-sm outline-none ring-offset-background transition-all hover:border-primary/45 hover:shadow-md hover:shadow-primary/10 focus-visible:ring-2 focus-visible:ring-ring dark:border-border dark:hover:border-primary/40 dark:hover:shadow-primary/15"
     >
-      <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+      {/* Header — name + description (left), status (right). */}
+      <div className="mb-3.5 flex items-start gap-4">
         <div className="min-w-0 flex-1">
-          <div className="mb-1 flex flex-wrap items-center gap-2">
-            <div className="max-w-full truncate text-[14.5px] font-bold text-foreground">
-              {wf.name}
-            </div>
-            <div
-              className="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-black/5 dark:ring-white/10"
-              style={{
-                background: sc.bg,
-                color: sc.color,
-              }}
-            >
-              <div
-                className="size-1 rounded-full"
-                style={{ background: sc.dot }}
-              />
-              {sc.label}
-            </div>
+          <div className="mb-1 truncate text-[16px] font-bold text-foreground">
+            {wf.name}
           </div>
-        </div>
-      </div>
-
-      <div
-        className={cn(
-          "mb-3.5 min-h-[38px] text-[13px] leading-snug text-muted-foreground",
-          !wf.description && "italic",
-          wf.description && "text-foreground/80 dark:text-muted-foreground",
-        )}
-      >
-        {wf.description || "Aucune description."}
-      </div>
-
-      <div className="grid grid-cols-4 gap-0 overflow-hidden rounded-[10px] border border-border bg-muted/45 dark:bg-muted/30">
-        {[
-          { label: "Prospects", value: wf.stats.enrolled },
-          { label: "Taux de réponse", value: wf.stats.replyRate },
-          { label: "Réunions", value: wf.stats.meetings },
-          { label: "Conversion", value: wf.stats.conversion },
-        ].map((s, i) => (
           <div
-            key={i}
             className={cn(
-              "px-3 py-2.5 text-center",
-              i > 0 && "border-l border-border",
+              "text-[13px] leading-snug text-muted-foreground",
+              !wf.description && "italic",
             )}
           >
-            <div className="text-base font-bold tracking-tight text-foreground">
-              {s.value}
-            </div>
-            <div className="mt-px text-[10.5px] font-medium text-muted-foreground">
-              {s.label}
-            </div>
+            {wf.description || "Aucune description."}
           </div>
-        ))}
+        </div>
+        <StatusPill status={wf.status} />
       </div>
 
-      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-1.5">
-          {wf.tags.map((t) => {
-            const tc = TAG_CFG[t];
-            return (
-              <span
-                key={t}
-                style={{
-                  background: tc.bg,
-                  color: tc.color,
-                }}
-                className="rounded px-2 py-0.5 text-[10.5px] font-semibold ring-1 ring-black/[0.06] dark:ring-white/10"
-              >
-                {t}
-              </span>
-            );
-          })}
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-[11px] text-muted-foreground">
+      {/* Diagram preview. */}
+      {wf.diagram.length > 0 || wf.stepCount === 0 ? (
+        <WorkflowDiagram diagram={wf.diagram} />
+      ) : null}
+
+      {/* Footer — inline stats (left), last modified + launch (right). */}
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <InlineStats stats={wf.stats} />
+        <div
+          className="flex items-center gap-3"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="text-[11.5px] text-muted-foreground">
             Modifié {wf.lastModified}
           </span>
-          <LaunchButton
-            variant="outline"
-            disabled={launchDisabled}
-            disabledReason={launchReason}
-            onClick={() => onLaunch(wf.id)}
-          />
+          {/* Manual trigger is the only kind that needs an explicit "Lancer" —
+              the rest auto-enroll from their backend listener. */}
+          {wf.triggerKind === "manual" && (
+            <LaunchButton
+              variant="outline"
+              disabled={launchDisabled}
+              disabledReason={launchReason}
+              onClick={() => onLaunch(wf.id)}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -448,21 +595,21 @@ export function ListView({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
         {loading ? (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(460px,1fr))] gap-3.5">
-            {Array.from({ length: 4 }).map((_, i) => (
+          <div className="mx-auto flex max-w-[1200px] flex-col gap-3.5">
+            {Array.from({ length: 3 }).map((_, i) => (
               <div
                 key={i}
-                className="animate-pulse rounded-[14px] border border-border bg-card p-5"
+                className="animate-pulse rounded-[14px] border border-border bg-card p-6"
               >
-                <div className="mb-3 h-4 w-[60%] rounded bg-muted" />
-                <div className="mb-1.5 h-3 w-full rounded bg-muted" />
-                <div className="mb-6 h-3 w-[80%] rounded bg-muted" />
-                <div className="h-16 rounded-lg bg-muted/80" />
+                <div className="mb-2 h-5 w-[40%] rounded bg-muted" />
+                <div className="mb-4 h-3 w-[70%] rounded bg-muted" />
+                <div className="mb-4 h-5 w-[55%] rounded bg-muted/80" />
+                <div className="h-14 rounded-lg bg-muted/70" />
               </div>
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(460px,1fr))] gap-3.5">
+          <div className="mx-auto flex max-w-[1200px] flex-col gap-3.5">
             {visible.map((wf) => (
               <WorkflowCard
                 key={wf.id}
@@ -472,14 +619,14 @@ export function ListView({
               />
             ))}
             {visible.length === 0 && (
-              <div className="col-span-full py-16 text-center text-sm text-muted-foreground">
+              <div className="py-16 text-center text-sm text-muted-foreground">
                 Aucun workflow dans cette catégorie.
               </div>
             )}
           </div>
         )}
 
-        <div className="mt-5 rounded-[14px] border border-dashed border-primary/35 bg-gradient-to-br from-primary/12 via-background to-muted/40 p-6 dark:border-primary/30 dark:from-primary/15 dark:via-background dark:to-muted/25">
+        <div className="mx-auto mt-5 max-w-[1200px] rounded-[14px] border border-dashed border-primary/35 bg-gradient-to-br from-primary/12 via-background to-muted/40 p-6 dark:border-primary/30 dark:from-primary/15 dark:via-background dark:to-muted/25">
           <div className="flex flex-col items-stretch gap-5 sm:flex-row sm:items-center">
             <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-(--brand-blue) text-white dark:bg-primary dark:text-primary-foreground">
               <Icon size={22} color="currentColor" d={ICO.plus} />

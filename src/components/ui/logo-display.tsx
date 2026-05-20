@@ -1,8 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 
 interface LogoDisplayProps {
   className?: string;
@@ -14,15 +14,12 @@ export function LogoDisplay({ className = "", collapsed }: LogoDisplayProps) {
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
-  // Prevent hydration mismatch by only rendering after mount
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Use resolvedTheme for more reliable theme detection
-  const isDark = resolvedTheme === "dark";
+  const isDark = mounted && resolvedTheme === "dark";
 
-  // Determine which logo to show based on theme
   const logoSrc = isDark
     ? "/assets/logofiles/logo_3.svg"
     : "/assets/logofiles/logo_1.svg";
@@ -44,51 +41,19 @@ export function LogoDisplay({ className = "", collapsed }: LogoDisplayProps) {
         ? "block"
         : "group-data-[collapsible=icon]:hidden";
 
-  // Show nothing during hydration to prevent mismatch
-  if (!mounted) {
-    return (
-      <>
-        <Image
-          src="/assets/logofiles/logo_1.svg"
-          alt="Andoxa Logo"
-          width={80}
-          height={24}
-          className={`h-5 w-auto ${logoClasses} ${className}`}
-          style={{ width: "auto", height: "auto" }}
-          priority
-        />
-        <Image
-          src="/assets/logofiles/logo_mark%201.svg"
-          alt="Andoxa Icon"
-          width={32}
-          height={32}
-          className={`h-8 w-8 ${iconClasses} ${className}`}
-          style={{ width: "auto", height: "auto" }}
-          priority
-        />
-      </>
-    );
-  }
-
   return (
     <>
-      <Image
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
         src={logoSrc}
         alt="Andoxa Logo"
-        width={80}
-        height={24}
-        className={`h-5 w-auto ${logoClasses} ${className}`}
-        style={{ width: "auto", height: "auto" }}
-        priority
+        className={cn("h-5 w-auto", logoClasses, className)}
       />
-      <Image
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
         src={iconSrc}
         alt="Andoxa Icon"
-        width={32}
-        height={32}
-        className={`h-8 w-8 ${iconClasses} ${className}`}
-        style={{ width: "auto", height: "auto" }}
-        priority
+        className={cn("h-8 w-8", iconClasses, className)}
       />
     </>
   );

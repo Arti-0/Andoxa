@@ -8,6 +8,8 @@ import {
   StopIcon,
   ConditionIcon,
   SparklesIcon,
+  WhatsAppLogo,
+  LinkedInLogo,
 } from "./icons";
 
 export type WfNodeType =
@@ -50,7 +52,7 @@ export const WF_NODE_TYPES: Record<WfNodeType, WfNodeConfig> = {
     border: "#10B981",
     color: "#065F46",
     label: "WhatsApp",
-    iconFn: (s = 14) => <Icon size={s} color="#10B981" fill d={ICO.whatsapp} />,
+    iconFn: (s = 18) => <WhatsAppLogo size={s} />,
   },
   wait: {
     bg: "#F5F3FF",
@@ -85,7 +87,7 @@ export const WF_NODE_TYPES: Record<WfNodeType, WfNodeConfig> = {
     border: "#0A66C2",
     color: "#0A66C2",
     label: "LinkedIn",
-    iconFn: (s = 14) => <Icon size={s} color="#0A66C2" d={ICO.linkedin} />,
+    iconFn: (s = 18) => <LinkedInLogo size={s} />,
   },
   ai: {
     bg: "#F0FDF4",

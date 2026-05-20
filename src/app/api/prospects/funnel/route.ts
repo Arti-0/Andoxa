@@ -1,5 +1,6 @@
 import { createApiHandler, Errors } from "../../../../lib/api";
 import { PROSPECT_STATUSES, type ProspectStatus } from "../../../../lib/types/prospects";
+import { isMockStatsEnabled, mockProspectsFunnel } from "@/lib/mock-stats";
 
 /**
  * GET /api/prospects/funnel
@@ -40,6 +41,7 @@ const STAGE_ORDER: ProspectStatus[] = [
 export const GET = createApiHandler(async (_req, ctx) => {
   const workspaceId = ctx.workspaceId;
   if (!workspaceId) throw Errors.badRequest("Workspace required");
+  if (isMockStatsEnabled()) return mockProspectsFunnel();
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();

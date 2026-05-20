@@ -5,7 +5,8 @@ import { CalendarCheck, Database } from "lucide-react";
 import { Eyebrow } from "@/components/marketing/ui/eyebrow";
 import { LinkedinIcon, WhatsappIcon } from "@/components/marketing/icons/brand-icons";
 import { ContainerScroll } from "@/components/marketing/aceternity/container-scroll-animation";
-import { DashboardMockup } from "@/components/marketing/mockups/product-mockups";
+import { EmbeddedPage } from "@/components/marketing/ui/embedded-page";
+import { ANDOXA_PAGE } from "@/lib/andoxa-pages";
 
 const SOURCES = [
   { icon: LinkedinIcon, label: "LinkedIn", tone: "blue" as const },
@@ -76,7 +77,7 @@ export function MarketingSolutionSection() {
         }
       >
         <div className="relative h-full w-full select-none">
-          <DashboardMockup />
+          <EmbeddedPage src={ANDOXA_PAGE.dashboard} title="" eager className="h-full w-full" />
         </div>
       </ContainerScroll>
     </div>

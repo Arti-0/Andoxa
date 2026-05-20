@@ -7,11 +7,32 @@ import {
 } from "../../../lib/api";
 import { invalidate } from "@/lib/cache/redis";
 import { enrichProspects } from "../../../lib/crm/enrich-prospects";
+import { isMockStatsEnabled, mockProspectsTotal } from "@/lib/mock-stats";
 import type { Prospect } from "../../../lib/types/prospects";
 
 /** Retire % et _ pour un fallback ilike sans caractères joker utilisateur */
 function sanitizeIlikeTerm(raw: string): string {
   return raw.trim().replace(/[%_]/g, " ");
+}
+
+function shouldMockProspectsTotal(params: Record<string, string | undefined>): boolean {
+  return (
+    !params.ids &&
+    !params.search?.trim() &&
+    !params.status &&
+    !params.source &&
+    !params.bdd_id
+  );
+}
+
+function resolveTotal(
+  params: Record<string, string | undefined>,
+  count: number,
+): number {
+  if (isMockStatsEnabled() && shouldMockProspectsTotal(params)) {
+    return mockProspectsTotal();
+  }
+  return count;
 }
 
 /**
@@ -86,7 +107,10 @@ export const GET = createApiHandler(async (req, ctx) => {
     if (!rpcError && rpcResult && typeof rpcResult === "object" && "items" in rpcResult) {
       const parsed = rpcResult as { items: unknown[]; total: number };
       const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
-      const total = typeof parsed.total === "number" ? parsed.total : 0;
+      const total = resolveTotal(
+        params,
+        typeof parsed.total === "number" ? parsed.total : 0,
+      );
       const enriched = await enrichProspects(
         ctx.supabase,
         workspaceId,
@@ -141,7 +165,7 @@ export const GET = createApiHandler(async (req, ctx) => {
 
     return {
       items: enriched,
-      total: count || 0,
+      total: resolveTotal(params, count || 0),
       page,
       pageSize,
       hasMore: (count || 0) > offset + pageSize,
@@ -180,7 +204,7 @@ export const GET = createApiHandler(async (req, ctx) => {
 
   return {
     items: enriched,
-    total: count || 0,
+    total: resolveTotal(params, count || 0),
     page,
     pageSize,
     hasMore: (count || 0) > offset + pageSize,

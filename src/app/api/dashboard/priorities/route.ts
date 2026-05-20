@@ -1,4 +1,5 @@
 import { createApiHandler, Errors } from "@/lib/api";
+import { isMockStatsEnabled, mockDashboardPriorities } from "@/lib/mock-stats";
 
 /**
  * GET /api/dashboard/priorities
@@ -50,6 +51,7 @@ function formatHourMinute(iso: string): string {
 
 export const GET = createApiHandler(async (_req, ctx): Promise<PrioritiesPayload> => {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
+  if (isMockStatsEnabled()) return mockDashboardPriorities();
 
   const { startIso: todayStartIso, endIso: todayEndIso } = startOfTodayLocalIso();
   const sevenDaysAgo = daysAgoIso(7);

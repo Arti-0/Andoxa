@@ -18,7 +18,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { NameAvatar, StatusPill, SourcePill } from "./crm-shared";
+import { NameAvatar, StatusPill, SourcePill, prospectPhotoFromEnrichment } from "./crm-shared";
 import type { Prospect } from "@/lib/types/prospects";
 
 export function CorbeilleTab({
@@ -152,7 +152,11 @@ export function CorbeilleTab({
                   >
                     <td className="px-4 py-3 align-middle">
                       <div className="flex items-center gap-2.5">
-                        <NameAvatar name={p.full_name ?? "?"} size={32} />
+                        <NameAvatar
+                          name={p.full_name ?? "?"}
+                          size={32}
+                          photo={prospectPhotoFromEnrichment(p)}
+                        />
                         <div className="min-w-0">
                           <div className="truncate font-medium">
                             {p.full_name ?? "Sans nom"}

@@ -4,7 +4,16 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useWorkspace } from "@/lib/workspace";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
     getUserOrganizations,
     type Organization,
@@ -18,17 +27,24 @@ import {
     Mail,
     Building2,
     Camera,
+    Users,
+    Plus,
+    MoreHorizontal,
+    Trash2,
+    Send,
+    ArrowUpRight,
+    Zap,
+    CheckCircle2,
+    Upload,
+    ChevronDown,
+    User as UserIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import {
-    SettingsCard,
-    settingsFieldClass,
-    settingsLabelClass,
-    settingsSaveButtonClass,
-} from "@/components/settings/settings-card";
+import { settingsLabelClass, SettingsCard } from "./settings-card";
 import { PLAN_DISPLAY, PLAN_DISPLAY_FALLBACK, STATUS_DISPLAY } from "@/lib/billing/display";
 import { cn } from "@/lib/utils";
 import { uploadOrgLogo } from "@/lib/organizations/upload-logo";
+import { OrganizationInviteModal } from "./organization-invite-modal";
 
 interface Member {
     id: string;
@@ -48,10 +64,31 @@ interface PendingInvitation {
     status: "pending" | "joined" | "expired";
 }
 
-const ROLE_LABELS: Record<string, string> = {
-    owner: "Propriétaire",
-    admin: "Administrateur",
-    member: "Membre",
+const ROLE_META: Record<
+    string,
+    {
+        label: string;
+        Icon: typeof Crown;
+        badgeClass: string;
+    }
+> = {
+    owner: {
+        label: "Propriétaire",
+        Icon: Crown,
+        badgeClass:
+            "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-400",
+    },
+    admin: {
+        label: "Admin",
+        Icon: ShieldCheck,
+        badgeClass:
+            "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400",
+    },
+    member: {
+        label: "Membre",
+        Icon: Shield,
+        badgeClass: "border-border bg-card text-muted-foreground",
+    },
 };
 
 const PLAN_LABELS: Record<string, string> = {
@@ -62,55 +99,132 @@ const PLAN_LABELS: Record<string, string> = {
     demo: "Démo",
 };
 
-const ROLE_ICONS: Record<string, typeof Crown> = {
-    owner: Crown,
-    admin: ShieldCheck,
-    member: Shield,
-};
+const ORG_COLORS = [
+    "#0052D9",
+    "#FF6700",
+    "#0EA5E9",
+    "#10B981",
+    "#8B5CF6",
+    "#EF4444",
+    "#F59E0B",
+    "#64748B",
+];
 
-const selectClass = cn(
-    settingsFieldClass,
-    "h-10 cursor-pointer appearance-auto bg-zinc-50 py-2 dark:bg-black"
-);
+function RoleBadge({ role }: { role: string }) {
+    const meta = ROLE_META[role] ?? ROLE_META.member;
+    const Icon = meta.Icon;
+    return (
+        <Badge variant="outline" className={cn("gap-1", meta.badgeClass)}>
+            <Icon className="size-3" />
+            {meta.label}
+        </Badge>
+    );
+}
 
-/** Compact role picker vs wide e-mail field in invite row */
-const inviteRoleSelectClass = cn(
-    settingsFieldClass,
-    "h-10 w-full cursor-pointer appearance-auto bg-zinc-50 py-1.5 pl-2.5 pr-7 text-sm dark:bg-black sm:w-[10.5rem] sm:shrink-0 sm:grow-0"
-);
+function timeAgo(iso: string): string {
+    const ms = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(ms / 60_000);
+    if (mins < 1) return "à l'instant";
+    if (mins < 60) return `il y a ${mins} min`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `il y a ${hours} h`;
+    const days = Math.floor(hours / 24);
+    if (days < 2) return "hier";
+    return `il y a ${days} jours`;
+}
 
 export function OrganizationSettingsSection({
     onSwitch,
 }: {
     onSwitch?: () => void;
 }) {
-    const { user, workspace, workspaceId, isOwner, switchWorkspace, patchWorkspace, refresh } =
-        useWorkspace();
+    const {
+        user,
+        workspace,
+        workspaceId,
+        isOwner,
+        switchWorkspace,
+        patchWorkspace,
+        refresh,
+    } = useWorkspace();
+
     const [orgs, setOrgs] = useState<Organization[]>([]);
     const [loadingOrgs, setLoadingOrgs] = useState(false);
     const [orgsError, setOrgsError] = useState<string | null>(null);
-    const [inviteEmail, setInviteEmail] = useState("");
-    const [inviteRole, setInviteRole] = useState<"member" | "admin">("member");
-    const [inviteEmailLoading, setInviteEmailLoading] = useState(false);
-    const [inviteError, setInviteError] = useState<string | null>(null);
-    const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
 
     const [orgNameInput, setOrgNameInput] = useState("");
     const [orgNameSaving, setOrgNameSaving] = useState(false);
+    const [orgNameDirty, setOrgNameDirty] = useState(false);
+    const [savedFlash, setSavedFlash] = useState(false);
 
     const [members, setMembers] = useState<Member[]>([]);
     const [loadingMembers, setLoadingMembers] = useState(false);
     const [invitations, setInvitations] = useState<PendingInvitation[]>([]);
     const [loadingInvitations, setLoadingInvitations] = useState(false);
-    const [memberToRemove, setMemberToRemove] = useState<{
-        id: string;
-        name: string;
-    } | null>(null);
 
+    const [inviteOpen, setInviteOpen] = useState(false);
     const [billingLoading, setBillingLoading] = useState(false);
-    const [billingError, setBillingError] = useState<string | null>(null);
     const [logoUploading, setLogoUploading] = useState(false);
+    const [draggingOver, setDraggingOver] = useState(false);
     const logoInputRef = useRef<HTMLInputElement>(null);
+
+    const [color, setColor] = useState<string>(ORG_COLORS[0]);
+    const [colorPickerOpen, setColorPickerOpen] = useState(false);
+    const colorPickerRef = useRef<HTMLDivElement>(null);
+
+    const [slugInput, setSlugInput] = useState("");
+    const [slugSaving, setSlugSaving] = useState(false);
+
+    const currentSlug =
+        ((workspace as { slug?: string | null } | null | undefined)?.slug as
+            | string
+            | undefined) ?? null;
+
+    useEffect(() => {
+        if (currentSlug != null) setSlugInput(currentSlug);
+    }, [currentSlug]);
+
+    // Hydrate color from localStorage per workspace.
+    useEffect(() => {
+        if (!workspaceId) return;
+        try {
+            const stored = window.localStorage.getItem(
+                `andoxa.org-color.${workspaceId}`
+            );
+            if (stored && ORG_COLORS.includes(stored)) setColor(stored);
+            else setColor(ORG_COLORS[0]);
+        } catch {
+            // ignore
+        }
+    }, [workspaceId]);
+
+    useEffect(() => {
+        if (!colorPickerOpen) return;
+        const onDoc = (e: MouseEvent) => {
+            if (
+                colorPickerRef.current &&
+                !colorPickerRef.current.contains(e.target as Node)
+            )
+                setColorPickerOpen(false);
+        };
+        document.addEventListener("mousedown", onDoc);
+        return () => document.removeEventListener("mousedown", onDoc);
+    }, [colorPickerOpen]);
+
+    const persistColor = (c: string) => {
+        setColor(c);
+        setColorPickerOpen(false);
+        if (workspaceId) {
+            try {
+                window.localStorage.setItem(
+                    `andoxa.org-color.${workspaceId}`,
+                    c
+                );
+            } catch {
+                // ignore
+            }
+        }
+    };
 
     const loadOrgs = useCallback(async () => {
         if (!user?.id) return;
@@ -142,12 +256,12 @@ export function OrganizationSettingsSection({
         }
     }, [workspaceId]);
 
+    const callerIsAdmin =
+        isOwner ||
+        members.find((m) => m.id === user?.id)?.role === "admin";
+
     const loadInvitations = useCallback(async () => {
-        if (!workspaceId) return;
-        const admin =
-            isOwner ||
-            members.find((m) => m.id === user?.id)?.role === "admin";
-        if (!admin) return;
+        if (!workspaceId || !callerIsAdmin) return;
         setLoadingInvitations(true);
         try {
             const res = await fetch("/api/invitations", {
@@ -162,7 +276,7 @@ export function OrganizationSettingsSection({
         } finally {
             setLoadingInvitations(false);
         }
-    }, [workspaceId, isOwner, members, user?.id]);
+    }, [workspaceId, callerIsAdmin]);
 
     useEffect(() => {
         loadOrgs();
@@ -178,31 +292,143 @@ export function OrganizationSettingsSection({
 
     useEffect(() => {
         setOrgNameInput(workspace?.name ?? "");
+        setOrgNameDirty(false);
     }, [workspace?.name]);
 
-    useEffect(() => {
-        setInviteEmail("");
-        setInviteRole("member");
-        setInviteError(null);
-        setInviteSuccess(null);
-        setMemberToRemove(null);
-    }, [workspaceId]);
+    const initials =
+        (workspace?.name ?? "O")
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((s) => s[0]?.toUpperCase())
+            .join("") || "O";
 
-    const handleInviteByEmail = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!workspaceId || !inviteEmail.trim()) return;
-        setInviteEmailLoading(true);
-        setInviteError(null);
-        setInviteSuccess(null);
+    const handleFile = async (file: File | undefined | null) => {
+        if (!file || !workspaceId || !isOwner) return;
+        if (!file.type.startsWith("image/")) {
+            toast.error("Format non supporté");
+            return;
+        }
+        setLogoUploading(true);
+        try {
+            const logoUrl = await uploadOrgLogo(file, workspaceId);
+            if (!logoUrl) {
+                toast.error("Impossible de télécharger l'image (max 2 Mo)");
+                return;
+            }
+            const res = await fetch(`/api/organizations/${workspaceId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ logo_url: logoUrl }),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error ?? "Erreur");
+            }
+            patchWorkspace({ logo_url: logoUrl });
+            setOrgs((prev) =>
+                prev.map((o) =>
+                    o.id === workspaceId ? { ...o, logo_url: logoUrl } : o
+                )
+            );
+            toast.success("Logo mis à jour");
+            void refresh();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Erreur");
+        } finally {
+            setLogoUploading(false);
+            if (logoInputRef.current) logoInputRef.current.value = "";
+        }
+    };
+
+    const handleRemoveLogo = async () => {
+        if (!workspaceId || !isOwner) return;
+        try {
+            const res = await fetch(`/api/organizations/${workspaceId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ logo_url: null }),
+            });
+            if (!res.ok) throw new Error("Erreur");
+            patchWorkspace({ logo_url: null });
+            toast.success("Logo supprimé");
+        } catch {
+            toast.error("Impossible de supprimer le logo");
+        }
+    };
+
+    const handleSaveOrgName = async () => {
+        const name = orgNameInput.trim();
+        if (!workspaceId || !isOwner || !name || name === workspace?.name)
+            return;
+        setOrgNameSaving(true);
+        try {
+            const res = await fetch(`/api/organizations/${workspaceId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ name }),
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error ?? "Erreur");
+            }
+            setOrgNameDirty(false);
+            setSavedFlash(true);
+            setTimeout(() => setSavedFlash(false), 1500);
+            refresh?.();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Erreur");
+        } finally {
+            setOrgNameSaving(false);
+        }
+    };
+
+    const handleSaveSlug = async () => {
+        if (!workspaceId || !isOwner) return;
+        const next = slugInput.trim().toLowerCase();
+        if (!next || next === currentSlug) return;
+        setSlugSaving(true);
+        try {
+            const res = await fetch(`/api/organizations/${workspaceId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ slug: next }),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error ?? "Erreur slug");
+            }
+            toast.success("URL mise à jour");
+            refresh?.();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Erreur");
+        } finally {
+            setSlugSaving(false);
+        }
+    };
+
+    const handleInvite = async ({
+        email,
+        role,
+    }: {
+        email: string;
+        role: "admin" | "member";
+        message: string;
+    }) => {
+        if (!workspaceId) return;
         try {
             const res = await fetch("/api/invitations/send", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",
                 body: JSON.stringify({
-                    email: inviteEmail.trim(),
+                    email,
                     organization_id: workspaceId,
-                    role: inviteRole,
+                    role,
                 }),
             });
             const json = (await res.json()) as {
@@ -211,22 +437,15 @@ export function OrganizationSettingsSection({
             };
             if (!res.ok || !json.success) {
                 throw new Error(
-                    json.error?.message ?? "Impossible d’envoyer l’invitation"
+                    json.error?.message ?? "Impossible d'envoyer l'invitation"
                 );
             }
-            toast.success("Invitation envoyée par e-mail");
-            setInviteEmail("");
-            setInviteSuccess(
-                "Un e-mail d’invitation a été envoyé. La personne doit suivre le lien puis confirmer son e-mail si elle crée un compte."
-            );
+            toast.success(`Invitation envoyée à ${email}`);
+            setInviteOpen(false);
             loadMembers();
             void loadInvitations();
         } catch (err) {
-            setInviteError(
-                err instanceof Error ? err.message : "Erreur lors de l’invitation"
-            );
-        } finally {
-            setInviteEmailLoading(false);
+            toast.error(err instanceof Error ? err.message : "Erreur");
         }
     };
 
@@ -245,6 +464,14 @@ export function OrganizationSettingsSection({
         } catch (err) {
             toast.error(err instanceof Error ? err.message : "Erreur");
         }
+    };
+
+    const handleResendInvitation = async (inv: PendingInvitation) => {
+        await handleInvite({
+            email: inv.email,
+            role: inv.role as "admin" | "member",
+            message: "",
+        });
     };
 
     const handleSwitch = async (orgId: string) => {
@@ -293,289 +520,558 @@ export function OrganizationSettingsSection({
         }
     };
 
-    const handleSaveOrgName = async () => {
-        const name = orgNameInput.trim();
-        if (!workspaceId || !isOwner || !name || name === workspace?.name)
-            return;
-        setOrgNameSaving(true);
-        try {
-            const res = await fetch(`/api/organizations/${workspaceId}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ name }),
-            });
-            if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.error ?? "Erreur");
-            }
-            toast.success("Nom de l'organisation mis à jour");
-            refresh?.();
-        } catch (err) {
-            toast.error(err instanceof Error ? err.message : "Erreur");
-        } finally {
-            setOrgNameSaving(false);
-        }
-    };
-
-    // URL slug — used in /booking/<org>/<user>. Editable so orgs can pick
-    // their preferred URL fragment; uniqueness enforced by the DB.
-    const currentSlug =
-        ((workspace as { slug?: string | null } | null | undefined)?.slug as
-            | string
-            | undefined) ?? null;
-    const [slugInput, setSlugInput] = useState("");
-    const [slugSaving, setSlugSaving] = useState(false);
-    useEffect(() => {
-        if (currentSlug != null) setSlugInput(currentSlug);
-    }, [currentSlug]);
-
-    const handleSaveSlug = async () => {
-        if (!workspaceId || !isOwner) return;
-        const next = slugInput.trim().toLowerCase();
-        if (!next || next === currentSlug) return;
-        setSlugSaving(true);
-        try {
-            const res = await fetch(`/api/organizations/${workspaceId}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ slug: next }),
-            });
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.error ?? "Erreur slug");
-            }
-            toast.success("URL mise à jour");
-            refresh?.();
-        } catch (err) {
-            toast.error(err instanceof Error ? err.message : "Erreur");
-        } finally {
-            setSlugSaving(false);
-        }
-    };
-
-    const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file || !workspaceId || !isOwner) return;
-        setLogoUploading(true);
-        try {
-            const logoUrl = await uploadOrgLogo(file, workspaceId);
-            if (!logoUrl) {
-                toast.error("Impossible de télécharger l'image (taille max 2 Mo)");
-                return;
-            }
-            const res = await fetch(`/api/organizations/${workspaceId}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ logo_url: logoUrl }),
-            });
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.error ?? "Erreur lors de la mise à jour du logo");
-            }
-            patchWorkspace({ logo_url: logoUrl });
-            setOrgs((prev) =>
-                prev.map((o) =>
-                    o.id === workspaceId ? { ...o, logo_url: logoUrl } : o
-                )
-            );
-            toast.success("Logo mis à jour");
-            void refresh();
-        } catch (err) {
-            toast.error(err instanceof Error ? err.message : "Erreur");
-        } finally {
-            setLogoUploading(false);
-            if (logoInputRef.current) logoInputRef.current.value = "";
-        }
-    };
-
     const handleManageBilling = async () => {
         setBillingLoading(true);
-        setBillingError(null);
         try {
             const res = await fetch("/api/paiements/portal", {
                 method: "POST",
                 credentials: "include",
             });
-            const data = (await res.json()) as { error?: string; url?: string };
+            const data = (await res.json()) as {
+                error?: string;
+                url?: string;
+            };
             if (!res.ok) throw new Error(data.error || "Erreur");
             if (data.url) window.location.href = data.url;
             else throw new Error("URL du portail non reçue");
         } catch (err) {
-            setBillingError(err instanceof Error ? err.message : "Erreur");
+            toast.error(err instanceof Error ? err.message : "Erreur");
         } finally {
             setBillingLoading(false);
         }
     };
 
-    const callerIsAdmin =
-        isOwner ||
-        members.find((m) => m.id === user?.id)?.role === "admin";
-
     const pendingInvites = callerIsAdmin
-        ? invitations.filter((i) => i.status !== "joined")
+        ? invitations.filter((i) => i.status === "pending")
         : [];
-
-    const membersAndInvitesScroll =
-        members.length + pendingInvites.length > 3
-            ? "max-h-[280px] overflow-y-auto pr-1 scrollbar-thin"
-            : undefined;
 
     const planKey = (workspace?.plan ?? "trial").toLowerCase();
     const planDisplay = PLAN_DISPLAY[planKey] ?? PLAN_DISPLAY_FALLBACK;
-    const PlanIconBilling = planDisplay.icon;
     const subscriptionStatusLabel =
         STATUS_DISPLAY[workspace?.subscription_status ?? ""] ??
         workspace?.subscription_status ??
         "—";
 
-    const showEmptyMembersList =
-        !loadingMembers &&
-        members.length === 0 &&
-        pendingInvites.length === 0 &&
-        !(callerIsAdmin && loadingInvitations);
+    const owner = members.find((m) => m.role === "owner");
+    const others = members.filter((m) => m.role !== "owner");
+    const orderedMembers = [owner, ...others].filter(Boolean) as Member[];
 
     return (
-        <SettingsCard
-            title="Organisation"
-            description="Identité, membres, invitations et abonnement"
-            icon={<Building2 />}
-        >
+        <>
+            {/* ── Identity card ─────────────────────────────────────── */}
             {workspaceId && (
-                <div className="space-y-4">
-                    {/* Logo upload */}
-                    <div className="flex items-center gap-4">
-                        <div className="relative">
-                            <Avatar className="h-16 w-16 rounded-xl border">
-                                <AvatarImage
-                                    key={workspace?.logo_url ?? "no-logo"}
-                                    src={workspace?.logo_url ?? undefined}
-                                    alt={workspace?.name ?? "Logo"}
-                                />
-                                <AvatarFallback className="rounded-xl bg-muted">
-                                    <Building2 className="h-7 w-7 text-muted-foreground" />
-                                </AvatarFallback>
-                            </Avatar>
-                            {isOwner && (
-                                <button
-                                    type="button"
-                                    disabled={logoUploading}
-                                    onClick={() => logoInputRef.current?.click()}
-                                    className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border bg-background shadow-sm hover:bg-muted disabled:opacity-50"
-                                    title="Changer le logo"
-                                >
-                                    {logoUploading ? (
-                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                        <Camera className="h-3 w-3" />
-                                    )}
-                                </button>
-                            )}
+                <SettingsCard
+                    title="Identité de l'organisation"
+                    description="Personnalisez l'apparence visible par vos membres et invités."
+                    icon={<Building2 />}
+                >
+                    <div className="flex items-start gap-5">
+                        <div className="shrink-0">
+                            <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={() =>
+                                    !workspace?.logo_url &&
+                                    logoInputRef.current?.click()
+                                }
+                                onDragOver={(e) => {
+                                    e.preventDefault();
+                                    setDraggingOver(true);
+                                }}
+                                onDragLeave={() => setDraggingOver(false)}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    setDraggingOver(false);
+                                    void handleFile(e.dataTransfer.files?.[0]);
+                                }}
+                                className="relative flex size-[104px] items-center justify-center overflow-hidden rounded-[14px] text-3xl font-bold tracking-[-0.02em] text-white transition-all"
+                                style={{
+                                    background: workspace?.logo_url
+                                        ? "transparent"
+                                        : color,
+                                    border: draggingOver
+                                        ? "2px dashed var(--primary)"
+                                        : workspace?.logo_url
+                                          ? "1px solid var(--border)"
+                                          : "2px dashed transparent",
+                                    cursor: workspace?.logo_url
+                                        ? "default"
+                                        : "pointer",
+                                    transform: draggingOver
+                                        ? "scale(1.02)"
+                                        : "scale(1)",
+                                }}
+                            >
+                                {workspace?.logo_url ? (
+                                    <Avatar className="size-full rounded-[14px]">
+                                        <AvatarImage
+                                            key={workspace.logo_url}
+                                            src={workspace.logo_url}
+                                            alt={workspace.name}
+                                            className="object-cover"
+                                        />
+                                        <AvatarFallback className="rounded-[14px] bg-muted text-3xl font-bold text-foreground">
+                                            {initials}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                ) : (
+                                    <span>{initials}</span>
+                                )}
+                                {draggingOver && !workspace?.logo_url ? (
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black/35">
+                                        <Upload className="size-5" />
+                                    </div>
+                                ) : null}
+                                {logoUploading ? (
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                                        <Loader2 className="size-5 animate-spin" />
+                                    </div>
+                                ) : null}
+                            </div>
+                            <input
+                                ref={logoInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) =>
+                                    void handleFile(e.target.files?.[0])
+                                }
+                            />
                         </div>
-                        <div>
-                            <p className="text-sm font-medium">{workspace?.name}</p>
-                            {isOwner && (
-                                <p className="text-xs text-muted-foreground">
-                                    Cliquez sur l&apos;icône pour changer le logo
-                                </p>
-                            )}
+
+                        <div className="min-w-0 flex-1">
+                            <div className="mb-3 flex flex-wrap items-center gap-2">
+                                {isOwner ? (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                            logoInputRef.current?.click()
+                                        }
+                                        className="gap-1.5"
+                                    >
+                                        <Upload className="size-3.5" />
+                                        {workspace?.logo_url
+                                            ? "Changer la photo"
+                                            : "Téléverser une photo"}
+                                    </Button>
+                                ) : null}
+                                {workspace?.logo_url && isOwner ? (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => void handleRemoveLogo()}
+                                        className="gap-1.5"
+                                    >
+                                        <Trash2 className="size-3.5" />
+                                        Supprimer
+                                    </Button>
+                                ) : null}
+                                {!workspace?.logo_url && isOwner ? (
+                                    <div
+                                        ref={colorPickerRef}
+                                        className="relative"
+                                    >
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() =>
+                                                setColorPickerOpen((o) => !o)
+                                            }
+                                            className="gap-1.5"
+                                        >
+                                            <span
+                                                className="size-3 rounded-[4px] border border-black/15"
+                                                style={{ background: color }}
+                                            />
+                                            Couleur
+                                            <ChevronDown className="size-3" />
+                                        </Button>
+                                        {colorPickerOpen ? (
+                                            <div className="absolute left-0 top-[calc(100%+6px)] z-50 rounded-[10px] border border-border bg-popover p-2.5 shadow-lg">
+                                                <div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                                                    Palette
+                                                </div>
+                                                <div className="grid grid-cols-4 gap-1.5">
+                                                    {ORG_COLORS.map((c) => (
+                                                        <button
+                                                            key={c}
+                                                            type="button"
+                                                            onClick={() =>
+                                                                persistColor(c)
+                                                            }
+                                                            title={c}
+                                                            className="size-[30px] rounded-[8px] transition-transform hover:scale-110"
+                                                            style={{
+                                                                background: c,
+                                                                border:
+                                                                    color === c
+                                                                        ? "2px solid var(--foreground)"
+                                                                        : "2px solid transparent",
+                                                                boxShadow:
+                                                                    color === c
+                                                                        ? "0 0 0 1px var(--background) inset"
+                                                                        : "none",
+                                                            }}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                ) : null}
+                            </div>
+                            <p className="text-[12.5px] leading-[1.5] text-muted-foreground">
+                                PNG, JPG ou SVG — 2&nbsp;Mo max. Glissez-déposez
+                                ou cliquez. À défaut de photo, les initiales{" "}
+                                <strong className="text-foreground">
+                                    {initials}
+                                </strong>{" "}
+                                seront affichées sur la couleur choisie.
+                            </p>
                         </div>
-                        <input
-                            ref={logoInputRef}
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => void handleLogoChange(e)}
-                        />
                     </div>
 
-                    <Label className={settingsLabelClass}>
-                        Nom de l&apos;organisation
-                    </Label>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <div className="h-px bg-border" />
+
+                    <div className="space-y-1.5">
+                        <Label className={settingsLabelClass}>
+                            Nom de l&apos;organisation
+                        </Label>
                         <Input
                             value={orgNameInput}
-                            onChange={(e) => setOrgNameInput(e.target.value)}
-                            onBlur={() =>
-                                isOwner &&
-                                orgNameInput.trim() !== workspace?.name &&
-                                void handleSaveOrgName()
-                            }
+                            onChange={(e) => {
+                                setOrgNameInput(e.target.value);
+                                setOrgNameDirty(
+                                    e.target.value.trim() !== workspace?.name
+                                );
+                            }}
                             disabled={!isOwner}
-                            placeholder="Nom de l'organisation"
-                            className={cn(settingsFieldClass, "flex-1")}
+                            placeholder="Ex. Andoxa SAS"
                         />
-                        {isOwner &&
-                            orgNameInput.trim() !== workspace?.name && (
-                                <button
-                                    type="button"
-                                    onClick={handleSaveOrgName}
-                                    disabled={orgNameSaving}
-                                    className={settingsSaveButtonClass}
-                                >
-                                    {orgNameSaving
-                                        ? "Enregistrement…"
-                                        : "Enregistrer"}
-                                </button>
-                            )}
                     </div>
 
-                    {/* URL slug — used in /booking/<org>/<user> public links. */}
-                    <Label className={settingsLabelClass}>
-                        URL de l&apos;organisation
-                    </Label>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <div className="flex flex-1 items-center rounded-md border bg-zinc-50 px-3 py-2 text-sm dark:bg-black">
-                            <span className="text-muted-foreground">
-                                andoxa.fr/booking/
-                            </span>
-                            <input
-                                type="text"
-                                value={slugInput}
-                                onChange={(e) =>
-                                    setSlugInput(
-                                        e.target.value
-                                            .toLowerCase()
-                                            .replace(/[^a-z0-9-]/g, "-"),
-                                    )
-                                }
-                                disabled={!isOwner}
-                                maxLength={40}
-                                className="flex-1 border-0 bg-transparent p-0 text-foreground outline-none disabled:cursor-not-allowed"
-                                placeholder="mon-orga"
-                            />
-                            <span className="text-muted-foreground">/&lt;user&gt;</span>
+                    {(orgNameDirty || savedFlash) && (
+                        <div className="flex items-center gap-2.5">
+                            {savedFlash ? (
+                                <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-emerald-600 dark:text-emerald-400">
+                                    <CheckCircle2 className="size-3.5" />
+                                    Enregistré
+                                </span>
+                            ) : (
+                                <>
+                                    <span className="text-[13px] text-muted-foreground">
+                                        Modifications non enregistrées
+                                    </span>
+                                    <div className="ml-auto flex gap-2">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                                setOrgNameInput(
+                                                    workspace?.name ?? ""
+                                                );
+                                                setOrgNameDirty(false);
+                                            }}
+                                        >
+                                            Annuler
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            onClick={handleSaveOrgName}
+                                            disabled={orgNameSaving}
+                                        >
+                                            {orgNameSaving
+                                                ? "Enregistrement…"
+                                                : "Enregistrer"}
+                                        </Button>
+                                    </div>
+                                </>
+                            )}
                         </div>
-                        {isOwner && slugInput.trim() !== (currentSlug ?? "") && (
-                            <button
-                                type="button"
-                                onClick={handleSaveSlug}
-                                disabled={slugSaving}
-                                className={settingsSaveButtonClass}
-                            >
-                                {slugSaving ? "Enregistrement…" : "Enregistrer"}
-                            </button>
-                        )}
+                    )}
+
+                    <div className="space-y-1.5">
+                        <Label className={settingsLabelClass}>
+                            URL de l&apos;organisation
+                        </Label>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <div className="flex flex-1 items-center rounded-[9px] border border-border bg-muted/50 px-3 py-2 text-sm">
+                                <span className="text-muted-foreground">
+                                    andoxa.fr/booking/
+                                </span>
+                                <input
+                                    type="text"
+                                    value={slugInput}
+                                    onChange={(e) =>
+                                        setSlugInput(
+                                            e.target.value
+                                                .toLowerCase()
+                                                .replace(/[^a-z0-9-]/g, "-")
+                                        )
+                                    }
+                                    disabled={!isOwner}
+                                    maxLength={40}
+                                    className="flex-1 border-0 bg-transparent p-0 text-foreground outline-none disabled:cursor-not-allowed"
+                                    placeholder="mon-orga"
+                                />
+                                <span className="text-muted-foreground">
+                                    /&lt;user&gt;
+                                </span>
+                            </div>
+                            {isOwner &&
+                                slugInput.trim() !== (currentSlug ?? "") && (
+                                    <Button
+                                        size="sm"
+                                        onClick={handleSaveSlug}
+                                        disabled={slugSaving}
+                                    >
+                                        {slugSaving
+                                            ? "Enregistrement…"
+                                            : "Enregistrer"}
+                                    </Button>
+                                )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            2 à 40 caractères, lettres / chiffres / tirets.
+                            Doit être unique sur Andoxa.
+                        </p>
                     </div>
-                    <p className="-mt-1 text-xs text-muted-foreground">
-                        2 à 40 caractères, lettres / chiffres / tirets. Doit
-                        être unique sur Andoxa.
-                    </p>
-                </div>
+                </SettingsCard>
             )}
 
-            <div className="space-y-2">
-                <Label className={settingsLabelClass}>
-                    Changer d&apos;organisation
-                </Label>
+            {/* ── Members card ──────────────────────────────────────── */}
+            {workspaceId && (
+                <SettingsCard
+                    title={`Membres (${members.length})`}
+                    description="Gérez les accès et les rôles de votre équipe"
+                    icon={<Users />}
+                    action={
+                        callerIsAdmin ? (
+                            <Button
+                                size="sm"
+                                onClick={() => setInviteOpen(true)}
+                                className="gap-1.5"
+                            >
+                                <Plus className="size-3.5" />
+                                Inviter un membre
+                            </Button>
+                        ) : null
+                    }
+                    bodyClassName="p-0 gap-0"
+                >
+                    {loadingMembers && members.length === 0 ? (
+                        <div className="flex items-center gap-2 px-6 py-4 text-sm text-muted-foreground">
+                            <Loader2 className="size-4 animate-spin" />
+                            Chargement…
+                        </div>
+                    ) : orderedMembers.length === 0 &&
+                      pendingInvites.length === 0 ? (
+                        <p className="px-6 py-4 text-sm text-muted-foreground">
+                            Aucun membre
+                        </p>
+                    ) : (
+                        <>
+                            {orderedMembers.map((m, idx) => {
+                                const isSelf = m.id === user?.id;
+                                const isLast =
+                                    idx === orderedMembers.length - 1 &&
+                                    pendingInvites.length === 0;
+                                return (
+                                    <div
+                                        key={m.id}
+                                        className={cn(
+                                            "flex items-center gap-3.5 px-6 py-3.5 transition-colors hover:bg-muted/40",
+                                            !isLast && "border-b border-border"
+                                        )}
+                                    >
+                                        <Avatar className="size-9 shrink-0">
+                                            <AvatarImage
+                                                src={m.avatar_url ?? undefined}
+                                                alt=""
+                                            />
+                                            <AvatarFallback className="text-xs">
+                                                {m.name
+                                                    ?.charAt(0)
+                                                    ?.toUpperCase() ?? "?"}
+                                            </AvatarFallback>
+                                        </Avatar>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="truncate text-sm font-medium">
+                                                    {m.name}
+                                                </span>
+                                                {isSelf ? (
+                                                    <span className="text-[11.5px] text-muted-foreground">
+                                                        (vous)
+                                                    </span>
+                                                ) : null}
+                                            </div>
+                                            <div className="mt-0.5 truncate text-[12.5px] text-muted-foreground">
+                                                {m.email ?? "—"}
+                                            </div>
+                                        </div>
+                                        <RoleBadge role={m.role} />
+                                        {m.role === "owner" ? (
+                                            <span className="size-8" />
+                                        ) : callerIsAdmin && !isSelf ? (
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <button
+                                                        type="button"
+                                                        className="flex size-8 items-center justify-center rounded-[7px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                                                    >
+                                                        <MoreHorizontal className="size-3.5" />
+                                                    </button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent
+                                                    align="end"
+                                                    className="w-56"
+                                                >
+                                                    <DropdownMenuItem
+                                                        onClick={() =>
+                                                            handleChangeRole(
+                                                                m.id,
+                                                                m.role ===
+                                                                    "admin"
+                                                                    ? "member"
+                                                                    : "admin"
+                                                            )
+                                                        }
+                                                    >
+                                                        <ShieldCheck className="size-3.5" />
+                                                        {m.role === "admin"
+                                                            ? "Définir comme Membre"
+                                                            : "Définir comme Admin"}
+                                                    </DropdownMenuItem>
+                                                    {m.email ? (
+                                                        <DropdownMenuItem
+                                                            onClick={() =>
+                                                                void handleInvite(
+                                                                    {
+                                                                        email:
+                                                                            m.email ??
+                                                                            "",
+                                                                        role: m.role as
+                                                                            | "member"
+                                                                            | "admin",
+                                                                        message:
+                                                                            "",
+                                                                    }
+                                                                )
+                                                            }
+                                                        >
+                                                            <Mail className="size-3.5" />
+                                                            Renvoyer un e-mail
+                                                            d&apos;accès
+                                                        </DropdownMenuItem>
+                                                    ) : null}
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem
+                                                        variant="destructive"
+                                                        onClick={() =>
+                                                            void handleRemoveMember(
+                                                                m.id
+                                                            )
+                                                        }
+                                                    >
+                                                        <UserMinus className="size-3.5" />
+                                                        Retirer du workspace
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        ) : (
+                                            <span className="size-8" />
+                                        )}
+                                    </div>
+                                );
+                            })}
+
+                            {pendingInvites.length > 0 ? (
+                                <>
+                                    <div className="flex items-center gap-2 border-t border-border px-6 pb-2 pt-3.5">
+                                        <h4 className="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                                            Invitations en attente
+                                        </h4>
+                                        <span className="text-[11.5px] text-muted-foreground">
+                                            · {pendingInvites.length}
+                                        </span>
+                                    </div>
+                                    {pendingInvites.map((inv) => (
+                                        <div
+                                            key={inv.id}
+                                            className="flex items-center gap-3.5 border-t border-border bg-muted/25 px-6 py-3"
+                                        >
+                                            <div className="flex size-9 shrink-0 items-center justify-center rounded-full border-[1.5px] border-dashed border-border bg-card text-muted-foreground">
+                                                <Mail className="size-3.5" />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="truncate text-[13.5px] font-medium">
+                                                    {inv.email}
+                                                </div>
+                                                <div className="mt-0.5 text-xs text-muted-foreground">
+                                                    Envoyée{" "}
+                                                    {timeAgo(inv.created_at)}{" "}
+                                                    · Rôle :{" "}
+                                                    {ROLE_META[inv.role]
+                                                        ?.label ?? inv.role}
+                                                </div>
+                                            </div>
+                                            <Badge
+                                                variant="outline"
+                                                className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400"
+                                            >
+                                                En attente
+                                            </Badge>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() =>
+                                                    void handleResendInvitation(
+                                                        inv
+                                                    )
+                                                }
+                                                className="gap-1.5"
+                                            >
+                                                <Send className="size-3" />
+                                                Renvoyer
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() =>
+                                                    void handleCancelInvitation(
+                                                        inv.id
+                                                    )
+                                                }
+                                                className="text-muted-foreground"
+                                            >
+                                                Annuler
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </>
+                            ) : callerIsAdmin && loadingInvitations ? (
+                                <div className="flex items-center gap-2 border-t border-border px-6 py-3 text-sm text-muted-foreground">
+                                    <Loader2 className="size-4 animate-spin" />
+                                    Chargement des invitations…
+                                </div>
+                            ) : null}
+                        </>
+                    )}
+                </SettingsCard>
+            )}
+
+            {/* ── Org switcher card ─────────────────────────────────── */}
+            <SettingsCard
+                title="Changer d'organisation"
+                description="Basculez vers une autre organisation à laquelle vous appartenez"
+                icon={<UserIcon />}
+            >
                 {loadingOrgs && orgs.length === 0 ? null : orgsError ? (
-                    <p className="text-sm text-red-600 dark:text-red-400">
-                        {orgsError}
-                    </p>
+                    <p className="text-sm text-destructive">{orgsError}</p>
                 ) : orgs.length === 0 && !loadingOrgs ? (
-                    <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                    <p className="text-sm text-muted-foreground">
                         Aucune organisation
                     </p>
                 ) : (
@@ -586,18 +1082,18 @@ export function OrganizationSettingsSection({
                             return (
                                 <div
                                     key={org.id}
-                                    className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-3 sm:flex-row sm:items-center sm:justify-between dark:border-white/10"
+                                    className="flex flex-col gap-3 rounded-[10px] border border-border p-3 sm:flex-row sm:items-center sm:justify-between"
                                 >
-                                    <div>
-                                        <p className="font-medium text-zinc-900 dark:text-white">
+                                    <div className="min-w-0">
+                                        <p className="truncate font-medium">
                                             {org.name}
-                                            {isDeleted && (
-                                                <span className="ml-2 text-xs text-zinc-500">
+                                            {isDeleted ? (
+                                                <span className="ml-2 text-xs text-muted-foreground">
                                                     (supprimée)
                                                 </span>
-                                            )}
+                                            ) : null}
                                         </p>
-                                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                                        <p className="text-xs text-muted-foreground">
                                             {isActive
                                                 ? "Actif"
                                                 : (PLAN_LABELS[
@@ -608,367 +1104,129 @@ export function OrganizationSettingsSection({
                                         </p>
                                     </div>
                                     {!isActive && (
-                                        <button
-                                            type="button"
-                                            onClick={() => handleSwitch(org.id)}
-                                            className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-100 dark:border-white/10 dark:bg-black dark:text-white dark:hover:bg-zinc-900"
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() =>
+                                                void handleSwitch(org.id)
+                                            }
                                         >
                                             Activer
-                                        </button>
+                                        </Button>
                                     )}
                                 </div>
                             );
                         })}
                     </div>
                 )}
-            </div>
+            </SettingsCard>
 
-            {workspaceId && (
-                <div className="space-y-2">
-                    <Label className={settingsLabelClass}>
-                        Membres ({members.length})
-                    </Label>
-                    {memberToRemove && (
-                        <div className="flex flex-col gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 sm:flex-row sm:items-center sm:justify-between">
-                            <p className="text-sm text-zinc-800 dark:text-zinc-200">
-                                Retirer{" "}
-                                <strong>{memberToRemove.name}</strong> de
-                                l&apos;organisation ?
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setMemberToRemove(null)}
-                                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium dark:border-white/10 dark:bg-zinc-900"
-                                >
-                                    Annuler
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        void handleRemoveMember(
-                                            memberToRemove.id
-                                        );
-                                        setMemberToRemove(null);
-                                    }}
-                                    className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
-                                >
-                                    Retirer
-                                </button>
-                            </div>
+            {/* ── Subscription card ─────────────────────────────────── */}
+            <SettingsCard
+                title="Abonnement"
+                description="Gérez votre plan et votre facturation"
+                icon={<Zap />}
+            >
+                <div className="grid grid-cols-1 gap-4 rounded-[11px] border bg-[color-mix(in_oklab,var(--primary)_4%,var(--card))] p-4 sm:grid-cols-2"
+                     style={{
+                         borderColor:
+                             "color-mix(in oklab, var(--primary) 16%, var(--border))",
+                     }}
+                >
+                    <div>
+                        <div className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                            Plan actuel
                         </div>
-                    )}
-                    {loadingMembers && members.length === 0 ? (
-                        <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
-                            <Loader2 className="h-4 w-4 animate-spin" />{" "}
-                            Chargement…
-                        </div>
-                    ) : showEmptyMembersList ? (
-                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                            Aucun membre
-                        </p>
-                    ) : (
-                        <div
-                            className={cn("space-y-1", membersAndInvitesScroll)}
-                        >
-                            {members.map((m) => {
-                                const Icon = ROLE_ICONS[m.role] ?? Shield;
-                                const isSelf = m.id === user?.id;
-                                return (
-                                    <div
-                                        key={m.id}
-                                        className="flex flex-col gap-2 rounded-md border border-zinc-200 p-2 sm:flex-row sm:items-center dark:border-white/10"
-                                    >
-                                        <Avatar className="h-8 w-8 shrink-0">
-                                            <AvatarImage
-                                                src={m.avatar_url ?? undefined}
-                                                alt=""
-                                            />
-                                            <AvatarFallback className="text-xs font-medium">
-                                                {m.name
-                                                    ?.charAt(0)
-                                                    ?.toUpperCase() ?? "?"}
-                                            </AvatarFallback>
-                                        </Avatar>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="truncate text-sm font-medium text-zinc-900 dark:text-white">
-                                                {m.name}{" "}
-                                                {isSelf && (
-                                                    <span className="text-xs font-normal text-zinc-500">
-                                                        (vous)
-                                                    </span>
-                                                )}
-                                            </p>
-                                            <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
-                                                {m.email ?? "—"}
-                                            </p>
-                                            <div className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
-                                                <Icon className="h-3 w-3" />
-                                                {ROLE_LABELS[m.role] ?? m.role}
-                                            </div>
-                                        </div>
-                                        {callerIsAdmin &&
-                                            !isSelf &&
-                                            m.role !== "owner" && (
-                                                <div className="flex items-center gap-1">
-                                                    <select
-                                                        defaultValue={m.role}
-                                                        onChange={(e) =>
-                                                            handleChangeRole(
-                                                                m.id,
-                                                                e.target.value
-                                                            )
-                                                        }
-                                                        className={cn(
-                                                            selectClass,
-                                                            "max-w-[120px] text-xs"
-                                                        )}
-                                                    >
-                                                        <option value="admin">
-                                                            Admin
-                                                        </option>
-                                                        <option value="member">
-                                                            Membre
-                                                        </option>
-                                                    </select>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            setMemberToRemove({
-                                                                id: m.id,
-                                                                name: m.name,
-                                                            })
-                                                        }
-                                                        className="rounded p-1 text-zinc-500 hover:bg-red-500/10 hover:text-red-600 dark:text-zinc-400"
-                                                        title="Retirer"
-                                                    >
-                                                        <UserMinus className="h-3.5 w-3.5" />
-                                                    </button>
-                                                </div>
-                                            )}
-                                    </div>
-                                );
-                            })}
-                            {callerIsAdmin &&
-                                loadingInvitations &&
-                                pendingInvites.length === 0 && (
-                                    <div className="flex items-center gap-2 py-1 text-sm text-zinc-500 dark:text-zinc-400">
-                                        <Loader2 className="h-4 w-4 animate-spin" />{" "}
-                                        Chargement des invitations…
-                                    </div>
-                                )}
-                            {pendingInvites.map((inv) => {
-                                const isPending = inv.status === "pending";
-                                const isExpired = inv.status === "expired";
-                                const RoleIcon = ROLE_ICONS[inv.role] ?? Shield;
-
-                                return (
-                                    <div
-                                        key={inv.id}
-                                        className={cn(
-                                            "flex flex-col gap-2 rounded-md border p-2 sm:flex-row sm:items-center",
-                                            isPending
-                                                ? "border-amber-200 bg-amber-50/50 dark:border-amber-500/20 dark:bg-amber-500/5"
-                                                : "border-zinc-200/60 bg-zinc-50/50 opacity-60 dark:border-white/5 dark:bg-white/2"
-                                        )}
-                                    >
-                                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-dashed border-zinc-300 bg-zinc-100 dark:border-white/20 dark:bg-zinc-800">
-                                            <Mail className="h-3.5 w-3.5 text-zinc-400 dark:text-zinc-500" />
-                                        </div>
-
-                                        <div className="min-w-0 flex-1">
-                                            <p
-                                                className={cn(
-                                                    "truncate text-sm font-medium",
-                                                    isPending
-                                                        ? "text-zinc-900 dark:text-white"
-                                                        : "text-zinc-500 dark:text-zinc-400"
-                                                )}
-                                            >
-                                                {inv.email}
-                                            </p>
-                                            <div className="mt-0.5 flex items-center gap-2">
-                                                <div className="flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
-                                                    <RoleIcon className="h-3 w-3" />
-                                                    {ROLE_LABELS[inv.role] ??
-                                                        inv.role}
-                                                </div>
-                                                {isPending && (
-                                                    <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
-                                                        En attente
-                                                    </span>
-                                                )}
-                                                {isExpired && (
-                                                    <span className="inline-flex items-center rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 dark:bg-white/5 dark:text-zinc-400">
-                                                        Expirée
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        {isPending && (
-                                            <div className="flex items-center gap-1">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setInviteEmail(inv.email);
-                                                        setInviteRole(
-                                                            inv.role as
-                                                                | "member"
-                                                                | "admin"
-                                                        );
-                                                    }}
-                                                    className="rounded p-1 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-white"
-                                                    title="Pré-remplir le formulaire d'invitation"
-                                                >
-                                                    <Mail className="h-3.5 w-3.5" />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        void handleCancelInvitation(
-                                                            inv.id
-                                                        )
-                                                    }
-                                                    className="rounded p-1 text-zinc-500 hover:bg-red-500/10 hover:text-red-600 dark:text-zinc-400"
-                                                    title="Annuler l'invitation"
-                                                >
-                                                    <UserMinus className="h-3.5 w-3.5" />
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {callerIsAdmin && workspaceId && (
-                <div className="space-y-2 border-t border-zinc-200 pt-4 dark:border-white/10">
-                    <Label
-                        className={cn(
-                            settingsLabelClass,
-                            "flex items-center gap-2"
-                        )}
-                    >
-                        <Mail className="h-4 w-4" />
-                        Inviter par e-mail
-                    </Label>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                        Un e-mail Andoxa avec un lien sécurisé est envoyé : la
-                        personne ouvre le lien, se connecte ou crée un compte
-                        avec la même adresse, puis accepte l&apos;invitation.
-                    </p>
-                    <form
-                        onSubmit={handleInviteByEmail}
-                        className="flex flex-col gap-2"
-                    >
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-stretch">
-                            <Input
-                                type="email"
-                                value={inviteEmail}
-                                onChange={(e) =>
-                                    setInviteEmail(e.target.value)
-                                }
-                                placeholder="collegue@entreprise.com"
-                                className={cn(
-                                    settingsFieldClass,
-                                    "min-h-10 min-w-0 w-full"
-                                )}
-                                autoComplete="off"
-                            />
-                            <select
-                                value={inviteRole}
-                                onChange={(e) =>
-                                    setInviteRole(
-                                        e.target.value as "member" | "admin"
-                                    )
-                                }
-                                className={inviteRoleSelectClass}
-                            >
-                                <option value="member">Membre</option>
-                                <option value="admin">Administrateur</option>
-                            </select>
-                            <button
-                                type="submit"
-                                disabled={
-                                    inviteEmailLoading || !inviteEmail.trim()
-                                }
-                                className={cn(
-                                    "inline-flex w-full shrink-0 items-center justify-center rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800 disabled:pointer-events-none disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-100 sm:w-auto",
-                                    "min-h-10"
-                                )}
-                            >
-                                {inviteEmailLoading ? "Envoi…" : "Inviter"}
-                            </button>
-                        </div>
-                        {inviteError ? (
-                            <p className="text-sm text-red-600 dark:text-red-400">
-                                {inviteError}
-                            </p>
-                        ) : null}
-                        {inviteSuccess ? (
-                            <p className="text-sm text-emerald-600 dark:text-emerald-400">
-                                {inviteSuccess}
-                            </p>
-                        ) : null}
-                    </form>
-                </div>
-            )}
-
-            <div className="space-y-3 border-t border-zinc-200 pt-4 dark:border-white/10">
-                <Label className={settingsLabelClass}>Abonnement</Label>
-                <div className="grid grid-cols-2 gap-2">
-                    <div
-                        className={cn(
-                            "flex items-center gap-2 rounded-lg border px-3 py-2",
-                            planDisplay.accent
-                        )}
-                    >
-                        <PlanIconBilling className="h-4 w-4 shrink-0" />
-                        <div className="min-w-0">
-                            <p className="text-sm font-semibold">
+                        <div className="mt-1.5 flex items-center gap-2">
+                            <span className="text-[22px] font-semibold tracking-[-0.02em]">
                                 {planDisplay.label}
-                            </p>
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                                Plan actuel
-                            </p>
+                            </span>
+                            <Badge
+                                variant="outline"
+                                className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400"
+                            >
+                                <span className="size-1.5 rounded-full bg-emerald-500" />
+                                {subscriptionStatusLabel}
+                            </Badge>
+                        </div>
+                        <div className="mt-1 text-[12.5px] text-muted-foreground">
+                            {members.length} siège
+                            {members.length > 1 ? "s" : ""}
                         </div>
                     </div>
-                    <div className="flex items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 dark:border-white/10">
-                        <div className="min-w-0">
-                            <p className="text-sm font-semibold text-zinc-900 dark:text-white">
-                                {subscriptionStatusLabel}
-                            </p>
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                                Statut
-                            </p>
+                    <div>
+                        <div className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                            Crédits restants
+                        </div>
+                        <div className="mt-1.5 text-base font-medium tracking-[-0.01em]">
+                            {workspace?.credits ?? 0}
+                        </div>
+                        <div className="mt-1 text-[12.5px] text-muted-foreground">
+                            Utilisés pour l&apos;enrichissement
                         </div>
                     </div>
                 </div>
 
-                {isOwner && (
-                    <div className="flex justify-end">
-                        <button
-                            type="button"
+                <div className="flex gap-2">
+                    {isOwner ? (
+                        <Button
+                            variant="outline"
                             onClick={() => void handleManageBilling()}
                             disabled={billingLoading}
-                            className={settingsSaveButtonClass}
+                            className="gap-1.5"
                         >
+                            <ArrowUpRight className="size-3.5" />
                             {billingLoading
                                 ? "Redirection…"
-                                : "Gérer ma facturation"}
-                        </button>
+                                : "Gérer l'abonnement"}
+                        </Button>
+                    ) : null}
+                </div>
+
+                {/* Upsell — show only if not on top plan */}
+                {planKey !== "team" && planKey !== "custom" ? (
+                    <div className="relative flex items-center gap-3.5 overflow-hidden rounded-[11px] border border-border bg-card p-4">
+                        <div
+                            className="pointer-events-none absolute right-0 top-0 size-[140px]"
+                            style={{
+                                background:
+                                    "radial-gradient(circle at top right, color-mix(in oklab, var(--brand-orange, #FF6700) 18%, transparent), transparent 70%)",
+                            }}
+                        />
+                        <div className="flex size-11 shrink-0 items-center justify-center rounded-[10px] bg-gradient-to-br from-[var(--brand-orange,#FF6700)] to-[var(--brand-blue,#0052D9)] text-white">
+                            <Zap className="size-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold">
+                                    Passez à Team
+                                </span>
+                                <Badge
+                                    variant="outline"
+                                    className="border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-400"
+                                >
+                                    −20% / siège
+                                </Badge>
+                            </div>
+                            <p className="mt-1 text-[12.5px] leading-[1.5] text-muted-foreground">
+                                SSO, audit log, sièges illimités et support
+                                prioritaire pour les équipes en croissance.
+                            </p>
+                        </div>
+                        <Button size="sm" className="gap-1.5">
+                            Comparer
+                            <ArrowUpRight className="size-3" />
+                        </Button>
                     </div>
-                )}
-                {billingError && (
-                    <p className="text-sm text-red-600 dark:text-red-400">
-                        {billingError}
-                    </p>
-                )}
-            </div>
-        </SettingsCard>
+                ) : null}
+            </SettingsCard>
+
+            <OrganizationInviteModal
+                open={inviteOpen}
+                onClose={() => setInviteOpen(false)}
+                onSubmit={handleInvite}
+                organizationName={workspace?.name ?? undefined}
+            />
+        </>
     );
 }

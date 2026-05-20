@@ -1,10 +1,6 @@
-import {
-  createApiHandler,
-  Errors,
-  parseBody,
-  getPagination,
-  getSearchParams,
-} from "../../../lib/api";
+import { createApiHandler, Errors, getPagination, getSearchParams, parseBody } from "@/lib/api";
+import { generateMockCalendarEvents } from "@/lib/mock-stats/calendar-events";
+import { isMockStatsEnabled } from "@/lib/mock-stats";
 import { getValidGoogleAccessToken, createGoogleMeetEvent } from "@/lib/google/calendar";
 import type { Database } from "@/lib/types/supabase";
 
@@ -64,6 +60,33 @@ export const GET = createApiHandler(async (req, ctx) => {
   }
   if (params.end) {
     query = query.lte("end_time", params.end);
+  }
+
+  if (isMockStatsEnabled()) {
+    const rangeStart = params.start ? new Date(params.start) : new Date();
+    const rangeEnd = params.end
+      ? new Date(params.end)
+      : new Date(rangeStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    const { data: membersData } = await ctx.supabase
+      .from("organization_members")
+      .select("user_id")
+      .eq("organization_id", ctx.workspaceId);
+
+    const colleagueIds = (membersData ?? [])
+      .map((m) => m.user_id)
+      .filter((id): id is string => !!id && id !== ctx.userId);
+
+    const items = generateMockCalendarEvents({
+      rangeStart,
+      rangeEnd,
+      orgId: ctx.workspaceId,
+      userId: ctx.userId!,
+      colleagueIds,
+    });
+
+    const paged = items.slice(offset, offset + pageSize);
+    return { items: paged, total: items.length };
   }
 
   // Filter by member (created_by)

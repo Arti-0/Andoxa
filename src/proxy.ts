@@ -5,6 +5,7 @@ import {
     shouldRedirectToOrgInactivePage,
     type OrgDashboardGateRow,
 } from '@/lib/auth/dashboard-entitlement';
+import { resolveAppOrigin } from '@/lib/config/app-url';
 
 type ResponseCookieOptions = Parameters<
     ReturnType<typeof NextResponse.next>['cookies']['set']
@@ -72,16 +73,7 @@ function isOnboardingPath(pathname: string) {
  * Uses NEXT_PUBLIC_APP_URL in production when available.
  */
 function createRedirectUrl(path: string, request: NextRequest): URL {
-    const base =
-        process.env.NEXT_PUBLIC_APP_URL ||
-        (request.headers.get('x-forwarded-host')
-            ? `${request.headers.get('x-forwarded-proto') || 'https'}://${request.headers.get('x-forwarded-host')}`
-            : request.url);
-    const url = new URL(path, base);
-    if (process.env.NODE_ENV === 'development') {
-        url.protocol = 'http:';
-    }
-    return url;
+    return new URL(path, resolveAppOrigin(request));
 }
 
 type OrgRow = {

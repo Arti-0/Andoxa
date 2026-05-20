@@ -60,6 +60,7 @@ import {
   ChannelTooltipDot,
   silenceTier,
   silenceTierClasses,
+  prospectPhotoFromEnrichment,
 } from "./crm-shared";
 import {
   PROSPECT_STATUS_LABELS,
@@ -134,6 +135,10 @@ function channelKindsFor(p: Prospect): string[] {
   return p.linked_chat_id ? ["linkedin"] : [];
 }
 
+function prospectPhoto(p: Prospect): string | null {
+  return prospectPhotoFromEnrichment(p);
+}
+
 /* ============================================================
    Prospects tab
    ============================================================ */
@@ -176,7 +181,7 @@ export function ProspectsTab({
   const { data: prospectsData } = useQuery({
     queryKey: ["prospects-v2", workspaceId, bddFilter, search, sourceFilter],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: "1", pageSize: "100" });
+      const params = new URLSearchParams({ page: "1", pageSize: "150" });
       if (bddFilter) params.set("bdd_id", bddFilter);
       if (search.trim()) params.set("search", search.trim());
       if (sourceFilter.length > 0)
@@ -246,6 +251,7 @@ export function ProspectsTab({
 
   /* ---------- derived ---------- */
   const allProspects = prospectsData?.items ?? [];
+  const totalProspects = prospectsData?.total ?? allProspects.length;
   const counts = useMemo(() => {
     const map = {} as Record<FilterKey, number>;
     for (const f of FILTERS) {
@@ -301,7 +307,7 @@ export function ProspectsTab({
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3 sm:gap-6">
         <div className="min-w-0">
           <p className="m-0 text-[13px] text-muted-foreground">
-            {allProspects.length} prospects ·{" "}
+            {totalProspects} prospects ·{" "}
             <span className="font-medium text-blue-700">{enCours} en cours</span>{" "}
             · {signed} signé{signed > 1 ? "s" : ""} · {lost} perdus
           </p>
@@ -809,7 +815,11 @@ function ProspectRow({
       </td>
       <td className="p-3.5">
         <div className="flex items-center gap-2.5">
-          <NameAvatar name={p.full_name ?? "?"} size={34} />
+          <NameAvatar
+            name={p.full_name ?? "?"}
+            size={34}
+            photo={prospectPhoto(p)}
+          />
           <div className="min-w-0">
             <div className="truncate font-medium">
               {p.full_name ?? "Sans nom"}
@@ -1046,7 +1056,11 @@ function CompactView({
               />
             </div>
             <div className="flex min-w-0 items-center gap-2">
-              <NameAvatar name={p.full_name ?? "?"} size={24} />
+              <NameAvatar
+                name={p.full_name ?? "?"}
+                size={24}
+                photo={prospectPhoto(p)}
+              />
               <span className="whitespace-nowrap font-medium">
                 {p.full_name ?? "Sans nom"}
               </span>

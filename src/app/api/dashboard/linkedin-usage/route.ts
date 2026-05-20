@@ -1,5 +1,6 @@
 import { createApiHandler, Errors } from "@/lib/api";
 import { dailyPeriodKey, weeklyPeriodKey } from "@/lib/campaigns/throttle";
+import { isMockStatsEnabled, mockLinkedInUsage } from "@/lib/mock-stats";
 
 /**
  * GET /api/dashboard/linkedin-usage
@@ -16,6 +17,7 @@ export const GET = createApiHandler(async (_req, ctx) => {
   if (!ctx.workspaceId) {
     throw Errors.badRequest("Workspace required");
   }
+  if (isMockStatsEnabled()) return mockLinkedInUsage();
 
   const startOfDayUtc = new Date();
   startOfDayUtc.setUTCHours(0, 0, 0, 0);

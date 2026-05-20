@@ -5,6 +5,7 @@ import {
   getPagination,
   parseBody,
 } from "../../../lib/api";
+import { isMockStatsEnabled, mockBddRowCounts, mockBddTotal } from "@/lib/mock-stats";
 
 /**
  * GET /api/bdd
@@ -56,27 +57,34 @@ export const GET = createApiHandler(async (req, ctx) => {
     total_count: number | string;
   }>;
 
-  const total = rows[0] != null ? Number(rows[0].total_count) : 0;
+  const items = rows.map((row, index) => {
+    const base = {
+      id: row.id,
+      name: row.name,
+      source: row.source,
+      query: row.query,
+      proprietaire: row.proprietaire,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      prospects_count: Number(row.prospects_count),
+      phones_count: Number(row.phones_count),
+      contacted_count: Number(row.contacted_count ?? 0),
+      rdv_count: Number(row.rdv_count ?? 0),
+      signed_count: Number(row.signed_count ?? 0),
+      delta_7d: Number(row.delta_7d ?? 0),
+      avg_cycle_days:
+        row.avg_cycle_days == null
+          ? null
+          : Math.round(Number(row.avg_cycle_days) * 10) / 10,
+    };
+    return isMockStatsEnabled() ? { ...base, ...mockBddRowCounts(index) } : base;
+  });
 
-  const items = rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    source: row.source,
-    query: row.query,
-    proprietaire: row.proprietaire,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    prospects_count: Number(row.prospects_count),
-    phones_count: Number(row.phones_count),
-    contacted_count: Number(row.contacted_count ?? 0),
-    rdv_count: Number(row.rdv_count ?? 0),
-    signed_count: Number(row.signed_count ?? 0),
-    delta_7d: Number(row.delta_7d ?? 0),
-    avg_cycle_days:
-      row.avg_cycle_days == null
-        ? null
-        : Math.round(Number(row.avg_cycle_days) * 10) / 10,
-  }));
+  const total = isMockStatsEnabled()
+    ? mockBddTotal(items.length)
+    : rows[0] != null
+      ? Number(rows[0].total_count)
+      : 0;
 
   return {
     items,

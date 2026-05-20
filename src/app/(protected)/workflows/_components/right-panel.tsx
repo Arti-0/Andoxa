@@ -8,9 +8,7 @@ import { Icon, ICO } from "./icons";
 import { WF_NODE_TYPES, type WfNodeType } from "./node-types";
 import type { WorkflowStep } from "@/lib/workflows/schema";
 import {
-  WORKFLOW_TRIGGERS,
   WORKFLOW_TRIGGER_KIND_OPTIONS,
-  type WorkflowTemplateTrigger,
   type WorkflowTriggerKind,
 } from "@/lib/workflows";
 import { TRIGGER_NODE_ID } from "./xy-canvas";
@@ -19,11 +17,9 @@ import { cn } from "@/lib/utils";
 interface RightPanelProps {
   selectedId: string;
   step: WorkflowStep | null;
-  trigger: WorkflowTemplateTrigger | null;
   triggerKind: WorkflowTriggerKind;
   onClose: () => void;
   onUpdateStep: (stepId: string, patch: Record<string, unknown>) => void;
-  onUpdateTrigger: (next: WorkflowTemplateTrigger | null) => void;
   onUpdateTriggerKind: (next: WorkflowTriggerKind) => void;
   onDeleteStep: (stepId: string) => void;
   onDuplicateStep: (stepId: string) => void;
@@ -85,7 +81,7 @@ function Toggle({
   );
 }
 
-function TriggerKindForm({
+function TriggerForm({
   triggerKind,
   onUpdate,
 }: {
@@ -93,8 +89,8 @@ function TriggerKindForm({
   onUpdate: (next: WorkflowTriggerKind) => void;
 }) {
   return (
-    <div className="mb-5">
-      <FieldLabel>Type d&apos;automatisation (enregistré en base)</FieldLabel>
+    <div className="mb-3.5">
+      <FieldLabel>Type de déclencheur</FieldLabel>
       <select
         value={triggerKind}
         onChange={(e) => onUpdate(e.target.value as WorkflowTriggerKind)}
@@ -106,48 +102,7 @@ function TriggerKindForm({
           </option>
         ))}
       </select>
-      <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
-        {WORKFLOW_TRIGGER_KIND_OPTIONS.find((t) => t.id === triggerKind)
-          ?.description ?? ""}
-      </p>
     </div>
-  );
-}
-
-function TriggerForm({
-  trigger,
-  onUpdate,
-}: {
-  trigger: WorkflowTemplateTrigger | null;
-  onUpdate: (next: WorkflowTemplateTrigger | null) => void;
-}) {
-  return (
-    <>
-      <div className={sectionTitle}>Configuration du déclencheur</div>
-      <div className="mb-3.5">
-        <FieldLabel>Scénario marketing (métadonnées)</FieldLabel>
-        <select
-          value={trigger ?? ""}
-          onChange={(e) =>
-            onUpdate((e.target.value || null) as WorkflowTemplateTrigger | null)
-          }
-          className="wf-select box-border"
-        >
-          <option value="">Aucun</option>
-          {WORKFLOW_TRIGGERS.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <p className={infoCallout}>
-        Le libellé ci-dessus sert au canvas et à la simulation. Le routage
-        automatique utilisera le <strong className="text-foreground">type d&apos;automatisation</strong>{" "}
-        (champ <code className="text-xs">trigger_kind</code>) une fois les écouteurs branchés côté
-        serveur.
-      </p>
-    </>
   );
 }
 
@@ -413,11 +368,9 @@ function ConditionForm() {
 export function RightPanel({
   selectedId,
   step,
-  trigger,
   triggerKind,
   onClose,
   onUpdateStep,
-  onUpdateTrigger,
   onUpdateTriggerKind,
   onDeleteStep,
   onDuplicateStep,
@@ -430,9 +383,8 @@ export function RightPanel({
       : "end";
   const cfg = WF_NODE_TYPES[nodeType];
   const headline = isTrigger
-    ? trigger
-      ? (WORKFLOW_TRIGGERS.find((t) => t.id === trigger)?.label ?? "Déclencheur")
-      : "Déclencheur"
+    ? (WORKFLOW_TRIGGER_KIND_OPTIONS.find((t) => t.id === triggerKind)?.label ??
+      "Déclencheur")
     : step
       ? step.type === "wait"
         ? "Attendre"
@@ -468,13 +420,7 @@ export function RightPanel({
           {cfg.iconFn(16)}
         </div>
         <div className="min-w-0 flex-1">
-          <div
-            style={{ color: cfg.color }}
-            className="text-[11px] font-bold uppercase tracking-wide"
-          >
-            {cfg.label}
-          </div>
-          <div className="truncate text-[13px] font-semibold text-foreground">
+          <div className="truncate text-sm font-semibold text-foreground">
             {headline}
           </div>
         </div>
@@ -490,13 +436,10 @@ export function RightPanel({
 
       <div className="flex-1 overflow-y-auto p-4">
         {isTrigger ? (
-          <>
-            <TriggerKindForm
-              triggerKind={triggerKind}
-              onUpdate={onUpdateTriggerKind}
-            />
-            <TriggerForm trigger={trigger} onUpdate={onUpdateTrigger} />
-          </>
+          <TriggerForm
+            triggerKind={triggerKind}
+            onUpdate={onUpdateTriggerKind}
+          />
         ) : !step ? (
           <p className="text-sm text-muted-foreground">Étape introuvable.</p>
         ) : step.type === "wait" ? (

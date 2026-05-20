@@ -159,7 +159,7 @@ export function useCalendarEvents(weekStart: Date) {
           // colleague columns should never inherit a teammate's Google calendar
           // (Calendar #3). The current user's own Google calendar still flows
           // through the dedicated `useGoogleCalendarEvents` hook.
-          `/api/events?start=${weekStart.toISOString()}&end=${weekEnd.toISOString()}&per_page=200&source=andoxa`,
+          `/api/events?start=${weekStart.toISOString()}&end=${weekEnd.toISOString()}&pageSize=100&source=andoxa`,
         ),
       ]);
       return (data.items ?? []).flatMap((ev) => dbToCalEvents(ev, weekStart, userId));
@@ -336,77 +336,7 @@ export interface KpiData {
 }
 
 async function fetchKpi(): Promise<KpiData> {
-  const supabase = createClient();
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { todayTotal: 0, todayDone: 0, weekTotal: 0, weekDone: 0, thirtyDayDone: 0, prevThirtyDayDone: 0 };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("active_organization_id")
-    .eq("id", user.id)
-    .single();
-
-  if (!profile?.active_organization_id) {
-    return { todayTotal: 0, todayDone: 0, weekTotal: 0, weekDone: 0, thirtyDayDone: 0, prevThirtyDayDone: 0 };
-  }
-
-  const wsId = profile.active_organization_id as string;
-  const now = new Date();
-
-  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
-
-  const dow = now.getDay();
-  const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
-  weekStart.setHours(0, 0, 0, 0);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 7);
-
-  const thirtyAgo = new Date(now); thirtyAgo.setDate(now.getDate() - 30);
-  const sixtyAgo = new Date(now); sixtyAgo.setDate(now.getDate() - 60);
-
-  const [todayRes, weekRes, thirtyRes, prevRes] = await Promise.all([
-    supabase
-      .from("events")
-      .select("status")
-      .eq("organization_id", wsId)
-      .gte("start_time", todayStart.toISOString())
-      .lte("start_time", todayEnd.toISOString()),
-    supabase
-      .from("events")
-      .select("status")
-      .eq("organization_id", wsId)
-      .gte("start_time", weekStart.toISOString())
-      .lt("start_time", weekEnd.toISOString()),
-    supabase
-      .from("events")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", wsId)
-      .eq("status", "done")
-      .gte("start_time", thirtyAgo.toISOString()),
-    supabase
-      .from("events")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", wsId)
-      .eq("status", "done")
-      .gte("start_time", sixtyAgo.toISOString())
-      .lt("start_time", thirtyAgo.toISOString()),
-  ]);
-
-  // KPI queries use calendar event status (migration 021).
-  const todayEvents = (todayRes.data ?? []) as unknown as { status: string }[];
-  const weekEvents = (weekRes.data ?? []) as unknown as { status: string }[];
-
-  return {
-    todayTotal: todayEvents.length,
-    todayDone: todayEvents.filter((e) => e.status === "done").length,
-    weekTotal: weekEvents.length,
-    weekDone: weekEvents.filter((e) => e.status === "done").length,
-    thirtyDayDone: thirtyRes.count ?? 0,
-    prevThirtyDayDone: prevRes.count ?? 0,
-  };
+  return getJson<KpiData>("/api/calendar/kpi");
 }
 
 export function useCalendarKpi() {

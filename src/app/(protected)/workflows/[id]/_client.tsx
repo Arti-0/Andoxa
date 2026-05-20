@@ -14,6 +14,7 @@ import { simulateWorkflow, type SimResult } from "../_components/simulate";
 import { TestResultsDialog } from "../_components/test-results-dialog";
 import { RunsPanel } from "../_components/runs-panel";
 import { WorkflowListEnrollModal } from "@/components/workflows/workflow-list-enroll-modal";
+import { computeStraightenedLayout } from "@/components/workflows/canvas/auto-layout";
 import { toastFromApiError } from "@/lib/toast";
 import {
   parseWorkflowUi,
@@ -64,6 +65,50 @@ function defaultConfigForType(type: WorkflowStepType): WorkflowStep["config"] {
   }
 }
 
+const NEW_STEP_Y_OFFSET = 140;
+
+/** Wire `childId` as the next output of `parentId` (inserts when parent already had a target). */
+function attachChildToStep(
+  steps: WorkflowStep[],
+  parentId: string,
+  childId: string,
+): WorkflowStep[] {
+  let splicedTarget: string | undefined;
+  let wired = false;
+
+  const withParent = steps.map((s) => {
+    if (s.id !== parentId) return s;
+    if (s.type === "condition") {
+      const c = s as WorkflowStep & {
+        on_true_id?: string;
+        on_false_id?: string;
+      };
+      if (!c.on_true_id) {
+        wired = true;
+        return { ...c, on_true_id: childId } as WorkflowStep;
+      }
+      if (!c.on_false_id) {
+        wired = true;
+        return { ...c, on_false_id: childId } as WorkflowStep;
+      }
+      return s;
+    }
+    splicedTarget = (s as { next_id?: string }).next_id;
+    wired = true;
+    return { ...s, next_id: childId } as WorkflowStep;
+  });
+
+  if (!wired) return steps;
+
+  if (!splicedTarget) return withParent;
+
+  return withParent.map((s) =>
+    s.id === childId
+      ? ({ ...s, next_id: splicedTarget } as WorkflowStep)
+      : s,
+  );
+}
+
 export function CanvasClient({ workflowId }: Props) {
   const router = useRouter();
 
@@ -74,8 +119,53 @@ export function CanvasClient({ workflowId }: Props) {
   // Editable local state — persists on Save.
   const [steps, setSteps] = useState<WorkflowStep[]>([]);
   const [entryStepId, setEntryStepId] = useState<string | undefined>(undefined);
+  // Kept for metadata round-trip on save — no UI surface anymore (the canvas
+  // and side panel now drive identity entirely off trigger_kind).
   const [trigger, setTrigger] = useState<WorkflowTemplateTrigger | null>(null);
   const [triggerKind, setTriggerKind] = useState<WorkflowTriggerKind>("manual");
+
+  /* ── Undo stack ───────────────────────────────────────────────────────────
+     Graph-level snapshots so Ctrl/Cmd+Z reverses the last mutation. We track
+     refs alongside React state so `pushHistory()` always captures the latest
+     values regardless of batching. Capped at 50 entries — enough for normal
+     editing without hoarding memory. */
+  type Snapshot = {
+    steps: WorkflowStep[];
+    entryStepId: string | undefined;
+    triggerKind: WorkflowTriggerKind;
+  };
+  const historyRef = useRef<Snapshot[]>([]);
+  const stepsRef = useRef(steps);
+  const entryStepIdRef = useRef(entryStepId);
+  const triggerKindRef = useRef<WorkflowTriggerKind>(triggerKind);
+  useEffect(() => {
+    stepsRef.current = steps;
+  }, [steps]);
+  useEffect(() => {
+    entryStepIdRef.current = entryStepId;
+  }, [entryStepId]);
+  useEffect(() => {
+    triggerKindRef.current = triggerKind;
+  }, [triggerKind]);
+  const HISTORY_LIMIT = 50;
+  const pushHistory = useCallback(() => {
+    historyRef.current.push({
+      steps: stepsRef.current,
+      entryStepId: entryStepIdRef.current,
+      triggerKind: triggerKindRef.current,
+    });
+    if (historyRef.current.length > HISTORY_LIMIT) {
+      historyRef.current.shift();
+    }
+  }, []);
+  const undo = useCallback(() => {
+    const last = historyRef.current.pop();
+    if (!last) return false;
+    setSteps(last.steps);
+    setEntryStepId(last.entryStepId);
+    setTriggerKind(last.triggerKind);
+    return true;
+  }, []);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [isTemplate, setIsTemplate] = useState(false);
@@ -83,6 +173,10 @@ export function CanvasClient({ workflowId }: Props) {
   const [colorKey, setColorKey] = useState<string>("violet");
   const [canvasPositions, setCanvasPositions] = useState<WorkflowCanvasPositions>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [testResult, setTestResult] = useState<SimResult | null>(null);
   const [launchOpen, setLaunchOpen] = useState(false);
@@ -123,6 +217,9 @@ export function CanvasClient({ workflowId }: Props) {
         | null;
       setSteps(Array.isArray(def?.steps) ? def!.steps : []);
       setEntryStepId(def?.entry_step_id);
+      // Loading replaces the entire graph, so any earlier undo history would
+      // jump us back across workflows — wipe it.
+      historyRef.current = [];
     } catch (e) {
       toastFromApiError(e, "Chargement impossible");
       setWorkflow(null);
@@ -146,19 +243,53 @@ export function CanvasClient({ workflowId }: Props) {
     [steps, entryStepId]
   );
 
-  const addStep = useCallback((type: WorkflowStepType) => {
-    setSteps((prev) => [
-      ...prev,
-      {
-        id: newStepId(),
+  const addStep = useCallback(
+    (type: WorkflowStepType) => {
+      pushHistory();
+      const newId = newStepId();
+      const newStep = {
+        id: newId,
         type,
         config: defaultConfigForType(type),
-      } as WorkflowStep,
-    ]);
-  }, []);
+      } as WorkflowStep;
+      const focusId = selectedIdRef.current ?? TRIGGER_NODE_ID;
+
+      setSteps((prev) => {
+        const next = [...prev, newStep];
+        if (focusId === TRIGGER_NODE_ID) {
+          const entry = entryStepIdRef.current;
+          if (!entry) return next;
+          return attachChildToStep(next, entry, newId);
+        }
+        return attachChildToStep(next, focusId, newId);
+      });
+
+      if (focusId === TRIGGER_NODE_ID && !entryStepIdRef.current) {
+        setEntryStepId(newId);
+      }
+
+      setCanvasPositions((prev) => {
+        const anchorId =
+          focusId === TRIGGER_NODE_ID
+            ? entryStepIdRef.current ?? TRIGGER_NODE_ID
+            : focusId;
+        const anchor =
+          prev[anchorId] ??
+          (anchorId === TRIGGER_NODE_ID ? { x: 0, y: -140 } : { x: 0, y: 0 });
+        return {
+          ...prev,
+          [newId]: { x: anchor.x, y: anchor.y + NEW_STEP_Y_OFFSET },
+        };
+      });
+
+      setSelectedId(newId);
+    },
+    [pushHistory]
+  );
 
   const updateStep = useCallback(
     (stepId: string, patch: Record<string, unknown>) => {
+      pushHistory();
       setSteps((prev) =>
         prev.map((s) =>
           s.id === stepId
@@ -167,11 +298,12 @@ export function CanvasClient({ workflowId }: Props) {
         )
       );
     },
-    []
+    [pushHistory]
   );
 
   const deleteStep = useCallback(
     (stepId: string) => {
+      pushHistory();
       setSteps((prev) => {
         const remaining = prev.filter((s) => s.id !== stepId);
         // Strip references to the deleted step from any pointers.
@@ -199,20 +331,22 @@ export function CanvasClient({ workflowId }: Props) {
       setEntryStepId((prev) => (prev === stepId ? undefined : prev));
       if (selectedId === stepId) setSelectedId(null);
     },
-    [selectedId]
+    [selectedId, pushHistory]
   );
 
   // Drag-to-connect → set the corresponding pointer on the source step (or
   // entry_step_id when the source is the synthetic trigger node).
-  const handleConnect = useCallback((info: ConnectInfo) => {
-    if (info.target === TRIGGER_NODE_ID) return; // can't end on the trigger
-    if (info.source === TRIGGER_NODE_ID) {
-      setEntryStepId(info.target);
-      return;
-    }
-    setSteps((prev) =>
-      prev.map((s) => {
-        if (s.id !== info.source) return s;
+  const handleConnect = useCallback(
+    (info: ConnectInfo) => {
+      if (info.target === TRIGGER_NODE_ID) return; // can't end on the trigger
+      pushHistory();
+      if (info.source === TRIGGER_NODE_ID) {
+        setEntryStepId(info.target);
+        return;
+      }
+      setSteps((prev) =>
+        prev.map((s) => {
+          if (s.id !== info.source) return s;
         if (s.type === "condition") {
           const cond = s as WorkflowStep & {
             on_true_id?: string;
@@ -226,73 +360,97 @@ export function CanvasClient({ workflowId }: Props) {
           }
           return s;
         }
-        return { ...s, next_id: info.target } as WorkflowStep;
-      })
-    );
-  }, []);
+          return { ...s, next_id: info.target } as WorkflowStep;
+        })
+      );
+    },
+    [pushHistory]
+  );
 
-  const handleDisconnect = useCallback((info: ConnectInfo) => {
-    if (info.source === TRIGGER_NODE_ID) {
-      setEntryStepId(undefined);
-      return;
-    }
-    setSteps((prev) =>
-      prev.map((s) => {
-        if (s.id !== info.source) return s;
-        if (s.type === "condition") {
-          const cond = s as WorkflowStep & {
-            on_true_id?: string;
-            on_false_id?: string;
-          };
-          if (info.sourceHandle === "true") {
-            return { ...cond, on_true_id: undefined } as WorkflowStep;
+  const handleDisconnect = useCallback(
+    (info: ConnectInfo) => {
+      pushHistory();
+      if (info.source === TRIGGER_NODE_ID) {
+        setEntryStepId(undefined);
+        return;
+      }
+      setSteps((prev) =>
+        prev.map((s) => {
+          if (s.id !== info.source) return s;
+          if (s.type === "condition") {
+            const cond = s as WorkflowStep & {
+              on_true_id?: string;
+              on_false_id?: string;
+            };
+            if (info.sourceHandle === "true") {
+              return { ...cond, on_true_id: undefined } as WorkflowStep;
+            }
+            if (info.sourceHandle === "false") {
+              return { ...cond, on_false_id: undefined } as WorkflowStep;
+            }
+            return s;
           }
-          if (info.sourceHandle === "false") {
-            return { ...cond, on_false_id: undefined } as WorkflowStep;
+          if ("next_id" in s && s.next_id === info.target) {
+            return { ...s, next_id: undefined } as WorkflowStep;
           }
           return s;
-        }
-        if ("next_id" in s && s.next_id === info.target) {
-          return { ...s, next_id: undefined } as WorkflowStep;
-        }
-        return s;
-      })
-    );
-  }, []);
+        })
+      );
+    },
+    [pushHistory]
+  );
 
-  const duplicateStep = useCallback((stepId: string) => {
-    setSteps((prev) => {
-      const i = prev.findIndex((s) => s.id === stepId);
-      if (i < 0) return prev;
-      const original = prev[i]!;
-      const cloned = {
-        ...original,
-        id: newStepId(),
-      } as WorkflowStep;
-      const next = [...prev];
-      next.splice(i + 1, 0, cloned);
-      return next;
-    });
-  }, []);
+  const duplicateStep = useCallback(
+    (stepId: string) => {
+      pushHistory();
+      setSteps((prev) => {
+        const i = prev.findIndex((s) => s.id === stepId);
+        if (i < 0) return prev;
+        const original = prev[i]!;
+        const cloned = {
+          ...original,
+          id: newStepId(),
+        } as WorkflowStep;
+        const next = [...prev];
+        next.splice(i + 1, 0, cloned);
+        return next;
+      });
+    },
+    [pushHistory]
+  );
 
-  const applyTemplate = useCallback((t: WorkflowTemplate) => {
-    if (
-      steps.length > 0 &&
-      !window.confirm(
-        "Appliquer ce modèle remplacera les étapes actuelles. Continuer ?"
-      )
-    ) {
-      return;
-    }
-    const def = t.buildDefinition();
-    setSteps(def.steps);
-    setTrigger(t.trigger);
-    setIconKey(t.ui.icon);
-    setColorKey(t.ui.color);
-    setCanvasPositions({});
-    setSelectedId(null);
-    toast.success("Modèle appliqué");
-  }, [steps.length]);
+  const applyTemplate = useCallback(
+    (t: WorkflowTemplate) => {
+      if (
+        steps.length > 0 &&
+        !window.confirm(
+          "Appliquer ce modèle remplacera les étapes actuelles. Continuer ?"
+        )
+      ) {
+        return;
+      }
+      pushHistory();
+      const def = t.buildDefinition();
+      setSteps(def.steps);
+      setTrigger(t.trigger);
+      setIconKey(t.ui.icon);
+      setColorKey(t.ui.color);
+      setCanvasPositions({});
+      setSelectedId(null);
+      toast.success("Modèle appliqué");
+    },
+    [steps.length, pushHistory]
+  );
+
+  // Wraps `setTriggerKind` so trigger swaps participate in undo and stay
+  // consistent with the rest of the graph history.
+  const setTriggerKindWithHistory = useCallback(
+    (next: WorkflowTriggerKind) => {
+      pushHistory();
+      setTriggerKind(next);
+    },
+    [pushHistory]
+  );
 
   // ── Server mutations ───────────────────────────────────────────────────
 
@@ -382,6 +540,33 @@ export function CanvasClient({ workflowId }: Props) {
     }
   }, [workflow, workflowId]);
 
+  const handleLaunch = useCallback(async () => {
+    if (!workflow) return;
+    if (!workflow.is_active) {
+      setTogglingActive(true);
+      try {
+        const res = await fetch(`/api/workflows/${workflowId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ is_active: true }),
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          throw new Error(json?.error?.message ?? "Activation impossible");
+        }
+        setWorkflow(json.data.workflow as BackendWorkflowRow);
+        toast.success("Workflow activé");
+      } catch (e) {
+        toastFromApiError(e, "Activation impossible");
+        return;
+      } finally {
+        setTogglingActive(false);
+      }
+    }
+    setLaunchOpen(true);
+  }, [workflow, workflowId]);
+
   // Client-side dry run — simulates the workflow against a synthetic prospect
   // and surfaces every step's would-be outcome in a dialog. No real messages
   // are sent and the database is untouched.
@@ -430,6 +615,11 @@ export function CanvasClient({ workflowId }: Props) {
     [workflowId]
   );
 
+  const straightenLayout = useCallback(() => {
+    const next = computeStraightenedLayout(definition);
+    commitPositions(next);
+  }, [definition, commitPositions]);
+
   useEffect(() => {
     return () => {
       if (positionsCommitTimer.current) {
@@ -438,8 +628,11 @@ export function CanvasClient({ workflowId }: Props) {
     };
   }, []);
 
-  // Delete / Backspace removes the selected node (skipping the trigger).
-  // Skips when focus is on a form field so input editing isn't hijacked.
+  // Keyboard shortcuts:
+  //   • Delete / Backspace → removes the selected node (skipping the trigger).
+  //   • Ctrl/Cmd + Z       → undo the last graph mutation.
+  // Both skip when focus is on a form field so input editing isn't hijacked
+  // (the browser handles native input-level undo there).
   useEffect(() => {
     function isTextInput(target: EventTarget | null): boolean {
       if (!(target instanceof HTMLElement)) return false;
@@ -452,8 +645,13 @@ export function CanvasClient({ workflowId }: Props) {
       );
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key !== "Delete" && e.key !== "Backspace") return;
       if (isTextInput(e.target)) return;
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
       if (!selectedId) return;
       if (selectedId === TRIGGER_NODE_ID) return;
       e.preventDefault();
@@ -461,7 +659,7 @@ export function CanvasClient({ workflowId }: Props) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, deleteStep]);
+  }, [selectedId, deleteStep, undo]);
 
   // ── Derived ────────────────────────────────────────────────────────────
 
@@ -504,6 +702,7 @@ export function CanvasClient({ workflowId }: Props) {
         <CanvasToolbar
           status={status}
           isTemplate={isTemplate}
+          triggerKind={triggerKind}
           saving={saving}
           togglingActive={togglingActive}
           testing={testing}
@@ -511,9 +710,10 @@ export function CanvasClient({ workflowId }: Props) {
           onSave={() => void handleSave()}
           onToggleActive={() => void handleToggleActive()}
           onTest={() => void handleTest()}
-          onLaunch={() => setLaunchOpen(true)}
+          onLaunch={() => void handleLaunch()}
           onOpenRuns={() => setRunsOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
+          onStraightenLayout={straightenLayout}
         />
         <SettingsDialog
           open={settingsOpen}
@@ -537,7 +737,7 @@ export function CanvasClient({ workflowId }: Props) {
             <XyCanvas
               definition={definition}
               positions={canvasPositions}
-              trigger={trigger}
+              triggerKind={triggerKind}
               selectedStepId={selectedId}
               onPositionsChange={commitPositions}
               onSelectStep={setSelectedId}
@@ -549,12 +749,10 @@ export function CanvasClient({ workflowId }: Props) {
             <RightPanel
               selectedId={selectedId}
               step={selectedStep}
-              trigger={trigger}
               triggerKind={triggerKind}
               onClose={() => setSelectedId(null)}
               onUpdateStep={updateStep}
-              onUpdateTrigger={setTrigger}
-              onUpdateTriggerKind={setTriggerKind}
+              onUpdateTriggerKind={setTriggerKindWithHistory}
               onDeleteStep={deleteStep}
               onDuplicateStep={duplicateStep}
             />

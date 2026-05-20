@@ -93,7 +93,7 @@ export const PATCH = createApiHandler(async (req, ctx) => {
 
   const { data: existing } = await ctx.supabase
     .from("workflows")
-    .select("id, metadata, is_active")
+    .select("id, metadata, is_active, trigger_kind")
     .eq("id", id)
     .eq("organization_id", ctx.workspaceId)
     .maybeSingle();
@@ -149,6 +149,34 @@ export const PATCH = createApiHandler(async (req, ctx) => {
       if (!pub) {
         throw Errors.badRequest(
           "Enregistrez d’abord un parcours prêt à lancer (étapes + comptes) depuis la fiche workflow."
+        );
+      }
+      // Trigger gate: the publish gate validates step config but not trigger
+      // metadata, so a workflow can technically reach `published_definition`
+      // with no configured trigger. Block activation in that case — an
+      // un-triggered workflow can't actually fire anything.
+      const effectiveTriggerKind = updates.trigger_kind ?? existing.trigger_kind;
+      const effectiveMeta =
+        (updates.metadata as Record<string, unknown> | null | undefined) ??
+        (existing.metadata as Record<string, unknown> | null | undefined);
+      const ui =
+        effectiveMeta &&
+        typeof effectiveMeta === "object" &&
+        !Array.isArray(effectiveMeta) &&
+        "ui" in effectiveMeta &&
+        typeof effectiveMeta.ui === "object" &&
+        effectiveMeta.ui !== null
+          ? (effectiveMeta.ui as Record<string, unknown>)
+          : null;
+      const triggerInMeta =
+        ui && typeof ui.trigger === "string" ? ui.trigger : undefined;
+      const hasTrigger =
+        (typeof effectiveTriggerKind === "string" &&
+          effectiveTriggerKind.length > 0) ||
+        (typeof triggerInMeta === "string" && triggerInMeta.length > 0);
+      if (!hasTrigger) {
+        throw Errors.badRequest(
+          "Configurez un déclencheur avant d’activer le workflow."
         );
       }
     }

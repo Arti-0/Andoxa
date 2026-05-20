@@ -400,16 +400,122 @@ html[style*="scroll-behavior"] {
 
 /* -----------------------------------------------------------------------------
  * Workflow builder (`.ws2-root`) — React Flow pane + dotted grid only.
- * Pane fill tracks `--muted`; grid dots stay subtle in light and dark.
+ * Light mode matches the design handoff exactly (slate-50 pane, slate-300
+ * dots). Dark mode keeps the same dot rhythm with a subtler value so nodes
+ * stay legible against the darker pane.
  * --------------------------------------------------------------------------- */
 .ws2-root {
-  --workflow-canvas-fill: var(--muted);
-  --workflow-dot-color: rgb(148 163 184 / 0.42);
+  --workflow-canvas-fill: #F8FAFC;
+  --workflow-dot-color: #94A3B8;
 }
 
 .dark .ws2-root {
   --workflow-canvas-fill: color-mix(in oklab, var(--muted) 85%, black);
-  --workflow-dot-color: rgb(255 255 255 / 0.1);
+  --workflow-dot-color: rgb(255 255 255 / 0.22);
+}
+
+/* Edges — hover/selected affordances so the user can tell a line is clickable.
+   The brand blue + thicker stroke tells them it's the active target before
+   they press Delete or drag an endpoint to retarget. */
+.ws2-root .react-flow__edge-path {
+  transition: stroke 120ms ease, stroke-width 120ms ease;
+}
+.ws2-root .react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--brand-blue);
+  stroke-width: 2.5;
+}
+.ws2-root .react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--brand-blue);
+  stroke-width: 3;
+}
+/* Reconnect handles — small dots at the endpoints when hovering an edge. */
+.ws2-root .react-flow__edgeupdater {
+  fill: var(--brand-blue);
+  opacity: 0;
+  transition: opacity 120ms ease;
+  r: 6;
+}
+.ws2-root .react-flow__edge:hover .react-flow__edgeupdater,
+.ws2-root .react-flow__edge.selected .react-flow__edgeupdater {
+  opacity: 1;
+}
+
+/* Target = pill on top (visual via ::after). Source = dot (visual via ::after). */
+.ws2-root .react-flow__handle.wf-target-handle {
+  width: 44px !important;
+  height: 36px !important;
+  min-width: 44px !important;
+  min-height: 36px !important;
+  background: transparent !important;
+  border: none !important;
+  transform: translate(-50%, -50%);
+  cursor: crosshair;
+}
+
+.ws2-root .react-flow__handle.wf-target-handle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 4px;
+  border-radius: 9999px;
+  border: 1px solid var(--background);
+  background: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 1px rgb(15 23 42 / 0.06);
+  pointer-events: none;
+  transition: transform 120ms ease, width 120ms ease;
+}
+
+.ws2-root .react-flow__handle.wf-source-handle {
+  width: 44px !important;
+  height: 44px !important;
+  min-width: 44px !important;
+  min-height: 44px !important;
+  background: transparent !important;
+  border: none !important;
+  transform: translate(-50%, 0);
+  cursor: crosshair;
+}
+
+.ws2-root .react-flow__handle.wf-source-handle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  border: 2px solid var(--background);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 1px rgb(15 23 42 / 0.08);
+  pointer-events: none;
+}
+
+.ws2-root .react-flow__handle.wf-source-handle--blue::after {
+  background: var(--brand-blue);
+}
+
+.ws2-root .react-flow__handle.wf-source-handle--emerald::after {
+  background: #10b981;
+}
+
+.ws2-root .react-flow__handle.wf-source-handle--rose::after {
+  background: #f43f5e;
+}
+
+.ws2-root .react-flow__handle.wf-source-handle:hover::after,
+.ws2-root .react-flow__handle.wf-source-handle.connectingto::after,
+.ws2-root .react-flow__handle.wf-target-handle:hover::after,
+.ws2-root .react-flow__handle.wf-target-handle.connectingfrom::after {
+  transform: translate(-50%, -50%) scale(1.2);
+}
+
+.ws2-root .react-flow__handle.wf-target-handle.connectingfrom::after,
+.ws2-root .react-flow__handle.wf-target-handle.valid::after {
+  background: var(--brand-blue);
+  width: 20px;
 }
 
 @layer components {
@@ -419,11 +525,31 @@ html[style*="scroll-behavior"] {
 
   .ws2-root .wf-input,
   .ws2-root .wf-select {
-    @apply w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground;
+    @apply w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors;
+  }
+
+  /* Native select styled to match the rest of the design — remove the OS
+     chevron and draw our own so it lines up with inputs in light/dark. */
+  .ws2-root .wf-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    padding-right: 2rem;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 12px 12px;
+  }
+  .dark .ws2-root .wf-select {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  }
+  .ws2-root .wf-select:hover {
+    @apply border-input;
+    background-color: color-mix(in oklab, var(--accent) 60%, var(--background));
   }
 
   .ws2-root .wf-textarea {
-    @apply min-h-[88px] w-full resize-y rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground;
+    @apply min-h-[88px] w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors;
   }
 }
 

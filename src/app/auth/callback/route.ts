@@ -3,23 +3,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { evaluateDashboardEntitlement } from "@/lib/auth/dashboard-entitlement";
 import type { OrgDashboardGateRow } from "@/lib/auth/dashboard-entitlement";
 import { logger } from "@/lib/utils/logger";
+import { resolveAppOrigin } from "@/lib/config/app-url";
 
 export const runtime = "nodejs";
 
 type CookieOptions = Parameters<NextResponse["cookies"]["set"]>[2];
 
 function getRedirectBase(request: NextRequest): string {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-  if (appUrl) return appUrl.replace(/\/$/, "");
-
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  const forwardedProto = request.headers.get("x-forwarded-proto") || "https";
-  if (forwardedHost) {
-    return `${forwardedProto === "https" ? "https" : "http"}://${forwardedHost}`;
-  }
-
-  const { origin } = new URL(request.url);
-  return origin;
+  return resolveAppOrigin(request);
 }
 
 /** Preserve Supabase auth Set-Cookie headers when changing the redirect target. */

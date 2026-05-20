@@ -2,6 +2,7 @@ import { createApiHandler, Errors } from "../../../../lib/api";
 import { buildWeekBuckets, bucketIndex } from "@/lib/dashboard/weeks";
 import { getPeriodPair, parsePeriod, trendPts } from "@/lib/dashboard/period";
 import { readDashboardTargets } from "@/lib/dashboard/targets";
+import { isMockStatsEnabled, mockDashboardStats } from "@/lib/mock-stats";
 
 /**
  * GET /api/dashboard/stats
@@ -57,6 +58,8 @@ export const GET = createApiHandler(async (req, ctx) => {
 
   const url = new URL(req.url);
   const period = parsePeriod(url.searchParams.get("period"));
+  if (isMockStatsEnabled()) return mockDashboardStats(period);
+
   const { current, previous } = getPeriodPair(period);
 
   const { workspaceId, supabase } = ctx;

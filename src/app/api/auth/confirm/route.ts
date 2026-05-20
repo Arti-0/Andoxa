@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ONBOARDING_PROFILE_STEP } from "@/app/onboarding/config";
 import { redeemInvitation } from "@/lib/invitations";
 import type { Database } from "@/lib/types/supabase";
+import { resolveAppOrigin } from "@/lib/config/app-url";
 
 export const runtime = "nodejs";
 
@@ -13,16 +14,7 @@ const INVITE_TOKEN_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function getRedirectBase(request: NextRequest): string {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-  if (appUrl) return appUrl.replace(/\/$/, "");
-
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  const forwardedProto = request.headers.get("x-forwarded-proto") || "https";
-  if (forwardedHost) {
-    return `${forwardedProto === "https" ? "https" : "http"}://${forwardedHost}`;
-  }
-
-  return new URL(request.url).origin;
+  return resolveAppOrigin(request);
 }
 
 function authErrorUrl(baseUrl: string, message: string): URL {

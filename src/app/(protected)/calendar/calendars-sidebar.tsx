@@ -176,42 +176,123 @@ function Row({ color, accent, initials, icon, avatarUrl, name, subtitle, checked
 
   return (
     <div
-      style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 8px", borderRadius: 7, cursor: "pointer", transition: "background 100ms", background: hovered ? "var(--cal2-surface)" : "transparent" }}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "4px 6px",
+        borderRadius: 7,
+        transition: "background 100ms",
+        background: hovered ? "var(--cal2-surface)" : "transparent",
+      }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <span
+      <button
+        type="button"
+        aria-pressed={checked}
         onClick={onToggle}
-        style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0, transition: "all 120ms", background: checked ? color : "var(--cal2-surface)", border: checked ? `1px solid ${color}` : "1.5px solid var(--cal2-border)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          display: "flex",
+          alignItems: "center",
+          gap: 9,
+          padding: "4px 2px",
+          margin: 0,
+          border: "none",
+          background: "transparent",
+          cursor: "pointer",
+          fontFamily: "inherit",
+          textAlign: "left",
+          userSelect: "none",
+        }}
       >
-        {checked && <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
-      </span>
+        <span
+          aria-hidden
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: 4,
+            flexShrink: 0,
+            transition: "all 120ms",
+            background: checked ? color : "var(--cal2-surface)",
+            border: checked ? `1px solid ${color}` : "1.5px solid var(--cal2-border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+          }}
+        >
+          {checked && (
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          )}
+        </span>
 
-      <span onClick={onToggle} style={{ flexShrink: 0, display: "flex", cursor: "pointer" }}>
-        {icon ?? (
-          avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={avatarUrl}
-              alt={name}
-              style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }}
-            />
-          ) : (
-            <span style={{ width: 22, height: 22, borderRadius: "50%", background: `color-mix(in srgb, ${color} 22%, var(--cal2-surface))`, color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, fontWeight: 600 }}>
-              {initials}
-            </span>
-          )
-        )}
-      </span>
+        <span aria-hidden style={{ flexShrink: 0, display: "flex", pointerEvents: "none" }}>
+          {icon ?? (
+            avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={avatarUrl}
+                alt=""
+                draggable={false}
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  pointerEvents: "none",
+                  userSelect: "none",
+                }}
+              />
+            ) : (
+              <span
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: "50%",
+                  background: `color-mix(in srgb, ${color} 22%, var(--cal2-surface))`,
+                  color,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 9.5,
+                  fontWeight: 600,
+                }}
+              >
+                {initials}
+              </span>
+            )
+          )}
+        </span>
 
-      <span onClick={onToggle} style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
-        <div style={{ fontSize: 12.5, color: checked ? "var(--cal2-text)" : "var(--cal2-text-faint)", fontWeight: 500, lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
-        {subtitle && <div style={{ fontSize: 10.5, color: "var(--cal2-text-faint)", lineHeight: 1.2 }}>{subtitle}</div>}
-      </span>
+        <span style={{ flex: 1, minWidth: 0, pointerEvents: "none" }}>
+          <div
+            style={{
+              fontSize: 12.5,
+              color: checked ? "var(--cal2-text)" : "var(--cal2-text-faint)",
+              fontWeight: 500,
+              lineHeight: 1.3,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {name}
+          </div>
+          {subtitle && (
+            <div style={{ fontSize: 10.5, color: "var(--cal2-text-faint)", lineHeight: 1.2 }}>{subtitle}</div>
+          )}
+        </span>
+      </button>
 
       {canEdit && hovered && (
         <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
           <button
+            type="button"
             onClick={(e) => { e.stopPropagation(); onEdit?.(); }}
             title="Modifier"
             style={{ width: 22, height: 22, border: "none", background: "transparent", borderRadius: 5, color: "var(--cal2-text-muted)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
@@ -222,6 +303,7 @@ function Row({ color, accent, initials, icon, avatarUrl, name, subtitle, checked
           </button>
           {onDelete && (
             <button
+              type="button"
               onClick={(e) => { e.stopPropagation(); onDelete(); }}
               title="Supprimer"
               style={{ width: 22, height: 22, border: "none", background: "transparent", borderRadius: 5, color: "#EF4444", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}

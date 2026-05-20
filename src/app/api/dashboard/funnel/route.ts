@@ -1,6 +1,7 @@
 import { createApiHandler, Errors } from "@/lib/api";
 import { getPeriodPair, parsePeriod, trendPts } from "@/lib/dashboard/period";
 import { readDashboardTargets } from "@/lib/dashboard/targets";
+import { isMockStatsEnabled, mockDashboardFunnel } from "@/lib/mock-stats";
 
 /**
  * GET /api/dashboard/funnel?period=today|week|month|30d
@@ -156,6 +157,8 @@ export const GET = createApiHandler(async (req, ctx): Promise<FunnelResponse> =>
 
   const url = new URL(req.url);
   const period = parsePeriod(url.searchParams.get("period"));
+  if (isMockStatsEnabled()) return mockDashboardFunnel(period);
+
   const { current, previous } = getPeriodPair(period);
 
   const [cur, prev, workspaceMetaRes] = await Promise.all([

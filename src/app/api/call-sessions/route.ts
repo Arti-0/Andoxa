@@ -4,6 +4,7 @@ import {
     parseBody,
     getPagination,
 } from '../../../lib/api';
+import { isMockStatsEnabled, mockCallSessionStats } from '@/lib/mock-stats';
 
 /**
  * GET /api/call-sessions
@@ -73,6 +74,9 @@ export const GET = createApiHandler(async (req, ctx) => {
     }
 
     const enriched = sessions.map((s) => {
+        if (isMockStatsEnabled()) {
+            return { ...s, ...mockCallSessionStats() };
+        }
         const st = stats.get(s.id);
         return {
             ...s,

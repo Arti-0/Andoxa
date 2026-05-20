@@ -1,0 +1,835 @@
+/**
+ * Idempotent seed for the dedicated marketing-screenshot org.
+ *
+ * Usage:
+ *   bun run seed:screenshots
+ *
+ * Requires:
+ *   NEXT_PUBLIC_SUPABASE_URL
+ *   SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SECRET_KEY)
+ */
+
+import { createClient } from "@supabase/supabase-js";
+import fs from "fs";
+import path from "path";
+import { loadEnv } from "./lib/load-env";
+import {
+  SCREENSHOT_ORG_ID,
+  SCREENSHOT_ORG_NAME,
+  SCREENSHOT_STATE_PATH,
+  SCREENSHOT_USER_EMAIL,
+  SCREENSHOT_USER_NAME,
+  SCREENSHOT_USER_PASSWORD,
+  type ScreenshotState,
+} from "./lib/screenshot-config";
+import { MOCK_PROSPECT_ID } from "./lib/messagerie-mocks";
+import {
+  CAMPAIGN_JOB_DEFS,
+  COLLEAGUE_USERS,
+  WORKFLOW_LINKEDIN_ID,
+  WORKFLOW_RELANCES_ID,
+  avatarUrl,
+  buildBddLists,
+  buildBulkActivityRows,
+  buildEventSlots,
+  buildFunnelChatRows,
+  buildFunnelInviteRows,
+  buildFunnelRdvRows,
+  buildProspectSeeds,
+  daysAgo,
+  endOfTodayAt,
+  funnelClosingProspectIds,
+  todayAt,
+} from "./lib/screenshot-seed-data";
+
+loadEnv();
+
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const serviceKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
+
+if (!url || !serviceKey) {
+  console.error(
+    "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY"
+  );
+  process.exit(1);
+}
+
+const admin = createClient(url, serviceKey, {
+  auth: { autoRefreshToken: false, persistSession: false },
+});
+
+const CANVAS_WORKFLOW_ID = "c1111111-1111-4111-8111-111111111111";
+const CALL_SESSION_ID = "d1111111-1111-4111-8111-111111111111";
+const CALL_SESSION_2_ID = "d2222222-2222-4222-8222-222222222222";
+/** Must match `TRIGGER_NODE_ID` in workflows/_components/xy-canvas.tsx */
+const TRIGGER_NODE_ID = "__trigger__";
+
+const WORKFLOW_DEF_SNAPSHOT = {
+  schemaVersion: 1 as const,
+  steps: [
+    {
+      id: "wa_confirm",
+      type: "whatsapp_message",
+      config: { messageTemplate: "Bonjour {{prenom}}, merci pour votre RDV !" },
+      next_id: "wait_1",
+    },
+    {
+      id: "wait_1",
+      type: "wait",
+      config: { durationHours: 24, onlyIfNoReply: false },
+      next_id: "wa_followup",
+    },
+    {
+      id: "wa_followup",
+      type: "whatsapp_message",
+      config: { messageTemplate: "Comment s'est passé notre échange ?" },
+      next_id: "crm_1",
+    },
+    {
+      id: "crm_1",
+      type: "crm",
+      config: { field: "status", value: "qualified", notifyOwner: true },
+    },
+  ],
+};
+
+function buildCanvasWorkflowDefinition() {
+  return WORKFLOW_DEF_SNAPSHOT;
+}
+
+function buildCanvasMetadata() {
+  return {
+    icon: "Workflow",
+    color: "emerald",
+    trigger: "on_booking",
+    canvas: {
+      [TRIGGER_NODE_ID]: { x: 80, y: 220 },
+      wa_confirm: { x: 320, y: 180 },
+      wait_1: { x: 560, y: 220 },
+      wa_followup: { x: 800, y: 180 },
+      crm_1: { x: 1040, y: 220 },
+    },
+  };
+}
+
+async function ensureUser(
+  email: string,
+  password: string,
+  fullName: string,
+  fixedId?: string
+): Promise<string> {
+  const { data: listed } = await admin.auth.admin.listUsers();
+  const existing = listed?.users?.find((u) => u.email === email);
+  if (existing) {
+    await admin.auth.admin.updateUserById(existing.id, {
+      password,
+      email_confirm: true,
+      user_metadata: { full_name: fullName },
+    });
+    return existing.id;
+  }
+
+  const { data: created, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { full_name: fullName },
+    ...(fixedId ? { id: fixedId } : {}),
+  });
+  if (error || !created.user) {
+    throw new Error(`Could not create user ${email} — ${error?.message}`);
+  }
+  return created.user.id;
+}
+
+async function ensureScreenshotUser(): Promise<string> {
+  return ensureUser(
+    SCREENSHOT_USER_EMAIL,
+    SCREENSHOT_USER_PASSWORD,
+    SCREENSHOT_USER_NAME
+  );
+}
+
+async function ensureColleagues(): Promise<string[]> {
+  const ids: string[] = [];
+  for (const c of COLLEAGUE_USERS) {
+    const id = await ensureUser(
+      c.email,
+      SCREENSHOT_USER_PASSWORD,
+      c.name,
+      c.id
+    );
+    await admin.from("profiles").upsert(
+      {
+        id,
+        email: c.email,
+        full_name: c.name,
+        avatar_url: avatarUrl(c.email),
+        active_organization_id: SCREENSHOT_ORG_ID,
+      },
+      { onConflict: "id" }
+    );
+    await admin.from("organization_members").upsert(
+      {
+        organization_id: SCREENSHOT_ORG_ID,
+        user_id: id,
+        role: "member",
+      },
+      { onConflict: "organization_id,user_id" }
+    );
+    ids.push(id);
+  }
+  return ids;
+}
+
+async function wipeOrgData(orgId: string): Promise<void> {
+  const { data: runs } = await admin
+    .from("workflow_runs")
+    .select("id")
+    .eq("organization_id", orgId);
+  const runIds = (runs ?? []).map((r) => r.id);
+  if (runIds.length) {
+    await admin.from("workflow_step_executions").delete().in("run_id", runIds);
+  }
+  await admin.from("workflow_runs").delete().eq("organization_id", orgId);
+
+  const { data: wfs } = await admin
+    .from("workflows")
+    .select("id")
+    .eq("organization_id", orgId);
+  const wfIds = (wfs ?? []).map((w) => w.id);
+  if (wfIds.length) {
+    await admin.from("workflow_versions").delete().in("workflow_id", wfIds);
+  }
+  await admin.from("workflows").delete().eq("organization_id", orgId);
+
+  const { data: sessions } = await admin
+    .from("call_sessions")
+    .select("id")
+    .eq("organization_id", orgId);
+  const sessionIds = (sessions ?? []).map((s) => s.id);
+  if (sessionIds.length) {
+    await admin.from("call_session_notes").delete().in("call_session_id", sessionIds);
+    await admin.from("call_session_prospects").delete().in("call_session_id", sessionIds);
+  }
+  await admin.from("call_sessions").delete().eq("organization_id", orgId);
+
+  const { data: jobs } = await admin
+    .from("campaign_jobs")
+    .select("id")
+    .eq("organization_id", orgId);
+  const jobIds = (jobs ?? []).map((j) => j.id);
+  if (jobIds.length) {
+    await admin.from("campaign_job_prospects").delete().in("job_id", jobIds);
+  }
+  await admin.from("campaign_jobs").delete().eq("organization_id", orgId);
+
+  await admin.from("quick_bookings").delete().eq("organization_id", orgId);
+  await admin.from("events").delete().eq("organization_id", orgId);
+  await admin.from("prospect_activity").delete().eq("organization_id", orgId);
+  await admin.from("unipile_chat_prospects").delete().eq("organization_id", orgId);
+  await admin.from("prospects").delete().eq("organization_id", orgId);
+  await admin.from("bdd").delete().eq("organization_id", orgId);
+}
+
+async function upsertOrg(userId: string): Promise<void> {
+  const trialEnds = new Date();
+  trialEnds.setFullYear(trialEnds.getFullYear() + 1);
+
+  const { error: orgErr } = await admin.from("organizations").upsert(
+    {
+      id: SCREENSHOT_ORG_ID,
+      name: SCREENSHOT_ORG_NAME,
+      owner_id: userId,
+      slug: "acme-sales",
+      plan: "team",
+      status: "active",
+      subscription_status: "active",
+      trial_ends_at: trialEnds.toISOString(),
+      credits: 500,
+      logo_url: null,
+      metadata: {
+        dashboard_targets: {
+          rdv_per_month: 48,
+          closings_per_month: 14,
+        },
+      },
+    },
+    { onConflict: "id" }
+  );
+  if (orgErr) throw new Error(`organizations upsert — ${orgErr.message}`);
+
+  await admin.from("organization_members").upsert(
+    {
+      organization_id: SCREENSHOT_ORG_ID,
+      user_id: userId,
+      role: "owner",
+    },
+    { onConflict: "organization_id,user_id" }
+  );
+
+  await admin.from("profiles").upsert(
+    {
+      id: userId,
+      email: SCREENSHOT_USER_EMAIL,
+      full_name: SCREENSHOT_USER_NAME,
+      avatar_url: avatarUrl(SCREENSHOT_USER_EMAIL),
+      booking_slug: "marie-dupont",
+      active_organization_id: SCREENSHOT_ORG_ID,
+    },
+    { onConflict: "id" }
+  );
+}
+
+async function insertInBatches<T extends Record<string, unknown>>(
+  table: "prospect_activity" | "prospects",
+  rows: T[],
+  batchSize = 80
+): Promise<void> {
+  for (let i = 0; i < rows.length; i += batchSize) {
+    const batch = rows.slice(i, i + batchSize);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await admin.from(table).insert(batch as any);
+    if (error) throw new Error(`${table} batch ${i} — ${error.message}`);
+  }
+}
+
+async function seedBddLists(userId: string): Promise<Map<number, string>> {
+  const lists = buildBddLists();
+  const map = new Map<number, string>();
+  for (let i = 0; i < lists.length; i++) {
+    const list = lists[i]!;
+    const { error } = await admin.from("bdd").upsert(
+      {
+        id: list.id,
+        organization_id: SCREENSHOT_ORG_ID,
+        name: list.name,
+        proprietaire: userId,
+        source: i % 3 === 0 ? "csv" : i % 3 === 1 ? "linkedin_extension" : "manual",
+        created_at: daysAgo(10 + i * 3),
+      },
+      { onConflict: "id" }
+    );
+    if (error) throw new Error(`bdd ${list.name} — ${error.message}`);
+    map.set(i, list.id);
+  }
+  return map;
+}
+
+async function seedProspects(
+  userId: string,
+  bddMap: Map<number, string>
+): Promise<string[]> {
+  const ids: string[] = [];
+  const seeds = buildProspectSeeds(220);
+
+  const messagerieRow = {
+    id: MOCK_PROSPECT_ID,
+    user_id: userId,
+    organization_id: SCREENSHOT_ORG_ID,
+    full_name: "Sophie Martin",
+    company: "NovaTech",
+    job_title: "Directrice Marketing",
+    email: "sophie.martin@novatech.fr",
+    phone: "+33601020304",
+    linkedin: "https://linkedin.com/in/sophiemartin",
+    status: "qualified",
+    source: "linkedin_extension",
+    created_at: daysAgo(45),
+    updated_at: daysAgo(1),
+    last_contact: daysAgo(1),
+    enrichment_metadata: { profile_picture_url: avatarUrl(MOCK_PROSPECT_ID) },
+    bdd_id: bddMap.get(0) ?? null,
+  };
+
+  const { error: mErr } = await admin.from("prospects").upsert(messagerieRow, {
+    onConflict: "id",
+  });
+  if (mErr) throw new Error(`messagerie prospect — ${mErr.message}`);
+  ids.push(MOCK_PROSPECT_ID);
+
+  const bulkRows: Array<Record<string, unknown>> = [];
+  for (const p of seeds) {
+    if (p.name === "Sophie Martin") continue;
+    const slug = p.name.toLowerCase().replace(/\s+/g, ".");
+    bulkRows.push({
+      user_id: userId,
+      organization_id: SCREENSHOT_ORG_ID,
+      full_name: p.name,
+      company: p.company,
+      job_title: p.jobTitle,
+      email: `${slug}@${p.company.toLowerCase().replace(/\s+/g, "")}.fr`,
+      phone: `+336${String(10000000 + bulkRows.length).slice(-8)}`,
+      status: p.status,
+      source: p.source,
+      bdd_id: p.bddIndex != null ? bddMap.get(p.bddIndex) ?? null : null,
+      created_at: daysAgo(p.createdDaysAgo),
+      updated_at: daysAgo(p.lastContactDaysAgo),
+      last_contact: daysAgo(p.lastContactDaysAgo),
+      enrichment_metadata: {
+        profile_picture_url: avatarUrl(`${p.name}-${p.company}`),
+      },
+    });
+  }
+
+  for (let i = 0; i < bulkRows.length; i += 50) {
+    const batch = bulkRows.slice(i, i + 50);
+    const { data, error } = await admin
+      .from("prospects")
+      .insert(batch)
+      .select("id");
+    if (error) throw new Error(`prospect batch ${i} — ${error.message}`);
+    ids.push(...(data ?? []).map((r) => r.id));
+  }
+
+  return ids;
+}
+
+async function seedUnipileChats(prospectIds: string[]): Promise<void> {
+  const rows = buildFunnelChatRows(SCREENSHOT_ORG_ID, prospectIds);
+  await admin.from("unipile_chat_prospects").upsert(rows, {
+    onConflict: "prospect_id,unipile_chat_id",
+  });
+}
+
+async function seedFunnelRdvs(userId: string, prospectIds: string[]): Promise<void> {
+  const rows = buildFunnelRdvRows(SCREENSHOT_ORG_ID, userId, prospectIds);
+  const { error } = await admin.from("events").insert(rows);
+  if (error) throw new Error(`funnel RDV events — ${error.message}`);
+}
+
+async function seedFunnelClosings(prospectIds: string[]): Promise<void> {
+  const ids = funnelClosingProspectIds(prospectIds);
+  for (let i = 0; i < ids.length; i++) {
+    const { error } = await admin
+      .from("prospects")
+      .update({
+        status: "won",
+        updated_at: daysAgo(2 + (i % 20), 14),
+        last_contact: daysAgo(2 + (i % 20), 14),
+      })
+      .eq("id", ids[i]!);
+    if (error) throw new Error(`funnel closing prospect — ${error.message}`);
+  }
+}
+
+async function seedWorkflowRuns(
+  userId: string,
+  prospectIds: string[]
+): Promise<void> {
+  const seeds = buildProspectSeeds(220);
+  const runs: Array<Record<string, unknown>> = [];
+
+  prospectIds.forEach((pid, i) => {
+    const seed = seeds[i];
+    if (!seed?.inWorkflow) return;
+    const wfId =
+      seed.inWorkflow === "paused" ? WORKFLOW_RELANCES_ID : CANVAS_WORKFLOW_ID;
+    runs.push({
+      organization_id: SCREENSHOT_ORG_ID,
+      workflow_id: wfId,
+      prospect_id: pid,
+      started_by: userId,
+      status: seed.inWorkflow,
+      current_step_index: (seed.workflowStep ?? 1) - 1,
+      definition_snapshot: WORKFLOW_DEF_SNAPSHOT,
+      context: {},
+      has_outbound_step: true,
+      created_at: daysAgo(3 + (i % 10)),
+    });
+  });
+
+  if (runs.length) {
+    const { error } = await admin.from("workflow_runs").insert(runs);
+    if (error) throw new Error(`workflow runs — ${error.message}`);
+  }
+}
+
+async function seedCampaigns(
+  userId: string,
+  prospectIds: string[]
+): Promise<string[]> {
+  const jobIds: string[] = [];
+
+  for (const job of CAMPAIGN_JOB_DEFS) {
+    const { data: row, error } = await admin
+      .from("campaign_jobs")
+      .insert({
+        organization_id: SCREENSHOT_ORG_ID,
+        created_by: userId,
+        type: job.type,
+        status: job.status,
+        total_count: job.total,
+        processed_count: job.processed,
+        success_count: job.success,
+        error_count: job.errors,
+        batch_size: 10,
+        delay_ms: 2000,
+        message_template: "Bonjour {{prenom}}, ...",
+        metadata: { name: job.name },
+        created_at: daysAgo(job.createdDaysAgo),
+        started_at: daysAgo(job.startedDaysAgo),
+        completed_at:
+          job.status === "completed" ? daysAgo(job.startedDaysAgo - 1) : null,
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(`campaign job — ${error.message}`);
+    jobIds.push(row.id);
+
+    const slice = prospectIds.slice(
+      (jobIds.length - 1) * 8,
+      (jobIds.length - 1) * 8 + 28
+    );
+    if (slice.length) {
+      await admin.from("campaign_job_prospects").insert(
+        slice.map((pid, i) => ({
+          job_id: row.id,
+          prospect_id: pid,
+          status: i % 8 === 0 ? "error" : "success",
+          processed_at: daysAgo(job.startedDaysAgo - (i % 5)),
+        }))
+      );
+    }
+  }
+
+  return jobIds;
+}
+
+async function seedAllActivity(
+  userId: string,
+  prospectIds: string[],
+  jobIds: string[]
+): Promise<void> {
+  const rows = [
+    ...buildFunnelInviteRows(SCREENSHOT_ORG_ID, userId, prospectIds),
+    ...buildBulkActivityRows(
+      SCREENSHOT_ORG_ID,
+      userId,
+      prospectIds,
+      jobIds
+    ),
+  ];
+
+  const { data: wonProspects } = await admin
+    .from("prospects")
+    .select("id")
+    .eq("organization_id", SCREENSHOT_ORG_ID)
+    .eq("status", "won");
+
+  const closingIds = new Set(funnelClosingProspectIds(prospectIds));
+  for (const [i, p] of (wonProspects ?? []).entries()) {
+    if (closingIds.has(p.id)) continue;
+    rows.push({
+      organization_id: SCREENSHOT_ORG_ID,
+      prospect_id: p.id,
+      actor_id: userId,
+      action: "status_change",
+      details: { from: "proposal", to: "won" },
+      created_at: daysAgo(2 + (i % 24), 16),
+    });
+  }
+
+  await insertInBatches("prospect_activity", rows, 100);
+}
+
+async function seedCallSessions(
+  userId: string,
+  prospectIds: string[]
+): Promise<void> {
+  const sessions = [
+    {
+      id: CALL_SESSION_ID,
+      title: "Session — ICP Enterprise",
+      status: "running",
+      script:
+        "1. Intro — présenter Andoxa\n2. Qualifier le besoin CRM\n3. Proposer un RDV démo",
+    },
+    {
+      id: CALL_SESSION_2_ID,
+      title: "Relance Q2 — PME",
+      status: "completed",
+      script: "1. Rappel contexte\n2. Objections\n3. Next steps",
+    },
+  ];
+
+  for (const s of sessions) {
+    const { error: sErr } = await admin.from("call_sessions").upsert(
+      {
+        id: s.id,
+        organization_id: SCREENSHOT_ORG_ID,
+        created_by: userId,
+        title: s.title,
+        status: s.status,
+        script_template: s.script,
+        created_at: daysAgo(14),
+      },
+      { onConflict: "id" }
+    );
+    if (sErr) throw new Error(`call session — ${sErr.message}`);
+  }
+
+  // Extra sessions for activity volume
+  for (let i = 0; i < 6; i++) {
+    await admin.from("call_sessions").insert({
+      organization_id: SCREENSHOT_ORG_ID,
+      created_by: userId,
+      title: `Session cold call #${i + 1}`,
+      status: i % 2 === 0 ? "completed" : "running",
+      script_template: "Script standard outbound",
+      created_at: daysAgo(20 + i * 4),
+    });
+  }
+
+  const outcomes = ["interested", "callback", "not_interested", "voicemail", "meeting_booked"];
+  const queue = prospectIds.slice(0, 65);
+  await admin.from("call_session_prospects").insert(
+    queue.map((pid, i) => ({
+      call_session_id: i < 35 ? CALL_SESSION_ID : CALL_SESSION_2_ID,
+      prospect_id: pid,
+      status: i === 0 ? "in_progress" : i < 6 ? "pending" : "done",
+      call_duration_s: i >= 6 ? 90 + i * 15 : 0,
+      called_at: i >= 6 ? daysAgo(2 + (i % 20), 9 + (i % 6)) : null,
+      outcome: i >= 6 ? outcomes[i % outcomes.length] : null,
+    }))
+  );
+}
+
+async function seedWorkflows(userId: string): Promise<void> {
+  const canvasDef = buildCanvasWorkflowDefinition();
+  const canvasMeta = buildCanvasMetadata();
+
+  const { error: canvasErr } = await admin.from("workflows").upsert(
+    {
+      id: CANVAS_WORKFLOW_ID,
+      organization_id: SCREENSHOT_ORG_ID,
+      name: "Post-RDV WhatsApp",
+      description: "Confirmation, rappel et suivi après chaque rendez-vous.",
+      created_by: userId,
+      is_active: true,
+      is_template: false,
+      draft_definition: canvasDef,
+      published_definition: canvasDef,
+      metadata: canvasMeta,
+      trigger_kind: "on_booking",
+      run_mode: "terminating",
+    },
+    { onConflict: "id" }
+  );
+  if (canvasErr) throw new Error(`canvas workflow — ${canvasErr.message}`);
+
+  const relanceDef = {
+    schemaVersion: 1,
+    steps: [
+      {
+        id: "wa_1",
+        type: "whatsapp_message",
+        config: { messageTemplate: "Bonjour {{prenom}} !" },
+        next_id: "wait_1",
+      },
+      { id: "wait_1", type: "wait", config: { durationHours: 48 } },
+    ],
+  };
+
+  const linkedinDef = {
+    schemaVersion: 1,
+    steps: [
+      {
+        id: "li_1",
+        type: "linkedin_message",
+        config: { messageTemplate: "Ravi de vous connecter {{prenom}} !" },
+      },
+    ],
+  };
+
+  const fixedWorkflows = [
+    {
+      id: WORKFLOW_RELANCES_ID,
+      name: "Relance 48 h sans réponse",
+      description: "WhatsApp automatique si pas de réponse sous 48 h.",
+      is_active: true,
+      trigger_kind: "manual",
+      tags: ["WhatsApp"],
+      color: "emerald",
+      def: relanceDef,
+    },
+    {
+      id: WORKFLOW_LINKEDIN_ID,
+      name: "LinkedIn → Bienvenue",
+      description: "Message de bienvenue après acceptation.",
+      is_active: true,
+      trigger_kind: "manual",
+      tags: ["LinkedIn"],
+      color: "indigo",
+      def: linkedinDef,
+    },
+  ];
+
+  for (const wf of fixedWorkflows) {
+    await admin.from("workflows").upsert(
+      {
+        id: wf.id,
+        organization_id: SCREENSHOT_ORG_ID,
+        name: wf.name,
+        description: wf.description,
+        created_by: userId,
+        is_active: wf.is_active,
+        draft_definition: wf.def,
+        published_definition: wf.def,
+        metadata: { icon: "Workflow", color: wf.color, trigger: wf.trigger_kind },
+        trigger_kind: wf.trigger_kind,
+      },
+      { onConflict: "id" }
+    );
+  }
+
+  const listWorkflows = [
+    {
+      name: "No-show recovery",
+      description: "Relance après absence au RDV.",
+      is_active: false,
+      trigger_kind: "manual",
+      tags: ["WhatsApp", "CRM"],
+      color: "amber",
+    },
+    {
+      name: "Onboarding liste inbound",
+      description: "Brouillon — séquence pour leads entrants.",
+      is_active: false,
+      trigger_kind: "on_list_add",
+      tags: ["CRM"],
+      color: "slate",
+    },
+  ];
+
+  for (const wf of listWorkflows) {
+    const def = relanceDef;
+    await admin.from("workflows").insert({
+      organization_id: SCREENSHOT_ORG_ID,
+      name: wf.name,
+      description: wf.description,
+      created_by: userId,
+      is_active: wf.is_active,
+      draft_definition: def,
+      published_definition: wf.is_active ? def : null,
+      metadata: { icon: "Workflow", color: wf.color, trigger: wf.trigger_kind },
+      trigger_kind: wf.trigger_kind,
+    });
+  }
+}
+
+async function seedCalendarEvents(
+  userId: string,
+  colleagueIds: string[],
+  prospectIds: string[]
+): Promise<void> {
+  const base = new Date();
+  base.setHours(0, 0, 0, 0);
+  const day = base.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  base.setDate(base.getDate() + mondayOffset);
+
+  const slots = buildEventSlots(userId, colleagueIds);
+
+  for (let idx = 0; idx < slots.length; idx++) {
+    const slot = slots[idx]!;
+    let start: Date;
+    if (slot.dayOffset === 0) {
+      start = new Date(todayAt(slot.hour));
+    } else if (slot.dayOffset < 0) {
+      start = new Date(daysAgo(-slot.dayOffset, slot.hour));
+    } else {
+      start = new Date(base);
+      start.setDate(start.getDate() + slot.dayOffset);
+      start.setHours(slot.hour, 0, 0, 0);
+    }
+    const end = new Date(start);
+    end.setHours(start.getHours() + 1);
+
+    await admin.from("events").insert({
+      organization_id: SCREENSHOT_ORG_ID,
+      title: slot.title,
+      start_time: start.toISOString(),
+      end_time: end.toISOString(),
+      prospect_id: slot.internal ? null : prospectIds[idx % prospectIds.length] ?? null,
+      status: slot.status === "internal" ? "internal" : slot.status,
+      meeting_kind: slot.internal ? "other" : "meet",
+      event_type: slot.internal ? "internal" : "meeting",
+      is_all_day: false,
+      source: "andoxa",
+      created_by: slot.owner,
+      attendee_user_ids: slot.attendees,
+      guest_name: slot.internal
+        ? null
+        : buildProspectSeeds(220)[idx % 220]?.name ?? null,
+    });
+  }
+
+  for (let i = 0; i < 40; i++) {
+    const { error } = await admin.from("quick_bookings").insert({
+      organization_id: SCREENSHOT_ORG_ID,
+      prospect_id: prospectIds[i % prospectIds.length]!,
+      booked_by: userId,
+      booked_at: daysAgo(5 + (i % 25)),
+      scheduled_for: endOfTodayAt(14 + (i % 4)),
+      created_at: daysAgo(5 + (i % 25)),
+    });
+    if (error) throw new Error(`quick_bookings — ${error.message}`);
+  }
+}
+
+function writeState(userId: string): void {
+  const state: ScreenshotState = {
+    orgId: SCREENSHOT_ORG_ID,
+    userId,
+    email: SCREENSHOT_USER_EMAIL,
+    routes: {
+      dashboard: "/dashboard",
+      crm: "/crm",
+      campaigns: "/campaigns",
+      callSession: `/campaigns/sessions/${CALL_SESSION_ID}`,
+      messagerie: "/messagerie",
+      calendar: "/calendar",
+      workflowsList: "/workflows",
+      workflowsCanvas: `/workflows/${CANVAS_WORKFLOW_ID}`,
+    },
+    updatedAt: new Date().toISOString(),
+  };
+
+  fs.mkdirSync(path.dirname(SCREENSHOT_STATE_PATH), { recursive: true });
+  fs.writeFileSync(SCREENSHOT_STATE_PATH, JSON.stringify(state, null, 2));
+  console.log(`\n✓ Wrote ${SCREENSHOT_STATE_PATH}`);
+}
+
+async function main(): Promise<void> {
+  console.log("Seeding screenshot fixtures…");
+  console.log(`  Org:   ${SCREENSHOT_ORG_ID} (${SCREENSHOT_ORG_NAME})`);
+  console.log(`  User:  ${SCREENSHOT_USER_EMAIL}`);
+
+  const userId = await ensureScreenshotUser();
+  const colleagueIds = await ensureColleagues();
+  await upsertOrg(userId);
+  await wipeOrgData(SCREENSHOT_ORG_ID);
+
+  const bddMap = await seedBddLists(userId);
+  const prospectIds = await seedProspects(userId, bddMap);
+  await seedFunnelClosings(prospectIds);
+  await seedUnipileChats(prospectIds);
+  await seedWorkflows(userId);
+  await seedWorkflowRuns(userId, prospectIds);
+  const jobIds = await seedCampaigns(userId, prospectIds);
+  await seedAllActivity(userId, prospectIds, jobIds);
+  await seedFunnelRdvs(userId, prospectIds);
+  await seedCallSessions(userId, prospectIds);
+  await seedCalendarEvents(userId, colleagueIds, prospectIds);
+
+  writeState(userId);
+  console.log(`\n✓ Seeded ${prospectIds.length} prospects, ${jobIds.length} campaigns`);
+  console.log("✓ Screenshot org ready. Run: bun run images:sync");
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

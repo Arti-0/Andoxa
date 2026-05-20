@@ -9,6 +9,7 @@ import { Container } from "@/components/marketing/ui/container";
 
 // English slugs per the route-reconciliation decision.
 const LEGAL_LINKS: { label: string; href: string }[] = [
+  { label: "CGU", href: "/terms-of-use" },
   { label: "CGV", href: "/cgv" },
   { label: "Mentions légales", href: "/terms" },
   { label: "Confidentialité", href: "/privacy" },
