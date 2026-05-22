@@ -38,8 +38,29 @@ export const STRIPE_CONFIG = {
   },
 
   trial: {
-    /** Days of free trial granted on first Solo subscription. */
-    durationDays: 14,
+    /**
+     * Master switch — when false, no Solo trial is granted and every checkout
+     * goes straight to Stripe with no `trial_period_days`. Flip via env:
+     *
+     *     TRIAL_ENABLED=true   # restore the legacy 14-day Solo trial
+     *
+     * Default is `false` (post May-2026 pricing). Reads at runtime so toggling
+     * the env var in Vercel takes effect on the next request.
+     */
+    get enabled(): boolean {
+      return (process.env.TRIAL_ENABLED ?? "").toLowerCase() === "true";
+    },
+    /**
+     * Days of free trial granted on first Solo subscription when enabled.
+     * Configurable so we can run "7-day", "30-day", or any length without a
+     * code change:
+     *
+     *     TRIAL_DURATION_DAYS=7
+     */
+    get durationDays(): number {
+      const raw = Number.parseInt(process.env.TRIAL_DURATION_DAYS ?? "", 10);
+      return Number.isFinite(raw) && raw > 0 ? raw : 14;
+    },
     /** Soft cap so a single user can't open multiple trial accounts. */
     maxPerDomain: 1,
   },

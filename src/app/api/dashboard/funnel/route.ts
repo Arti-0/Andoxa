@@ -1,5 +1,10 @@
-import { createApiHandler, Errors } from "@/lib/api";
-import { getPeriodPair, parsePeriod, trendPts } from "@/lib/dashboard/period";
+import { createApiHandler, Errors, type ApiContext } from "@/lib/api";
+import {
+  getPeriodPair,
+  parsePeriod,
+  trendPts,
+  type DashboardPeriod,
+} from "@/lib/dashboard/period";
 import { readDashboardTargets } from "@/lib/dashboard/targets";
 import { isMockStatsEnabled, mockDashboardFunnel } from "@/lib/mock-stats";
 
@@ -25,7 +30,7 @@ interface FunnelStep {
   trend_pts: number;
 }
 
-interface FunnelResponse {
+export interface FunnelResponse {
   steps: FunnelStep[];
   global_rate_pct: number;
   avg_cycle_days: number | null;
@@ -51,7 +56,7 @@ function inRange(iso: string | null | undefined, start: Date, end: Date): boolea
 }
 
 async function countInWindow(
-  ctx: Parameters<Parameters<typeof createApiHandler>[0]>[1],
+  ctx: ApiContext,
   start: Date,
   end: Date,
 ): Promise<{
@@ -152,11 +157,11 @@ async function countInWindow(
   };
 }
 
-export const GET = createApiHandler(async (req, ctx): Promise<FunnelResponse> => {
+export async function getDashboardFunnel(
+  ctx: ApiContext,
+  period: DashboardPeriod,
+): Promise<FunnelResponse> {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
-
-  const url = new URL(req.url);
-  const period = parsePeriod(url.searchParams.get("period"));
   if (isMockStatsEnabled()) return mockDashboardFunnel(period);
 
   const { current, previous } = getPeriodPair(period);
@@ -241,4 +246,10 @@ export const GET = createApiHandler(async (req, ctx): Promise<FunnelResponse> =>
     pipeline_target_closings: targets.closings_per_month,
     period,
   };
+}
+
+export const GET = createApiHandler(async (req, ctx) => {
+  const url = new URL(req.url);
+  const period = parsePeriod(url.searchParams.get("period"));
+  return getDashboardFunnel(ctx, period);
 });

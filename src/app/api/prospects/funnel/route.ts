@@ -1,5 +1,5 @@
-import { createApiHandler, Errors } from "../../../../lib/api";
-import { PROSPECT_STATUSES, type ProspectStatus } from "../../../../lib/types/prospects";
+import { createApiHandler, Errors, type ApiContext } from "../../../../lib/api";
+import { getProspectStatuses } from "@/lib/prospects/statuses";
 import { isMockStatsEnabled, mockProspectsFunnel } from "@/lib/mock-stats";
 
 /**
@@ -22,26 +22,26 @@ import { isMockStatsEnabled, mockProspectsFunnel } from "@/lib/mock-stats";
  */
 
 interface StageRow {
-  status: ProspectStatus;
+  /** Status key (matches prospect_statuses.key, e.g. "new", "qualified"). */
+  status: string;
+  /** Display name from the per-org row — clients can use directly without a lookup. */
+  name: string;
+  /** Hex colour from the per-org row. */
+  color: string;
   count: number;
   delta_7d: number;
   avg_cycle_days: number | null;
 }
 
-const STAGE_ORDER: ProspectStatus[] = [
-  "new",
-  "contacted",
-  "qualified",
-  "rdv",
-  "proposal",
-  "won",
-  "lost",
-];
-
 export const GET = createApiHandler(async (_req, ctx) => {
   const workspaceId = ctx.workspaceId;
   if (!workspaceId) throw Errors.badRequest("Workspace required");
   if (isMockStatsEnabled()) return mockProspectsFunnel();
+
+  // Per-org pipeline — same source the settings tab / kanban / pills use.
+  const orgStatuses = await getProspectStatuses(ctx.supabase, workspaceId);
+  const stageOrder = orgStatuses.map((s) => s.key);
+  const knownKeys = new Set(stageOrder);
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
@@ -58,14 +58,14 @@ export const GET = createApiHandler(async (_req, ctx) => {
     throw Errors.internal("Failed to compute funnel");
   }
 
-  const counts = new Map<ProspectStatus, number>();
-  for (const s of STAGE_ORDER) counts.set(s, 0);
+  const counts = new Map<string, number>();
+  for (const s of stageOrder) counts.set(s, 0);
 
   // For delta computation: prospects whose updated_at falls inside the
   // window (this week vs. last week).
-  const thisWeek = new Map<ProspectStatus, number>();
-  const lastWeek = new Map<ProspectStatus, number>();
-  for (const s of STAGE_ORDER) {
+  const thisWeek = new Map<string, number>();
+  const lastWeek = new Map<string, number>();
+  for (const s of stageOrder) {
     thisWeek.set(s, 0);
     lastWeek.set(s, 0);
   }
@@ -73,17 +73,15 @@ export const GET = createApiHandler(async (_req, ctx) => {
   // For cycle days: track per-status (created_at → updated_at) deltas
   // for prospects that have moved past the status. We treat
   // `updated_at` as the most recent transition timestamp.
-  const cycleSums = new Map<ProspectStatus, number>();
-  const cycleCounts = new Map<ProspectStatus, number>();
-  for (const s of STAGE_ORDER) {
+  const cycleSums = new Map<string, number>();
+  const cycleCounts = new Map<string, number>();
+  for (const s of stageOrder) {
     cycleSums.set(s, 0);
     cycleCounts.set(s, 0);
   }
 
   for (const row of rows ?? []) {
-    const status = (PROSPECT_STATUSES as readonly string[]).includes(row.status ?? "")
-      ? (row.status as ProspectStatus)
-      : null;
+    const status = knownKeys.has(row.status ?? "") ? (row.status as string) : null;
     if (!status) continue;
     counts.set(status, (counts.get(status) ?? 0) + 1);
 
@@ -104,8 +102,8 @@ export const GET = createApiHandler(async (_req, ctx) => {
       if (days >= 0) {
         // Attribute the cycle-time to the *previous* stage, so e.g.
         // a prospect now in `rdv` informs the average cycle of `qualified`.
-        const idx = STAGE_ORDER.indexOf(status);
-        const prev = idx > 0 ? STAGE_ORDER[idx - 1] : null;
+        const idx = stageOrder.indexOf(status);
+        const prev = idx > 0 ? stageOrder[idx - 1] : null;
         if (prev) {
           cycleSums.set(prev, (cycleSums.get(prev) ?? 0) + days);
           cycleCounts.set(prev, (cycleCounts.get(prev) ?? 0) + 1);
@@ -114,7 +112,8 @@ export const GET = createApiHandler(async (_req, ctx) => {
     }
   }
 
-  const stages: StageRow[] = STAGE_ORDER.map((s) => {
+  const stages: StageRow[] = orgStatuses.map((row) => {
+    const s = row.key;
     const count = counts.get(s) ?? 0;
     const delta = (thisWeek.get(s) ?? 0) - (lastWeek.get(s) ?? 0);
     const cs = cycleCounts.get(s) ?? 0;
@@ -122,7 +121,14 @@ export const GET = createApiHandler(async (_req, ctx) => {
       cs > 0
         ? Math.round(((cycleSums.get(s) ?? 0) / cs) * 10) / 10
         : null;
-    return { status: s, count, delta_7d: delta, avg_cycle_days: avg };
+    return {
+      status: s,
+      name: row.name,
+      color: row.color,
+      count,
+      delta_7d: delta,
+      avg_cycle_days: avg,
+    };
   });
 
   return {

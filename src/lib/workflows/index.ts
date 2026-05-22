@@ -41,9 +41,21 @@ export {
 } from "./templates";
 export {
   WORKFLOW_TRIGGER_KIND_OPTIONS,
+  WORKFLOW_TRIGGER_CATEGORY_LABELS,
   isWorkflowTriggerKind,
+  getTriggerOption,
   type WorkflowTriggerKind,
+  type WorkflowTriggerCategory,
+  type WorkflowTriggerConfigTarget,
+  type WorkflowTriggerOption,
 } from "./trigger-kind";
+export { validateTriggerConfig } from "./trigger-config";
+export {
+  emitWorkflowTrigger,
+  matchesConfig,
+  buildEnrollmentMetadata,
+  type WorkflowTriggerPayload,
+} from "./fire-trigger";
 export {
   STEP_TYPE_LABELS,
   getStepLabel,

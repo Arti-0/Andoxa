@@ -53,14 +53,14 @@ export async function GET() {
     supabase
       .from("organizations")
       .select(
-        "id, name, slug, logo_url, plan, status, subscription_status, trial_ends_at, credits, owner_id, deleted_at, created_at, updated_at, metadata"
+        "id, name, slug, logo_url, plan, status, subscription_status, trial_ends_at, credits, owner_id, deleted_at, created_at, updated_at, metadata, scheduled_downgrade_to, scheduled_downgrade_effective_at"
       )
       .eq("id", profile.active_organization_id)
       .single(),
     supabase
       .from("organization_members")
       .select(
-        "id, organization_id, user_id, role, joined_at, created_at, profiles:user_id(id, full_name, email, avatar_url)"
+        "id, organization_id, user_id, role, active, created_at, profiles:user_id(id, full_name, email, avatar_url)"
       )
       .eq("organization_id", profile.active_organization_id),
     supabase

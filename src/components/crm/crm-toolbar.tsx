@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import {
@@ -38,6 +38,7 @@ import { ProspectImportDialog } from "./prospect-import-dialog";
 import { CampaignModal } from "@/components/campaigns/campaign-modal";
 import type { CampaignConfig } from "@/lib/campaigns/types";
 import type { BddItem, FilterState } from "./crm-table";
+import { useProspectStatuses } from "@/lib/prospects/statuses";
 
 export type CrmView = "listes" | "prospects" | "corbeille" | "kanban";
 
@@ -53,15 +54,23 @@ const SOURCE_OPTIONS = [
   { value: "booking", label: "Booking" },
 ];
 
-const STATUS_OPTIONS = [
-  { value: "new", label: "Nouveau", color: "bg-blue-500" },
-  { value: "contacted", label: "Contacté", color: "bg-yellow-500" },
-  { value: "qualified", label: "Qualifié", color: "bg-green-500" },
-  { value: "rdv", label: "RDV", color: "bg-purple-500" },
-  { value: "proposal", label: "Proposition", color: "bg-indigo-500" },
-  { value: "won", label: "Signé", color: "bg-emerald-500" },
-  { value: "lost", label: "Perdu", color: "bg-red-500" },
-];
+// Status filter options are sourced from the shared useProspectStatuses
+// hook (React Query, cache shared with kanban / pills / panel) so renames,
+// custom statuses, and color changes from the settings tab stay in sync.
+
+interface TagOption {
+  id: string;
+  name: string;
+  color: string;
+}
+
+/** Strip the createApiHandler envelope when present. */
+function unwrapEnvelope<T>(json: unknown): T {
+  if (json && typeof json === "object" && "data" in (json as Record<string, unknown>)) {
+    return (json as { data: T }).data;
+  }
+  return json as T;
+}
 
 async function fetchBddForDropdown(): Promise<{ items: BddItem[] }> {
   const res = await fetch("/api/bdd?pageSize=100", { credentials: "include" });
@@ -96,7 +105,7 @@ function groupBddByRecency(items: BddItem[]): {
 }
 
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import type { BddRow, ListesFilterState } from "./crm-table";
 import type { Prospect } from "@/lib/types/prospects";
 import { useLinkedInAccount } from "@/hooks/use-linkedin-account";
@@ -185,6 +194,27 @@ export function CrmToolbar({
   });
   const members = membersData?.items ?? [];
 
+  // Per-org pipeline statuses (active only — archived ones aren't useful as filter chips).
+  // Shared cache with kanban / status pills / panel via useProspectStatuses.
+  const { statuses: allStatuses } = useProspectStatuses();
+  const statuses = allStatuses.filter((s) => !s.is_archived);
+
+  // Per-org tags for the new tag picker — was previously absent from the toolbar
+  // even though FilterState already had a `tags` field wired through.
+  const { data: tagsData } = useQuery({
+    queryKey: ["tags", workspaceId],
+    queryFn: async () => {
+      const res = await fetch("/api/tags", { credentials: "include" });
+      if (!res.ok) throw new Error(String(res.status));
+      const json = await res.json();
+      const payload = unwrapEnvelope<{ items?: TagOption[] }>(json);
+      return payload?.items ?? [];
+    },
+    enabled: !!workspaceId,
+    staleTime: 5 * 60 * 1000,
+  });
+  const tags = tagsData ?? [];
+
   const hasProspectFilters =
     filters.status.length > 0 ||
     filters.source.length > 0 ||
@@ -212,6 +242,13 @@ export function CrmToolbar({
       ? filters.source.filter((s) => s !== source)
       : [...filters.source, source];
     onFiltersChange({ ...filters, source: newSource });
+  };
+
+  const toggleTag = (tagId: string) => {
+    const newTags = filters.tags.includes(tagId)
+      ? filters.tags.filter((t) => t !== tagId)
+      : [...filters.tags, tagId];
+    onFiltersChange({ ...filters, tags: newTags });
   };
 
   const toggleListesSource = (source: string) => {
@@ -408,14 +445,75 @@ export function CrmToolbar({
                     <>
                       <div>
                         <label className="mb-2 block text-xs font-medium text-muted-foreground">Statut</label>
-                        <div className="flex flex-wrap gap-1">
-                          {STATUS_OPTIONS.map((status) => (
-                            <button key={status.value} type="button" onClick={() => toggleStatus(status.value)}
-                              className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${filters.status.includes(status.value) ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80"}`}>
-                              <span className={`h-1.5 w-1.5 rounded-full ${status.color}`} />{status.label}
-                            </button>
-                          ))}
-                        </div>
+                        {statuses.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">
+                            Aucun statut. Configurez votre pipeline dans{" "}
+                            <Link href="/settings?tab=pipeline" className="text-primary hover:underline">
+                              Paramètres
+                            </Link>
+                            .
+                          </p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {statuses.map((status) => {
+                              const active = filters.status.includes(status.key);
+                              return (
+                                <button
+                                  key={status.id}
+                                  type="button"
+                                  onClick={() => toggleStatus(status.key)}
+                                  className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                                    active
+                                      ? "bg-primary text-primary-foreground"
+                                      : "bg-muted hover:bg-muted/80"
+                                  }`}
+                                >
+                                  <span
+                                    className="h-1.5 w-1.5 rounded-full ring-1 ring-inset ring-black/10"
+                                    style={{ backgroundColor: status.color }}
+                                  />
+                                  {status.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-xs font-medium text-muted-foreground">Tags</label>
+                        {tags.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">
+                            Aucun tag pour le moment. Créez-en dans{" "}
+                            <Link href="/settings?tab=pipeline" className="text-primary hover:underline">
+                              Paramètres
+                            </Link>
+                            .
+                          </p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {tags.map((tag) => {
+                              const active = filters.tags.includes(tag.id);
+                              return (
+                                <button
+                                  key={tag.id}
+                                  type="button"
+                                  onClick={() => toggleTag(tag.id)}
+                                  className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                                    active
+                                      ? "bg-primary text-primary-foreground"
+                                      : "bg-muted hover:bg-muted/80"
+                                  }`}
+                                >
+                                  <span
+                                    className="h-1.5 w-1.5 rounded-full ring-1 ring-inset ring-black/10"
+                                    style={{ backgroundColor: tag.color }}
+                                  />
+                                  {tag.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                       <div>
                         <label className="mb-2 block text-xs font-medium text-muted-foreground">Source</label>

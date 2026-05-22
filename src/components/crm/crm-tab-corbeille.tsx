@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * CRM v2 — Corbeille tab.
@@ -16,7 +16,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, RotateCcw, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { NameAvatar, StatusPill, SourcePill, prospectPhotoFromEnrichment } from "./crm-shared";
 import type { Prospect } from "@/lib/types/prospects";

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * Self-contained row-action hook used by every prospect row in the
@@ -20,7 +20,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,

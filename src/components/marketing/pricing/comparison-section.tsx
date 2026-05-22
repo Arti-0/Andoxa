@@ -13,6 +13,7 @@ import { Button } from "@/components/marketing/ui/button";
 import { Container } from "@/components/marketing/ui/container";
 import { Eyebrow } from "@/components/marketing/ui/eyebrow";
 import { cn } from "@/lib/utils";
+import { PLAN_PRESENTATION } from "@/lib/config/plans-config";
 
 /**
  * Interactive "your current stack vs Andoxa" savings comparator on /pricing.
@@ -54,10 +55,15 @@ const DEFAULT_SELECTED = new Set(TOOLS.map((t) => t.id));
 const DEFAULT_TEAM_SIZE = 5;
 const ANDOXA_BG = "#0052D9";
 
+// 20+ users → Custom (contact-sales). We pin the comparator's "indicative"
+// per-user rate here rather than promising a public Custom price — kept
+// deliberately lower than Team to communicate "volume discount on devis".
+const CUSTOM_INDICATIVE_PER_USER = 29;
+
 function andoxaPerUser(teamSize: number): number {
-  if (teamSize <= 1) return 39;
-  if (teamSize <= 20) return 36;
-  return 29;
+  if (teamSize <= 1) return PLAN_PRESENTATION.solo.price!.annual;
+  if (teamSize <= 20) return PLAN_PRESENTATION.team.price!.annual;
+  return CUSTOM_INDICATIVE_PER_USER;
 }
 function andoxaMonthlyTotal(teamSize: number): number {
   const p = andoxaPerUser(teamSize);
@@ -66,7 +72,7 @@ function andoxaMonthlyTotal(teamSize: number): number {
 function andoxaPlanLabel(teamSize: number): string {
   if (teamSize <= 1) return "Plan Solo";
   if (teamSize <= 20) return "Plan Team";
-  return "Plan Scale";
+  return "Plan Custom";
 }
 
 function formatEuro(n: number) {
@@ -273,7 +279,9 @@ export function ComparisonSection() {
 
         <p className="mx-auto mt-5 max-w-3xl text-center text-[11px] leading-5 text-muted-foreground">
           Tarifs publics mai 2026, tier minimum nécessaire pour matcher les features Andoxa (annual).
-          Andoxa : 39 €/mois Solo, 36 €/user/mois Team (3-20), 29 €/user/mois Scale (21+).
+          Andoxa : {PLAN_PRESENTATION.solo.price!.annual} €/mois Solo,{" "}
+          {PLAN_PRESENTATION.team.price!.annual} €/user/mois Team (3-20),{" "}
+          {CUSTOM_INDICATIVE_PER_USER} €/user/mois Custom (21+, indicatif, sur devis).
         </p>
       </Container>
     </section>

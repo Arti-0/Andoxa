@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -35,7 +35,7 @@ import {
   type WorkflowTemplate,
   type WorkflowTemplateTrigger,
 } from "@/lib/workflows";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { toastFromApiError } from "@/lib/toast";
 import { WorkflowListIcon } from "./workflow-list-icon";
 
@@ -43,12 +43,8 @@ type WizardStepNum = 1 | 2 | 3;
 
 const TRIGGER_ICONS: Record<WorkflowTemplateTrigger, LucideIcon> = {
   meeting_booked: Calendar,
-  linkedin_invite_accepted: UserPlus,
-  whatsapp_reply_received: MessageCircle,
-  no_reply_after_days: Clock,
-  crm_status_changed: Database,
-  new_prospect_in_list: ListPlus,
   meeting_no_show: CalendarOff,
+  crm_status_changed: Database,
   manual: Hand,
 };
 
@@ -109,6 +105,29 @@ export function WorkflowNewPageClient() {
 
     setSubmitting(true);
     try {
+      // If the template targets a specific status (e.g. Suivi post-RDV
+      // → "rdv_realise"), resolve the per-org status UUID now so the
+      // workflow is fully wired at creation time. Falls back to an
+      // empty config if the lookup fails — the user can still edit it
+      // from the workflow detail page.
+      let triggerConfig: Record<string, unknown> = {};
+      if (template.triggerConfigStatusKey) {
+        try {
+          const statusesRes = await fetch("/api/prospect-statuses", {
+            credentials: "include",
+          });
+          if (statusesRes.ok) {
+            const statusesJson = await statusesRes.json();
+            const items: Array<{ id: string; key: string }> =
+              statusesJson.data?.items ?? statusesJson.items ?? [];
+            const match = items.find((s) => s.key === template.triggerConfigStatusKey);
+            if (match) triggerConfig = { targetStatusId: match.id };
+          }
+        } catch {
+          // Non-blocking — workflow still saves without the targeted config.
+        }
+      }
+
       const res = await fetch("/api/workflows", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -116,6 +135,12 @@ export function WorkflowNewPageClient() {
         body: JSON.stringify({
           name: trimmed,
           draft_definition: template.buildDefinition(),
+          // New: wire the real trigger from the template directly onto the
+          // workflows row so it actually fires when the matching event
+          // occurs. Previously only `ui.trigger` (display metadata) was
+          // set, leaving every templated workflow stuck on `manual`.
+          trigger_kind: template.triggerKind,
+          trigger_config: triggerConfig,
           ui: { icon: iconKey, color: colorKey, trigger },
         }),
       });

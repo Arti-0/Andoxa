@@ -3,27 +3,18 @@
 // Runs panel — full-screen overlay that lists the prospects enrolled in a
 // workflow with their progress and status. Mounted on the canvas page.
 
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 import { Icon, ICO } from "./icons";
+import {
+  fetchWorkflowRuns,
+  workflowQueryKeys,
+  type WorkflowRunItem,
+} from "../_lib/queries";
 
 interface Props {
   open: boolean;
   workflowId: string;
   onClose: () => void;
-}
-
-interface RunItem {
-  id: string;
-  status: string;
-  current_step_index: number | null;
-  last_error: string | null;
-  created_at: string;
-  prospect_id: string;
-  prospect: { full_name: string | null; company: string | null } | null;
-  enrollment_list_labels?: string[];
-  steps_total?: number;
-  steps_completed?: number;
 }
 
 const STATUS_CFG: Record<
@@ -49,43 +40,19 @@ function formatDate(iso: string): string {
 }
 
 export function RunsPanel({ open, workflowId, onClose }: Props) {
-  const [runs, setRuns] = useState<RunItem[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setLoading(true);
-    void (async () => {
-      try {
-        const res = await fetch(
-          `/api/workflows/${workflowId}/runs?pageSize=100`,
-          { credentials: "include" }
-        );
-        const json = await res.json();
-        if (!res.ok || !json.success) {
-          throw new Error(json?.error?.message ?? "Chargement impossible");
-        }
-        if (!cancelled) {
-          setRuns((json.data?.items ?? []) as RunItem[]);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          toast.error(
-            e instanceof Error ? e.message : "Chargement impossible"
-          );
-          setRuns([]);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, workflowId]);
+  const { data: runs = [], isLoading, isFetching, isError } = useQuery({
+    queryKey: workflowQueryKeys.runs(workflowId),
+    queryFn: () => fetchWorkflowRuns(workflowId),
+    enabled: Boolean(workflowId),
+    staleTime: 2 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
 
   if (!open) return null;
+
+  const showInitialLoader = isLoading && runs.length === 0;
+  const refreshing = isFetching && runs.length > 0;
 
   return (
     <div
@@ -152,9 +119,11 @@ export function RunsPanel({ open, workflowId, onClose }: Props) {
               Exécutions
             </div>
             <div style={{ fontSize: 12.5, color: "#64748B", marginTop: 2 }}>
-              {loading
+              {showInitialLoader
                 ? "Chargement…"
-                : `${runs.length} prospect${runs.length > 1 ? "s" : ""} dans le parcours`}
+                : `${runs.length} prospect${runs.length > 1 ? "s" : ""} dans le parcours${
+                    refreshing ? " · mise à jour…" : ""
+                  }`}
             </div>
           </div>
           <button
@@ -174,7 +143,7 @@ export function RunsPanel({ open, workflowId, onClose }: Props) {
         </div>
 
         <div style={{ flex: 1, overflowY: "auto" }}>
-          {loading && runs.length === 0 ? (
+          {showInitialLoader ? (
             <div
               style={{
                 padding: 80,
@@ -184,6 +153,17 @@ export function RunsPanel({ open, workflowId, onClose }: Props) {
               }}
             >
               Chargement des prospects…
+            </div>
+          ) : isError && runs.length === 0 ? (
+            <div
+              style={{
+                padding: 80,
+                textAlign: "center",
+                color: "#94A3B8",
+                fontSize: 13,
+              }}
+            >
+              Impossible de charger les exécutions.
             </div>
           ) : runs.length === 0 ? (
             <div
@@ -243,91 +223,7 @@ export function RunsPanel({ open, workflowId, onClose }: Props) {
                   const total = r.steps_total ?? 0;
                   const done = r.steps_completed ?? 0;
                   return (
-                    <tr
-                      key={r.id}
-                      style={{ borderBottom: "1px solid #F1F5F9" }}
-                    >
-                      <Td>
-                        <span
-                          style={{ fontWeight: 600, color: "#0F172A" }}
-                        >
-                          {r.prospect?.full_name ??
-                            r.prospect_id.slice(0, 8)}
-                        </span>
-                        {r.prospect?.company && (
-                          <div
-                            style={{
-                              fontSize: 11.5,
-                              color: "#94A3B8",
-                              marginTop: 2,
-                            }}
-                          >
-                            {r.prospect.company}
-                          </div>
-                        )}
-                      </Td>
-                      <Td>
-                        <span style={{ fontSize: 12, color: "#64748B" }}>
-                          {(r.enrollment_list_labels ?? []).join(" · ") || "—"}
-                        </span>
-                      </Td>
-                      <Td>
-                        <span
-                          style={{
-                            fontSize: 12,
-                            color: "#64748B",
-                            tabularNums: "true",
-                          } as React.CSSProperties}
-                        >
-                          {total > 0 ? `${done} / ${total} étapes` : "—"}
-                        </span>
-                      </Td>
-                      <Td>
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 5,
-                            background: sc.bg,
-                            padding: "2px 8px",
-                            borderRadius: 20,
-                            fontSize: 11,
-                            fontWeight: 600,
-                            color: sc.color,
-                          }}
-                        >
-                          <span
-                            style={{
-                              width: 5,
-                              height: 5,
-                              borderRadius: "50%",
-                              background: sc.dot,
-                            }}
-                          />
-                          {sc.label}
-                        </span>
-                        {r.last_error && (
-                          <div
-                            style={{
-                              fontSize: 11,
-                              color: "#BE123C",
-                              marginTop: 4,
-                              maxWidth: 240,
-                            }}
-                            title={r.last_error}
-                          >
-                            {r.last_error.length > 60
-                              ? `${r.last_error.slice(0, 60)}…`
-                              : r.last_error}
-                          </div>
-                        )}
-                      </Td>
-                      <Td>
-                        <span style={{ fontSize: 12, color: "#94A3B8" }}>
-                          {formatDate(r.created_at)}
-                        </span>
-                      </Td>
-                    </tr>
+                    <RunRow key={r.id} run={r} sc={sc} total={total} done={done} />
                   );
                 })}
               </tbody>
@@ -336,6 +232,100 @@ export function RunsPanel({ open, workflowId, onClose }: Props) {
         </div>
       </div>
     </div>
+  );
+}
+
+function RunRow({
+  run: r,
+  sc,
+  total,
+  done,
+}: {
+  run: WorkflowRunItem;
+  sc: { label: string; bg: string; color: string; dot: string };
+  total: number;
+  done: number;
+}) {
+  return (
+    <tr style={{ borderBottom: "1px solid #F1F5F9" }}>
+      <Td>
+        <span style={{ fontWeight: 600, color: "#0F172A" }}>
+          {r.prospect?.full_name ?? r.prospect_id.slice(0, 8)}
+        </span>
+        {r.prospect?.company && (
+          <div
+            style={{
+              fontSize: 11.5,
+              color: "#94A3B8",
+              marginTop: 2,
+            }}
+          >
+            {r.prospect.company}
+          </div>
+        )}
+      </Td>
+      <Td>
+        <span style={{ fontSize: 12, color: "#64748B" }}>
+          {(r.enrollment_list_labels ?? []).join(" · ") || "—"}
+        </span>
+      </Td>
+      <Td>
+        <span
+          style={{
+            fontSize: 12,
+            color: "#64748B",
+            tabularNums: "true",
+          } as React.CSSProperties}
+        >
+          {total > 0 ? `${done} / ${total} étapes` : "—"}
+        </span>
+      </Td>
+      <Td>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            background: sc.bg,
+            padding: "2px 8px",
+            borderRadius: 20,
+            fontSize: 11,
+            fontWeight: 600,
+            color: sc.color,
+          }}
+        >
+          <span
+            style={{
+              width: 5,
+              height: 5,
+              borderRadius: "50%",
+              background: sc.dot,
+            }}
+          />
+          {sc.label}
+        </span>
+        {r.last_error && (
+          <div
+            style={{
+              fontSize: 11,
+              color: "#BE123C",
+              marginTop: 4,
+              maxWidth: 240,
+            }}
+            title={r.last_error}
+          >
+            {r.last_error.length > 60
+              ? `${r.last_error.slice(0, 60)}…`
+              : r.last_error}
+          </div>
+        )}
+      </Td>
+      <Td>
+        <span style={{ fontSize: 12, color: "#94A3B8" }}>
+          {formatDate(r.created_at)}
+        </span>
+      </Td>
+    </tr>
   );
 }
 

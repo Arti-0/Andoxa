@@ -1,4 +1,4 @@
-import { createApiHandler, Errors } from "@/lib/api";
+import { createApiHandler, Errors, type ApiContext } from "@/lib/api";
 import { isMockStatsEnabled, mockDashboardActiveCampaigns } from "@/lib/mock-stats";
 
 /**
@@ -13,7 +13,7 @@ import { isMockStatsEnabled, mockDashboardActiveCampaigns } from "@/lib/mock-sta
  *             'completed' otherwise
  */
 
-interface ActiveCampaign {
+export interface ActiveCampaign {
   workflow_id: string;
   name: string;
   channel: "linkedin" | "whatsapp" | "linkedin+whatsapp" | "other";
@@ -46,7 +46,9 @@ function inferChannel(def: WorkflowDefinition | null | undefined): ActiveCampaig
   return "other";
 }
 
-export const GET = createApiHandler(async (_req, ctx): Promise<ActiveCampaign[]> => {
+export async function getActiveCampaigns(
+  ctx: ApiContext,
+): Promise<ActiveCampaign[]> {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
   if (isMockStatsEnabled()) return mockDashboardActiveCampaigns();
 
@@ -112,4 +114,6 @@ export const GET = createApiHandler(async (_req, ctx): Promise<ActiveCampaign[]>
   }
 
   return out.slice(0, 6);
-});
+}
+
+export const GET = createApiHandler(async (_req, ctx) => getActiveCampaigns(ctx));

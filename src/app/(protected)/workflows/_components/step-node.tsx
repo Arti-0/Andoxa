@@ -30,6 +30,11 @@ const SOURCE_DOT_CLS: Record<SourceDotColor, string> = {
   rose: "wf-source-handle wf-source-handle--rose",
 };
 
+/** Wide click target; Handle element stays 1×1 px for edge anchoring. */
+function HandleHitPad() {
+  return <span className="wf-handle-hit" aria-hidden />;
+}
+
 function SourceHandle({
   id,
   color,
@@ -46,7 +51,9 @@ function SourceHandle({
       position={Position.Bottom}
       className={SOURCE_DOT_CLS[color]}
       style={style}
-    />
+    >
+      <HandleHitPad />
+    </Handle>
   );
 }
 
@@ -116,8 +123,10 @@ export function StepNode({ data, selected }: NodeProps) {
           type="target"
           position={Position.Top}
           className={TARGET_HANDLE_CLS}
-          style={{ top: -3 }}
-        />
+          style={{ left: "50%", top: 0 }}
+        >
+          <HandleHitPad />
+        </Handle>
       )}
 
       {isCondition ? (
@@ -125,12 +134,12 @@ export function StepNode({ data, selected }: NodeProps) {
           <SourceHandle
             id="true"
             color="emerald"
-            style={{ left: "30%", bottom: -18 }}
+            style={{ left: "30%", bottom: -3 }}
           />
           {showTrueLabel && (
             <span
               className="pointer-events-none absolute -translate-x-1/2 text-[10px] font-bold uppercase tracking-wider text-emerald-600"
-              style={{ left: "30%", top: "calc(100% + 10px)" }}
+              style={{ left: "30%", top: "calc(100% + 4px)" }}
             >
               Oui
             </span>
@@ -138,19 +147,19 @@ export function StepNode({ data, selected }: NodeProps) {
           <SourceHandle
             id="false"
             color="rose"
-            style={{ left: "70%", bottom: -18 }}
+            style={{ left: "70%", bottom: -3 }}
           />
           {showFalseLabel && (
             <span
               className="pointer-events-none absolute -translate-x-1/2 text-[10px] font-bold uppercase tracking-wider text-rose-600"
-              style={{ left: "70%", top: "calc(100% + 10px)" }}
+              style={{ left: "70%", top: "calc(100% + 4px)" }}
             >
               Non
             </span>
           )}
         </>
       ) : (
-        <SourceHandle color="blue" style={{ bottom: -18 }} />
+        <SourceHandle color="blue" style={{ left: "50%", bottom: -3 }} />
       )}
     </div>
   );

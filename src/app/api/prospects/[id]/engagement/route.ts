@@ -1,5 +1,11 @@
-import { createApiHandler, Errors } from "@/lib/api";
+import { createApiHandler, Errors, type ApiContext } from "@/lib/api";
 import { describeActivity } from "@/lib/prospect-activity";
+
+export interface ProspectEngagementPayload {
+  messages_total: number;
+  rdv_total: number;
+  no_show_total: number;
+}
 
 /**
  * GET /api/prospects/:id/engagement   (CRM-14)
@@ -14,10 +20,11 @@ import { describeActivity } from "@/lib/prospect-activity";
  * activity-aware feature stays in sync.
  */
 
-export const GET = createApiHandler(async (req, ctx) => {
+export async function getProspectEngagement(
+  ctx: ApiContext,
+  id: string,
+): Promise<ProspectEngagementPayload> {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
-  const url = new URL(req.url);
-  const id = url.pathname.split("/").slice(-2, -1)[0];
   if (!id) throw Errors.notFound("Prospect");
 
   const { data, error } = await ctx.supabase
@@ -46,4 +53,10 @@ export const GET = createApiHandler(async (req, ctx) => {
     rdv_total: rdv,
     no_show_total: noShow,
   };
+}
+
+export const GET = createApiHandler(async (req, ctx) => {
+  const url = new URL(req.url);
+  const id = url.pathname.split("/").slice(-2, -1)[0];
+  return getProspectEngagement(ctx, id);
 });

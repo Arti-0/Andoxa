@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 // Internal "Réserver un RDV" modal — mounted on the prospect detail page.
 // Lean port of the design (booking-modal (3).jsx): mini calendar + time grid +
@@ -23,7 +23,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import {
   Dialog,
   DialogContent,

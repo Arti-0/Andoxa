@@ -51,7 +51,24 @@ export interface Prospect {
 // removed during the taxonomy audit (see docs/TAGS_AUDIT.md §2). When a
 // real scoring system lands, define its types in a sibling file.
 
-// Canonical prospect statuses (DB keys)
+// Canonical prospect statuses (legacy DB keys).
+//
+// **DEPRECATED for runtime use.** The source of truth is the per-org
+// `prospect_statuses` table — every org gets 10 default rows seeded via the
+// trigger in 20260521120000_prospect_statuses_new_defaults_and_org_trigger.
+// All CRM views, pipes, kanban, filters and the messagerie now read from
+// that table via:
+//
+//   import {
+//     useProspectStatuses,   // client React Query hook (shared cache)
+//     useStatusResolver,     // sync lookup with legacy fallback for pills
+//     getProspectStatuses,   // server-side fetch
+//   } from "@/lib/prospects/statuses";
+//
+// The maps below survive only as fallback inside `useStatusResolver` and
+// `<StatusPill>` so first-render before /api/prospect-statuses resolves
+// still draws correctly for the 7 historic keys. Do not extend them; add
+// new statuses through the settings UI (which writes to prospect_statuses).
 export const PROSPECT_STATUSES = [
   "new",
   "contacted",

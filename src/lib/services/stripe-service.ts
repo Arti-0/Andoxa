@@ -58,6 +58,16 @@ export class StripeService {
   }
 
   /**
+   * Fetch a subscription. Used by the schedule-downgrade flow to pin the
+   * effective date to `current_period_end` — Stripe is the source of truth
+   * for billing cycles so we don't drift if a plan was prorated mid-cycle.
+   */
+  async getSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
+    const stripe = requireStripe();
+    return stripe.subscriptions.retrieve(subscriptionId);
+  }
+
+  /**
    * Create a Checkout Session for a Solo/Team subscription.
    *
    * @param priceId  Stripe price ID resolved by the caller (env-driven).

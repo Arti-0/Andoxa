@@ -4,23 +4,82 @@
 // RightConfigPanel. Form fields use .wf-* (scoped under .ws2-root) + theme tokens.
 
 import { type ReactNode, useEffect, useState } from "react";
+import {
+  Calendar,
+  CalendarX,
+  Database,
+  Hand,
+  ListPlus,
+  type LucideIcon,
+  MessageCircle,
+  Megaphone,
+  Tag as TagIcon,
+} from "lucide-react";
 import { Icon, ICO } from "./icons";
 import { WF_NODE_TYPES, type WfNodeType } from "./node-types";
 import type { WorkflowStep } from "@/lib/workflows/schema";
 import {
   WORKFLOW_TRIGGER_KIND_OPTIONS,
+  WORKFLOW_TRIGGER_CATEGORY_LABELS,
+  getTriggerOption,
   type WorkflowTriggerKind,
+  type WorkflowTriggerCategory,
 } from "@/lib/workflows";
+import { useProspectStatuses } from "@/lib/prospects/statuses";
+import { LinkedinIcon, WhatsappIcon } from "@/components/marketing/icons/brand-icons";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { TRIGGER_NODE_ID } from "./xy-canvas";
 import { cn } from "@/lib/utils";
+
+// One lucide icon per trigger kind. LinkedIn / WhatsApp use the brand-icons
+// wordmarks for instant channel recognition.
+const TRIGGER_ICONS: Record<
+  WorkflowTriggerKind,
+  React.ComponentType<{ size?: number; className?: string }>
+> = {
+  on_booking: asLucide(Calendar),
+  on_no_show: asLucide(CalendarX),
+  on_status_change: asLucide(Database),
+  on_linkedin_reply: LinkedinIcon,
+  on_whatsapp_reply: WhatsappIcon,
+  on_campaign_reply: asLucide(Megaphone),
+  on_list_add: asLucide(ListPlus),
+  on_tag: asLucide(TagIcon),
+  manual: asLucide(Hand),
+};
+
+/** Adapter so lucide icons fit the `{size, className}` prop shape used by
+ *  the brand-icons (LinkedinIcon / WhatsappIcon). */
+function asLucide(
+  Cmp: LucideIcon
+): React.ComponentType<{ size?: number; className?: string }> {
+  function Wrapped({ size = 16, className }: { size?: number; className?: string }) {
+    return <Cmp size={size} className={className} />;
+  }
+  Wrapped.displayName = `LucideAdapter(${Cmp.displayName ?? "Icon"})`;
+  return Wrapped;
+}
+
+// Used by MessageCircle/etc when we wanted them — kept for tree-shake.
+void MessageCircle;
 
 interface RightPanelProps {
   selectedId: string;
   step: WorkflowStep | null;
   triggerKind: WorkflowTriggerKind;
+  triggerConfig: Record<string, unknown>;
   onClose: () => void;
   onUpdateStep: (stepId: string, patch: Record<string, unknown>) => void;
   onUpdateTriggerKind: (next: WorkflowTriggerKind) => void;
+  onUpdateTriggerConfig: (next: Record<string, unknown>) => void;
   onDeleteStep: (stepId: string) => void;
   onDuplicateStep: (stepId: string) => void;
 }
@@ -81,27 +140,276 @@ function Toggle({
   );
 }
 
+// Trigger picker order — matches the user's spec.
+const TRIGGER_CATEGORY_ORDER: WorkflowTriggerCategory[] = [
+  "pipeline",
+  "reply",
+  "list_tag",
+  "manual",
+];
+
 function TriggerForm({
   triggerKind,
-  onUpdate,
+  triggerConfig,
+  onUpdateKind,
+  onUpdateConfig,
 }: {
   triggerKind: WorkflowTriggerKind;
-  onUpdate: (next: WorkflowTriggerKind) => void;
+  triggerConfig: Record<string, unknown>;
+  onUpdateKind: (next: WorkflowTriggerKind) => void;
+  onUpdateConfig: (next: Record<string, unknown>) => void;
 }) {
+  const grouped: Record<WorkflowTriggerCategory, typeof WORKFLOW_TRIGGER_KIND_OPTIONS> = {
+    pipeline: [],
+    reply: [],
+    list_tag: [],
+    manual: [],
+  };
+  for (const opt of WORKFLOW_TRIGGER_KIND_OPTIONS) grouped[opt.category].push(opt);
+
+  const option = getTriggerOption(triggerKind);
+  const ActiveIcon = TRIGGER_ICONS[triggerKind];
+
+  return (
+    <>
+      <div className="mb-3.5">
+        <FieldLabel>Type de déclencheur</FieldLabel>
+        <Select
+          value={triggerKind}
+          onValueChange={(v) => onUpdateKind(v as WorkflowTriggerKind)}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue>
+              {option ? (
+                <span className="flex items-center gap-2">
+                  <ActiveIcon size={14} className="text-muted-foreground" />
+                  <span className="truncate">{option.label}</span>
+                </span>
+              ) : (
+                "Choisir un déclencheur"
+              )}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {TRIGGER_CATEGORY_ORDER.map((cat, i) => (
+              <SelectGroup key={cat}>
+                {i > 0 && <div className="-mx-1 my-1 h-px bg-border" aria-hidden />}
+                <SelectLabel className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em]">
+                  {WORKFLOW_TRIGGER_CATEGORY_LABELS[cat]}
+                </SelectLabel>
+                {grouped[cat].map((t) => {
+                  const ItemIcon = TRIGGER_ICONS[t.id];
+                  return (
+                    <SelectItem key={t.id} value={t.id} className="pl-2">
+                      <ItemIcon size={14} className="text-muted-foreground" />
+                      <span>{t.label}</span>
+                    </SelectItem>
+                  );
+                })}
+              </SelectGroup>
+            ))}
+          </SelectContent>
+        </Select>
+        {option && (
+          <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+            {option.description}
+          </p>
+        )}
+      </div>
+
+      {option?.configTarget === "status" && (
+        <TriggerStatusPicker
+          value={(triggerConfig.targetStatusId as string | undefined) ?? ""}
+          onChange={(v) =>
+            onUpdateConfig({ ...triggerConfig, targetStatusId: v || null })
+          }
+        />
+      )}
+
+      {option?.configTarget === "tag" && (
+        <TriggerTagPicker
+          value={(triggerConfig.targetTagId as string | undefined) ?? ""}
+          onChange={(v) =>
+            onUpdateConfig({ ...triggerConfig, targetTagId: v || null })
+          }
+        />
+      )}
+
+      {/* on_list_add and on_campaign_reply scopes — kept as free-text UUID
+          inputs until dedicated list / campaign-job picker helpers land. */}
+      {option?.configTarget === "list" && (
+        <div className="mb-3.5">
+          <FieldLabel>Liste cible (optionnel)</FieldLabel>
+          <input
+            value={(triggerConfig.targetListId as string | undefined) ?? ""}
+            placeholder="UUID de liste — vide = toutes les listes"
+            onChange={(e) =>
+              onUpdateConfig({
+                ...triggerConfig,
+                targetListId: e.target.value.trim() || null,
+              })
+            }
+            className="wf-input box-border"
+          />
+        </div>
+      )}
+
+      {option?.configTarget === "campaign_job" && (
+        <div className="mb-3.5">
+          <FieldLabel>Campagne cible (optionnel)</FieldLabel>
+          <input
+            value={(triggerConfig.campaignJobId as string | undefined) ?? ""}
+            placeholder="UUID de campagne — vide = toutes"
+            onChange={(e) =>
+              onUpdateConfig({
+                ...triggerConfig,
+                campaignJobId: e.target.value.trim() || null,
+              })
+            }
+            className="wf-input box-border"
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
+const ANY_STATUS_VALUE = "__any__";
+
+function TriggerStatusPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const { statuses, loading } = useProspectStatuses();
+  // Radix Select doesn't allow empty string item values, so we use a sentinel
+  // value for "any" and translate at the edges.
+  const selectValue = value || ANY_STATUS_VALUE;
+  const selected = statuses.find((s) => s.id === value);
+
   return (
     <div className="mb-3.5">
-      <FieldLabel>Type de déclencheur</FieldLabel>
-      <select
-        value={triggerKind}
-        onChange={(e) => onUpdate(e.target.value as WorkflowTriggerKind)}
-        className="wf-select box-border"
+      <FieldLabel>Statut cible (optionnel)</FieldLabel>
+      <Select
+        value={selectValue}
+        onValueChange={(v) => onChange(v === ANY_STATUS_VALUE ? "" : v)}
+        disabled={loading}
       >
-        {WORKFLOW_TRIGGER_KIND_OPTIONS.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.label}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger className="w-full">
+          <SelectValue>
+            {selected ? (
+              <span className="flex items-center gap-2">
+                <span
+                  aria-hidden
+                  className="h-2 w-2 rounded-full ring-1 ring-inset ring-black/10"
+                  style={{ backgroundColor: selected.color }}
+                />
+                <span className="truncate">{selected.name}</span>
+              </span>
+            ) : (
+              <span className="text-muted-foreground">Tous les changements</span>
+            )}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ANY_STATUS_VALUE} className="pl-2">
+            <span className="h-2 w-2 rounded-full bg-muted ring-1 ring-inset ring-black/10" />
+            <span>Tous les changements</span>
+          </SelectItem>
+          {statuses.length > 0 && <div className="-mx-1 my-1 h-px bg-border" aria-hidden />}
+          {statuses.map((s) => (
+            <SelectItem key={s.id} value={s.id} className="pl-2">
+              <span
+                className="h-2 w-2 rounded-full ring-1 ring-inset ring-black/10"
+                style={{ backgroundColor: s.color }}
+              />
+              <span>{s.name}</span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+        Laissez vide pour déclencher sur n&apos;importe quel changement.
+      </p>
+    </div>
+  );
+}
+
+const ANY_TAG_VALUE = "__any__";
+
+function TriggerTagPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const [tags, setTags] = useState<Array<{ id: string; name: string; color: string }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/tags");
+        if (!res.ok) return;
+        const json = await res.json();
+        if (alive) setTags(json.items ?? []);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const selectValue = value || ANY_TAG_VALUE;
+  const selected = tags.find((t) => t.id === value);
+
+  return (
+    <div className="mb-3.5">
+      <FieldLabel>Tag cible (optionnel)</FieldLabel>
+      <Select
+        value={selectValue}
+        onValueChange={(v) => onChange(v === ANY_TAG_VALUE ? "" : v)}
+        disabled={loading}
+      >
+        <SelectTrigger className="w-full">
+          <SelectValue>
+            {selected ? (
+              <span className="flex items-center gap-2">
+                <span
+                  aria-hidden
+                  className="h-2 w-2 rounded-full ring-1 ring-inset ring-black/10"
+                  style={{ backgroundColor: selected.color }}
+                />
+                <span className="truncate">{selected.name}</span>
+              </span>
+            ) : (
+              <span className="text-muted-foreground">N&apos;importe quel tag</span>
+            )}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ANY_TAG_VALUE} className="pl-2">
+            <span className="h-2 w-2 rounded-full bg-muted ring-1 ring-inset ring-black/10" />
+            <span>N&apos;importe quel tag</span>
+          </SelectItem>
+          {tags.length > 0 && <div className="-mx-1 my-1 h-px bg-border" aria-hidden />}
+          {tags.map((t) => (
+            <SelectItem key={t.id} value={t.id} className="pl-2">
+              <span
+                className="h-2 w-2 rounded-full ring-1 ring-inset ring-black/10"
+                style={{ backgroundColor: t.color }}
+              />
+              <span>{t.name}</span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
@@ -202,6 +510,12 @@ function CrmForm({
     notifyOwner?: boolean;
   };
   const field = cfg.field ?? "status";
+
+  // Statuses now come from the workspace's prospect_statuses table (Phase 1).
+  // For the legacy "priority" field — see known-bug note: the column doesn't
+  // exist on prospects yet, so the action will fail at runtime if selected.
+  const { statuses, loading } = useProspectStatuses();
+
   return (
     <>
       <div className={sectionTitle}>Mise à jour CRM</div>
@@ -213,21 +527,33 @@ function CrmForm({
           className="wf-select box-border"
         >
           <option value="status">Statut</option>
-          <option value="priority">Priorité</option>
+          <option value="priority">Priorité (non disponible — à venir)</option>
         </select>
       </div>
       <div className="mb-3.5">
         <FieldLabel>Nouvelle valeur</FieldLabel>
-        <input
-          value={cfg.value ?? ""}
-          onChange={(e) => onUpdate({ value: e.target.value })}
-          placeholder={
-            field === "status"
-              ? "ex : Réunion effectuée"
-              : "ex : haute"
-          }
-          className="wf-input box-border"
-        />
+        {field === "status" ? (
+          <select
+            value={cfg.value ?? ""}
+            onChange={(e) => onUpdate({ value: e.target.value })}
+            className="wf-select box-border"
+            disabled={loading}
+          >
+            <option value="">— Choisir un statut —</option>
+            {statuses.map((s) => (
+              <option key={s.id} value={s.key}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            value={cfg.value ?? ""}
+            onChange={(e) => onUpdate({ value: e.target.value })}
+            placeholder="ex : haute"
+            className="wf-input box-border"
+          />
+        )}
       </div>
       <div className="mb-3.5">
         <FieldLabel>Notifier le propriétaire</FieldLabel>
@@ -369,9 +695,11 @@ export function RightPanel({
   selectedId,
   step,
   triggerKind,
+  triggerConfig,
   onClose,
   onUpdateStep,
   onUpdateTriggerKind,
+  onUpdateTriggerConfig,
   onDeleteStep,
   onDuplicateStep,
 }: RightPanelProps) {
@@ -438,7 +766,9 @@ export function RightPanel({
         {isTrigger ? (
           <TriggerForm
             triggerKind={triggerKind}
-            onUpdate={onUpdateTriggerKind}
+            triggerConfig={triggerConfig}
+            onUpdateKind={onUpdateTriggerKind}
+            onUpdateConfig={onUpdateTriggerConfig}
           />
         ) : !step ? (
           <p className="text-sm text-muted-foreground">Étape introuvable.</p>

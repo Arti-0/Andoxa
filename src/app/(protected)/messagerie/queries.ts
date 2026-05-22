@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 // React Query hooks for messagerie, wired to real backend.
 // Stable cache keys, generous staleTime, placeholderData = (prev) => prev so
@@ -14,9 +14,8 @@ import { useEffect } from "react";
 import { useMessagingRealtime } from "@/hooks/use-messaging-realtime";
 import type { UnipileChat, UnipileMessage } from "@/lib/unipile/types";
 import type { Prospect } from "@/lib/types/prospects";
-import { PROSPECT_STATUS_LABELS } from "@/lib/types/prospects";
 import { createClient } from "@/lib/supabase/client";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import {
   accountTypeToChannel,
   buildThreadEntries,
@@ -37,6 +36,7 @@ export const messagerieKeys = {
   all: ["messagerie"] as const,
   chats: () => [...messagerieKeys.all, "chats"] as const,
   andoxaIds: () => [...messagerieKeys.all, "andoxa-ids"] as const,
+  connections: () => [...messagerieKeys.all, "connections"] as const,
   prospect: (id: string) => [...messagerieKeys.all, "prospect", id] as const,
   prospectActivity: (id: string) =>
     [...messagerieKeys.all, "prospect-activity", id] as const,
@@ -44,6 +44,39 @@ export const messagerieKeys = {
     [...messagerieKeys.all, "thread", chatId] as const,
   templates: () => [...messagerieKeys.all, "templates"] as const,
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Unipile connection status — used to gate the messagerie page on whether the
+// user has connected a LinkedIn or WhatsApp account. /api/unipile/me also
+// validates the account against Unipile and clears stale local rows.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface UnipileMePayload {
+  connected: boolean;
+  whatsapp_connected: boolean;
+}
+
+export interface UnipileConnections {
+  linkedinConnected: boolean;
+  whatsappConnected: boolean;
+  anyConnected: boolean;
+}
+
+export function useUnipileConnections(): UseQueryResult<UnipileConnections> {
+  return useQuery({
+    queryKey: messagerieKeys.connections(),
+    queryFn: async () => {
+      const data = await getJson<UnipileMePayload>("/api/unipile/me");
+      return {
+        linkedinConnected: !!data.connected,
+        whatsappConnected: !!data.whatsapp_connected,
+        anyConnected: !!data.connected || !!data.whatsapp_connected,
+      };
+    },
+    staleTime: FIVE_MIN,
+    placeholderData: (prev) => prev,
+  });
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fetch helpers — extract `data` envelope used by createApiHandler responses.
@@ -192,8 +225,11 @@ export function useToggleChatPin() {
   });
 }
 
-export function useConversations(): UseQueryResult<Conversation[]> {
+export function useConversations(
+  options: { enabled?: boolean } = {},
+): UseQueryResult<Conversation[]> {
   const qc = useQueryClient();
+  const enabled = options.enabled ?? true;
 
   // Realtime: when a new inbox event arrives, refresh the chats list so unread
   // counts and ordering stay accurate. Per-thread invalidation lives in
@@ -222,6 +258,7 @@ export function useConversations(): UseQueryResult<Conversation[]> {
     },
     staleTime: FIVE_MIN,
     placeholderData: (prev) => prev,
+    enabled,
   });
 }
 
@@ -357,14 +394,11 @@ interface ActivityRow {
 }
 
 // Replace raw DB status values with their French labels inside a description string.
-function translateStatusValues(text: string): string {
-  return text.replace(
-    /\b(new|contacted|qualified|rdv|proposal|won|lost)\b/g,
-    (match) =>
-      PROSPECT_STATUS_LABELS[match as keyof typeof PROSPECT_STATUS_LABELS] ??
-      match,
-  );
-}
+// translateStatusValues used to map raw DB status keys ("new", "qualified"…)
+// to French labels inside activity description strings. That substitution
+// now happens server-side in /api/prospects/[id]/activity using per-org
+// status names — so the description we receive already reads "Nouveau →
+// Contacté". No client-side replace needed.
 
 function activityToTimeline(rows: ActivityRow[]): TimelineEvent[] {
   return rows
@@ -375,7 +409,7 @@ function activityToTimeline(rows: ActivityRow[]): TimelineEvent[] {
       });
       // Use the description field; the design's "kind" maps to an icon only.
       if (r.action === "status_change") {
-        return { kind: "reply", label: translateStatusValues(r.description), date };
+        return { kind: "reply", label: r.description, date };
       }
       if (
         r.action === "workflow_step_completed" &&

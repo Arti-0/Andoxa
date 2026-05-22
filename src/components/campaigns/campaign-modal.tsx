@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -34,7 +34,7 @@ import {
     requiresPremium,
     isInviteAction,
 } from '@/lib/campaigns/types';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { applyMessageVariables } from '@/lib/unipile/campaign';
 import {
     CAMPAIGN_VARIABLE_META,
@@ -179,19 +179,21 @@ export function CampaignModal({
             const res = await fetch('/api/booking/slug', {
                 credentials: 'include',
             });
-            if (!res.ok) return { booking_slug: null as string | null };
+            if (!res.ok) return { booking_public_path: null as string | null };
             const json = await res.json();
             const d = json?.data ?? json;
-            return { booking_slug: (d?.booking_slug ?? null) as string | null };
+            return {
+              booking_public_path: (d?.booking_public_path ?? d?.booking_slug ?? null) as string | null,
+            };
         },
         enabled: open,
         staleTime: 60_000,
     });
 
-    const bookingSlug = bookingSlugRes?.booking_slug ?? null;
+    const bookingPublicPath = bookingSlugRes?.booking_public_path ?? null;
     const bookingUrl =
-        typeof window !== 'undefined' && bookingSlug
-            ? `${window.location.origin}/booking/${bookingSlug}`
+        typeof window !== 'undefined' && bookingPublicPath
+            ? `${window.location.origin}/booking/${bookingPublicPath.replace(/^\/+|\/+$/g, '')}`
             : '';
 
     const prospectIdsParam = useMemo(
@@ -296,7 +298,7 @@ export function CampaignModal({
         () => extractUsedCampaignVariables(text),
         [text]
     );
-    const hasBookingLink = Boolean(bookingSlug);
+    const hasBookingLink = Boolean(bookingPublicPath);
     const incompleteProspects = useMemo(() => {
         return prospects.filter(
             (p) =>

@@ -1,6 +1,6 @@
 import { createApiHandler, Errors } from "@/lib/api";
 import { describeActivity } from "@/lib/prospect-activity";
-import { PROSPECT_STATUS_LABELS } from "@/lib/types/prospects";
+import { getProspectStatuses } from "@/lib/prospects/statuses";
 
 function getProspectIdFromUrl(req: Request): string {
   const segments = new URL(req.url).pathname.split("/").filter(Boolean);
@@ -62,18 +62,22 @@ export const GET = createApiHandler(async (req, ctx) => {
     for (const w of wfs ?? []) workflowMap.set(w.id, w.name);
   }
 
+  // Per-org status names so "Statut : X → Y" reflects renamed/custom rows.
+  const orgStatuses = await getProspectStatuses(ctx.supabase, ctx.workspaceId);
+  const statusLabelByKey = new Map(
+    orgStatuses.map((s) => [s.key, s.name] as const),
+  );
+
   const items = (rows ?? []).map((r) => {
     const d = (r.details ?? {}) as Record<string, unknown>;
     const desc = describeActivity(r.action ?? "");
-    // For status_change, swap the raw db keys for FR labels in the body.
+    // For status_change, swap the raw db keys for the org's current names.
     let body = desc.body(d);
     if (r.action === "status_change") {
       const from = typeof d.from === "string" ? d.from : "?";
       const to = typeof d.to === "string" ? d.to : "?";
-      const fromLabel =
-        PROSPECT_STATUS_LABELS[from as keyof typeof PROSPECT_STATUS_LABELS] ?? from;
-      const toLabel =
-        PROSPECT_STATUS_LABELS[to as keyof typeof PROSPECT_STATUS_LABELS] ?? to;
+      const fromLabel = statusLabelByKey.get(from) ?? from;
+      const toLabel = statusLabelByKey.get(to) ?? to;
       body = `Statut : ${fromLabel} → ${toLabel}`;
     }
     return {

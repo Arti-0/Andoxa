@@ -1,9 +1,11 @@
-import { createApiHandler, Errors, parseBody } from "../../../../lib/api";
+import { createApiHandler, Errors, parseBody, type ApiContext } from "../../../../lib/api";
 import { NextRequest } from "next/server";
 import { invalidate } from "@/lib/cache/redis";
 import { createNotification } from "@/lib/notifications/create-notification";
 import { enrichProspects } from "@/lib/crm/enrich-prospects";
 import { logStatusChange } from "@/lib/prospect-activity";
+import { emitWorkflowTrigger } from "@/lib/workflows/fire-trigger";
+import { findStatusByAny } from "@/lib/prospects/statuses";
 import type { Prospect } from "@/lib/types/prospects";
 import type { Database } from "@/lib/types/supabase";
 
@@ -14,22 +16,15 @@ interface RouteParams {
 }
 
 /**
- * GET /api/prospects/[id]
- * Returns a single prospect with the same enrichments the listing page
- * receives (bdd_name, workflow, convs, last_activity) so the profile
- * banner can render the list pill, channel inventory and the workflow
- * progress card without extra round-trips.
+ * Reusable inner fetch — used by both this route and /api/prospects/[id]/overview
+ * so the detail page only auths once.
  */
-export const GET = createApiHandler(async (req: NextRequest, ctx) => {
-  const url = new URL(req.url);
-  const id = url.pathname.split("/").pop();
-
-  if (!id) {
-    throw Errors.notFound("Prospect");
-  }
-  if (!ctx.workspaceId) {
-    throw Errors.badRequest("Workspace required");
-  }
+export async function getProspectById(
+  ctx: ApiContext,
+  id: string,
+): Promise<Prospect> {
+  if (!id) throw Errors.notFound("Prospect");
+  if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
 
   const { data, error } = await ctx.supabase
     .from("prospects")
@@ -47,7 +42,21 @@ export const GET = createApiHandler(async (req: NextRequest, ctx) => {
     ctx.workspaceId,
     [data as Prospect],
   );
-  return enriched ?? data;
+  return (enriched ?? (data as Prospect)) as Prospect;
+}
+
+/**
+ * GET /api/prospects/[id]
+ * Returns a single prospect with the same enrichments the listing page
+ * receives (bdd_name, workflow, convs, last_activity) so the profile
+ * banner can render the list pill, channel inventory and the workflow
+ * progress card without extra round-trips.
+ */
+export const GET = createApiHandler(async (req: NextRequest, ctx) => {
+  const url = new URL(req.url);
+  const id = url.pathname.split("/").pop();
+  if (!id) throw Errors.notFound("Prospect");
+  return getProspectById(ctx, id);
 });
 
 /**
@@ -181,6 +190,37 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
         target_url: `/prospect/${id}`,
         dedupe_key: `prospect:won:${id}`,
       });
+    }
+
+    // Fire `on_status_change` workflow trigger. Best-effort: never throw out
+    // to the caller — a workflow emitter failure must not break the CRM
+    // mutation. The trigger_config's targetStatusId (if set) is checked
+    // inside emitWorkflowTrigger via matchesConfig().
+    try {
+      const incoming = body.status;
+      const previous = previousStatus;
+      // Resolve incoming and outgoing status rows so we send the canonical
+      // ids in the payload — workflow trigger_config stores targetStatusId.
+      const [newStatusRow, prevStatusRow] = await Promise.all([
+        findStatusByAny(ctx.supabase, ctx.workspaceId, incoming),
+        previous
+          ? findStatusByAny(ctx.supabase, ctx.workspaceId, previous)
+          : Promise.resolve(null),
+      ]);
+      if (newStatusRow) {
+        await emitWorkflowTrigger(ctx.supabase, {
+          organizationId: ctx.workspaceId,
+          prospectId: id,
+          startedByUserId: ctx.userId ?? null,
+          payload: {
+            kind: "on_status_change",
+            statusId: newStatusRow.id,
+            fromStatusId: prevStatusRow?.id ?? null,
+          },
+        });
+      }
+    } catch {
+      // Swallow — Sentry capture happens inside emitWorkflowTrigger.
     }
   }
 

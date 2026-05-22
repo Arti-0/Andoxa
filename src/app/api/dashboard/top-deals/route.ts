@@ -1,9 +1,6 @@
-import { createApiHandler, Errors } from "@/lib/api";
+import { createApiHandler, Errors, type ApiContext } from "@/lib/api";
 import { isMockStatsEnabled, mockDashboardTopDeals } from "@/lib/mock-stats";
-import {
-  PROSPECT_STATUS_LABELS,
-  type ProspectStatus,
-} from "@/lib/types/prospects";
+import { getProspectStatuses } from "@/lib/prospects/statuses";
 
 /**
  * GET /api/dashboard/top-deals?limit=5
@@ -14,11 +11,11 @@ import {
  *   • recency_score: 1 / (1 + days_since_last_activity)
  */
 
-interface TopDealRow {
+export interface TopDealRow {
   prospect_id: string;
   name: string;
   company: string | null;
-  stage: ProspectStatus;
+  stage: string;
   stage_label: string;
   last_activity_label: string;
   last_activity_at: string;
@@ -26,7 +23,9 @@ interface TopDealRow {
   href: string;
 }
 
-const STAGE_WEIGHT: Partial<Record<ProspectStatus, number>> = {
+// Scoring weights keyed by the seeded status keys. Custom statuses get the
+// default weight of 1 so the ranking still works in any pipeline shape.
+const STAGE_WEIGHT: Record<string, number> = {
   proposal: 4,
   qualified: 3.5,
   rdv: 3,
@@ -34,13 +33,8 @@ const STAGE_WEIGHT: Partial<Record<ProspectStatus, number>> = {
   new: 1,
 };
 
-const ACTIVE_STAGES: ProspectStatus[] = [
-  "new",
-  "contacted",
-  "qualified",
-  "rdv",
-  "proposal",
-];
+/** Active = anything that isn't a terminal seed key. */
+const TERMINAL_KEYS = new Set(["won", "lost"]);
 
 function computeInitials(fullName: string | null): string {
   if (!fullName) return "??";
@@ -64,15 +58,21 @@ function relativeFr(iso: string | null | undefined, fallbackIso: string): string
   return `Activité il y a ${days}j`;
 }
 
-export const GET = createApiHandler(async (req, ctx): Promise<TopDealRow[]> => {
+export async function getTopDeals(
+  ctx: ApiContext,
+  opts: { limit?: number } = {},
+): Promise<TopDealRow[]> {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
 
-  const url = new URL(req.url);
-  const limit = Math.max(
-    1,
-    Math.min(20, Number(url.searchParams.get("limit") ?? 5)),
-  );
+  const limit = Math.max(1, Math.min(20, opts.limit ?? 5));
   if (isMockStatsEnabled()) return mockDashboardTopDeals(limit);
+
+  // Per-org statuses — labels + the "active" filter.
+  const orgStatuses = await getProspectStatuses(ctx.supabase, ctx.workspaceId);
+  const activeKeys = orgStatuses
+    .map((s) => s.key)
+    .filter((k) => !TERMINAL_KEYS.has(k));
+  const labelByKey = new Map(orgStatuses.map((s) => [s.key, s.name] as const));
 
   // Pull a wider candidate set, score in JS, return top `limit`. Querying ~50
   // recent active prospects is cheap and avoids bespoke SQL ranking.
@@ -83,7 +83,7 @@ export const GET = createApiHandler(async (req, ctx): Promise<TopDealRow[]> => {
     )
     .eq("organization_id", ctx.workspaceId)
     .is("deleted_at", null)
-    .in("status", ACTIVE_STAGES)
+    .in("status", activeKeys.length > 0 ? activeKeys : ["new"])
     .order("updated_at", { ascending: false })
     .limit(50);
 
@@ -91,7 +91,7 @@ export const GET = createApiHandler(async (req, ctx): Promise<TopDealRow[]> => {
 
   const scored = (data ?? [])
     .map((p) => {
-      const status = (p.status ?? "new") as ProspectStatus;
+      const status = p.status ?? "new";
       const weight = STAGE_WEIGHT[status] ?? 1;
       const lastActivityIso =
         p.last_contact ??
@@ -115,10 +115,17 @@ export const GET = createApiHandler(async (req, ctx): Promise<TopDealRow[]> => {
     name: prospect.full_name ?? "Sans nom",
     company: prospect.company,
     stage: status,
-    stage_label: PROSPECT_STATUS_LABELS[status] ?? status,
+    stage_label: labelByKey.get(status) ?? status,
     last_activity_label: relativeFr(lastActivityIso, lastActivityIso),
     last_activity_at: lastActivityIso,
     initials: computeInitials(prospect.full_name),
     href: `/prospect/${prospect.id}`,
   }));
+}
+
+export const GET = createApiHandler(async (req, ctx) => {
+  const url = new URL(req.url);
+  return getTopDeals(ctx, {
+    limit: Number(url.searchParams.get("limit") ?? 5),
+  });
 });

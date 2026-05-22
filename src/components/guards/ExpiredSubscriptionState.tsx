@@ -28,7 +28,7 @@ export function ExpiredSubscriptionState({
           </div>
           <CardDescription>
             {isTrial
-              ? "Vos 14 jours d'essai sont terminés. Ajoutez un moyen de paiement valide pour continuer."
+              ? "Votre période d'essai est terminée. Ajoutez un moyen de paiement valide pour continuer."
               : "Votre abonnement a expiré ou a été suspendu."}
           </CardDescription>
         </CardHeader>

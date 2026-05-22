@@ -15,12 +15,9 @@ import {
     UserPlus,
     Loader2,
 } from 'lucide-react';
-import {
-    type Prospect,
-    PROSPECT_STATUS_LABELS,
-    PROSPECT_STATUS_COLORS,
-} from '@/lib/types/prospects';
+import { type Prospect } from '@/lib/types/prospects';
 import { extractCleanRole } from '@/lib/utils/extract-role';
+import { StatusPill } from './crm-shared';
 
 const SOURCE_LABELS: Record<string, string> = {
     manual: 'Manuel',
@@ -239,19 +236,7 @@ export function getProspectColumns(
             header: 'Statut',
             cell: ({ row }) => {
                 const status = row.original.status ?? 'new';
-                return (
-                    <span
-                        className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${
-                            PROSPECT_STATUS_COLORS[
-                                status as keyof typeof PROSPECT_STATUS_COLORS
-                            ] ?? ''
-                        }`}
-                    >
-                        {PROSPECT_STATUS_LABELS[
-                            status as keyof typeof PROSPECT_STATUS_LABELS
-                        ] ?? status}
-                    </span>
-                );
+                return <StatusPill status={status} />;
             },
         },
         {

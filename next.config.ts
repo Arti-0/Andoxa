@@ -92,7 +92,7 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com data:",
               "img-src 'self' data: https: blob:",
-              "connect-src 'self' https://*.supabase.co https://api.stripe.com https://*.sendgrid.net wss://*.supabase.co https://*.sentry.io https://*.ingest.sentry.io",
+              "connect-src 'self' https://*.supabase.co https://api.stripe.com https://*.sendgrid.net wss://*.supabase.co https://*.sentry.io https://*.ingest.sentry.io https://calendrier.api.gouv.fr https://date.nager.at https://data.education.gouv.fr",
               "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
               "object-src 'none'",
               "base-uri 'self'",

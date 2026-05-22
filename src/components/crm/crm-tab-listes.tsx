@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * CRM v2 — Listes tab.
@@ -36,7 +36,7 @@ import {
   Layers,
   List as ListIcon,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ProspectImportDialog } from "@/components/crm/prospect-import-dialog";
 import {

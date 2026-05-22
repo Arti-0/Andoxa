@@ -90,7 +90,16 @@ function dbToCalEvents(ev: DbEvent, weekStart: Date, currentUserId?: string): Ca
     lastAction: "",
     googleMeetUrl: ev.google_meet_url ?? null,
     internalNotes: ev.internal_notes ?? null,
+    description: ev.description ?? null,
+    location: ev.location ?? null,
     isAllDay: ev.is_all_day ?? false,
+    // Carry creator + attendee IDs through every owner clone so the event
+    // panel renders the true organisateur (creator) and lists colleagues as
+    // participants — regardless of which column we click on.
+    creatorId: ev.created_by,
+    attendeeUserIds: (ev.attendee_user_ids ?? []).filter(
+      (id): id is string => !!id && id !== ev.created_by,
+    ),
   };
 
   const owners: Array<{ ownerKey: string; calendarId: string }> = [];
@@ -132,6 +141,15 @@ async function getCurrentUserId(): Promise<string | undefined> {
   const supabase = createClient();
   const { data } = await supabase.auth.getUser();
   return data.user?.id;
+}
+
+/** Hook variant of getCurrentUserId — for components that need the id at render time. */
+export function useCurrentUserId() {
+  return useQuery({
+    queryKey: ["calendar2", "current-user-id"] as const,
+    queryFn: async () => (await getCurrentUserId()) ?? null,
+    staleTime: 30 * 60 * 1000,
+  });
 }
 
 // ─── Cache keys ───────────────────────────────────────────────────────────────
@@ -184,8 +202,10 @@ export type CreateEventInput = {
   /** Whether Google Calendar should email attendees (sendUpdates=all). */
   notify_attendees?: boolean;
   description?: string;
+  location?: string;
   attendee_emails?: string[];
   attendee_user_ids?: string[];
+  is_all_day?: boolean;
 };
 
 export function useCreateEvent() {
@@ -210,25 +230,35 @@ export function useCreateEvent() {
 export type UpdateEventInput = {
   id: string;
   title?: string;
-  description?: string;
+  description?: string | null;
   /** Host-only — never synced to Google. Separate from `description`. */
   internal_notes?: string | null;
   start_time?: string;
   end_time?: string;
-  location?: string;
+  location?: string | null;
   prospect_id?: string | null;
   status?: string;
   event_type?: string | null;
   meeting_kind?: string;
   wa_workflow?: boolean;
   attendee_user_ids?: string[];
+  is_all_day?: boolean;
 };
+
+/**
+ * Strip the `__ownerKey` suffix added by `toCalendarEvents` to per-owner
+ * clones. The real DB row id is the part before the first `__`.
+ */
+function realEventId(id: string): string {
+  const idx = id.indexOf("__");
+  return idx === -1 ? id : id.slice(0, idx);
+}
 
 export function useUpdateEvent() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...updates }: UpdateEventInput) =>
-      getJson<DbEvent>(`/api/events/${id}`, {
+      getJson<DbEvent>(`/api/events/${realEventId(id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
@@ -246,7 +276,7 @@ export function useDeleteEvent() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      getJson<{ success: boolean }>(`/api/events/${id}`, { method: "DELETE" }),
+      getJson<{ success: boolean }>(`/api/events/${realEventId(id)}`, { method: "DELETE" }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["calendar2", "events"] });
       void qc.invalidateQueries({ queryKey: ["calendar2", "kpi"] });
@@ -259,8 +289,26 @@ export function useDeleteEvent() {
 export function useBookingSlug() {
   return useQuery({
     queryKey: calendarKeys.bookingSlug(),
-    queryFn: () => getJson<{ booking_slug: string | null }>("/api/booking/slug"),
+    queryFn: () =>
+      getJson<{ booking_slug: string | null; booking_public_path: string | null }>(
+        "/api/booking/slug",
+      ),
     staleTime: FIVE_MIN * 12,
+  });
+}
+
+export function useUpdateBookingSlug() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (booking_public_path: string) =>
+      getJson<{ booking_public_path: string }>("/api/booking/slug", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ booking_public_path }),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: calendarKeys.bookingSlug() });
+    },
   });
 }
 
@@ -382,6 +430,8 @@ function gcalToCalEvent(ev: GcalEventRaw, weekStart: Date): CalEvent {
     pipelineStage: null,
     lastAction: "",
     googleMeetUrl: ev.meetUrl,
+    description: ev.description ?? null,
+    location: ev.location ?? null,
     gcalAttendees: ev.attendees,
   };
 }

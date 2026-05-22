@@ -1,6 +1,7 @@
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
 import { NextRequest } from "next/server";
 import { createNotification } from "@/lib/notifications/create-notification";
+import { requireRole, requireSelfNotTarget } from "@/lib/auth/require-role";
 
 function extractUserId(req: NextRequest) {
   return new URL(req.url).pathname.split("/").pop();
@@ -8,36 +9,68 @@ function extractUserId(req: NextRequest) {
 
 /**
  * PATCH /api/organization/members/[userId]
- * Change a member's role (owner/admin only)
+ *
+ * Two independent updates, depending on the body:
+ *   - `{ role: 'admin' | 'member' }` — change a member's role (owner/admin only).
+ *   - `{ active: boolean }` — toggle a member's seat (owner/admin only). Used
+ *     by the downgrade-transition view. Owner cannot be deactivated and the
+ *     caller cannot toggle themselves.
+ *
+ * Both can be sent together. Owner role-change is *not* allowed here — owner
+ * transfer goes through the dedicated `transfer_ownership` RPC.
  */
 export const PATCH = createApiHandler(async (req, ctx) => {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
   const targetUserId = extractUserId(req);
   if (!targetUserId) throw Errors.notFound("Member");
 
-  const { data: callerMember } = await ctx.supabase
-    .from("organization_members")
-    .select("role")
-    .eq("organization_id", ctx.workspaceId)
-    .eq("user_id", ctx.userId)
-    .single();
+  await requireRole(ctx, "admin");
 
-  if (!callerMember || !["owner", "admin"].includes(callerMember.role ?? "")) {
-    throw Errors.forbidden();
+  const body = await parseBody<{ role?: string; active?: boolean }>(req);
+  const wantsRoleChange = typeof body.role === "string";
+  const wantsActiveChange = typeof body.active === "boolean";
+
+  if (!wantsRoleChange && !wantsActiveChange) {
+    throw Errors.badRequest("Aucun changement demandé");
   }
 
-  const body = await parseBody<{ role: string }>(req);
-  if (!body.role || !["admin", "member"].includes(body.role)) {
+  if (wantsRoleChange && !["admin", "member"].includes(body.role!)) {
     throw Errors.validation({ role: "Must be 'admin' or 'member'" });
   }
 
-  if (targetUserId === ctx.userId) {
-    throw Errors.badRequest("Vous ne pouvez pas changer votre propre rôle");
+  requireSelfNotTarget(
+    ctx,
+    targetUserId,
+    "Vous ne pouvez pas modifier votre propre membre"
+  );
+
+  // Owner is protected from BOTH role changes and deactivation. Role moves
+  // happen only via transfer_ownership; deactivation of an owner would
+  // leave the org with zero owners and violate the partial unique index.
+  const { data: targetMember } = await ctx.supabase
+    .from("organization_members")
+    .select("role")
+    .eq("organization_id", ctx.workspaceId)
+    .eq("user_id", targetUserId)
+    .maybeSingle();
+
+  if (!targetMember) throw Errors.notFound("Member");
+  if (targetMember.role === "owner") {
+    throw Errors.badRequest(
+      "Le propriétaire ne peut pas être modifié — utilisez le transfert de propriété"
+    );
+  }
+
+  const updates: { role?: string; active?: boolean; deactivated_at?: string | null } = {};
+  if (wantsRoleChange) updates.role = body.role!;
+  if (wantsActiveChange) {
+    updates.active = body.active!;
+    updates.deactivated_at = body.active === false ? new Date().toISOString() : null;
   }
 
   const { data, error } = await ctx.supabase
     .from("organization_members")
-    .update({ role: body.role })
+    .update(updates)
     .eq("organization_id", ctx.workspaceId)
     .eq("user_id", targetUserId)
     .select()
@@ -56,16 +89,12 @@ export const DELETE = createApiHandler(async (req, ctx) => {
   const targetUserId = extractUserId(req);
   if (!targetUserId) throw Errors.notFound("Member");
 
-  const { data: callerMember } = await ctx.supabase
-    .from("organization_members")
-    .select("role")
-    .eq("organization_id", ctx.workspaceId)
-    .eq("user_id", ctx.userId)
-    .single();
-
-  if (!callerMember || !["owner", "admin"].includes(callerMember.role ?? "")) {
-    throw Errors.forbidden();
-  }
+  await requireRole(ctx, "admin");
+  requireSelfNotTarget(
+    ctx,
+    targetUserId,
+    "Vous ne pouvez pas vous retirer vous-même de l'organisation"
+  );
 
   // Fetch member + org info before deletion (for notification message)
   const { data: targetProfile } = await ctx.supabase

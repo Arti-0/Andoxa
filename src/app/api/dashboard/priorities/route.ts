@@ -1,4 +1,4 @@
-import { createApiHandler, Errors } from "@/lib/api";
+import { createApiHandler, Errors, type ApiContext } from "@/lib/api";
 import { isMockStatsEnabled, mockDashboardPriorities } from "@/lib/mock-stats";
 
 /**
@@ -25,7 +25,7 @@ interface PriorityItem {
   href: string;
 }
 
-interface PrioritiesPayload {
+export interface PrioritiesPayload {
   generated_at: string;
   items: PriorityItem[];
 }
@@ -49,7 +49,13 @@ function formatHourMinute(iso: string): string {
   return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 }
 
-export const GET = createApiHandler(async (_req, ctx): Promise<PrioritiesPayload> => {
+/**
+ * Reusable inner data fetch — called both by the dedicated route and by
+ * /api/dashboard/overview so the dashboard load only auths once.
+ */
+export async function getDashboardPriorities(
+  ctx: ApiContext,
+): Promise<PrioritiesPayload> {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
   if (isMockStatsEnabled()) return mockDashboardPriorities();
 
@@ -198,4 +204,6 @@ export const GET = createApiHandler(async (_req, ctx): Promise<PrioritiesPayload
     generated_at: new Date().toISOString(),
     items,
   };
-});
+}
+
+export const GET = createApiHandler(async (_req, ctx) => getDashboardPriorities(ctx));

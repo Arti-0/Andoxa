@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -21,7 +21,7 @@ import {
     isMeaningfulPostgrestError,
     serializePostgrestError,
 } from '@/lib/supabase/postgrest-error';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 
 const PLAN_BACK_HREF = '/onboarding?step=9';
 

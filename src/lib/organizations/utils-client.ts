@@ -23,9 +23,6 @@ export interface OrganizationMember {
   organization_id: string;
   user_id: string;
   role: 'owner' | 'admin' | 'member';
-  invited_by: string | null;
-  invited_at: string | null;
-  joined_at: string;
   created_at: string;
   updated_at: string;
 }
@@ -156,7 +153,7 @@ export async function getOrganizationMembers(organizationId: string): Promise<Or
     .from('organization_members')
     .select('*')
     .eq('organization_id', organizationId)
-    .order('joined_at', { ascending: true });
+    .order('created_at', { ascending: true });
   
   return (data || []) as OrganizationMember[];
 }

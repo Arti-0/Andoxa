@@ -11,8 +11,9 @@ export const GET = createApiHandler(async (_req, ctx) => {
 
     const { data: membersData, error } = await ctx.supabase
         .from('organization_members')
-        .select('user_id, role')
-        .eq('organization_id', ctx.workspaceId);
+        .select('user_id, role, active, created_at')
+        .eq('organization_id', ctx.workspaceId)
+        .order('created_at', { ascending: true });
 
     if (error) {
         console.error('[API] Organization members fetch error:', error);
@@ -53,12 +54,20 @@ export const GET = createApiHandler(async (_req, ctx) => {
     );
 
     const members = (membersData ?? []).map(
-        (m: { user_id: string; role: string | null }) => ({
+        (m: {
+            user_id: string;
+            role: string | null;
+            active?: boolean | null;
+            created_at?: string | null;
+        }) => ({
             id: m.user_id,
+            user_id: m.user_id,
             name: profileMap.get(m.user_id)?.name ?? 'Inconnu',
             avatar_url: profileMap.get(m.user_id)?.avatar_url ?? null,
             email: profileMap.get(m.user_id)?.email ?? null,
             role: m.role ?? 'member',
+            active: m.active ?? true,
+            created_at: m.created_at ?? null,
         })
     );
 

@@ -9,44 +9,28 @@ import {
     type ReactNode,
 } from "react";
 import { X, Sparkles } from "lucide-react";
+import {
+    PLAN_FEATURES_TEXT,
+    PLAN_PRESENTATION,
+    annualSavingsForTeam,
+} from "@/lib/config/plans-config";
 
-const PLAN_SOLO_FEATURES = [
-    "Extension Chrome LinkedIn",
-    "CRM complet (listes, pipeline, kanban)",
-    "Inbox unifiée LinkedIn et WhatsApp",
-    "Calendrier avec lien de booking",
-    "Séquences WhatsApp pré et post-RDV",
-    "Workflows custom illimités + 3 templates",
-    "800 invitations LinkedIn / mois (200/sem.)",
-    "1 utilisateur",
-];
+// The Solo / Team / Custom bullets shown in the add-org modal mirror the
+// marketing pricing page. The "Tout du plan Solo, plus :" header that's first
+// in PLAN_FEATURES_TEXT.team / .custom is rendered separately by this modal's
+// `featuresHeader` prop, so we strip it off the bullet list here.
+const PLAN_SOLO_FEATURES = PLAN_FEATURES_TEXT.solo;
+const PLAN_TEAM_FEATURES = PLAN_FEATURES_TEXT.team.slice(1);
+const PLAN_CUSTOM_FEATURES = PLAN_FEATURES_TEXT.custom.slice(1);
 
-const PLAN_TEAM_FEATURES = [
-    "Multi-utilisateurs (3 à 20)",
-    "Pipeline kanban partagé",
-    "Listes de prospects partagées",
-    "Sessions d'appels collaboratives",
-    "Dashboard manager équipe",
-    "Rôles et permissions granulaires",
-    "Support prioritaire (réponse < 24 h)",
-];
-
-const PLAN_CUSTOM_FEATURES = [
-    "Au-delà de 20 utilisateurs",
-    "SSO (Google, Okta, Microsoft)",
-    "SLA contractuel + DPA",
-    "Intégrations sur-mesure (HubSpot, Salesforce…)",
-    "Onboarding accompagné par un CSM",
-    "Formation équipe sur site",
-    "Facturation virement annuel",
-];
-
-const PRICING = {
-    solo: { monthly: 49, yearly: 39 },
-    team: { monthly: 45, yearly: 36 },
-};
+const SOLO_PRICE = PLAN_PRESENTATION.solo.price!;
+const TEAM_PRICE = PLAN_PRESENTATION.team.price!;
 
 type Billing = "monthly" | "yearly";
+
+function priceFor(price: { monthly: number; annual: number }, b: Billing): number {
+    return b === "monthly" ? price.monthly : price.annual;
+}
 
 function fmtPrice(n: number): string {
     return new Intl.NumberFormat("fr-FR").format(Math.round(n));
@@ -197,6 +181,7 @@ interface PricingCardProps {
     ctaLabel: string;
     ctaVariant: "primary" | "secondary" | "outline";
     onCta: () => void;
+    ctaDisabled?: boolean;
     featuresHeader?: string;
     features: string[];
     customPriceLabel?: string;
@@ -216,6 +201,7 @@ function PricingCard({
     ctaLabel,
     ctaVariant,
     onCta,
+    ctaDisabled,
     featuresHeader,
     features,
     customPriceLabel,
@@ -263,6 +249,8 @@ function PricingCard({
                 type="button"
                 className={`pm-cta pm-cta--${ctaVariant}`}
                 onClick={onCta}
+                disabled={ctaDisabled}
+                aria-disabled={ctaDisabled}
             >
                 {ctaLabel}
             </button>
@@ -275,20 +263,72 @@ function PricingCard({
     );
 }
 
-export function AddOrganizationModal({
-    open,
-    onClose,
-    onSelectPlan,
-}: {
+export type PlanPickerMode = "add-org" | "upgrade";
+
+export interface PlanPickerModalProps {
     open: boolean;
     onClose: () => void;
     onSelectPlan?: (
         plan: "solo" | "team" | "custom",
         opts: { billing: Billing; teamUsers: number }
     ) => void;
-}) {
+    /**
+     * Which scenario we're presenting:
+     *   - "add-org" (default): user is creating a new organization that needs
+     *     its own subscription. Picking a plan opens Stripe checkout.
+     *   - "upgrade": user is upgrading the active org. Picking a plan opens
+     *     the Stripe billing portal or the in-app change-plan flow.
+     */
+    mode?: PlanPickerMode;
+    /**
+     * In `upgrade` mode, the plan the workspace is currently on. The matching
+     * card gets a "Plan actuel" CTA and is disabled so the user can only pick
+     * a different plan.
+     */
+    currentPlan?: "solo" | "team" | "custom";
+    /** Override the modal headline. Defaults adapt to `mode`. */
+    headline?: string;
+    /** Override the modal subheadline. Defaults adapt to `mode`. */
+    subheadline?: string;
+}
+
+/**
+ * Generic plan picker modal. Backwards-compatible alias `AddOrganizationModal`
+ * (below) defaults to `mode='add-org'` so the existing sidebar call site keeps
+ * working unchanged.
+ */
+export function PlanPickerModal({
+    open,
+    onClose,
+    onSelectPlan,
+    mode = "add-org",
+    currentPlan,
+    headline,
+    subheadline,
+}: PlanPickerModalProps) {
     const [billing, setBilling] = useState<Billing>("yearly");
     const [teamUsers, setTeamUsers] = useState(5);
+
+    const defaultHeadline =
+        mode === "upgrade"
+            ? "Changez de plan"
+            : "Ajoutez une nouvelle organisation";
+    const defaultSubheadline =
+        mode === "upgrade"
+            ? "Le nouveau plan s'applique à votre organisation active."
+            : "Choisissez un plan adapté à votre équipe.";
+    const resolvedHeadline = headline ?? defaultHeadline;
+    const resolvedSubheadline = subheadline ?? defaultSubheadline;
+
+    function ctaFor(
+        plan: "solo" | "team" | "custom",
+        fallback: string
+    ): { label: string; disabled: boolean } {
+        if (mode === "upgrade" && currentPlan === plan) {
+            return { label: "Plan actuel", disabled: true };
+        }
+        return { label: fallback, disabled: false };
+    }
     const overlayRef = useRef<HTMLDivElement>(null);
     const modalRef = useRef<HTMLDivElement>(null);
 
@@ -323,10 +363,10 @@ export function AddOrganizationModal({
         };
     }, [open, onClose]);
 
-    const teamMonthlyRate = PRICING.team[billing];
+    const teamMonthlyRate = priceFor(TEAM_PRICE, billing);
     const teamTotal = teamMonthlyRate * teamUsers;
     const teamYearlySaving = useMemo(
-        () => (PRICING.team.monthly - PRICING.team.yearly) * teamUsers * 12,
+        () => annualSavingsForTeam(teamUsers),
         [teamUsers]
     );
 
@@ -370,41 +410,56 @@ export function AddOrganizationModal({
 
                 <div className="pm-header">
                     <h2 id="pm-title" className="pm-title">
-                        Ajoutez une nouvelle organisation
+                        {resolvedHeadline}
                     </h2>
-                    <p className="pm-subtitle">
-                        Choisissez un plan adapté à votre équipe.
-                    </p>
+                    <p className="pm-subtitle">{resolvedSubheadline}</p>
                     <BillingToggle value={billing} onChange={setBilling} />
                 </div>
 
                 <div className="pm-cards">
+                    {(() => {
+                        const soloCta = ctaFor(
+                            "solo",
+                            PLAN_PRESENTATION.solo.cta.modal
+                        );
+                        const teamCta = ctaFor(
+                            "team",
+                            PLAN_PRESENTATION.team.cta.modal
+                        );
+                        const customCta = ctaFor(
+                            "custom",
+                            PLAN_PRESENTATION.custom.cta.modal
+                        );
+                        return (
+                            <>
                     <PricingCard
-                        eyebrow="Solo"
-                        title="Pour les commerciaux indépendants."
-                        sub="Freelances, consultants, sales en solo."
+                        eyebrow={PLAN_PRESENTATION.solo.tag}
+                        title={PLAN_PRESENTATION.solo.title}
+                        sub={PLAN_PRESENTATION.solo.subtitle}
                         billing={billing}
-                        priceMonthly={PRICING.solo.monthly}
-                        priceYearly={PRICING.solo.yearly}
-                        ctaLabel="Choisir Solo"
+                        priceMonthly={SOLO_PRICE.monthly}
+                        priceYearly={SOLO_PRICE.annual}
+                        ctaLabel={soloCta.label}
+                        ctaDisabled={soloCta.disabled}
                         ctaVariant="secondary"
                         onCta={() => handleSelect("solo")}
                         features={PLAN_SOLO_FEATURES}
                     />
 
                     <PricingCard
-                        eyebrow="Team"
-                        title="Pour les équipes commerciales."
-                        sub="Sales teams, agences, cabinets de conseil."
+                        eyebrow={PLAN_PRESENTATION.team.tag}
+                        title={PLAN_PRESENTATION.team.title}
+                        sub={PLAN_PRESENTATION.team.subtitle}
                         billing={billing}
-                        priceMonthly={PRICING.team.monthly}
-                        priceYearly={PRICING.team.yearly}
+                        priceMonthly={TEAM_PRICE.monthly}
+                        priceYearly={TEAM_PRICE.annual}
                         badge="Recommandé"
                         featured
-                        ctaLabel="Choisir Team"
+                        ctaLabel={teamCta.label}
+                        ctaDisabled={teamCta.disabled}
                         ctaVariant="primary"
                         onCta={() => handleSelect("team")}
-                        featuresHeader="Tout du plan Solo, plus :"
+                        featuresHeader={PLAN_PRESENTATION.team.featuresHeader}
                         features={PLAN_TEAM_FEATURES}
                         extraSlot={
                             <>
@@ -439,20 +494,28 @@ export function AddOrganizationModal({
                     />
 
                     <PricingCard
-                        eyebrow="Custom"
-                        title="Pour les équipes au-delà de 20."
-                        sub="Sales orgs, scale-ups, grands groupes."
+                        eyebrow={PLAN_PRESENTATION.custom.tag}
+                        title={PLAN_PRESENTATION.custom.title}
+                        sub={PLAN_PRESENTATION.custom.subtitle}
                         billing={billing}
                         priceMonthly={null}
                         priceYearly={null}
-                        customPriceLabel="Sur-mesure"
-                        customPriceNote="Tarification volume + intégrations dédiées"
-                        ctaLabel="Demander un devis"
+                        customPriceLabel={PLAN_PRESENTATION.custom.customPriceLabel}
+                        customPriceNote={
+                            "custom" in PLAN_PRESENTATION.custom.priceNote
+                                ? PLAN_PRESENTATION.custom.priceNote.custom
+                                : ""
+                        }
+                        ctaLabel={customCta.label}
+                        ctaDisabled={customCta.disabled}
                         ctaVariant="outline"
                         onCta={() => handleSelect("custom")}
-                        featuresHeader="Tout du plan Team, plus :"
+                        featuresHeader={PLAN_PRESENTATION.custom.featuresHeader}
                         features={PLAN_CUSTOM_FEATURES}
                     />
+                            </>
+                        );
+                    })()}
                 </div>
 
                 <div className="pm-footer">
@@ -480,5 +543,16 @@ export function AddOrganizationModal({
             </div>
         </div>
     );
+}
+
+/**
+ * Backwards-compatible alias for the sidebar's "Ajouter une organisation"
+ * flow. New call sites should import {@link PlanPickerModal} directly and
+ * pass `mode='add-org' | 'upgrade'` explicitly.
+ */
+export function AddOrganizationModal(
+    props: Omit<PlanPickerModalProps, "mode">
+) {
+    return <PlanPickerModal {...props} mode="add-org" />;
 }
 

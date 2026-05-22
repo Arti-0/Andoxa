@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { GripVertical, Settings2, Pencil, Check } from "lucide-react";
+import { toast } from "@/lib/toast";
+import { GripVertical, Settings2 } from "lucide-react";
 import {
   KanbanBoard,
   KanbanCard,
@@ -13,27 +13,14 @@ import {
   KanbanProvider,
 } from "@/components/ui/kibo-ui/kanban";
 import type { Prospect } from "@/lib/types/prospects";
-import {
-  PROSPECT_STATUSES,
-  PROSPECT_STATUS_LABELS,
-  type ProspectStatus,
-} from "@/lib/types/prospects";
+import { useProspectStatuses } from "@/lib/prospects/statuses";
 import type { FilterState } from "./crm-table";
-
-const STATUS_DOTS: Record<ProspectStatus, string> = {
-  new: "bg-slate-400",
-  contacted: "bg-blue-500",
-  qualified: "bg-amber-500",
-  rdv: "bg-emerald-500",
-  proposal: "bg-indigo-500",
-  won: "bg-green-600",
-  lost: "bg-red-500",
-};
 
 type KanbanItem = {
   id: string;
   name: string;
-  column: ProspectStatus;
+  /** Status key (e.g. "new", "qualified", or a custom user-defined key). */
+  column: string;
   company: string | null;
 };
 
@@ -57,18 +44,26 @@ function buildProspectsUrl(filters: FilterState): string {
   return `/api/prospects?${params.toString()}`;
 }
 
+/**
+ * User-scoped kanban prefs. Status renames now live in the per-org
+ * `prospect_statuses` table (editable from Settings → Pipeline), so this
+ * only tracks which columns the current user wants hidden in their
+ * kanban view — not the names themselves.
+ */
 interface KanbanPrefs {
-  hiddenStatuses: ProspectStatus[];
-  customLabels: Partial<Record<ProspectStatus, string>>;
+  /** Status keys the user has chosen to hide. */
+  hiddenStatuses: string[];
 }
 
 function getKanbanPrefs(workspaceId: string | null): KanbanPrefs {
   const key = `kanban-prefs-${workspaceId ?? "default"}`;
   try {
     const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as KanbanPrefs) : { hiddenStatuses: [], customLabels: {} };
+    if (!raw) return { hiddenStatuses: [] };
+    const parsed = JSON.parse(raw) as { hiddenStatuses?: string[] };
+    return { hiddenStatuses: parsed.hiddenStatuses ?? [] };
   } catch {
-    return { hiddenStatuses: [], customLabels: {} };
+    return { hiddenStatuses: [] };
   }
 }
 
@@ -80,15 +75,15 @@ function saveKanbanPrefs(workspaceId: string | null, prefs: KanbanPrefs) {
 }
 
 function KanbanSettings({
+  statuses,
   prefs,
   onChange,
 }: {
+  statuses: Array<{ key: string; name: string; color: string }>;
   prefs: KanbanPrefs;
   onChange: (p: KanbanPrefs) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [editingStatus, setEditingStatus] = useState<ProspectStatus | null>(null);
-  const [editLabel, setEditLabel] = useState("");
 
   return (
     <div className="relative mb-2">
@@ -104,53 +99,42 @@ function KanbanSettings({
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-lg border bg-card p-2 shadow-lg">
-            {PROSPECT_STATUSES.map((s) => {
-              const label = prefs.customLabels[s] ?? PROSPECT_STATUS_LABELS[s];
-              const hidden = prefs.hiddenStatuses.includes(s);
-              const isEditing = editingStatus === s;
+            <div className="mb-1.5 px-2 pt-1 text-[10.5px] uppercase tracking-wider text-muted-foreground">
+              Colonnes visibles
+            </div>
+            {statuses.map((s) => {
+              const hidden = prefs.hiddenStatuses.includes(s.key);
               return (
-                <div key={s} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent">
+                <label
+                  key={s.key}
+                  className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent"
+                >
                   <input
                     type="checkbox"
                     checked={!hidden}
                     onChange={() => {
                       const next = hidden
-                        ? prefs.hiddenStatuses.filter((x) => x !== s)
-                        : [...prefs.hiddenStatuses, s];
+                        ? prefs.hiddenStatuses.filter((x) => x !== s.key)
+                        : [...prefs.hiddenStatuses, s.key];
                       onChange({ ...prefs, hiddenStatuses: next });
                     }}
                     className="rounded border"
                   />
-                  {isEditing ? (
-                    <input
-                      value={editLabel}
-                      onChange={(e) => setEditLabel(e.target.value)}
-                      onBlur={() => {
-                        onChange({ ...prefs, customLabels: { ...prefs.customLabels, [s]: editLabel.trim() || PROSPECT_STATUS_LABELS[s] } });
-                        setEditingStatus(null);
-                      }}
-                      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                      className="flex-1 rounded border bg-background px-1 py-0.5 text-xs"
-                      autoFocus
-                    />
-                  ) : (
-                    <span className="flex-1 truncate">{label}</span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isEditing) return;
-                      setEditLabel(label);
-                      setEditingStatus(s);
-                    }}
-                    className="rounded p-0.5 hover:bg-muted"
-                    title="Renommer"
-                  >
-                    {isEditing ? <Check className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
-                  </button>
-                </div>
+                  <span
+                    className="size-2 shrink-0 rounded-full ring-1 ring-inset ring-black/10"
+                    style={{ backgroundColor: s.color }}
+                  />
+                  <span className="flex-1 truncate">{s.name}</span>
+                </label>
               );
             })}
+            <div className="mt-1 border-t pt-1.5 px-2 text-[11px] text-muted-foreground">
+              Pour renommer ou ajouter des statuts, allez dans{" "}
+              <Link href="/settings?tab=pipeline" className="text-primary hover:underline">
+                Paramètres
+              </Link>
+              .
+            </div>
           </div>
         </>
       )}
@@ -162,6 +146,12 @@ export function CrmKanban({ workspaceId, prospectFilters }: CrmKanbanProps) {
   const queryClient = useQueryClient();
   const [kanbanData, setKanbanData] = useState<KanbanItem[]>([]);
   const [kanbanPrefs, setKanbanPrefs] = useState<KanbanPrefs>(() => getKanbanPrefs(workspaceId));
+
+  const { statuses } = useProspectStatuses();
+  const activeStatuses = useMemo(
+    () => statuses.filter((s) => !s.is_archived),
+    [statuses],
+  );
 
   const updatePrefs = useCallback(
     (next: KanbanPrefs) => {
@@ -192,17 +182,26 @@ export function CrmKanban({ workspaceId, prospectFilters }: CrmKanbanProps) {
     enabled: !!workspaceId,
   });
 
+  const knownStatusKeys = useMemo(
+    () => new Set(activeStatuses.map((s) => s.key)),
+    [activeStatuses],
+  );
+  // Fallback column when the prospect's status isn't in the active set
+  // (archived, deleted, or unmapped legacy value).
+  const fallbackColumn = activeStatuses[0]?.key ?? "new";
+
   useEffect(() => {
     const items = (data?.items ?? []).map((prospect) => ({
       id: prospect.id,
       name: prospect.full_name ?? "Sans nom",
-      column: (PROSPECT_STATUSES.includes((prospect.status ?? "new") as ProspectStatus)
-        ? (prospect.status as ProspectStatus)
-        : "new") as ProspectStatus,
+      column:
+        prospect.status && knownStatusKeys.has(prospect.status)
+          ? prospect.status
+          : fallbackColumn,
       company: prospect.company,
     }));
     setKanbanData(items);
-  }, [data?.items]);
+  }, [data?.items, knownStatusKeys, fallbackColumn]);
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({
@@ -210,46 +209,40 @@ export function CrmKanban({ workspaceId, prospectFilters }: CrmKanbanProps) {
       nextStatus,
     }: {
       id: string;
-      nextStatus: ProspectStatus;
+      nextStatus: string;
     }) => {
-      // Helpful log so you can see the outbound PATCH in DevTools
-      console.log("[CRM Kanban] PATCH /api/prospects/%s", id, {
-        status: nextStatus,
-      });
-
       const res = await fetch(`/api/prospects/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ status: nextStatus }),
       });
-      if (!res.ok) {
-        console.error("[CRM Kanban] PATCH failed", res.status, res.statusText);
-        throw new Error(String(res.status));
-      }
+      if (!res.ok) throw new Error(String(res.status));
     },
     onSuccess: (_data, variables) => {
-      // Invalidate all prospect queries so Listes/Prospects/Kanban views refetch
       queryClient.invalidateQueries({ queryKey: ["prospects"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-activity"] });
-      const label = PROSPECT_STATUS_LABELS[variables.nextStatus];
+      const label =
+        activeStatuses.find((s) => s.key === variables.nextStatus)?.name ??
+        variables.nextStatus;
       toast.success(`Statut mis à jour : ${label}`);
     },
   });
 
   const columns = useMemo(
     () =>
-      PROSPECT_STATUSES
-        .filter((s) => !kanbanPrefs.hiddenStatuses.includes(s))
-        .map((status) => ({
-          id: status,
-          name: kanbanPrefs.customLabels[status] ?? PROSPECT_STATUS_LABELS[status],
+      activeStatuses
+        .filter((s) => !kanbanPrefs.hiddenStatuses.includes(s.key))
+        .map((s) => ({
+          id: s.key,
+          name: s.name,
+          color: s.color,
         })),
-    [kanbanPrefs]
+    [activeStatuses, kanbanPrefs.hiddenStatuses],
   );
 
-  const columnsBeforeDragRef = useRef<Map<string, ProspectStatus>>(new Map());
+  const columnsBeforeDragRef = useRef<Map<string, string>>(new Map());
 
   const handleVisualChange = (nextData: KanbanItem[]) => {
     setKanbanData(nextData);
@@ -273,23 +266,13 @@ export function CrmKanban({ workspaceId, prospectFilters }: CrmKanbanProps) {
         (item) => beforeDrag.get(item.id) !== item.column
       );
 
-      if (changed.length > 0) {
-        console.log("[CRM Kanban] Status change on drag end", {
-          changes: changed.map((item) => ({
-            id: item.id,
-            from: beforeDrag.get(item.id),
-            to: item.column,
-          })),
-        });
-      }
-
       for (const item of changed) {
         const previousColumn = beforeDrag.get(item.id);
         updateStatusMutation.mutate(
           { id: item.id, nextStatus: item.column },
           {
             onError: () => {
-              toast.error("Echec de la mise a jour du statut");
+              toast.error("Échec de la mise à jour du statut");
               if (!previousColumn) return;
               setKanbanData((current) =>
                 current.map((entry) =>
@@ -316,22 +299,28 @@ export function CrmKanban({ workspaceId, prospectFilters }: CrmKanbanProps) {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-    <KanbanSettings prefs={kanbanPrefs} onChange={updatePrefs} />
-    <KanbanProvider
-      columns={columns}
-      data={kanbanData}
-      onDataChange={handleVisualChange}
-      onDragComplete={handleDragComplete}
-      onDragStart={handleDragStart}
-      className="flex gap-3 overflow-x-auto pb-4 min-w-0"
-    >
+      <KanbanSettings statuses={activeStatuses} prefs={kanbanPrefs} onChange={updatePrefs} />
+      <KanbanProvider
+        columns={columns}
+        data={kanbanData}
+        onDataChange={handleVisualChange}
+        onDragComplete={handleDragComplete}
+        onDragStart={handleDragStart}
+        className="flex gap-3 overflow-x-auto pb-4 min-w-0"
+      >
         {(column) => {
           const count = kanbanData.filter((item) => item.column === column.id).length;
-          const dot = STATUS_DOTS[column.id as ProspectStatus] ?? "bg-slate-400";
+          // `column.color` is injected via columns above; the KanbanProvider
+          // typing is generic so we read it back conservatively.
+          const color =
+            (column as { color?: string }).color ?? "#94a3b8";
           return (
             <KanbanBoard id={column.id} key={column.id} className="w-72 shrink-0 flex-col">
               <KanbanHeader className="gap-2 px-4 py-3">
-                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${dot}`} />
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-inset ring-black/10"
+                  style={{ backgroundColor: color }}
+                />
                 <span className="truncate">{column.name}</span>
                 <span className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium tabular-nums">
                   {count}

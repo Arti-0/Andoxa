@@ -1,4 +1,5 @@
 import { env } from "@/lib/config/environment";
+import { buildBookingPublicUrlForProfile } from "@/lib/booking/public-path";
 import {
   getLinkedInAccountIdForUserId,
   resolveWhatsAppAccountIdForOrganization,
@@ -184,12 +185,12 @@ async function runBatchLinkedIn(
   let bookingLink: string | null = null;
   const { data: profile } = await supabase
     .from("profiles")
-    .select("booking_slug")
+    .select("booking_public_path, booking_slug")
     .eq("id", job.created_by)
     .single();
-  if (profile?.booking_slug) {
+  if (profile) {
     const appUrl = env.getConfig().appUrl.replace(/\/$/, "");
-    bookingLink = `${appUrl}/booking/${profile.booking_slug}`;
+    bookingLink = buildBookingPublicUrlForProfile(appUrl, profile);
   }
 
   const { data: inboundRows } = await supabase
@@ -511,12 +512,12 @@ async function runBatchWhatsApp(
   let bookingLink: string | null = null;
   const { data: profile } = await supabase
     .from("profiles")
-    .select("booking_slug")
+    .select("booking_public_path, booking_slug")
     .eq("id", job.created_by)
     .single();
-  if (profile?.booking_slug) {
+  if (profile) {
     const appUrl = env.getConfig().appUrl.replace(/\/$/, "");
-    bookingLink = `${appUrl}/booking/${profile.booking_slug}`;
+    bookingLink = buildBookingPublicUrlForProfile(appUrl, profile);
   }
 
   let batchSuccess = 0;

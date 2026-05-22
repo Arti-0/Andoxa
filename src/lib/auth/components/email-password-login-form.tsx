@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef, useState, useMemo, Suspense } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -10,7 +10,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { logger } from '@/lib/utils/logger';
 import { translateAuthError } from '@/lib/utils/translate-auth-error';
 import { resolveClientAppOrigin } from '@/lib/config/app-url';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 
 const MIN_PASSWORD_LEN = 8;
 

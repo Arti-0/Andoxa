@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * Prospect Profile v2 — applies the Andoxa profile page redesign.
@@ -53,7 +53,7 @@ import {
   Target,
   Users,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import {
   NameAvatar,
   StatusPill,
@@ -75,6 +75,17 @@ import type { Prospect, ProspectStatus } from "@/lib/types/prospects";
 interface ProspectContentProps {
   prospect: Prospect;
   linkedChatId?: string | null;
+  /** Pre-fetched timeline rows from /api/prospects/[id]/overview.
+   *  When omitted (e.g. another caller still using the old contract),
+   *  TimelineSection falls back to its own /events fetch. */
+  timelineEvents?: TimelineApiResponse["events"];
+  /** Pre-fetched engagement counters from /overview. SyntheseCard falls
+   *  back to its own fetch when undefined. */
+  engagement?: {
+    messages_total: number;
+    rdv_total: number;
+    no_show_total: number;
+  };
 }
 
 const FR_DATE = (ts: string | null | undefined) =>
@@ -96,6 +107,8 @@ function daysSince(ts: string | null | undefined): number {
 export function ProspectContent({
   prospect,
   linkedChatId,
+  timelineEvents,
+  engagement,
 }: ProspectContentProps) {
   const [enrollOpen, setEnrollOpen] = useState(false);
   return (
@@ -111,7 +124,7 @@ export function ProspectContent({
           prospect={prospect}
           onEnrol={() => setEnrollOpen(true)}
         />
-        <TimelineSection prospect={prospect} />
+        <TimelineSection prospect={prospect} events={timelineEvents} />
         <ConversationsSection
           prospect={prospect}
           linkedChatId={linkedChatId ?? null}
@@ -127,7 +140,7 @@ export function ProspectContent({
           linkedChatId={linkedChatId ?? null}
           onEnrol={() => setEnrollOpen(true)}
         />
-        <SyntheseCard prospect={prospect} />
+        <SyntheseCard prospect={prospect} engagement={engagement} />
         <DocumentsCard />
       </div>
     </div>
@@ -197,6 +210,7 @@ function HeaderBanner({
     },
     onSuccess: (_d, next) => {
       queryClient.invalidateQueries({ queryKey: ["prospect", prospect.id] });
+      queryClient.invalidateQueries({ queryKey: ["prospect-overview", prospect.id] });
       queryClient.invalidateQueries({
         queryKey: ["prospect-events", prospect.id],
       });
@@ -222,6 +236,7 @@ function HeaderBanner({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prospect", prospect.id] });
+      queryClient.invalidateQueries({ queryKey: ["prospect-overview", prospect.id] });
       toast.success("Enrichissement lancé");
     },
     onError: () => toast.error("Enrichissement impossible"),
@@ -245,6 +260,7 @@ function HeaderBanner({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prospect", prospect.id] });
+      queryClient.invalidateQueries({ queryKey: ["prospect-overview", prospect.id] });
       toast.success("Invitation LinkedIn envoyée");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -448,6 +464,7 @@ function HeaderBanner({
         prospects={[{ id: prospect.id, full_name: prospect.full_name }]}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ["prospect", prospect.id] });
+      queryClient.invalidateQueries({ queryKey: ["prospect-overview", prospect.id] });
           queryClient.invalidateQueries({
             queryKey: ["prospect-events", prospect.id],
           });
@@ -753,7 +770,15 @@ const TIMELINE_TYPE_CFG: Record<
   },
 };
 
-function TimelineSection({ prospect }: { prospect: Prospect }) {
+function TimelineSection({
+  prospect,
+  events: preFetched,
+}: {
+  prospect: Prospect;
+  /** Pre-fetched events from the parent overview query. When provided we
+   *  skip the dedicated /events round-trip. */
+  events?: TimelineApiResponse["events"];
+}) {
   const [filter, setFilter] = useState<
     "tous" | "conv" | "pipe" | "wf" | "note"
   >("tous");
@@ -769,6 +794,8 @@ function TimelineSection({ prospect }: { prospect: Prospect }) {
       return (json.data ?? json) as TimelineApiResponse;
     },
     staleTime: 30_000,
+    enabled: !preFetched,
+    initialData: preFetched ? { events: preFetched } : undefined,
   });
 
   const events = useMemo<TimelineEvent[]>(() => {
@@ -985,6 +1012,7 @@ function NotesSection({ prospect }: { prospect: Prospect }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prospect", prospect.id] });
+      queryClient.invalidateQueries({ queryKey: ["prospect-overview", prospect.id] });
       setVal("");
       toast.success("Note ajoutée");
     },
@@ -1299,7 +1327,18 @@ function NextActionCard({
   );
 }
 
-function SyntheseCard({ prospect }: { prospect: Prospect }) {
+function SyntheseCard({
+  prospect,
+  engagement: preFetched,
+}: {
+  prospect: Prospect;
+  /** Pre-fetched engagement counters from the parent overview query. */
+  engagement?: {
+    messages_total: number;
+    rdv_total: number;
+    no_show_total: number;
+  };
+}) {
   const days = daysSince(prospect.created_at);
   const { data: engagement } = useQuery({
     queryKey: ["prospect-engagement", prospect.id],
@@ -1316,6 +1355,8 @@ function SyntheseCard({ prospect }: { prospect: Prospect }) {
       };
     },
     staleTime: 60_000,
+    enabled: !preFetched,
+    initialData: preFetched ?? undefined,
   });
   return (
     <Surface padding="p-4">

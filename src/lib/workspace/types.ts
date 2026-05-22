@@ -70,6 +70,11 @@ export interface Workspace {
   subscription_status: SubscriptionStatus | null;
   trial_ends_at: string | null;
 
+  // Scheduled downgrade (set by POST /api/organizations/[id]/schedule-downgrade,
+  // cleared by cancel-downgrade or the cron applying it at effective_at).
+  scheduled_downgrade_to?: string | null;
+  scheduled_downgrade_effective_at?: string | null;
+
   // Credits (for enrichment)
   credits: number;
 
@@ -91,6 +96,9 @@ export interface WorkspaceMember {
   user_id: string;
   role: MemberRole;
   joined_at: string;
+  /** Seat-active flag. False = deactivated by a downgrade prune; data
+   *  preserved as read-only. Defaults to true on legacy rows. */
+  active: boolean;
 
   // Denormalized for convenience
   profile?: Profile;

@@ -6,8 +6,9 @@
  *   - **Solo**  — single-seat subscription. Two prices: monthly + annual.
  *   - **Team**  — per-seat subscription (Stripe `quantity`). Two prices: monthly + annual.
  *
- * Custom doesn't hit Stripe (contact-sales). Trial is a 14-day Stripe trial
- * applied to the Solo monthly price.
+ * Custom doesn't hit Stripe (contact-sales). When trials are enabled
+ * (`TRIAL_ENABLED=true`, see stripe-config.ts), they're applied to the Solo
+ * monthly price for the configured `TRIAL_DURATION_DAYS`.
  *
  * Price IDs are read from environment variables so you only have to create the
  * products in the Stripe dashboard and paste 4 IDs into your env — no code

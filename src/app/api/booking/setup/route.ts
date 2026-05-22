@@ -4,10 +4,10 @@ import { randomBytes } from "crypto";
 
 /**
  * POST /api/booking/setup
- * Generate booking_slug for current user if null.
+ * Generate booking_slug + booking_public_path for current user if null.
  * Requires auth.
  */
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
     const supabase = await createClient();
 
@@ -21,12 +21,18 @@ export async function POST(request: NextRequest) {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("booking_slug")
+      .select("booking_slug, booking_public_path")
       .eq("id", user.id)
       .single();
 
-    if (profile?.booking_slug) {
-      return NextResponse.json({ success: true, data: { booking_slug: profile.booking_slug } });
+    if (profile?.booking_slug && profile?.booking_public_path) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          booking_slug: profile.booking_slug,
+          booking_public_path: profile.booking_public_path,
+        },
+      });
     }
 
     // Generate unique 8-char slug (hex)
@@ -39,8 +45,8 @@ export async function POST(request: NextRequest) {
       const { data: existing } = await supabase
         .from("profiles")
         .select("id")
-        .eq("booking_slug", slug)
-        .single();
+        .or(`booking_slug.eq.${slug},booking_public_path.eq.${slug}`)
+        .maybeSingle();
       if (!existing) break;
       attempts++;
     } while (attempts < maxAttempts);
@@ -48,14 +54,17 @@ export async function POST(request: NextRequest) {
     if (attempts >= maxAttempts) {
       return NextResponse.json(
         { success: false, error: "Failed to generate unique slug" },
-        { status: 500 }
+        { status: 500 },
       );
     }
+
+    const publicPath = profile?.booking_public_path ?? slug;
 
     const { error: updateError } = await supabase
       .from("profiles")
       .update({
-        booking_slug: slug,
+        booking_slug: profile?.booking_slug ?? slug,
+        booking_public_path: publicPath,
         updated_at: new Date().toISOString(),
       })
       .eq("id", user.id);
@@ -64,16 +73,19 @@ export async function POST(request: NextRequest) {
       console.error("[booking/setup] Update error:", updateError);
       return NextResponse.json(
         { success: false, error: "Failed to save booking slug" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
-    return NextResponse.json({ success: true, data: { booking_slug: slug } });
+    return NextResponse.json({
+      success: true,
+      data: { booking_slug: profile?.booking_slug ?? slug, booking_public_path: publicPath },
+    });
   } catch (error) {
     console.error("[booking/setup] Error:", error);
     return NextResponse.json(
       { success: false, error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

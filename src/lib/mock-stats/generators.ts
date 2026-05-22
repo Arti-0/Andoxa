@@ -305,22 +305,30 @@ export function mockCampaignKpis(period: CampaignPeriod) {
 }
 
 export function mockProspectsFunnel() {
+  // Mirrors the 10 default statuses seeded in
+  // 20260521120000_prospect_statuses_new_defaults_and_org_trigger.sql.
+  // Real installs read the per-org rows; this is dev-only fixture data.
   const stages = [
-    "new",
-    "contacted",
-    "qualified",
-    "rdv",
-    "proposal",
-    "won",
-    "lost",
+    { key: "new", name: "Nouveau", color: "#94a3b8" },
+    { key: "contacted", name: "Contacté", color: "#60a5fa" },
+    { key: "qualified", name: "Qualifié", color: "#2563eb" },
+    { key: "rdv", name: "RDV", color: "#0ea5e9" },
+    { key: "noshow", name: "No-show", color: "#f97316" },
+    { key: "rdv_realise", name: "RDV réalisé", color: "#22c55e" },
+    { key: "rdv_replanifier", name: "RDV à replanifier", color: "#0ea5e9" },
+    { key: "proposal", name: "Proposition", color: "#a855f7" },
+    { key: "won", name: "Signé", color: "#16a34a" },
+    { key: "lost", name: "Perdu", color: "#ef4444" },
   ] as const;
 
   return {
-    stages: stages.map((status) => ({
-      status,
-      count: randInt(status === "won" || status === "lost" ? 8 : 18, status === "new" ? 42 : 36),
+    stages: stages.map((s) => ({
+      status: s.key,
+      name: s.name,
+      color: s.color,
+      count: randInt(s.key === "won" || s.key === "lost" ? 8 : 18, s.key === "new" ? 42 : 36),
       delta_7d: randInt(-6, 14),
-      avg_cycle_days: status === "won" || status === "lost" ? randInt(18, 45) : randInt(4, 22),
+      avg_cycle_days: s.key === "won" || s.key === "lost" ? randInt(18, 45) : randInt(4, 22),
     })),
   };
 }

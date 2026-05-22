@@ -1,4 +1,5 @@
 import { env } from "@/lib/config/environment";
+import { buildBookingPublicUrlForProfile } from "@/lib/booking/public-path";
 import type { ApiContext } from "@/lib/api";
 import {
   dailyPeriodKey,
@@ -41,16 +42,13 @@ export async function sendLinkedInInviteForProspect(
     throw new Error("URL LinkedIn invalide");
   }
 
-  let bookingLink: string | null = null;
   const { data: profile } = await ctx.supabase
     .from("profiles")
-    .select("booking_slug")
+    .select("booking_public_path, booking_slug")
     .eq("id", ctx.userId)
     .single();
-  if (profile?.booking_slug) {
-    const appUrl = env.getConfig().appUrl.replace(/\/$/, "");
-    bookingLink = `${appUrl}/booking/${profile.booking_slug}`;
-  }
+  const appUrl = env.getConfig().appUrl.replace(/\/$/, "");
+  const bookingLink = buildBookingPublicUrlForProfile(appUrl, profile);
 
   // No silent default — when the caller passes nothing, send the invite
   // without any note. Callers that want a default (campaigns) set it

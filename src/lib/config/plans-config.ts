@@ -3,7 +3,9 @@
  *
  * Going forward there are five plan IDs in the DB column `organizations.plan`:
  *
- *   - `trial`  : 14-day Stripe trial on Solo — same feature set + caps below.
+ *   - `trial`  : Stripe trial on Solo — gated by `STRIPE_CONFIG.trial.enabled`
+ *                (env `TRIAL_ENABLED`). Length read from `TRIAL_DURATION_DAYS`
+ *                (default 14). Same feature set + caps below.
  *   - `solo`   : single-user paid plan. Everything in the product, 1 seat.
  *   - `team`   : 3-20 paid seats. Adds collab features + manager dashboard.
  *   - `custom` : 20+ seats, SSO, SLA — contact-sales, no Stripe checkout.
@@ -65,7 +67,7 @@ export const PLAN_LIMITS: Record<PlanId, PlanLimits> = {
         campaigns: 5,
         enrichment_credits: 0,
         import_csv_xlsx_max_rows: -1,
-        organizations: 1,
+        organizations: -1,
     },
     solo: {
         users: 1,
@@ -73,7 +75,7 @@ export const PLAN_LIMITS: Record<PlanId, PlanLimits> = {
         campaigns: -1,
         enrichment_credits: 0,
         import_csv_xlsx_max_rows: -1,
-        organizations: 1,
+        organizations: -1,
     },
     team: {
         // Team is sold from 3 seats; per-seat billing handles the upper bound.
@@ -83,7 +85,7 @@ export const PLAN_LIMITS: Record<PlanId, PlanLimits> = {
         campaigns: -1,
         enrichment_credits: 0,
         import_csv_xlsx_max_rows: -1,
-        organizations: 1,
+        organizations: -1,
     },
     custom: {
         users: -1,
@@ -137,7 +139,7 @@ export const PLAN_ROUTES: Record<PlanId, string[]> = {
 
 export const PLAN_FEATURES_TEXT: Record<PlanId, string[]> = {
     trial: [
-        '14 jours offerts sur le plan Solo',
+        'Période d’essai sur le plan Solo',
         'Extension Chrome LinkedIn',
         'CRM complet (listes, pipeline, kanban)',
         'Inbox unifiée LinkedIn et WhatsApp',
@@ -151,7 +153,7 @@ export const PLAN_FEATURES_TEXT: Record<PlanId, string[]> = {
         'Calendrier avec lien de booking',
         'Séquences WhatsApp pré et post-RDV',
         'Workflows custom illimités + 3 templates',
-        '800 invitations LinkedIn / mois (200/sem.)',
+        'Respecte les limites de votre compte LinkedIn',
         '1 utilisateur',
     ],
     team: [
@@ -167,15 +169,118 @@ export const PLAN_FEATURES_TEXT: Record<PlanId, string[]> = {
     custom: [
         'Tout du plan Team, plus :',
         'Au-delà de 20 utilisateurs',
-        'SSO (Google, Okta, Microsoft)',
+        'SSO sur demande',
         'SLA contractuel + DPA',
-        'Intégrations sur-mesure (HubSpot, Salesforce…)',
+        'API + webhooks signés',
+        'Intégrations sur devis',
         'Onboarding accompagné par un CSM',
-        'Formation équipe sur site',
+        'Formation équipe (visio ou sur site)',
         'Facturation virement annuel',
     ],
     demo: ['Accès démo à toutes les fonctionnalités', 'Durée limitée'],
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Presentation — single source of truth for every UI that picks a plan
+// (marketing /pricing, /onboarding/plan, AddOrganizationModal, in-app
+// UpgradePrompt). Keep PRICES, COPY and TIER LABELS here; surfaces import.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type BillingCadence = 'monthly' | 'annual';
+
+export interface PlanPrice {
+    /** EUR per user per month, billed monthly. */
+    monthly: number;
+    /** EUR per user per month, billed annually (lower than monthly). */
+    annual: number;
+}
+
+export interface PlanPresentation {
+    /** Eyebrow / tag shown above the title. */
+    tag: string;
+    /** Card title (a short sales sentence). */
+    title: string;
+    /** Card subtitle / persona line. */
+    subtitle: string;
+    /** Optional "everything from previous plan, plus:" header above the bullets. */
+    featuresHeader?: string;
+    /** Price per user / cadence. `null` → contact-sales (no Stripe). */
+    price: PlanPrice | null;
+    /** Sub-price line under the amount. */
+    priceNote: { monthly: string; annual: string } | { custom: string };
+    /** Default CTA label per host context. */
+    cta: {
+        marketing: string;
+        modal: string;
+    };
+    ctaVariant?: 'primary' | 'outline';
+    /** Mark a single plan as the recommended one (shows the badge). */
+    recommended?: boolean;
+    /** For Custom only — the price slot text (e.g. "Sur-mesure"). */
+    customPriceLabel?: string;
+}
+
+export const PLAN_PRESENTATION: Record<'solo' | 'team' | 'custom', PlanPresentation> = {
+    solo: {
+        tag: 'Solo',
+        title: 'Pour les commerciaux indépendants.',
+        subtitle: 'Freelances, consultants, sales en solo.',
+        price: { monthly: 49, annual: 39 },
+        priceNote: {
+            monthly: '/mois, par utilisateur',
+            annual: '/mois, facturation annuelle',
+        },
+        cta: { marketing: 'Commencer', modal: 'Choisir Solo' },
+    },
+    team: {
+        tag: 'Team',
+        title: 'Pour les équipes commerciales.',
+        subtitle: 'Sales teams, agences, cabinets de conseil.',
+        featuresHeader: 'Tout du plan Solo, plus :',
+        price: { monthly: 45, annual: 36 },
+        priceNote: {
+            monthly: '/mois, par utilisateur (à partir de 3)',
+            annual: '/mois, par utilisateur, facturation annuelle',
+        },
+        cta: { marketing: 'Choisir Team', modal: 'Choisir Team' },
+        ctaVariant: 'primary',
+        recommended: true,
+    },
+    custom: {
+        tag: 'Custom',
+        title: 'Pour les équipes au-delà de 20.',
+        subtitle: 'Sales orgs, scale-ups, grands groupes.',
+        featuresHeader: 'Tout du plan Team, plus :',
+        price: null,
+        priceNote: { custom: 'Tarification volume + intégrations dédiées' },
+        cta: { marketing: 'Demander un devis', modal: 'Demander un devis' },
+        ctaVariant: 'outline',
+        customPriceLabel: 'Sur-mesure',
+    },
+};
+
+/**
+ * Helpers for reading the per-user price at a given cadence. Returns the EUR
+ * amount or `null` for contact-sales plans.
+ */
+export function getPlanPrice(
+    plan: 'solo' | 'team' | 'custom',
+    cadence: BillingCadence
+): number | null {
+    const p = PLAN_PRESENTATION[plan].price;
+    if (!p) return null;
+    return p[cadence];
+}
+
+/**
+ * The savings story for annual on Team (used in slider totals). Returns the
+ * yearly delta vs. paying monthly, for a given seat count.
+ */
+export function annualSavingsForTeam(seats: number): number {
+    const { price } = PLAN_PRESENTATION.team;
+    if (!price) return 0;
+    return (price.monthly - price.annual) * seats * 12;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Full config
@@ -185,7 +290,7 @@ export const PLANS_CONFIG: Record<PlanId, PlanConfig> = {
     trial: {
         id: 'trial',
         name: 'Essai gratuit',
-        description: '14 jours sur le périmètre Solo (caps essai).',
+        description: 'Période d’essai sur le périmètre Solo (caps essai).',
         limits: PLAN_LIMITS.trial,
         features: { routes: PLAN_ROUTES.trial, features: PLAN_FEATURES_TEXT.trial },
     },

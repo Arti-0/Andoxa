@@ -1,5 +1,6 @@
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
 import { env } from "@/lib/config/environment";
+import { buildBookingPublicUrlForProfile } from "@/lib/booking/public-path";
 import { getAccountIdForUser } from "@/lib/unipile/account";
 import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";
 import { applyMessageVariables, extractLinkedInSlug } from "@/lib/unipile/campaign";
@@ -43,16 +44,13 @@ export const POST = createApiHandler(async (req, ctx) => {
     .in("id", body.prospect_ids)
     .not("linkedin", "is", null);
 
-  let bookingLink: string | null = null;
   const { data: profile } = await ctx.supabase
     .from("profiles")
-    .select("booking_slug")
+    .select("booking_public_path, booking_slug")
     .eq("id", ctx.userId)
     .single();
-  if (profile?.booking_slug) {
-    const appUrl = env.getConfig().appUrl.replace(/\/$/, "");
-    bookingLink = `${appUrl}/booking/${profile.booking_slug}`;
-  }
+  const appUrl = env.getConfig().appUrl.replace(/\/$/, "");
+  const bookingLink = buildBookingPublicUrlForProfile(appUrl, profile);
 
   if (!prospects?.length) {
     throw Errors.badRequest(

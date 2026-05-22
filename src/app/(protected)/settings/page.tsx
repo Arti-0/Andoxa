@@ -7,10 +7,11 @@ import { useWorkspace } from "@/lib/workspace";
 import { AccountSettingsTab } from "@/components/settings/account-settings-tab";
 import { IntegrationsSettingsTab } from "@/components/settings/integrations-settings-tab";
 import { OrganizationSettingsTab } from "@/components/settings/organization-settings-tab";
+import { PipelineSettingsTab } from "@/components/settings/pipeline-settings-tab";
 
 function resolveTabFromSearch(searchParams: ReturnType<typeof useSearchParams>): string {
   const t = searchParams.get("tab");
-  if (t === "integrations" || t === "organization") return t;
+  if (t === "integrations" || t === "organization" || t === "pipeline") return t;
   return "account";
 }
 
@@ -41,6 +42,9 @@ function SettingsPageInner() {
           <TabsTrigger value="organization" className="settings-tabs-trigger">
             Organisation
           </TabsTrigger>
+          <TabsTrigger value="pipeline" className="settings-tabs-trigger">
+            Pipeline
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="account">
@@ -57,6 +61,10 @@ function SettingsPageInner() {
 
         <TabsContent value="organization">
           <OrganizationSettingsTab onSwitch={refresh} />
+        </TabsContent>
+
+        <TabsContent value="pipeline">
+          <PipelineSettingsTab />
         </TabsContent>
       </Tabs>
     </div>

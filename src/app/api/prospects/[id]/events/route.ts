@@ -1,4 +1,4 @@
-import { createApiHandler, Errors } from "@/lib/api";
+import { createApiHandler, Errors, type ApiContext } from "@/lib/api";
 import {
   describeActivity,
   type ActivityKind,
@@ -15,7 +15,7 @@ import {
  * counters use.
  */
 
-interface TimelineEventOut {
+export interface TimelineEventOut {
   id: string;
   kind: ActivityKind;
   /** "sent" / "received" — only meaningful for message kinds. */
@@ -26,10 +26,15 @@ interface TimelineEventOut {
   body: string;
 }
 
-export const GET = createApiHandler(async (req, ctx) => {
+export interface ProspectEventsPayload {
+  events: TimelineEventOut[];
+}
+
+export async function getProspectEvents(
+  ctx: ApiContext,
+  id: string,
+): Promise<ProspectEventsPayload> {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
-  const url = new URL(req.url);
-  const id = url.pathname.split("/").slice(-2, -1)[0];
   if (!id) throw Errors.notFound("Prospect");
 
   const { data, error } = await ctx.supabase
@@ -75,4 +80,10 @@ export const GET = createApiHandler(async (req, ctx) => {
   });
 
   return { events };
+}
+
+export const GET = createApiHandler(async (req, ctx) => {
+  const url = new URL(req.url);
+  const id = url.pathname.split("/").slice(-2, -1)[0];
+  return getProspectEvents(ctx, id);
 });

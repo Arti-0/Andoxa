@@ -258,7 +258,7 @@ export async function performPaiementsCheckout(params: {
     .eq("id", organizationId)
     .single();
 
-  if (planId === "solo") {
+  if (planId === "solo" && STRIPE_CONFIG.trial.enabled) {
     const trialAlreadyUsed = Boolean(orgStatus?.trial_ends_at);
     const hasExistingStripeSub = Boolean(orgStatus?.stripe_subscription_id);
 
@@ -310,8 +310,12 @@ export async function performPaiementsCheckout(params: {
     organization_status: orgStatus?.status || "pending",
   };
 
+  // Only attach a Stripe trial when the global flag is on AND this org
+  // hasn't already burnt its trial. Once `TRIAL_ENABLED=false`, every
+  // checkout — Solo or Team — goes straight to a paid subscription.
   const subscriptionTrialData =
-    planId === "solo" || !orgStatus?.trial_ends_at
+    STRIPE_CONFIG.trial.enabled &&
+    (planId === "solo" || !orgStatus?.trial_ends_at)
       ? { trial_period_days: STRIPE_CONFIG.trial.durationDays }
       : undefined;
 

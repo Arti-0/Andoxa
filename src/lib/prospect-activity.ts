@@ -337,7 +337,7 @@ export async function logWorkflowEnrolled(
     organization_id: string;
     prospect_id: string;
     workflow_id: string;
-    actor_id: string;
+    actor_id: string | null;
     run_id: string;
   },
 ): Promise<void> {

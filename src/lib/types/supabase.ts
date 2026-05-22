@@ -189,6 +189,9 @@ export interface Database {
                     full_name: string | null;
                     avatar_url: string | null;
                     booking_slug: string | null;
+                    booking_public_path: string | null;
+                    previous_booking_slugs: string[];
+                    previous_booking_paths: string[];
                     linkedin_id: string | null;
                     linkedin_url: string | null;
                     linkedin_access_token_encrypted: string | null;
@@ -207,6 +210,9 @@ export interface Database {
                     full_name?: string | null;
                     avatar_url?: string | null;
                     booking_slug?: string | null;
+                    booking_public_path?: string | null;
+                    previous_booking_slugs?: string[];
+                    previous_booking_paths?: string[];
                     linkedin_id?: string | null;
                     linkedin_url?: string | null;
                     linkedin_access_token_encrypted?: string | null;
@@ -225,6 +231,9 @@ export interface Database {
                     full_name?: string | null;
                     avatar_url?: string | null;
                     booking_slug?: string | null;
+                    booking_public_path?: string | null;
+                    previous_booking_slugs?: string[];
+                    previous_booking_paths?: string[];
                     linkedin_id?: string | null;
                     linkedin_url?: string | null;
                     linkedin_access_token_encrypted?: string | null;
@@ -260,6 +269,8 @@ export interface Database {
                     current_period_end: string | null;
                     max_users: number | null;
                     metadata: Json | null;
+                    scheduled_downgrade_to: string | null;
+                    scheduled_downgrade_effective_at: string | null;
                 };
                 Insert: {
                     id?: string;
@@ -281,6 +292,8 @@ export interface Database {
                     current_period_end?: string | null;
                     max_users?: number | null;
                     metadata?: Json | null;
+                    scheduled_downgrade_to?: string | null;
+                    scheduled_downgrade_effective_at?: string | null;
                 };
                 Update: {
                     id?: string;
@@ -302,6 +315,8 @@ export interface Database {
                     current_period_end?: string | null;
                     max_users?: number | null;
                     metadata?: Json | null;
+                    scheduled_downgrade_to?: string | null;
+                    scheduled_downgrade_effective_at?: string | null;
                 };
                 Relationships: [];
             };
@@ -311,6 +326,8 @@ export interface Database {
                     organization_id: string;
                     user_id: string;
                     role: string | null;
+                    active: boolean;
+                    deactivated_at: string | null;
                     created_at: string | null;
                     updated_at: string | null;
                 };
@@ -319,6 +336,8 @@ export interface Database {
                     organization_id: string;
                     user_id: string;
                     role?: string | null;
+                    active?: boolean;
+                    deactivated_at?: string | null;
                     created_at?: string | null;
                     updated_at?: string | null;
                 };
@@ -327,6 +346,8 @@ export interface Database {
                     organization_id?: string;
                     user_id?: string;
                     role?: string | null;
+                    active?: boolean;
+                    deactivated_at?: string | null;
                     created_at?: string | null;
                     updated_at?: string | null;
                 };
@@ -1099,9 +1120,15 @@ export interface Database {
                     run_mode: "terminating" | "evergreen";
                     trigger_kind:
                         | "manual"
+                        | "on_booking"
+                        | "on_no_show"
+                        | "on_status_change"
+                        | "on_linkedin_reply"
+                        | "on_whatsapp_reply"
+                        | "on_campaign_reply"
                         | "on_list_add"
-                        | "on_tag"
-                        | "on_status_change";
+                        | "on_tag";
+                    trigger_config: Json;
                 };
                 Insert: {
                     id?: string;
@@ -1119,9 +1146,15 @@ export interface Database {
                     run_mode?: "terminating" | "evergreen";
                     trigger_kind?:
                         | "manual"
+                        | "on_booking"
+                        | "on_no_show"
+                        | "on_status_change"
+                        | "on_linkedin_reply"
+                        | "on_whatsapp_reply"
+                        | "on_campaign_reply"
                         | "on_list_add"
-                        | "on_tag"
-                        | "on_status_change";
+                        | "on_tag";
+                    trigger_config?: Json;
                 };
                 Update: {
                     name?: string;
@@ -1135,9 +1168,15 @@ export interface Database {
                     run_mode?: "terminating" | "evergreen";
                     trigger_kind?:
                         | "manual"
+                        | "on_booking"
+                        | "on_no_show"
+                        | "on_status_change"
+                        | "on_linkedin_reply"
+                        | "on_whatsapp_reply"
+                        | "on_campaign_reply"
                         | "on_list_add"
-                        | "on_tag"
-                        | "on_status_change";
+                        | "on_tag";
+                    trigger_config?: Json;
                 };
                 Relationships: [];
             };

@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { initials, avatarColor, type CalEvent } from "./data";
 import type { WeekDay } from "./data";
-import type { CustomCal } from "./calendars-sidebar";
 import {
   useCreateEvent, useUpdateEvent, useProspectSearch, useOrgMembers,
   type CreateEventInput, type OrgMember,
@@ -19,7 +18,6 @@ type Props = {
   onClose: () => void;
   onCreate: () => void;
   weekDays: WeekDay[];
-  customCals: CustomCal[];
 };
 
 const MEETING_OPTIONS = [
@@ -44,7 +42,7 @@ function timeStrToDecimal(s: string): number {
   return (isNaN(h) ? 0 : h) + (isNaN(m) ? 0 : m / 60);
 }
 
-export function CreateEventModal({ open, prefill, editing, onClose, onCreate, weekDays, customCals }: Props) {
+export function CreateEventModal({ open, prefill, editing, onClose, onCreate, weekDays }: Props) {
   const isEdit = !!editing;
   const [title, setTitle] = useState("");
   const [calendarId, setCalendarId] = useState("me");
@@ -70,8 +68,11 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
    */
   const [prospectEmailDraft, setProspectEmailDraft] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialisedAttendeesForRef = useRef<string | null>(null);
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
+  const [description, setDescription] = useState("");
+  const [locationDetail, setLocationDetail] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const createEvent = useCreateEvent();
@@ -81,19 +82,31 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
 
   // Reset state when modal (re-)opens
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      // Forget which event we initialised so the next open re-populates.
+      initialisedAttendeesForRef.current = null;
+      return;
+    }
     if (editing) {
       setTitle(editing.title);
       setCalendarId(editing.calendarId);
-      setAllDay(false);
+      setAllDay(editing.isAllDay ?? false);
       setPlatform(editing.meeting);
       setSendEmailInvite(true);
-      setStartTime(decimalToTimeStr(editing.start));
-      setEndTime(decimalToTimeStr(editing.end));
-      setSelectedAttendees([]);
-      // Best-effort: prospect prefill (we only have name/company, not id)
+      // Default time inputs to 10:00–11:00 when the source is all-day so
+      // toggling off the flag mid-edit lands on a sensible slot instead of
+      // 00:00–24:00 (which the time inputs reject anyway).
+      setStartTime(editing.isAllDay ? "10:00" : decimalToTimeStr(editing.start));
+      setEndTime(editing.isAllDay ? "11:00" : decimalToTimeStr(editing.end));
+      setDescription(editing.description ?? "");
+      setLocationDetail(editing.location ?? "");
       if (editing.prospect) {
-        setSelectedProspect({ id: "", name: editing.prospect, company: editing.company, email: null });
+        setSelectedProspect({
+          id: editing.prospectId ?? "",
+          name: editing.prospect,
+          company: editing.company,
+          email: null,
+        });
       } else {
         setSelectedProspect(null);
       }
@@ -105,8 +118,11 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
       setSendEmailInvite(true);
       setStartTime(decimalToTimeStr(prefill?.start ?? 10));
       setEndTime(decimalToTimeStr(prefill?.end ?? (prefill?.start != null ? prefill.start + 1 : 11)));
+      setDescription("");
+      setLocationDetail("");
       setSelectedAttendees([]);
       setSelectedProspect(null);
+      initialisedAttendeesForRef.current = null;
     }
     setAttendeeQuery("");
     setProspectQuery("");
@@ -114,6 +130,34 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
     setProspectEmailDraft("");
     setError(null);
   }, [open, editing, prefill]);
+
+  // Populate selectedAttendees from editing.attendeeUserIds. Lives in a
+  // separate effect so we can retry once orgMembers loads (cold-start case)
+  // without clobbering the user's mid-edit attendee changes — the ref
+  // remembers which event we've already initialised.
+  useEffect(() => {
+    if (!open || !editing) return;
+    if (initialisedAttendeesForRef.current === editing.id) return;
+    // Wait for the directory before resolving — otherwise everyone is dropped.
+    if (orgMembers.length === 0 && (editing.attendeeUserIds?.length ?? 0) > 0) return;
+
+    const resolved = (editing.attendeeUserIds ?? [])
+      .map((uid) => {
+        const m = orgMembers.find((om: OrgMember) => om.id === uid);
+        if (!m) return null;
+        return {
+          kind: "member" as const,
+          id: m.id,
+          name: m.name,
+          avatarUrl: m.avatarUrl,
+          color: m.color,
+          accent: m.accent,
+        };
+      })
+      .filter((x): x is Extract<SelectedAttendee, { kind: "member" }> => x !== null);
+    setSelectedAttendees(resolved);
+    initialisedAttendeesForRef.current = editing.id;
+  }, [open, editing, orgMembers]);
 
   const handleProspectInput = (val: string) => {
     setProspectQuery(val);
@@ -140,7 +184,6 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
   // Calendar options: "Vous" + custom cals
   const calendarOptions: Array<{ id: string; label: string; color: string; accent: string }> = [
     { id: "me", label: "Vous", color: "#0052D9", accent: "var(--cal2-blue-tint)" },
-    ...customCals.map((c) => ({ id: c.id, label: c.name, color: c.color, accent: c.accent })),
   ];
   const selectedCal = calendarOptions.find((c) => c.id === calendarId) ?? calendarOptions[0];
 
@@ -158,16 +201,30 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
   const handleSubmit = () => {
     if (!title.trim()) { setError("Le titre est requis"); return; }
     if (!day) { setError("Date invalide"); return; }
-    const startH = timeStrToDecimal(startTime);
-    const endH = timeStrToDecimal(endTime);
-    if (endH <= startH) { setError("L'heure de fin doit être après l'heure de début."); return; }
+    if (!allDay) {
+      const startH = timeStrToDecimal(startTime);
+      const endH = timeStrToDecimal(endTime);
+      if (endH <= startH) { setError("L'heure de fin doit être après l'heure de début."); return; }
+    }
     setError(null);
 
     const dateStr = day.date;
-    const sH = Math.floor(startH); const sM = Math.round((startH - sH) * 60);
-    const eH = Math.floor(endH);   const eM = Math.round((endH - eH) * 60);
-    const startIso = `${dateStr}T${String(sH).padStart(2,"0")}:${String(sM).padStart(2,"0")}:00`;
-    const endIso   = `${dateStr}T${String(eH).padStart(2,"0")}:${String(eM).padStart(2,"0")}:00`;
+    let startIso: string;
+    let endIso: string;
+    if (allDay) {
+      // All-day events span the full calendar day in local time. 00:00:00 →
+      // 23:59:59 keeps the row in a single day after timezone conversion in
+      // PostgreSQL, which matters for the grid bucketing by `day` index.
+      startIso = `${dateStr}T00:00:00`;
+      endIso   = `${dateStr}T23:59:59`;
+    } else {
+      const startH = timeStrToDecimal(startTime);
+      const endH = timeStrToDecimal(endTime);
+      const sH = Math.floor(startH); const sM = Math.round((startH - sH) * 60);
+      const eH = Math.floor(endH);   const eM = Math.round((endH - eH) * 60);
+      startIso = `${dateStr}T${String(sH).padStart(2,"0")}:${String(sM).padStart(2,"0")}:00`;
+      endIso   = `${dateStr}T${String(eH).padStart(2,"0")}:${String(eM).padStart(2,"0")}:00`;
+    }
 
     const attendeeUserIds = selectedAttendees.filter((a) => a.kind === "member").map((a) => a.id);
     const attendeeEmails  = selectedAttendees.filter((a) => a.kind === "email").map((a) => a.kind === "email" ? a.email : "");
@@ -182,15 +239,24 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
       }
     }
 
+    const trimmedDescription = description.trim();
+    const trimmedLocation = locationDetail.trim();
+    const resolvedLocation =
+      platform === "meet" ? null : trimmedLocation || null;
+
     if (isEdit && editing) {
       updateEvent.mutate({
-        id: editing.id,
+        id: editing.id.split("__")[0]!,
         title: title.trim(),
         start_time: startIso,
         end_time: endIso,
         event_type: calendarId,
         meeting_kind: platform,
+        description: trimmedDescription || null,
+        location: resolvedLocation,
+        prospect_id: selectedProspect?.id || null,
         attendee_user_ids: attendeeUserIds,
+        is_all_day: allDay,
       }, {
         onSuccess: () => { onCreate(); onClose(); },
         onError: (e) => setError(e instanceof Error ? e.message : "Erreur lors de la mise à jour"),
@@ -202,14 +268,16 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
         end_time: endIso,
         calendar_id: calendarId,
         meeting_kind: platform,
-        // Always create the Google Meet when the platform is Meet — the
-        // toggle below only controls whether Google Calendar emails the
-        // attendees (sendUpdates flag, Calendar #6).
-        google_meet: platform === "meet",
+        description: trimmedDescription || undefined,
+        location: resolvedLocation ?? undefined,
+        // All-day events skip Meet generation — there's nothing to "join"
+        // for a day-long block.
+        google_meet: platform === "meet" && !allDay,
         notify_attendees: sendEmailInvite,
         prospect_id: selectedProspect?.id || null,
         attendee_user_ids: attendeeUserIds,
         attendee_emails: attendeeEmails,
+        is_all_day: allDay,
       };
       createEvent.mutate(input, {
         onSuccess: () => { onCreate(); onClose(); },
@@ -481,9 +549,33 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
                 );
               })}
             </div>
-            {platform === "inperson" && <input type="text" placeholder="Adresse ou lieu" style={{ ...inputStyle, marginTop: 9 }} />}
-            {platform === "other" && <input type="text" placeholder="Précisez…" style={{ ...inputStyle, marginTop: 9 }} />}
-            {platform === "phone" && <input type="text" placeholder="Numéro de téléphone" style={{ ...inputStyle, marginTop: 9 }} />}
+            {platform === "inperson" && (
+              <input
+                type="text"
+                value={locationDetail}
+                onChange={(e) => setLocationDetail(e.target.value)}
+                placeholder="Adresse ou lieu"
+                style={{ ...inputStyle, marginTop: 9 }}
+              />
+            )}
+            {platform === "other" && (
+              <input
+                type="text"
+                value={locationDetail}
+                onChange={(e) => setLocationDetail(e.target.value)}
+                placeholder="Précisez…"
+                style={{ ...inputStyle, marginTop: 9 }}
+              />
+            )}
+            {platform === "phone" && (
+              <input
+                type="text"
+                value={locationDetail}
+                onChange={(e) => setLocationDetail(e.target.value)}
+                placeholder="Numéro de téléphone"
+                style={{ ...inputStyle, marginTop: 9 }}
+              />
+            )}
             {/* Google Meet requires a connected Google account — if missing,
                 the meet link won't be generated and we fall back silently.
                 Surface that here so the user knows why before clicking Save. */}
@@ -491,7 +583,12 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
           </Field>
 
           <Field label="Description" hint="Optionnel">
-            <textarea placeholder="Notes, ordre du jour, points à aborder…" style={{ ...inputStyle, minHeight: 90, resize: "vertical", fontFamily: "inherit" }} />
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Notes, ordre du jour, points à aborder…"
+              style={{ ...inputStyle, minHeight: 90, resize: "vertical", fontFamily: "inherit" }}
+            />
           </Field>
 
           {/* Email-invite toggle is meaningful only when Google Meet is the

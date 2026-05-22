@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getPlanConfig, getPlanLimits, type PlanId } from "@/lib/config/plans-config";
 import { cn } from "@/lib/utils";
 import Balancer from "react-wrap-balancer";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 type BillingFrequency = "mensuel" | "annuel";
 type Frequency = "monthly" | "yearly";

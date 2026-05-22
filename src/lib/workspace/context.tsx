@@ -36,6 +36,8 @@ type OrgRowForWorkspace = {
   created_at: string | null;
   updated_at: string | null;
   metadata: unknown;
+  scheduled_downgrade_to?: string | null;
+  scheduled_downgrade_effective_at?: string | null;
 };
 
 type MemberApiRow = {
@@ -43,8 +45,8 @@ type MemberApiRow = {
   organization_id: string;
   user_id: string;
   role: string | null;
-  joined_at: string | null;
-  created_at?: string | null;
+  active?: boolean | null;
+  created_at: string | null;
   profiles?: Profile | Profile[] | null;
 };
 
@@ -84,6 +86,9 @@ function normalizeWorkspaceFromApi(workspaceData: OrgRowForWorkspace): Workspace
     metadata: workspaceData.metadata as Workspace["metadata"],
     status: workspaceData.status,
     deleted_at: workspaceData.deleted_at,
+    scheduled_downgrade_to: workspaceData.scheduled_downgrade_to ?? null,
+    scheduled_downgrade_effective_at:
+      workspaceData.scheduled_downgrade_effective_at ?? null,
   };
 }
 
@@ -97,7 +102,8 @@ function mapMembersFromApi(rows: MemberApiRow[] | null | undefined): WorkspaceMe
       workspace_id: m.organization_id,
       user_id: m.user_id,
       role: (m.role ?? "member") as MemberRole,
-      joined_at: m.joined_at ?? m.created_at ?? "",
+      active: m.active ?? true,
+      joined_at: m.created_at ?? "",
       profile: profileNested,
     };
   });

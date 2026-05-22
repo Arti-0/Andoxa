@@ -1,6 +1,6 @@
 import { createApiHandler, Errors, getPagination, parseBody } from "@/lib/api";
 import { assertMessagerieAndTemplatesPlan } from "@/lib/billing/plan-gates";
-import type { Json } from "@/lib/types/supabase";
+import type { Database, Json } from "@/lib/types/supabase";
 import {
   safeParseWorkflowDefinition,
   tryBuildPublishedDefinition,
@@ -11,6 +11,8 @@ import {
   type WorkflowDefinition,
   type WorkflowUiState,
 } from "@/lib/workflows";
+import { isWorkflowTriggerKind } from "@/lib/workflows/trigger-kind";
+import { validateTriggerConfig } from "@/lib/workflows/trigger-config";
 
 const DEFAULT_DRAFT: WorkflowDefinition = { schemaVersion: 1, steps: [] };
 
@@ -104,6 +106,8 @@ export const POST = createApiHandler(
       is_template?: boolean;
       draft_definition?: unknown;
       pending_enrollment_bdd_ids?: string[];
+      trigger_kind?: string;
+      trigger_config?: unknown;
       ui?: { icon?: string; color?: string; trigger?: string };
     }>(req);
     const name = (body.name ?? "").trim();
@@ -154,19 +158,53 @@ export const POST = createApiHandler(
       published = built.definition as Json;
     }
 
+    // Resolve trigger_kind + trigger_config at create time so workflows
+    // instantiated from templates are wired up to their real trigger
+    // immediately, instead of defaulting to `manual` and forcing the user
+    // to reconfigure on the detail page.
+    let triggerKind: string | undefined;
+    if (body.trigger_kind !== undefined) {
+      if (!isWorkflowTriggerKind(body.trigger_kind)) {
+        throw Errors.validation({ trigger_kind: "Déclencheur invalide" });
+      }
+      triggerKind = body.trigger_kind;
+    }
+
+    let triggerConfig: Json | undefined;
+    if (body.trigger_config !== undefined) {
+      // Validate against the effective trigger kind (incoming or default to
+      // manual). Empty {} is acceptable for every kind.
+      const effectiveKind =
+        (triggerKind ?? "manual") as Parameters<typeof validateTriggerConfig>[0];
+      const validated = validateTriggerConfig(effectiveKind, body.trigger_config);
+      if (!validated.ok) {
+        throw Errors.validation({ trigger_config: validated.error });
+      }
+      triggerConfig = validated.config as Json;
+    }
+
+    const insertRow: Database["public"]["Tables"]["workflows"]["Insert"] = {
+      organization_id: ctx.workspaceId,
+      name,
+      description,
+      is_template: isTemplate,
+      created_by: ctx.userId!,
+      is_active: false,
+      draft_definition: draft,
+      published_definition: published,
+      metadata: meta as Json,
+      ...(triggerKind !== undefined
+        ? {
+            trigger_kind:
+              triggerKind as Database["public"]["Tables"]["workflows"]["Insert"]["trigger_kind"],
+          }
+        : {}),
+      ...(triggerConfig !== undefined ? { trigger_config: triggerConfig } : {}),
+    };
+
     const { data: row, error } = await ctx.supabase
       .from("workflows")
-      .insert({
-        organization_id: ctx.workspaceId,
-        name,
-        description,
-        is_template: isTemplate,
-        created_by: ctx.userId!,
-        is_active: false,
-        draft_definition: draft,
-        published_definition: published,
-        metadata: meta as Json,
-      })
+      .insert(insertRow)
       .select()
       .single();
 

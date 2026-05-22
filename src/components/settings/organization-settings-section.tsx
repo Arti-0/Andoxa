@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWorkspace } from "@/lib/workspace";
@@ -39,19 +39,29 @@ import {
     ChevronDown,
     User as UserIcon,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { settingsLabelClass, SettingsCard } from "./settings-card";
 import { PLAN_DISPLAY, PLAN_DISPLAY_FALLBACK, STATUS_DISPLAY } from "@/lib/billing/display";
 import { cn } from "@/lib/utils";
 import { uploadOrgLogo } from "@/lib/organizations/upload-logo";
 import { OrganizationInviteModal } from "./organization-invite-modal";
+import { useLimit } from "@/hooks/use-limit";
+import { useUpgradePrompt } from "@/components/billing/upgrade-prompt";
+import { useQueryClient } from "@tanstack/react-query";
+import { TransitionMembersView } from "./transition-members-view";
 
 interface Member {
     id: string;
+    /** organization_members.user_id — same as id today, surfaced explicitly for the transition view. */
+    user_id: string;
     name: string;
     role: string;
     avatar_url: string | null;
     email: string | null;
+    /** Defaults to true; flipped to false during a downgrade-and-prune. */
+    active: boolean;
+    /** Membership creation timestamp, used to order rows (oldest first). */
+    created_at: string | null;
 }
 
 interface PendingInvitation {
@@ -260,6 +270,10 @@ export function OrganizationSettingsSection({
         isOwner ||
         members.find((m) => m.id === user?.id)?.role === "admin";
 
+    const seatLimit = useLimit("users");
+    const { openUpgrade } = useUpgradePrompt();
+    const queryClient = useQueryClient();
+
     const loadInvitations = useCallback(async () => {
         if (!workspaceId || !callerIsAdmin) return;
         setLoadingInvitations(true);
@@ -433,8 +447,17 @@ export function OrganizationSettingsSection({
             });
             const json = (await res.json()) as {
                 success?: boolean;
-                error?: { message?: string };
+                error?: { code?: string; message?: string };
             };
+            // Cap hit on the server even though the UI thought we were ok
+            // (race between a peer invite and this one, or a stale tab).
+            // Close the modal and open the upgrade prompt — same path as
+            // the prevented-UI flow.
+            if (res.status === 409 && json.error?.code === "PLAN_LIMIT_REACHED") {
+                setInviteOpen(false);
+                openUpgrade({ reason: "seat_limit" });
+                return;
+            }
             if (!res.ok || !json.success) {
                 throw new Error(
                     json.error?.message ?? "Impossible d'envoyer l'invitation"
@@ -444,6 +467,9 @@ export function OrganizationSettingsSection({
             setInviteOpen(false);
             loadMembers();
             void loadInvitations();
+            // Seat counter on the Members card reads from the same cache;
+            // invalidate so the new (members+pending) total reflects right away.
+            void queryClient.invalidateQueries({ queryKey: ["plan-limits"] });
         } catch (err) {
             toast.error(err instanceof Error ? err.message : "Erreur");
         }
@@ -840,22 +866,66 @@ export function OrganizationSettingsSection({
                 </SettingsCard>
             )}
 
+            {/* ── Transition view (replaces Members card when a downgrade is scheduled) ── */}
+            {workspaceId && workspace?.scheduled_downgrade_to ? (
+                <TransitionMembersView
+                    organizationId={workspaceId}
+                    callerId={user?.id ?? ""}
+                    callerIsAdmin={callerIsAdmin}
+                    members={members.map((m) => ({
+                        id: m.id,
+                        user_id: m.user_id,
+                        name: m.name,
+                        role: (m.role as "owner" | "admin" | "member") ?? "member",
+                        avatar_url: m.avatar_url,
+                        active: m.active,
+                        created_at: m.created_at ?? "",
+                    }))}
+                    scheduledTarget={workspace.scheduled_downgrade_to ?? null}
+                    effectiveAt={workspace.scheduled_downgrade_effective_at ?? null}
+                    onMutated={() => {
+                        loadMembers();
+                        refresh?.();
+                    }}
+                />
+            ) : null}
+
             {/* ── Members card ──────────────────────────────────────── */}
-            {workspaceId && (
+            {workspaceId && !workspace?.scheduled_downgrade_to && (
                 <SettingsCard
-                    title={`Membres (${members.length})`}
-                    description="Gérez les accès et les rôles de votre équipe"
+                    title={`Membres (${members.length}${
+                        seatLimit.limit > 0 ? ` / ${seatLimit.limit}` : ""
+                    })`}
+                    description={
+                        seatLimit.limit > 0 && !seatLimit.canUse
+                            ? "Vous avez atteint la limite de sièges de votre plan."
+                            : "Gérez les accès et les rôles de votre équipe"
+                    }
                     icon={<Users />}
                     action={
                         callerIsAdmin ? (
-                            <Button
-                                size="sm"
-                                onClick={() => setInviteOpen(true)}
-                                className="gap-1.5"
-                            >
-                                <Plus className="size-3.5" />
-                                Inviter un membre
-                            </Button>
+                            seatLimit.canUse ? (
+                                <Button
+                                    size="sm"
+                                    onClick={() => setInviteOpen(true)}
+                                    className="gap-1.5"
+                                >
+                                    <Plus className="size-3.5" />
+                                    Inviter un membre
+                                </Button>
+                            ) : (
+                                <Button
+                                    size="sm"
+                                    onClick={() =>
+                                        openUpgrade({ reason: "seat_limit" })
+                                    }
+                                    className="gap-1.5"
+                                    variant="outline"
+                                >
+                                    <Plus className="size-3.5" />
+                                    Inviter — passer à un plan supérieur
+                                </Button>
+                            )
                         ) : null
                     }
                     bodyClassName="p-0 gap-0"

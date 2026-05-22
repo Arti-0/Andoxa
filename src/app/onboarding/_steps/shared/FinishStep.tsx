@@ -1,7 +1,7 @@
-'use client';
+﻿'use client';
 
 import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { ONBOARDING_PROFILE_STEP } from '../../config';
 import { OnboardingContinueButton } from '../../_components/OnboardingContinueButton';

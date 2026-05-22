@@ -18,7 +18,14 @@ export interface DashboardPdfData {
   stats: {
     pipeline: { active_total: number; by_stage: { rdv: number; proposal: number; qualified: number }; trend_pts: number };
     rdv: { booked_count: number; target: number; realisation_pct: number; trend_pts: number };
-    linkedin: { messages_sent: number; response_rate_pct: number; acceptance_rate_pct: number; trend_pts: number };
+    linkedin: {
+      messages_sent: number;
+      invitations_sent: number;
+      responses_received: number;
+      response_rate_pct: number;
+      acceptance_rate_pct: number;
+      trend_pts: number;
+    };
     closings: { won_count: number; target: number; progress_pct: number; trend_pts: number };
   };
   funnel: {
@@ -345,7 +352,7 @@ function KpiBlock({
       </View>
       <Text style={styles.kpiValue}>{value}</Text>
       <Text style={styles.kpiSub}>{sub}</Text>
-      <Text style={styles.kpiSide}>{side}</Text>
+      {side ? <Text style={styles.kpiSide}>{side}</Text> : null}
     </View>
   );
 }
@@ -392,8 +399,8 @@ function DashboardPdfDoc({ data, logoUrl }: { data: DashboardPdfData; logoUrl: s
           <KpiBlock
             label="RDV bookés"
             value={String(stats.rdv.booked_count)}
-            sub={`${stats.rdv.realisation_pct}% de l'objectif`}
-            side={`vs objectif ${stats.rdv.target}`}
+            sub="rendez-vous planifiés"
+            side=""
             trend={stats.rdv.trend_pts}
           />
         </View>
@@ -401,15 +408,15 @@ function DashboardPdfDoc({ data, logoUrl }: { data: DashboardPdfData; logoUrl: s
           <KpiBlock
             label="Taux de réponse LinkedIn"
             value={`${stats.linkedin.response_rate_pct}%`}
-            sub={`sur ${stats.linkedin.messages_sent} message${stats.linkedin.messages_sent > 1 ? "s" : ""}`}
+            sub={`${stats.linkedin.responses_received} réponse${stats.linkedin.responses_received > 1 ? "s" : ""} · ${stats.linkedin.invitations_sent} invitation${stats.linkedin.invitations_sent > 1 ? "s" : ""}`}
             side={`Acceptation ${stats.linkedin.acceptance_rate_pct}%`}
             trend={stats.linkedin.trend_pts}
           />
           <KpiBlock
             label="Closings"
             value={String(stats.closings.won_count)}
-            sub={`vs objectif ${stats.closings.target}`}
-            side={`${stats.closings.progress_pct}% de l'objectif`}
+            sub="deals gagnés sur la période"
+            side=""
             trend={stats.closings.trend_pts}
           />
         </View>

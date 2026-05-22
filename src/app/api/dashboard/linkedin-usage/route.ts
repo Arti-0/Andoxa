@@ -1,6 +1,15 @@
-import { createApiHandler, Errors } from "@/lib/api";
+import { createApiHandler, Errors, type ApiContext } from "@/lib/api";
 import { dailyPeriodKey, weeklyPeriodKey } from "@/lib/campaigns/throttle";
 import { isMockStatsEnabled, mockLinkedInUsage } from "@/lib/mock-stats";
+
+export interface LinkedInUsagePayload {
+  invitations_sent: number;
+  invitations_workflow: number;
+  invitations_direct: number;
+  messages_sent: number;
+  profile_views: number;
+  invitations_week: number;
+}
 
 /**
  * GET /api/dashboard/linkedin-usage
@@ -13,7 +22,9 @@ import { isMockStatsEnabled, mockLinkedInUsage } from "@/lib/mock-stats";
  * - profile_views: not tracked yet — always 0 (TODO).
  * - invitations_week: weekly `linkedin_invite` usage_counters (workflows + CRM).
  */
-export const GET = createApiHandler(async (_req, ctx) => {
+export async function getLinkedInUsage(
+  ctx: ApiContext,
+): Promise<LinkedInUsagePayload> {
   if (!ctx.workspaceId) {
     throw Errors.badRequest("Workspace required");
   }
@@ -87,4 +98,6 @@ export const GET = createApiHandler(async (_req, ctx) => {
     profile_views: 0,
     invitations_week: invitesWeekRes.data?.count ?? 0,
   };
-});
+}
+
+export const GET = createApiHandler(async (_req, ctx) => getLinkedInUsage(ctx));

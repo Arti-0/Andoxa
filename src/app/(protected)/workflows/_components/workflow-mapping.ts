@@ -39,6 +39,8 @@ export interface BackendWorkflowRow {
   metadata?: unknown;
   /** DB column `workflows.trigger_kind` */
   trigger_kind?: WorkflowTriggerKind;
+  /** DB column `workflows.trigger_config` (jsonb) */
+  trigger_config?: unknown;
   run_mode?: "terminating" | "evergreen";
   active_runs_count?: number;
   total_runs_count?: number;
@@ -175,24 +177,8 @@ const TRIGGER_VISUALS: Record<
   { iconPath: string; bg: string; color: string }
 > = {
   meeting_booked: { iconPath: ICO.calendar, bg: "#E8F0FD", color: "#0052D9" },
-  linkedin_invite_accepted: {
-    iconPath: ICO.linkedin,
-    bg: "#EFF6FF",
-    color: "#0A66C2",
-  },
-  whatsapp_reply_received: {
-    iconPath: ICO.whatsapp,
-    bg: "#ECFDF5",
-    color: "#059669",
-  },
-  no_reply_after_days: { iconPath: ICO.clock, bg: "#F5F3FF", color: "#7C3AED" },
-  crm_status_changed: { iconPath: ICO.database, bg: "#EFF6FF", color: "#1E3A8A" },
-  new_prospect_in_list: {
-    iconPath: ICO.user_plus,
-    bg: "#FFF7ED",
-    color: "#C2410C",
-  },
   meeting_no_show: { iconPath: ICO.bell, bg: "#FFF1F2", color: "#BE123C" },
+  crm_status_changed: { iconPath: ICO.database, bg: "#EFF6FF", color: "#1E3A8A" },
   manual: { iconPath: ICO.cursor, bg: "#F1F5F9", color: "#475569" },
 };
 

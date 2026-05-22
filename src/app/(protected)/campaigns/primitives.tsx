@@ -10,6 +10,7 @@ import {
   type Creator,
 } from "./data";
 import { Linkedin, MessageCircle, Phone } from "lucide-react";
+import { MiniLineChart } from "@/components/ui/mini-line-chart";
 
 export function StatusBadge({ status, size = "md" }: { status: CampaignStatus; size?: "sm" | "md" }) {
   const m = STATUS_META[status];
@@ -75,35 +76,45 @@ export function Avatar({ creator, size = 22 }: { creator: Creator | undefined; s
   );
 }
 
+/**
+ * Mini area chart for the campaigns KPI bar — Recharts-backed sparkline with
+ * hover tooltip so users can read each bucket's value instead of just guessing
+ * from the silhouette.
+ */
 export function Sparkline({
   data,
   color = "#0052D9",
   width = 90,
   height = 28,
+  label = "Valeur",
+  unit,
 }: {
   data: number[];
   color?: string;
   width?: number;
   height?: number;
+  label?: string;
+  unit?: string;
 }) {
-  if (!data || data.length === 0) return null;
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * width;
-    const y = height - ((v - min) / range) * (height - 4) - 2;
-    return [x, y] as [number, number];
-  });
-  const line = "M" + pts.map((p) => p.join(",")).join(" L");
-  const last = pts[pts.length - 1];
-  const area = `M0,${height} L${pts[0][0]},${height} ` + pts.map((p) => `L${p[0]},${p[1]}`).join(" ") + ` L${last[0]},${height} Z`;
+  const total = data?.length ?? 0;
+  if (total === 0) {
+    return <div style={{ width, height }} aria-hidden />;
+  }
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ overflow: "visible" }}>
-      <path d={area} fill={color} opacity={0.12} />
-      <path d={line} fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx={last[0]} cy={last[1]} r={2.4} fill={color} />
-    </svg>
+    <div style={{ width, height }}>
+      <MiniLineChart
+        data={data}
+        color={color}
+        label={label}
+        unit={unit}
+        bucketLabel={(i) => {
+          const offset = total - 1 - i;
+          if (offset === 0) return "Période actuelle";
+          return `Bucket -${offset}`;
+        }}
+        className="h-full w-full"
+      />
+    </div>
   );
 }
 

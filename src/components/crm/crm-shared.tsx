@@ -25,6 +25,8 @@ import {
   type Prospect,
   type ProspectStatus,
 } from "@/lib/types/prospects";
+import { useMemo } from "react";
+import { useProspectStatuses, useStatusResolver } from "@/lib/prospects/statuses";
 
 /* ============================================================
    Status — DB keys mapped to display config (label + colors).
@@ -97,6 +99,41 @@ export const STATUS_CONFIG: Record<ProspectStatus, StatusConfig> = {
 
 export function isProspectStatus(s: string | null | undefined): s is ProspectStatus {
   return !!s && (PIPELINE_ORDER as string[]).includes(s);
+}
+
+/**
+ * Hook returning the same shape as the legacy STATUS_CONFIG + PIPELINE_ORDER,
+ * but driven by the per-org `prospect_statuses` table. Use this in CRM views
+ * that previously iterated PIPELINE_ORDER or looked up STATUS_CONFIG[key].
+ *
+ * The legacy 7-key STATUS_CONFIG retains its dark-mode-aware pill classes,
+ * so when a per-org status has a legacy counterpart we reuse those classes
+ * for visual consistency. Custom statuses get a neutral pill + their hex.
+ */
+export function useDynamicStatusConfig(): {
+  pipelineOrder: string[];
+  cfgByKey: Map<string, StatusConfig>;
+  loading: boolean;
+} {
+  const { statuses, loading } = useProspectStatuses();
+  return useMemo(() => {
+    const active = statuses.filter((s) => !s.is_archived);
+    const cfgByKey = new Map<string, StatusConfig>();
+    for (const s of active) {
+      const legacy = isProspectStatus(s.key) ? STATUS_CONFIG[s.key] : null;
+      cfgByKey.set(s.key, {
+        label: s.name,
+        hex: s.color,
+        dot: legacy?.dot ?? "",
+        pill: legacy?.pill ?? "bg-muted text-foreground",
+      });
+    }
+    return {
+      pipelineOrder: active.map((s) => s.key),
+      cfgByKey,
+      loading,
+    };
+  }, [statuses, loading]);
 }
 
 /* ============================================================
@@ -207,17 +244,34 @@ export function StatusPill({
   status: string | null | undefined;
   size?: "sm" | "lg";
 }) {
+  // Resolves the status against the per-org statuses (renames, custom rows,
+  // recolors). Falls back to the static STATUS_CONFIG for the legacy 7 keys
+  // during the first paint before /api/prospect-statuses resolves.
+  const resolve = useStatusResolver();
   if (!status) return null;
-  const cfg = isProspectStatus(status) ? STATUS_CONFIG[status] : null;
-  if (!cfg) return null;
+  const dynamic = resolve(status);
+  const legacy = isProspectStatus(status) ? STATUS_CONFIG[status] : null;
+  if (!dynamic && !legacy) return null;
+
+  const label = dynamic?.label ?? legacy?.label ?? status;
+  const hex = dynamic?.hex ?? legacy?.hex ?? "#94a3b8";
+  // Reuse the legacy pill tailwind classes when we have them (gives proper
+  // light/dark backgrounds). Custom statuses without a legacy entry get a
+  // generic neutral pill — the per-org hex is what carries the colour
+  // identity via the dot.
+  const pillClasses = legacy?.pill ?? "bg-muted text-foreground";
+
   const sizing =
     size === "lg" ? "px-3 py-1 text-[13px]" : "px-2.5 py-0.5 text-[11px]";
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full font-semibold leading-none whitespace-nowrap ${cfg.pill} ${sizing}`}
+      className={`inline-flex items-center gap-1.5 rounded-full font-semibold leading-none whitespace-nowrap ${pillClasses} ${sizing}`}
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
-      {cfg.label}
+      <span
+        className="h-1.5 w-1.5 rounded-full ring-1 ring-inset ring-black/10"
+        style={{ backgroundColor: hex }}
+      />
+      {label}
     </span>
   );
 }

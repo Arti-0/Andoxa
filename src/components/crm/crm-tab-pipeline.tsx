@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /**
  * CRM v2 — Pipeline tab.
@@ -39,7 +39,7 @@ import {
     ArrowRight,
     Play,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { ProspectCreateDialog } from '@/components/crm/prospect-create-dialog';
 import {
     useProspectActions,
@@ -52,11 +52,26 @@ import {
     ChannelTooltipDot,
     silenceTier,
     silenceTierClasses,
-    PIPELINE_ORDER,
-    STATUS_CONFIG,
+    useDynamicStatusConfig,
     prospectPhotoFromEnrichment,
+    type StatusConfig,
 } from './crm-shared';
-import { type Prospect, type ProspectStatus } from '@/lib/types/prospects';
+import { type Prospect } from '@/lib/types/prospects';
+import {
+    sortProspects,
+    PROSPECT_SORT_OPTIONS,
+    type ProspectSortKey,
+} from './crm-prospect-sort';
+import { CRM_SOURCE_FILTER_OPTIONS } from './crm-source-filters';
+
+/** Fallback when an unknown status (custom row from another org, archived, etc.)
+ *  shows up. Keeps the UI from crashing on a `cfgByKey.get(...)` miss. */
+const STATUS_FALLBACK: StatusConfig = {
+    label: '—',
+    hex: '#94a3b8',
+    dot: 'bg-slate-400',
+    pill: 'bg-muted text-foreground',
+};
 
 interface ProspectsApiResponse {
     items: Prospect[];
@@ -68,7 +83,9 @@ interface ProspectsApiResponse {
 
 interface FunnelApiResponse {
     stages: {
-        status: ProspectStatus;
+        status: string;
+        name: string;
+        color: string;
         count: number;
         delta_7d: number;
         avg_cycle_days: number | null;
@@ -89,7 +106,6 @@ interface PipelineTabProps {
 }
 
 type GroupMode = 'grouped' | 'list';
-type SortBy = 'entry' | 'lastActivity' | 'silence' | 'alpha';
 
 function lastActivityLabel(p: Prospect): string {
     return p.last_activity?.label ?? '—';
@@ -104,14 +120,16 @@ export function PipelineTab({
     workspaceId,
     initialStatusFilter,
 }: PipelineTabProps) {
-    /** Honor `/crm?status=...` once on mount. */
-    const initialFunnel: ProspectStatus | null =
-        initialStatusFilter &&
-        (PIPELINE_ORDER as readonly string[]).includes(initialStatusFilter)
-            ? (initialStatusFilter as ProspectStatus)
-            : null;
     const router = useRouter();
     const queryClient = useQueryClient();
+    // Per-org pipeline: ordered keys + lookup by key for label/hex/dot/pill.
+    const { pipelineOrder, cfgByKey } = useDynamicStatusConfig();
+
+    /** Honor `/crm?status=...` once on mount. */
+    const initialFunnel: string | null =
+        initialStatusFilter && pipelineOrder.includes(initialStatusFilter)
+            ? initialStatusFilter
+            : null;
 
     const [search, setSearch] = useState('');
     const [groupMode, setGroupMode] = useState<GroupMode>('grouped');
@@ -120,22 +138,18 @@ export function PipelineTab({
         []
     );
     const [sortOpen, setSortOpen] = useState(false);
-    const [sortBy, setSortBy] = useState<SortBy>('lastActivity');
+    const [sortBy, setSortBy] = useState<ProspectSortKey>('lastActivity');
     /** When the page is deep-linked with `?status=...`, collapse every
      *  section except the targeted one — mirrors the funnel-card click. */
-    const [collapsed, setCollapsed] = useState<Set<ProspectStatus>>(() => {
+    const [collapsed, setCollapsed] = useState<Set<string>>(() => {
         if (!initialFunnel) return new Set();
-        return new Set(
-            (PIPELINE_ORDER as ProspectStatus[]).filter(
-                (s) => s !== initialFunnel
-            )
-        );
+        return new Set(pipelineOrder.filter((s) => s !== initialFunnel));
     });
     const [pillMenu, setPillMenu] = useState<string | null>(null);
     const [rowMenu, setRowMenu] = useState<string | null>(null);
     const [hoverRow, setHoverRow] = useState<string | null>(null);
     const [selected, setSelected] = useState<Set<string>>(new Set());
-    const [funnelFilter, setFunnelFilter] = useState<ProspectStatus | null>(
+    const [funnelFilter, setFunnelFilter] = useState<string | null>(
         initialFunnel
     );
     const [showCreate, setShowCreate] = useState(false);
@@ -181,10 +195,7 @@ export function PipelineTab({
         staleTime: 60_000,
     });
     const funnelByStatus = useMemo(() => {
-        const m = new Map<
-            ProspectStatus,
-            { delta: number; cycle: number | null }
-        >();
+        const m = new Map<string, { delta: number; cycle: number | null }>();
         for (const s of funnelData?.stages ?? []) {
             m.set(s.status, { delta: s.delta_7d, cycle: s.avg_cycle_days });
         }
@@ -198,7 +209,7 @@ export function PipelineTab({
             status,
         }: {
             id: string;
-            status: ProspectStatus;
+            status: string;
         }) => {
             const res = await fetch(`/api/prospects/${id}`, {
                 method: 'PATCH',
@@ -210,13 +221,13 @@ export function PipelineTab({
         },
         onSuccess: (_d, vars) => {
             queryClient.invalidateQueries({ queryKey: ['prospects-pipeline'] });
-            const cfg = STATUS_CONFIG[vars.status];
+            const cfg = cfgByKey.get(vars.status) ?? STATUS_FALLBACK;
             toast.success(`Déplacé vers ${cfg.label}`);
         },
         onError: () => toast.error('Impossible de mettre à jour le statut'),
     });
 
-    const moveProspect = (id: string, status: ProspectStatus) => {
+    const moveProspect = (id: string, status: string) => {
         moveMutation.mutate({ id, status });
         setPillMenu(null);
     };
@@ -230,21 +241,10 @@ export function PipelineTab({
     }, [items, funnelFilter]);
 
     const counts = useMemo(() => {
-        const m: Record<ProspectStatus, number> = {
-            new: 0,
-            contacted: 0,
-            qualified: 0,
-            rdv: 0,
-            proposal: 0,
-            won: 0,
-            lost: 0,
-        };
+        const m: Record<string, number> = {};
+        for (const s of pipelineOrder) m[s] = 0;
         for (const p of items) {
-            if (
-                p.status &&
-                (m as Record<string, number>)[p.status] !== undefined
-            )
-                m[p.status as ProspectStatus]++;
+            if (p.status && m[p.status] !== undefined) m[p.status]++;
         }
         return m;
     }, [items]);
@@ -264,41 +264,22 @@ export function PipelineTab({
         return Math.round(cycles.reduce((s, v) => s + v, 0) / cycles.length);
     }, [funnelData]);
 
-    const sortFn = (a: Prospect, b: Prospect) => {
-        if (sortBy === 'alpha') {
-            return (a.full_name ?? '').localeCompare(b.full_name ?? '');
-        }
-        if (sortBy === 'entry') {
-            const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-            const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-            return tb - ta;
-        }
-        if (sortBy === 'silence') {
-            const sa = parseSilence(lastActivityLabel(a));
-            const sb = parseSilence(lastActivityLabel(b));
-            return sb - sa;
-        }
-        // lastActivity
-        const ta = a.updated_at ? new Date(a.updated_at).getTime() : 0;
-        const tb = b.updated_at ? new Date(b.updated_at).getTime() : 0;
-        return tb - ta;
-    };
+    const sortedFiltered = useMemo(
+        () => sortProspects(filtered, sortBy),
+        [filtered, sortBy],
+    );
 
-    const onFunnelClick = (id: ProspectStatus) => {
+    const onFunnelClick = (id: string) => {
         if (funnelFilter === id) {
             setFunnelFilter(null);
         } else {
             setFunnelFilter(id);
             // Collapse all but the targeted stage
-            setCollapsed(
-                new Set(
-                    PIPELINE_ORDER.filter((s) => s !== id) as ProspectStatus[]
-                )
-            );
+            setCollapsed(new Set(pipelineOrder.filter((s) => s !== id)));
         }
     };
 
-    const toggleCollapse = (id: ProspectStatus) => {
+    const toggleCollapse = (id: string) => {
         setCollapsed((s) => {
             const n = new Set(s);
             if (n.has(id)) n.delete(id);
@@ -338,8 +319,8 @@ export function PipelineTab({
 
             {/* Mini-funnel */}
             <div className="mb-4 grid grid-cols-2 gap-1.5 sm:grid-cols-4 lg:grid-cols-7">
-                {PIPELINE_ORDER.map((id) => {
-                    const cfg = STATUS_CONFIG[id];
+                {pipelineOrder.map((id) => {
+                    const cfg = cfgByKey.get(id) ?? STATUS_FALLBACK;
                     const trend = funnelByStatus.get(id);
                     const delta = trend?.delta ?? 0;
                     const dir = trendDir(delta);
@@ -356,7 +337,8 @@ export function PipelineTab({
                         >
                             <div className="flex items-center gap-1.5">
                                 <span
-                                    className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`}
+                                    className="h-1.5 w-1.5 rounded-full ring-1 ring-inset ring-black/10"
+                                    style={{ backgroundColor: cfg.hex }}
                                 />
                                 <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
                                     {cfg.label}
@@ -396,7 +378,7 @@ export function PipelineTab({
                 <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-muted px-2.5 py-1 text-xs">
                     Filtré sur{' '}
                     <strong className="font-semibold">
-                        {STATUS_CONFIG[funnelFilter].label}
+                        {(cfgByKey.get(funnelFilter) ?? STATUS_FALLBACK).label}
                     </strong>
                     <button
                         onClick={() => {
@@ -469,19 +451,7 @@ export function PipelineTab({
                                     Source
                                 </div>
                                 <div className="flex flex-wrap gap-1">
-                                    {[
-                                        {
-                                            value: 'linkedin_extension',
-                                            label: 'LinkedIn',
-                                        },
-                                        { value: 'csv', label: 'Import CSV' },
-                                        {
-                                            value: 'xlsx',
-                                            label: 'Import Excel',
-                                        },
-                                        { value: 'manual', label: 'Manuel' },
-                                        { value: 'booking', label: 'Booking' },
-                                    ].map((opt) => {
+                                    {CRM_SOURCE_FILTER_OPTIONS.map((opt) => {
                                         const active =
                                             pipelineSourceFilter.includes(
                                                 opt.value
@@ -545,14 +515,7 @@ export function PipelineTab({
                     </button>
                     {sortOpen && (
                         <div className="absolute left-0 top-[calc(100%+6px)] z-30 w-[220px] rounded-lg border border-border bg-popover p-1.5 shadow-lg">
-                            {(
-                                [
-                                    ['entry', 'Date d’entrée pipeline'],
-                                    ['lastActivity', 'Dernière activité'],
-                                    ['silence', 'Silence'],
-                                    ['alpha', 'Alphabétique'],
-                                ] as const
-                            ).map(([id, label]) => (
+                            {PROSPECT_SORT_OPTIONS.map(({ id, label }) => (
                                 <div
                                     key={id}
                                     onClick={() => {
@@ -611,12 +574,13 @@ export function PipelineTab({
             {/* Body */}
             {groupMode === 'grouped' ? (
                 <div className="flex flex-col gap-2.5">
-                    {(PIPELINE_ORDER as ProspectStatus[]).map((stageId) => {
+                    {pipelineOrder.map((stageId) => {
                         if (funnelFilter && funnelFilter !== stageId)
                             return null;
-                        const rows = filtered
-                            .filter((p) => p.status === stageId)
-                            .sort(sortFn);
+                        const rows = sortProspects(
+                            filtered.filter((p) => p.status === stageId),
+                            sortBy,
+                        );
                         const isCollapsed =
                             rows.length === 0 || collapsed.has(stageId);
                         return (
@@ -624,7 +588,7 @@ export function PipelineTab({
                                 key={stageId}
                                 stageId={stageId}
                                 rows={rows}
-                                totalInStage={counts[stageId]}
+                                totalInStage={counts[stageId] ?? 0}
                                 cycleDays={
                                     funnelByStatus.get(stageId)?.cycle ?? null
                                 }
@@ -650,7 +614,7 @@ export function PipelineTab({
                 </div>
             ) : (
                 <ContinuousList
-                    rows={filtered.slice().sort(sortFn)}
+                    rows={sortedFiltered}
                     onOpenProspect={(p) => router.push(`/prospect/${p.id}`)}
                     onMove={moveProspect}
                     rowMenuItems={rowActions.menu}
@@ -711,17 +675,12 @@ export function PipelineTab({
     );
 }
 
-function parseSilence(label: string): number {
-    const m = /silence\s+(\d+)/i.exec(label);
-    return m ? parseInt(m[1], 10) : 0;
-}
-
 /* ============================================================
    Section + Continuous List
    ============================================================ */
 
 interface SectionProps {
-    stageId: ProspectStatus;
+    stageId: string;
     rows: Prospect[];
     totalInStage: number;
     cycleDays: number | null;
@@ -729,7 +688,7 @@ interface SectionProps {
     isEmpty: boolean;
     onToggle: () => void;
     onOpenProspect: (p: Prospect) => void;
-    onMove: (id: string, status: ProspectStatus) => void;
+    onMove: (id: string, status: string) => void;
     rowMenuItems: (p: Prospect) => ProspectMenuItem[];
     pillMenu: string | null;
     setPillMenu: (id: string | null) => void;
@@ -742,7 +701,8 @@ interface SectionProps {
 }
 
 function PipelineSection(p: SectionProps) {
-    const cfg = STATUS_CONFIG[p.stageId];
+    const { cfgByKey } = useDynamicStatusConfig();
+    const cfg = cfgByKey.get(p.stageId) ?? STATUS_FALLBACK;
     return (
         <div
             className={`overflow-visible rounded-xl border border-border bg-card ${p.isEmpty ? 'opacity-70' : ''}`}
@@ -751,7 +711,10 @@ function PipelineSection(p: SectionProps) {
                 onClick={p.onToggle}
                 className={`flex w-full items-center gap-2.5 px-4 py-3 text-left ${!p.collapsed ? 'border-b border-border/60' : ''}`}
             >
-                <span className={`h-2 w-2 rounded-full ${cfg.dot}`} />
+                <span
+                    className="h-2 w-2 rounded-full ring-1 ring-inset ring-black/10"
+                    style={{ backgroundColor: cfg.hex }}
+                />
                 <span
                     className={`text-[13.5px] font-semibold ${p.isEmpty ? 'text-muted-foreground' : ''}`}
                 >
@@ -827,7 +790,7 @@ function ContinuousList({
 }: {
     rows: Prospect[];
     onOpenProspect: (p: Prospect) => void;
-    onMove: (id: string, status: ProspectStatus) => void;
+    onMove: (id: string, status: string) => void;
     rowMenuItems: (p: Prospect) => ProspectMenuItem[];
     pillMenu: string | null;
     setPillMenu: (id: string | null) => void;
@@ -888,7 +851,7 @@ function Th({ children }: { children?: React.ReactNode }) {
 interface PipelineRowProps {
     p: Prospect;
     onOpenProspect: (p: Prospect) => void;
-    onMove: (id: string, status: ProspectStatus) => void;
+    onMove: (id: string, status: string) => void;
     rowMenuItems: (p: Prospect) => ProspectMenuItem[];
     pillMenu: string | null;
     setPillMenu: (id: string | null) => void;
@@ -914,6 +877,7 @@ function PipelineRow({
     selected,
     toggleSelect,
 }: PipelineRowProps) {
+    const { pipelineOrder, cfgByKey } = useDynamicStatusConfig();
     const activityLabel = lastActivityLabel(p);
     const tier = silenceTier(activityLabel);
     const tCls = silenceTierClasses(tier);
@@ -994,31 +958,30 @@ function PipelineRow({
                             <div className="px-2 pb-1 pt-0.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
                                 Déplacer vers
                             </div>
-                            {(PIPELINE_ORDER as ProspectStatus[]).map(
-                                (stId) => {
-                                    const cfg = STATUS_CONFIG[stId];
-                                    const active = p.status === stId;
-                                    return (
-                                        <div
-                                            key={stId}
-                                            onClick={() => onMove(p.id, stId)}
-                                            className={`flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-[12.5px] ${
-                                                active
-                                                    ? 'bg-accent font-semibold'
-                                                    : 'hover:bg-accent/50'
-                                            }`}
-                                        >
-                                            <span
-                                                className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`}
-                                            />
-                                            <span>{cfg.label}</span>
-                                            {active && (
-                                                <Check className="ml-auto h-3 w-3 text-blue-700" />
-                                            )}
-                                        </div>
-                                    );
-                                }
-                            )}
+                            {pipelineOrder.map((stId) => {
+                                const cfg = cfgByKey.get(stId) ?? STATUS_FALLBACK;
+                                const active = p.status === stId;
+                                return (
+                                    <div
+                                        key={stId}
+                                        onClick={() => onMove(p.id, stId)}
+                                        className={`flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-[12.5px] ${
+                                            active
+                                                ? 'bg-accent font-semibold'
+                                                : 'hover:bg-accent/50'
+                                        }`}
+                                    >
+                                        <span
+                                            className="h-1.5 w-1.5 rounded-full ring-1 ring-inset ring-black/10"
+                                            style={{ backgroundColor: cfg.hex }}
+                                        />
+                                        <span>{cfg.label}</span>
+                                        {active && (
+                                            <Check className="ml-auto h-3 w-3 text-blue-700" />
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
                     )}
                 </div>
@@ -1172,9 +1135,10 @@ function BulkBar({
 }: {
     count: number;
     onClear: () => void;
-    onMove: (status: ProspectStatus) => void;
+    onMove: (status: string) => void;
 }) {
     const [moveOpen, setMoveOpen] = useState(false);
+    const { pipelineOrder, cfgByKey } = useDynamicStatusConfig();
     return (
         <div className="sticky bottom-4 z-40 mt-4 flex items-center gap-3.5 rounded-xl bg-foreground px-3.5 py-2.5 text-background shadow-2xl">
             <span className="text-[13px] font-medium">
@@ -1201,8 +1165,8 @@ function BulkBar({
                         onClick={(e) => e.stopPropagation()}
                         className="absolute bottom-[calc(100%+6px)] left-0 z-50 w-[200px] rounded-xl border border-border bg-popover p-1 text-foreground shadow-lg"
                     >
-                        {(PIPELINE_ORDER as ProspectStatus[]).map((stId) => {
-                            const cfg = STATUS_CONFIG[stId];
+                        {pipelineOrder.map((stId) => {
+                            const cfg = cfgByKey.get(stId) ?? STATUS_FALLBACK;
                             return (
                                 <div
                                     key={stId}
@@ -1213,7 +1177,8 @@ function BulkBar({
                                     className="flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12.5px] hover:bg-accent"
                                 >
                                     <span
-                                        className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`}
+                                        className="h-1.5 w-1.5 rounded-full ring-1 ring-inset ring-black/10"
+                                        style={{ backgroundColor: cfg.hex }}
                                     />
                                     {cfg.label}
                                 </div>

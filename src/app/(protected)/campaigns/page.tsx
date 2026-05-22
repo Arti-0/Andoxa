@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Phone, Plus, RotateCcw, Search, Target, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { useWorkspace } from "@/lib/workspace";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +32,7 @@ import {
 } from "./queries";
 import { KpiBar } from "./kpi-bar";
 import { FiltersBar } from "./filters";
-import { CampaignsTable, type Action, type SortBy } from "./campaigns-table";
+import { CampaignsTable, CampaignsTableSkeleton, type Action, type SortBy } from "./campaigns-table";
 import { SessionsGrid } from "./sessions-grid";
 import { Timeline } from "./timeline";
 import { BulkActionBar, type BulkAction } from "./bulk-action-bar";
@@ -79,8 +79,18 @@ export default function CampaignsPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const { workspaceId } = useWorkspace();
-  const { data: campaigns = [] } = useCampaignJobs();
-  const { data: sessions = [] } = useCallSessions();
+  const {
+    data: campaigns = [],
+    isPlaceholderData: campaignsPlaceholder,
+  } = useCampaignJobs();
+  const {
+    data: sessions = [],
+    isPlaceholderData: sessionsPlaceholder,
+  } = useCallSessions();
+  // While the first response hasn't arrived (placeholderData = []), treat the
+  // page as "loading" rather than "empty" so we never flash the
+  // "Aucune campagne pour l'instant" misinformation.
+  const isInitialLoading = campaignsPlaceholder || sessionsPlaceholder;
   const updateStatus = useUpdateJobStatus();
   const launchJob = useLaunchJob();
   const cancelJob = useCancelJob();
@@ -498,7 +508,9 @@ export default function CampaignsPage() {
       </div>
 
       <div className="flex-1 px-6 pb-20 pt-1 lg:px-8">
-        {isEmpty ? (
+        {isInitialLoading ? (
+          <CampaignsTableSkeleton />
+        ) : isEmpty ? (
           <div className="rounded-xl border bg-card px-6 py-20 text-center">
             <div className="mx-auto mb-4 inline-flex size-16 items-center justify-center rounded-2xl bg-[#E8F0FD] text-[#0052D9]">
               <Target className="size-7" />

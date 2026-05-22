@@ -1,10 +1,12 @@
-import { createApiHandler, Errors } from "../../../../lib/api";
+import { createApiHandler, Errors, type ApiContext } from "../../../../lib/api";
 import {
   describeActivity,
   type ProspectActivityAction,
 } from "@/lib/prospect-activity";
-import { PROSPECT_STATUS_LABELS } from "@/lib/types/prospects";
+import { getProspectStatuses } from "@/lib/prospects/statuses";
 import { isMockStatsEnabled, mockDashboardActivity } from "@/lib/mock-stats";
+
+export type DashboardActivityScope = "all" | "mine" | "team" | "system";
 
 // Federated activity types come from two sources:
 //   • dashboard-only synthetic events (prospect_added, prospect_imported,
@@ -25,7 +27,7 @@ type ActivityType =
   | "enrichment_completed"
   | ProspectActivityAction;
 
-interface Activity {
+export interface Activity {
   id: string;
   type: ActivityType;
   title: string;
@@ -36,7 +38,8 @@ interface Activity {
   actor_avatar?: string | null;
 }
 
-const STATUS_LABELS: Record<string, string> = PROSPECT_STATUS_LABELS;
+// Per-org status labels are fetched once per request below; this const is
+// kept as a placeholder for the legacy import surface only.
 
 /**
  * GET /api/dashboard/activity?scope=all|mine|team|system
@@ -48,18 +51,20 @@ const STATUS_LABELS: Record<string, string> = PROSPECT_STATUS_LABELS;
  *   - team            → actor_id present, but ≠ current user
  *   - system          → actor_id is null
  */
-export const GET = createApiHandler(async (req, ctx): Promise<Activity[]> => {
+export async function getDashboardActivity(
+  ctx: ApiContext,
+  scope: DashboardActivityScope = "all",
+): Promise<Activity[]> {
   if (!ctx.workspaceId) {
     throw Errors.badRequest("Workspace required");
   }
   if (isMockStatsEnabled()) return mockDashboardActivity();
 
-  const url = new URL(req.url);
-  const rawScope = (url.searchParams.get("scope") ?? "all").toLowerCase();
-  const scope: "all" | "mine" | "team" | "system" =
-    rawScope === "mine" || rawScope === "team" || rawScope === "system"
-      ? rawScope
-      : "all";
+  // Per-org status labels so "Statut : X → Y" reflects the org's own naming.
+  const orgStatuses = await getProspectStatuses(ctx.supabase, ctx.workspaceId);
+  const statusLabelByKey = new Map(
+    orgStatuses.map((s) => [s.key, s.name] as const),
+  );
 
   // Current user's full name — used by the scope filter at the bottom.
   let currentUserFullName: string | null = null;
@@ -282,11 +287,13 @@ export const GET = createApiHandler(async (req, ctx): Promise<Activity[]> => {
     const targetUrl =
       wfUrl ?? (sa.prospect_id ? `/prospect/${sa.prospect_id}` : null);
 
-    // For status changes, prefer FR-localised labels.
+    // For status changes, prefer the org's own status names.
     let body = desc.body(details);
     if (sa.action === "status_change") {
-      const from = STATUS_LABELS[String(details.from ?? "")] ?? details.from ?? "?";
-      const to = STATUS_LABELS[String(details.to ?? "")] ?? details.to ?? "?";
+      const fromKey = String(details.from ?? "");
+      const toKey = String(details.to ?? "");
+      const from = statusLabelByKey.get(fromKey) ?? details.from ?? "?";
+      const to = statusLabelByKey.get(toKey) ?? details.to ?? "?";
       body = `${from} → ${to}`;
     }
 
@@ -353,4 +360,14 @@ export const GET = createApiHandler(async (req, ctx): Promise<Activity[]> => {
   });
 
   return filtered.slice(0, 20);
+}
+
+export const GET = createApiHandler(async (req, ctx) => {
+  const url = new URL(req.url);
+  const rawScope = (url.searchParams.get("scope") ?? "all").toLowerCase();
+  const scope: DashboardActivityScope =
+    rawScope === "mine" || rawScope === "team" || rawScope === "system"
+      ? rawScope
+      : "all";
+  return getDashboardActivity(ctx, scope);
 });

@@ -53,9 +53,13 @@ import {
 
 import { useWorkspace } from "@/lib/workspace";
 import { useLinkedInAccount } from "@/hooks/use-linkedin-account";
-import { fetchLinkedInUsage } from "@/lib/linkedin/linkedin-usage";
+import {
+  fetchLinkedInUsage,
+  type LinkedInUsagePayload,
+} from "@/lib/linkedin/linkedin-usage";
 import { getLinkedInInviteWeeklyUsageCap } from "@/lib/linkedin/limits";
 import { DAILY_QUOTAS } from "@/lib/linkedin/quotas";
+import { MiniLineChart } from "@/components/ui/mini-line-chart";
 
 /* ============================================================
    API TYPES
@@ -212,6 +216,26 @@ const fetchActiveCampaigns = () =>
 const fetchActivity = (scope: "all" | "mine" | "team" | "system") =>
   jsonFetch<ActivityApiRow[]>(`/api/dashboard/activity?scope=${scope}`);
 
+// Aggregated dashboard fetch — one request, one auth pass, parallel fan-out
+// on the server. Halves the wall-clock dashboard load and cuts ~1s of
+// redundant boilerplate (auth + workspace lookup × 8). The individual
+// /api/dashboard/* routes still exist for direct callers (PDF export,
+// targeted refetches when a filter changes).
+interface DashboardOverviewPayload {
+  stats: DashboardStatsPayload;
+  priorities: PrioritiesPayload;
+  funnel: FunnelPayload;
+  topDeals: TopDealRow[];
+  atRisk: AtRiskRow[];
+  activeCampaigns: ActiveCampaign[];
+  activity: ActivityApiRow[];
+  linkedinUsage: LinkedInUsagePayload;
+}
+const fetchDashboardOverview = (period: ApiPeriod) =>
+  jsonFetch<DashboardOverviewPayload>(
+    `/api/dashboard/overview?period=${period}&scope=all`,
+  );
+
 /* ============================================================
    PRIMITIVES — Pill / Trend / Avatar / Sparkline
    ============================================================ */
@@ -314,46 +338,37 @@ function Avatar({
   );
 }
 
+/**
+ * Mini area chart for KPI cards — backed by shadcn's ChartContainer + Recharts
+ * so users get a real hover tooltip with the week label and value. The
+ * Sparkline name is preserved for the existing KpiCard callers; data is a
+ * 12-bucket weekly series from /api/dashboard/stats.
+ */
 function Sparkline({
   data,
   color = "#0052D9",
+  className = "",
+  label = "Valeur",
 }: {
   data: number[];
   color?: string;
+  className?: string;
+  label?: string;
 }) {
-  if (!data || data.length < 2) {
-    return <div style={{ width: 120, height: 32 }} />;
-  }
-  const W = 120;
-  const H = 32;
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1 || 1)) * W;
-    const y = H - ((v - min) / (max - min || 1)) * (H - 4) - 2;
-    return [x, y] as const;
-  });
-  const line = "M" + pts.map((p) => p.join(",")).join(" L");
-  const area = line + ` L${W},${H} L0,${H} Z`;
-  const id = `sparkGrad-${color.slice(1)}`;
+  const total = data?.length ?? 0;
   return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block">
-      <defs>
-        <linearGradient id={id} x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.28" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={area} fill={`url(#${id})`} />
-      <path
-        d={line}
-        fill="none"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    </svg>
+    <MiniLineChart
+      data={data}
+      color={color}
+      label={label}
+      bucketLabel={(i) => {
+        // Oldest bucket → newest. Convert index to "S-N" (week offset).
+        const offset = total - 1 - i;
+        if (offset === 0) return "Cette semaine";
+        return `Il y a ${offset} sem.`;
+      }}
+      className={`block w-full h-full min-h-10 ${className}`}
+    />
   );
 }
 
@@ -626,14 +641,13 @@ function relativeTimeFr(iso: string): string {
   return `il y a ${d} j`;
 }
 
-function PrioritiesBand({ workspaceId }: { workspaceId: string | null | undefined }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ["dashboard-priorities", workspaceId],
-    queryFn: fetchPriorities,
-    enabled: !!workspaceId,
-    staleTime: 60 * 1000,
-  });
-
+function PrioritiesBand({
+  data,
+  isLoading,
+}: {
+  data: PrioritiesPayload | undefined;
+  isLoading: boolean;
+}) {
   const items = data?.items ?? [];
 
   return (
@@ -736,62 +750,55 @@ interface KpiCardData {
   label: string;
   value: string;
   sub: string;
-  side: string;
+  side?: string;
   trend: number;
   sparkData: number[];
   sparkColor?: string;
-  isProgress?: boolean;
-  progress?: number;
 }
 
 function KpiCard({ k, loading }: { k: KpiCardData | null; loading: boolean }) {
   if (loading || !k) {
     return (
-      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5 animate-pulse">
+      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5 animate-pulse flex flex-col h-full min-h-[168px]">
         <div className="h-3 w-24 bg-slate-100 dark:bg-zinc-800 rounded" />
         <div className="mt-4 h-8 w-16 bg-slate-100 dark:bg-zinc-800 rounded" />
         <div className="mt-3 h-3 w-32 bg-slate-100 dark:bg-zinc-800 rounded" />
-        <div className="mt-4 h-3 w-full bg-slate-100 dark:bg-zinc-800 rounded" />
+        <div className="mt-auto h-10 w-full bg-slate-100 dark:bg-zinc-800 rounded" />
       </div>
     );
   }
   return (
-    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5 hover:shadow-[0_2px_8px_rgba(15,23,42,0.05)] transition-all">
-      <div className="flex items-center justify-between gap-2">
+    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5 hover:shadow-[0_2px_8px_rgba(15,23,42,0.05)] transition-all flex flex-col h-full min-h-[168px]">
+      <div className="flex items-center justify-between gap-2 shrink-0">
         <div className="text-[10px] sm:text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500 dark:text-zinc-400 truncate">
           {k.label}
         </div>
         <Trend delta={k.trend} />
       </div>
-      <div className="mt-3 flex items-end justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-[26px] sm:text-[32px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100 leading-none">
-            {k.value}
+      <div className="mt-3 flex-1 flex flex-col min-h-0">
+        <div className="flex items-end justify-between gap-3 flex-1 min-h-0">
+          <div className="min-w-0 shrink-0">
+            <div className="text-[26px] sm:text-[32px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100 leading-none">
+              {k.value}
+            </div>
+            <div className="mt-1.5 text-[12px] sm:text-[12.5px] text-slate-600 dark:text-zinc-400">
+              {k.sub}
+            </div>
           </div>
-          <div className="mt-1.5 text-[12px] sm:text-[12.5px] text-slate-600 dark:text-zinc-400">
-            {k.sub}
-          </div>
-        </div>
-        <div className="hidden xs:block sm:block">
-          <Sparkline data={k.sparkData} color={k.sparkColor || "#0052D9"} />
-        </div>
-      </div>
-      {k.isProgress && (
-        <div className="mt-3 sm:mt-4">
-          <div className="h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${Math.min(100, k.progress ?? 0)}%`,
-                background: "#0052D9",
-              }}
+          <div className="flex-1 min-w-[72px] min-h-10 self-stretch">
+            <Sparkline
+              data={k.sparkData}
+              color={k.sparkColor || "#0052D9"}
+              label={k.label}
             />
           </div>
         </div>
-      )}
-      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 text-[11px] sm:text-[11.5px] text-slate-500 dark:text-zinc-400">
-        {k.side}
       </div>
+      {k.side ? (
+        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 text-[11px] sm:text-[11.5px] text-slate-500 dark:text-zinc-400 shrink-0">
+          {k.side}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -820,15 +827,14 @@ function KpiGrid({
       {
         label: "RDV bookés",
         value: String(rdv.booked_count),
-        sub: `${rdv.realisation_pct}% de l'objectif`,
-        side: `vs objectif ${rdv.target}`,
+        sub: "rendez-vous planifiés",
         trend: rdv.trend_pts,
         sparkData: rdv.sparkline,
       },
       {
         label: "Taux de réponse LinkedIn",
         value: `${linkedin.response_rate_pct}%`,
-        sub: `sur ${linkedin.messages_sent} message${linkedin.messages_sent > 1 ? "s" : ""} envoyé${linkedin.messages_sent > 1 ? "s" : ""}`,
+        sub: `${linkedin.responses_received} réponse${linkedin.responses_received > 1 ? "s" : ""} · ${linkedin.invitations_sent} invitation${linkedin.invitations_sent > 1 ? "s" : ""}`,
         side: `Acceptation ${linkedin.acceptance_rate_pct}%`,
         trend: linkedin.trend_pts,
         sparkData: linkedin.sparkline,
@@ -836,19 +842,16 @@ function KpiGrid({
       {
         label: "Closings",
         value: String(closings.won_count),
-        sub: `vs objectif ${closings.target}`,
-        side: `${closings.progress_pct}% de l'objectif atteint`,
+        sub: "deals gagnés sur la période",
         trend: closings.trend_pts,
-        progress: closings.progress_pct,
         sparkData: closings.sparkline,
         sparkColor: closings.trend_pts < 0 ? "#ef4444" : "#0052D9",
-        isProgress: true,
       },
     ];
   }, [stats]);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5 sm:mb-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5 sm:mb-6 items-stretch">
       {cards.map((k, i) => (
         <KpiCard key={i} k={k} loading={isLoading} />
       ))}
@@ -1039,8 +1042,8 @@ function ActivityVolumeCard({
   const totalRdvs = data.reduce((s, a) => s + a.bookings, 0);
 
   return (
-    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
-      <div className="flex items-start justify-between mb-1">
+    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5 flex flex-col h-full">
+      <div className="flex items-start justify-between mb-1 shrink-0">
         <div>
           <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
             Volume d&apos;activité
@@ -1051,7 +1054,7 @@ function ActivityVolumeCard({
         </div>
       </div>
 
-      <div className="mt-5 sm:mt-6 flex items-end gap-2 sm:gap-3 h-40 sm:h-44 px-1">
+      <div className="mt-5 sm:mt-6 flex-1 flex items-stretch gap-2 sm:gap-3 min-h-32 px-1">
         {data.length === 0
           ? (
             <div className="w-full text-center text-[12px] text-slate-400 dark:text-zinc-500 self-center">
@@ -1067,15 +1070,12 @@ function ActivityVolumeCard({
               return (
                 <div
                   key={i}
-                  className="flex-1 flex flex-col items-center group min-w-0"
+                  className="flex-1 flex flex-col items-center group min-w-0 min-h-0"
                 >
-                  <div className="text-[10px] sm:text-[10.5px] font-medium text-slate-500 dark:text-zinc-400 mb-1 sm:mb-1.5 tabular-nums opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="text-[10px] sm:text-[10.5px] font-medium text-slate-500 dark:text-zinc-400 mb-1 sm:mb-1.5 tabular-nums opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                     {total}
                   </div>
-                  <div
-                    className="w-full flex flex-col justify-end"
-                    style={{ height: 130 }}
-                  >
+                  <div className="w-full flex-1 flex flex-col justify-end min-h-0">
                     <div
                       className="w-full rounded-t-sm transition-all group-hover:brightness-110"
                       style={{ height: `${rdvH}%`, background: "#86efac" }}
@@ -1089,7 +1089,7 @@ function ActivityVolumeCard({
                       style={{ height: `${calH}%`, background: "#93c5fd" }}
                     />
                   </div>
-                  <div className="mt-2 text-[10.5px] sm:text-[11px] text-slate-500 dark:text-zinc-400 font-medium truncate w-full text-center">
+                  <div className="mt-2 text-[10.5px] sm:text-[11px] text-slate-500 dark:text-zinc-400 font-medium truncate w-full text-center shrink-0">
                     {a.week.replace("Sem. ", "")}
                   </div>
                 </div>
@@ -1097,7 +1097,7 @@ function ActivityVolumeCard({
             })}
       </div>
 
-      <div className="mt-4 sm:mt-5 pt-4 border-t border-slate-100 dark:border-zinc-800 grid grid-cols-3 gap-2 sm:gap-3">
+      <div className="mt-4 sm:mt-5 pt-4 border-t border-slate-100 dark:border-zinc-800 grid grid-cols-3 gap-2 sm:gap-3 shrink-0">
         <LegendStat color="#0052D9" label="Messages" value={totalMsgs} />
         <LegendStat color="#93c5fd" label="Appels" value={totalCalls} />
         <LegendStat color="#86efac" label="RDV" value={totalRdvs} />
@@ -1110,12 +1110,13 @@ function ActivityVolumeCard({
    TOP DEALS CARD
    ============================================================ */
 
-function TopDealsCard({ workspaceId }: { workspaceId: string | null | undefined }) {
-  const { data = [], isLoading } = useQuery({
-    queryKey: ["dashboard-top-deals", workspaceId],
-    queryFn: fetchTopDeals,
-    enabled: !!workspaceId,
-  });
+function TopDealsCard({
+  data = [],
+  isLoading,
+}: {
+  data: TopDealRow[] | undefined;
+  isLoading: boolean;
+}) {
 
   return (
     <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
@@ -1199,12 +1200,13 @@ function TopDealsCard({ workspaceId }: { workspaceId: string | null | undefined 
    AT-RISK CARD
    ============================================================ */
 
-function AtRiskCard({ workspaceId }: { workspaceId: string | null | undefined }) {
-  const { data = [], isLoading } = useQuery({
-    queryKey: ["dashboard-at-risk", workspaceId],
-    queryFn: fetchAtRisk,
-    enabled: !!workspaceId,
-  });
+function AtRiskCard({
+  data = [],
+  isLoading,
+}: {
+  data: AtRiskRow[] | undefined;
+  isLoading: boolean;
+}) {
 
   const sevColor: Record<AtRiskRow["severity"], string> = {
     high: "text-rose-600 bg-rose-50 dark:text-rose-300 dark:bg-rose-950/40",
@@ -1298,18 +1300,13 @@ function AtRiskCard({ workspaceId }: { workspaceId: string | null | undefined })
    ============================================================ */
 
 function LinkedInQuotasCard({
-  workspaceId,
+  usage,
+  usageLoading,
 }: {
-  workspaceId: string | null | undefined;
+  usage: LinkedInUsagePayload | undefined;
+  usageLoading: boolean;
 }) {
   const { data: linkedIn, isLoading: liLoading } = useLinkedInAccount();
-
-  const { data: usage, isLoading: usageLoading } = useQuery({
-    queryKey: ["dashboard-linkedin-usage", workspaceId],
-    queryFn: fetchLinkedInUsage,
-    enabled: !!workspaceId && !!linkedIn?.connected,
-    staleTime: 60 * 1000,
-  });
 
   if (liLoading) {
     return (
@@ -1490,15 +1487,12 @@ const STATE_LABEL: Record<ActiveCampaign["state"], string> = {
 };
 
 function ActiveCampaignsCard({
-  workspaceId,
+  data = [],
+  isLoading,
 }: {
-  workspaceId: string | null | undefined;
+  data: ActiveCampaign[] | undefined;
+  isLoading: boolean;
 }) {
-  const { data = [], isLoading } = useQuery({
-    queryKey: ["dashboard-active-campaigns", workspaceId],
-    queryFn: fetchActiveCampaigns,
-    enabled: !!workspaceId,
-  });
 
   return (
     <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
@@ -1684,16 +1678,29 @@ function formatActivityTime(iso: string): string {
 
 function RecentActivityCard({
   workspaceId,
+  defaultActivity,
+  defaultLoading,
 }: {
   workspaceId: string | null | undefined;
+  /** Pre-fetched scope="all" activity from /api/dashboard/overview — used so
+   *  the initial paint doesn't need its own request. */
+  defaultActivity: ActivityApiRow[] | undefined;
+  defaultLoading: boolean;
 }) {
   const [filter, setFilter] = useState<ActFilterLabel>("Tous");
+  const usingDefault = filter === "Tous";
 
-  const { data: rows = [], isLoading } = useQuery({
+  // For the default "Tous" filter, read from the overview payload. For
+  // narrower filters, fall back to a targeted request — keeps the filter
+  // UX without making the initial dashboard load fetch every scope.
+  const { data: filteredRows = [], isLoading: filteredLoading } = useQuery({
     queryKey: ["dashboard-activity", workspaceId, filter],
     queryFn: () => fetchActivity(FILTER_TO_SCOPE[filter]),
-    enabled: !!workspaceId,
+    enabled: !!workspaceId && !usingDefault,
   });
+
+  const rows = usingDefault ? (defaultActivity ?? []) : filteredRows;
+  const isLoading = usingDefault ? defaultLoading : filteredLoading;
 
   return (
     <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
@@ -1831,17 +1838,20 @@ export function DashboardContent() {
   const [exporting, setExporting] = useState(false);
   const apiPeriod = PERIOD_TO_API[period];
 
-  const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ["dashboard-stats", workspace?.id, apiPeriod],
-    queryFn: () => fetchDashboardStats(apiPeriod),
+  // One request → one auth pass → parallel fan-out on the server. Was
+  // previously 8 separate /api/dashboard/* calls each paying their own
+  // boilerplate cost.
+  const { data: overview, isLoading } = useQuery({
+    queryKey: ["dashboard-overview", workspace?.id, apiPeriod],
+    queryFn: () => fetchDashboardOverview(apiPeriod),
     enabled: !!workspace?.id,
+    staleTime: 30 * 1000,
   });
 
-  const { data: funnel, isLoading: funnelLoading } = useQuery({
-    queryKey: ["dashboard-funnel", workspace?.id, apiPeriod],
-    queryFn: () => fetchFunnel(apiPeriod),
-    enabled: !!workspace?.id,
-  });
+  const stats = overview?.stats;
+  const funnel = overview?.funnel;
+  const statsLoading = isLoading;
+  const funnelLoading = isLoading;
 
   const firstName = useMemo(() => {
     const full = profile?.full_name?.trim();
@@ -1894,7 +1904,7 @@ export function DashboardContent() {
           onExport={handleExport}
           exporting={exporting}
         />
-        <PrioritiesBand workspaceId={workspace?.id} />
+        <PrioritiesBand data={overview?.priorities} isLoading={isLoading} />
         <KpiGrid stats={stats} isLoading={statsLoading} />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-5 sm:mb-6">
@@ -1903,15 +1913,25 @@ export function DashboardContent() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-5 sm:mb-6">
-          <TopDealsCard workspaceId={workspace?.id} />
-          <AtRiskCard workspaceId={workspace?.id} />
+          <TopDealsCard data={overview?.topDeals} isLoading={isLoading} />
+          <AtRiskCard data={overview?.atRisk} isLoading={isLoading} />
         </div>
 
         <div className="grid gap-3 sm:gap-4 mb-5 sm:mb-6 grid-cols-1 lg:[grid-template-columns:minmax(0,1fr)_minmax(0,360px)]">
-          <RecentActivityCard workspaceId={workspace?.id} />
+          <RecentActivityCard
+            workspaceId={workspace?.id}
+            defaultActivity={overview?.activity}
+            defaultLoading={isLoading}
+          />
           <div className="flex flex-col gap-3 sm:gap-4">
-            <LinkedInQuotasCard workspaceId={workspace?.id} />
-            <ActiveCampaignsCard workspaceId={workspace?.id} />
+            <LinkedInQuotasCard
+              usage={overview?.linkedinUsage}
+              usageLoading={isLoading}
+            />
+            <ActiveCampaignsCard
+              data={overview?.activeCampaigns}
+              isLoading={isLoading}
+            />
           </div>
         </div>
       </div>

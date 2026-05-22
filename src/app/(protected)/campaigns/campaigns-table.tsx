@@ -23,6 +23,7 @@ import {
 } from "./data";
 import { Avatar, ChannelPill, ProgressBar, StatusBadge, TypeBadge } from "./primitives";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export type SortField =
   | "name"
@@ -277,6 +278,97 @@ export function CampaignsTable({
               </tr>
             );
           })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * Skeleton that mirrors the real CampaignsTable's column widths so swapping
+ * from skeleton → loaded doesn't shift the layout.
+ */
+export function CampaignsTableSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="overflow-hidden rounded-xl border bg-card">
+      <table className="w-full table-fixed border-collapse">
+        <colgroup>
+          <col style={{ width: 42 }} />
+          <col />
+          <col style={{ width: 130 }} />
+          <col style={{ width: 170 }} />
+          <col style={{ width: 200 }} />
+          <col style={{ width: 140 }} />
+          <col style={{ width: 120 }} />
+          <col style={{ width: 120 }} />
+          <col style={{ width: 56 }} />
+        </colgroup>
+        <thead>
+          <tr>
+            <th className="h-[38px] border-b bg-muted/40 pl-3.5">
+              <Skeleton className="size-4" />
+            </th>
+            <th className="border-b bg-muted/40 px-3.5 text-left">
+              <Skeleton className="h-3 w-20" />
+            </th>
+            <th className="border-b bg-muted/40 px-3.5 text-left">
+              <Skeleton className="h-3 w-12" />
+            </th>
+            <th className="border-b bg-muted/40 px-3.5 text-left">
+              <Skeleton className="h-3 w-14" />
+            </th>
+            <th className="border-b bg-muted/40 px-3.5 text-left">
+              <Skeleton className="h-3 w-20" />
+            </th>
+            <th className="border-b bg-muted/40 px-3.5 text-left">
+              <Skeleton className="h-3 w-20" />
+            </th>
+            <th className="border-b bg-muted/40 px-3.5 text-left">
+              <Skeleton className="h-3 w-14" />
+            </th>
+            <th className="border-b bg-muted/40 px-3.5 text-left">
+              <Skeleton className="h-3 w-14" />
+            </th>
+            <th className="border-b bg-muted/40" />
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: rows }).map((_, i) => (
+            <tr key={i} className={i === rows - 1 ? "" : "border-b"}>
+              <td className="py-3.5 pl-3.5">
+                <Skeleton className="size-4" />
+              </td>
+              <td className="p-3.5">
+                <Skeleton className="h-3.5 w-48" />
+                <div className="mt-2 flex items-center gap-1.5">
+                  <Skeleton className="size-4 rounded-full" />
+                  <Skeleton className="h-2.5 w-32" />
+                </div>
+              </td>
+              <td className="p-3.5">
+                <Skeleton className="h-5 w-16 rounded-full" />
+              </td>
+              <td className="p-3.5">
+                <Skeleton className="h-5 w-24 rounded-full" />
+              </td>
+              <td className="p-3.5">
+                <Skeleton className="h-2 w-full" />
+                <Skeleton className="mt-2 h-2.5 w-28" />
+              </td>
+              <td className="p-3.5">
+                <Skeleton className="h-3 w-20" />
+              </td>
+              <td className="p-3.5">
+                <Skeleton className="h-5 w-16 rounded-full" />
+              </td>
+              <td className="p-3.5">
+                <Skeleton className="h-3 w-14" />
+              </td>
+              <td className="py-3.5 pr-3.5 text-right">
+                <Skeleton className="ml-auto size-5" />
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

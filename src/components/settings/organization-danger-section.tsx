@@ -1,18 +1,64 @@
 "use client";
 
-import { useState } from "react";
-import { Building2, AlertTriangle } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Building2, AlertTriangle, Crown } from "lucide-react";
 import { useWorkspace } from "@/lib/workspace";
 import { Input } from "@/components/ui/input";
 import { SettingsCard, settingsFieldClass } from "./settings-card";
 import { cn } from "@/lib/utils";
+import { TransferOwnershipModal } from "@/components/organizations/transfer-ownership-modal";
+
+interface MemberShape {
+  user_id: string;
+  name: string;
+  role: "owner" | "admin" | "member";
+  active: boolean;
+  avatar_url: string | null;
+  created_at: string;
+}
 
 export function OrganizationDangerSection() {
-  const { isOwner, workspace, workspaceId, refresh } = useWorkspace();
+  const { isOwner, user, workspace, workspaceId, refresh } = useWorkspace();
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [members, setMembers] = useState<MemberShape[]>([]);
+
+  const loadMembers = useCallback(async () => {
+    if (!workspaceId) return;
+    try {
+      const res = await fetch("/api/organization/members", {
+        credentials: "include",
+      });
+      const json = await res.json();
+      const items = (json.data?.items ?? json.items ?? []) as Array<{
+        user_id: string;
+        name: string;
+        role: string;
+        active?: boolean;
+        avatar_url: string | null;
+        created_at?: string | null;
+      }>;
+      setMembers(
+        items.map((m) => ({
+          user_id: m.user_id,
+          name: m.name,
+          role: (m.role as "owner" | "admin" | "member") ?? "member",
+          active: m.active ?? true,
+          avatar_url: m.avatar_url,
+          created_at: m.created_at ?? "",
+        }))
+      );
+    } catch {
+      setMembers([]);
+    }
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (transferOpen) void loadMembers();
+  }, [transferOpen, loadMembers]);
 
   if (!isOwner || !workspaceId) return null;
 
@@ -45,6 +91,18 @@ export function OrganizationDangerSection() {
       <div className="flex flex-col gap-4">
         <button
           type="button"
+          onClick={() => setTransferOpen(true)}
+          className={cn(
+            "flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition-colors",
+            "border-amber-300/60 bg-amber-500/10 text-amber-700 hover:border-amber-400 hover:bg-amber-500/15 dark:border-amber-500/30 dark:text-amber-300"
+          )}
+        >
+          <Crown className="h-5 w-5 shrink-0" />
+          Transférer la propriété
+        </button>
+
+        <button
+          type="button"
           disabled={!isOwner}
           onClick={() => setOpen(!open)}
           className={cn(
@@ -57,6 +115,19 @@ export function OrganizationDangerSection() {
           <Building2 className="h-5 w-5 shrink-0" />
           Supprimer l&apos;organisation
         </button>
+
+        <TransferOwnershipModal
+          open={transferOpen}
+          organizationId={workspaceId}
+          callerId={user?.id ?? ""}
+          callerName={user?.email ?? "Vous"}
+          members={members}
+          intent="standalone"
+          onClose={() => setTransferOpen(false)}
+          onTransferred={() => {
+            refresh?.();
+          }}
+        />
 
         {open && (
           <div className="space-y-3 rounded-lg border border-red-500/25 bg-red-500/5 p-4">

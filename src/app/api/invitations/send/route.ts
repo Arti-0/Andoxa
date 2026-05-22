@@ -9,8 +9,8 @@ import {
 } from "@/lib/api";
 import { sendOrganizationInviteEmail } from "@/lib/email/send-org-invite";
 import { createServiceClient } from "@/lib/supabase/service";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/types/supabase";
+import { requireRole } from "@/lib/auth/require-role";
+import { requireCapacity } from "@/lib/billing/require-capacity";
 
 export const runtime = "nodejs";
 
@@ -20,32 +20,6 @@ function appOrigin(): string {
     throw new Error("NEXT_PUBLIC_APP_URL is required for invite links");
   }
   return u;
-}
-
-async function assertCallerCanInviteToOrg(
-  supabase: SupabaseClient<Database>,
-  callerUserId: string,
-  organizationId: string
-): Promise<void> {
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("role")
-    .eq("organization_id", organizationId)
-    .eq("user_id", callerUserId)
-    .maybeSingle();
-
-  const isOwner =
-    membership?.role === "owner" ||
-    (await supabase
-      .from("organizations")
-      .select("owner_id")
-      .eq("id", organizationId)
-      .maybeSingle()
-      .then(({ data }) => data?.owner_id === callerUserId));
-
-  if (!isOwner && membership?.role !== "admin") {
-    throw Errors.forbidden("Seuls le propriétaire ou un admin peuvent inviter");
-  }
 }
 
 /**
@@ -75,11 +49,21 @@ export const POST = createApiHandler(
       throw Errors.badRequest("Vous ne pouvez pas vous inviter vous-même");
     }
 
-    await assertCallerCanInviteToOrg(
-      ctx.supabase,
-      ctx.userId,
-      organizationId
-    );
+    // Role gate: only owners and admins can invite. requireRole reads
+    // ctx.workspaceId, so we cross-check the body's organization_id matches
+    // — multi-org callers must be operating in the same workspace they
+    // claim to invite into.
+    if (organizationId !== ctx.workspaceId) {
+      throw Errors.forbidden(
+        "Vous ne pouvez inviter que dans votre organisation active"
+      );
+    }
+    await requireRole(ctx, "admin");
+
+    // Capacity gate: block the invite if the plan's seat cap would be
+    // exceeded. The UI hides the invite button at the cap, but we enforce
+    // server-side too so a stale tab can't sneak past.
+    await requireCapacity(ctx, "users", 1);
 
     const service = createServiceClient();
 

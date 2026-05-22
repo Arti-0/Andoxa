@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 // Script editor for a call session. User writes the script once; variables
 // like {{firstName}} render with the active prospect's data so the rep can
@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Save, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 interface ProspectLite {

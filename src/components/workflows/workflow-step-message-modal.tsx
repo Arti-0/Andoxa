@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { MessageComposeForm } from "@/components/campaigns/message-compose-form";
 import { LinkedInPremiumBadge } from "@/components/ui/linkedin-premium-badge";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import type { WorkflowStepType } from "@/lib/workflows/schema";
 import { getMaxCharsForMode } from "@/lib/linkedin/limits";
 import type { LinkedInAccountTier } from "@/lib/linkedin/tier";

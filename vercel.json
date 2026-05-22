@@ -37,6 +37,10 @@
     {
       "path": "/api/cron/workflow-steps",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/apply-scheduled-downgrades",
+      "schedule": "0 * * * *"
     }
   ],
   "headers": [

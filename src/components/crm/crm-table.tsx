@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -11,7 +11,7 @@ import {
   type Row,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DataTableLayout } from "@/components/ui/data-table";

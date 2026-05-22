@@ -8,10 +8,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
+  ConnectionLineType,
   ReactFlow,
   ReactFlowProvider,
   applyNodeChanges,
+  getSmoothStepPath,
   type Connection,
+  type ConnectionLineComponentProps,
   type Edge,
   type EdgeMarker,
   MarkerType,
@@ -19,10 +22,14 @@ import {
   type NodeChange,
   type NodeMouseHandler,
   type OnReconnect,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import { autoLayoutWorkflow } from "@/components/workflows/canvas/auto-layout";
+import {
+  autoLayoutWorkflow,
+  triggerCanvasPosition,
+} from "@/components/workflows/canvas/auto-layout";
 import {
   isWorkflowStepConfigured,
   type WorkflowDefinition,
@@ -146,7 +153,7 @@ function buildNodes(
     ? WORKFLOW_TRIGGER_KIND_OPTIONS.find((t) => t.id === triggerKind)
     : undefined;
   const triggerLabel = triggerMeta?.label ?? "Déclencheur";
-  const triggerPos = positions[TRIGGER_NODE_ID] ?? { x: 0, y: -140 };
+  const triggerPos = positions[TRIGGER_NODE_ID] ?? triggerCanvasPosition();
   nodes.push({
     id: TRIGGER_NODE_ID,
     type: "step",
@@ -205,13 +212,42 @@ function buildNodes(
 const EDGE_STROKE = "#64748B";
 const EDGE_STROKE_WIDTH = 2;
 const EDGE_INTERACTION_WIDTH = 20; // invisible hit area for easier clicking
+const EDGE_PATH_BORDER_RADIUS = 14;
+
+function WorkflowConnectionLine({
+  fromX,
+  fromY,
+  toX,
+  toY,
+  fromPosition,
+  toPosition,
+  connectionLineStyle,
+}: ConnectionLineComponentProps) {
+  const [path] = getSmoothStepPath({
+    sourceX: fromX,
+    sourceY: fromY,
+    sourcePosition: fromPosition,
+    targetX: toX,
+    targetY: toY,
+    targetPosition: toPosition,
+    borderRadius: EDGE_PATH_BORDER_RADIUS,
+  });
+  return (
+    <path
+      d={path}
+      fill="none"
+      className="react-flow__connection-path"
+      style={connectionLineStyle}
+    />
+  );
+}
 
 function buildEdges(def: WorkflowDefinition): Edge[] {
   const edges: Edge[] = [];
   const marker: EdgeMarker = {
     type: MarkerType.ArrowClosed,
-    width: 18,
-    height: 18,
+    width: 12,
+    height: 12,
     color: EDGE_STROKE,
   };
   const baseStyle = { stroke: EDGE_STROKE, strokeWidth: EDGE_STROKE_WIDTH };
@@ -221,7 +257,7 @@ function buildEdges(def: WorkflowDefinition): Edge[] {
     markerEnd: marker,
     interactionWidth: EDGE_INTERACTION_WIDTH,
     reconnectable: true as const,
-    pathOptions: { borderRadius: 14 },
+    pathOptions: { borderRadius: EDGE_PATH_BORDER_RADIUS },
   };
 
   // Connect the synthetic trigger to the entry step.
@@ -500,9 +536,14 @@ function CanvasInner({
 
   const debounceRef = useRef<number | null>(null);
   const latestNodesRef = useRef<Node[]>(nodes);
+  const fitDoneRef = useRef(false);
   useEffect(() => {
     latestNodesRef.current = nodes;
   }, [nodes]);
+
+  useEffect(() => {
+    fitDoneRef.current = false;
+  }, [definition]);
 
   const commit = useCallback(() => {
     if (!onPositionsChange) return;
@@ -614,6 +655,31 @@ function CanvasInner({
     [readOnly, onDisconnect, onConnect]
   );
 
+  /** Dragging an edge endpoint into empty space removes the link. */
+  const handleReconnectEnd = useCallback(
+    (
+      _event: MouseEvent | TouchEvent,
+      edge: Edge,
+      _handleType: "source" | "target",
+      connectionState: { isValid: boolean | null },
+    ) => {
+      if (readOnly) return;
+      if (connectionState.isValid === true) return;
+      onDisconnect?.({
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle ?? null,
+      });
+    },
+    [readOnly, onDisconnect],
+  );
+
+  const handleInit = useCallback((instance: ReactFlowInstance) => {
+    if (fitDoneRef.current) return;
+    fitDoneRef.current = true;
+    void instance.fitView({ padding: 0.25, maxZoom: 1.1, duration: 0 });
+  }, []);
+
   useEffect(() => {
     return () => {
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
@@ -631,6 +697,9 @@ function CanvasInner({
         onPaneClick={handlePaneClick}
         onConnect={handleConnect}
         onReconnect={handleReconnect}
+        onReconnectEnd={handleReconnectEnd}
+        reconnectRadius={24}
+        onInit={handleInit}
         onEdgeClick={handleEdgeClick}
         onEdgesDelete={handleEdgesDelete}
         deleteKeyCode={readOnly ? null : ["Delete", "Backspace"]}
@@ -640,9 +709,13 @@ function CanvasInner({
         elementsSelectable
         edgesReconnectable={!readOnly}
         connectionRadius={56}
+        connectionLineType={ConnectionLineType.SmoothStep}
+        connectionLineStyle={{
+          stroke: EDGE_STROKE,
+          strokeWidth: EDGE_STROKE_WIDTH,
+        }}
+        connectionLineComponent={WorkflowConnectionLine}
         snapToGrid={false}
-        fitView
-        fitViewOptions={{ padding: 0.25, maxZoom: 1.1 }}
         proOptions={{ hideAttribution: true }}
         minZoom={0.4}
         maxZoom={1.5}

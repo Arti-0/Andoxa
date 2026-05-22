@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   useState,
@@ -24,7 +24,7 @@ import {
   PanelRightClose,
   Workflow,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,11 +35,7 @@ import { useWorkspace } from "@/lib/workspace";
 import { normalizePlanIdForRoutes } from "@/lib/billing/effective-plan";
 import { canAccessRoute, type PlanId } from "@/lib/config/plans-config";
 import type { Prospect } from "@/lib/types/prospects";
-import {
-  PROSPECT_STATUS_COLORS,
-  PROSPECT_STATUS_LABELS,
-  type ProspectStatus,
-} from "@/lib/types/prospects";
+import { useProspectStatuses, useStatusResolver } from "@/lib/prospects/statuses";
 
 interface ProspectHit {
   id: string;
@@ -258,12 +254,13 @@ function LinkedCrmSidebar({
     );
   }
 
-  const statusKey = (prospect.status ?? "new") as ProspectStatus;
-  const statusLabel =
-    PROSPECT_STATUS_LABELS[statusKey] ?? prospect.status ?? "—";
-  const statusClass =
-    PROSPECT_STATUS_COLORS[statusKey] ??
-    "bg-muted text-muted-foreground";
+  const statusKey = prospect.status ?? "new";
+  const resolveStatus = useStatusResolver();
+  const { statuses: allStatuses } = useProspectStatuses();
+  const pickerStatuses = allStatuses.filter((s) => !s.is_archived);
+  const resolvedStatus = resolveStatus(statusKey);
+  const statusLabel = resolvedStatus?.label ?? prospect.status ?? "—";
+  const statusHex = resolvedStatus?.hex ?? "#94a3b8";
 
   const phone = prospect.phone?.trim() ?? "";
   const showLinkedinBlock = chatChannel !== "WHATSAPP";
@@ -310,30 +307,47 @@ function LinkedCrmSidebar({
             ) : null}
           </div>
         </div>
-        {/* Status — click to change */}
+        {/* Status — click to change. Picker sources its options from the
+            per-org pipeline_statuses table so renames + custom statuses show
+            up here automatically. */}
         <div>
           {!statusOpen ? (
             <button
               type="button"
               onClick={() => setStatusOpen(true)}
-              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusClass} hover:opacity-80`}
+              className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground hover:opacity-80"
               title="Changer le statut"
             >
+              <span
+                className="size-2 rounded-full ring-1 ring-inset ring-black/10"
+                style={{ backgroundColor: statusHex }}
+              />
               {statusLabel}
             </button>
           ) : (
             <div className="flex flex-wrap gap-1 pt-0.5">
-              {(["new", "contacted", "qualified", "rdv", "proposal", "won", "lost"] as ProspectStatus[]).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => statusMutation.mutate(s)}
-                  disabled={statusMutation.isPending}
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium border ${PROSPECT_STATUS_COLORS[s]} ${s === statusKey ? "ring-1 ring-offset-1 ring-primary" : "opacity-70 hover:opacity-100"}`}
-                >
-                  {PROSPECT_STATUS_LABELS[s]}
-                </button>
-              ))}
+              {pickerStatuses.map((s) => {
+                const active = s.key === statusKey;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => statusMutation.mutate(s.key)}
+                    disabled={statusMutation.isPending}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium ${
+                      active
+                        ? "ring-1 ring-offset-1 ring-primary"
+                        : "opacity-70 hover:opacity-100"
+                    }`}
+                  >
+                    <span
+                      className="size-1.5 rounded-full ring-1 ring-inset ring-black/10"
+                      style={{ backgroundColor: s.color }}
+                    />
+                    {s.name}
+                  </button>
+                );
+              })}
               <button type="button" onClick={() => setStatusOpen(false)} className="ml-1 text-muted-foreground hover:text-foreground">
                 <X className="h-3.5 w-3.5" />
               </button>

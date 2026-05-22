@@ -11,6 +11,7 @@ import { processConnectionAccepted } from '@/lib/workflows/process-connection-ac
 import { createNotification } from '@/lib/notifications/create-notification';
 import { insertWebhookDedupe } from '@/lib/webhooks/dedupe';
 import { insertProspectActivity } from '@/lib/prospect-activity';
+import { emitWorkflowTrigger } from '@/lib/workflows/fire-trigger';
 
 const UNIPILE_MESSAGING_HANDLED_EVENTS = new Set([
     'message_received',
@@ -701,6 +702,69 @@ export async function POST(req: NextRequest) {
                                 campaign_job_id: lastOutbound?.campaign_job_id ?? null,
                             },
                         });
+
+                        // Fire workflow triggers for the inbound reply. Three
+                        // possibilities, in order:
+                        //   1. on_linkedin_reply OR on_whatsapp_reply — always
+                        //      fires for any inbound from a known prospect.
+                        //   2. on_campaign_reply — additionally fires when the
+                        //      reply is linked to a campaign_job (resolved
+                        //      from the most recent outbound on this prospect).
+                        // All three are deduped by message_id inside the
+                        // emitter (uq_workflow_runs_dedupe partial index).
+                        const messageId = body.message_id ?? null;
+                        if (messageId) {
+                            const occurredAt = new Date().toISOString();
+                            try {
+                                await emitWorkflowTrigger(supabase, {
+                                    organizationId: chatLinkRow.organization_id,
+                                    prospectId: chatLinkRow.prospect_id,
+                                    startedByUserId: null,
+                                    payload: isWhatsApp
+                                        ? {
+                                              kind: 'on_whatsapp_reply',
+                                              messageId,
+                                              occurredAt,
+                                          }
+                                        : {
+                                              kind: 'on_linkedin_reply',
+                                              messageId,
+                                              occurredAt,
+                                          },
+                                });
+                            } catch (err) {
+                                // Sentry captured inside emitWorkflowTrigger.
+                                console.error(
+                                    '[Unipile webhook] reply trigger emit:',
+                                    err
+                                );
+                            }
+
+                            if (lastOutbound?.campaign_job_id) {
+                                try {
+                                    await emitWorkflowTrigger(supabase, {
+                                        organizationId:
+                                            chatLinkRow.organization_id,
+                                        prospectId: chatLinkRow.prospect_id,
+                                        startedByUserId: null,
+                                        payload: {
+                                            kind: 'on_campaign_reply',
+                                            messageId,
+                                            campaignJobId:
+                                                lastOutbound.campaign_job_id,
+                                            channel: isWhatsApp
+                                                ? 'whatsapp'
+                                                : 'linkedin',
+                                        },
+                                    });
+                                } catch (err) {
+                                    console.error(
+                                        '[Unipile webhook] campaign reply trigger emit:',
+                                        err
+                                    );
+                                }
+                            }
+                        }
                     } catch (err) {
                         console.error(
                             '[Unipile webhook] inbound message activity:',

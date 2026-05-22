@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import {
     useState,
@@ -24,7 +24,7 @@ import {
     Paperclip,
     PanelRight,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import type {
     UnipileAttachment,

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
 import {
@@ -19,7 +19,7 @@ import {
   Loader2,
   Linkedin,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { useQuery } from "@tanstack/react-query";
 import type { Conversation, ThreadEntry } from "./data";
 import { resolveVars } from "./data";
@@ -776,8 +776,7 @@ export function Thread({
   const markUnread = useMarkChatUnread();
   const { workspaceId } = useWorkspace();
 
-  /* Cache the user's booking slug + org slug so the Lien booking button is
-     a no-wait and produces the long-form URL when both are available. */
+  /* Cache the user's public booking path for the Lien booking button. */
   const { data: bookingSlugRow } = useQuery({
     queryKey: ["booking-slug"],
     queryFn: async () => {
@@ -786,18 +785,17 @@ export function Thread({
       const json = await res.json();
       return (json.data ?? json) as {
         booking_slug: string | null;
-        org_slug?: string | null;
+        booking_public_path: string | null;
       };
     },
     staleTime: 5 * 60 * 1000,
   });
-  const bookingSlug = bookingSlugRow?.booking_slug ?? null;
-  const bookingOrgSlug = bookingSlugRow?.org_slug ?? null;
+  const bookingPublicPath = bookingSlugRow?.booking_public_path ?? null;
 
   const insertBookingLink = () => {
-    if (!bookingSlug) {
+    if (!bookingPublicPath) {
       toast.error(
-        "Aucun lien de booking — configurez votre slug dans Paramètres.",
+        "Aucun lien de booking — configurez votre lien dans le Calendrier.",
       );
       return;
     }
@@ -805,10 +803,7 @@ export function Thread({
       typeof window !== "undefined"
         ? window.location.origin
         : "https://andoxa.fr";
-    const path = bookingOrgSlug
-      ? `/booking/${bookingOrgSlug}/${bookingSlug}`
-      : `/booking/${bookingSlug}`;
-    const url = `${origin}${path}`;
+    const url = `${origin}/booking/${bookingPublicPath.replace(/^\/+|\/+$/g, "")}`;
     setDraft((d) => (d ? `${d.trimEnd()}\n\n${url}` : url));
   };
 
@@ -1106,12 +1101,12 @@ export function Thread({
               className="m2-btn m2-btn-ghost"
               style={{ padding: "5px 8px" }}
               title={
-                bookingSlug
+                bookingPublicPath
                   ? "Insérer un lien de booking"
-                  : "Configurez votre lien de booking dans Paramètres"
+                  : "Configurez votre lien de booking dans le Calendrier"
               }
               onClick={insertBookingLink}
-              disabled={!bookingSlug}
+              disabled={!bookingPublicPath}
             >
               <Calendar size={14} />
               <span className="m2-thread-btn-label">Lien booking</span>

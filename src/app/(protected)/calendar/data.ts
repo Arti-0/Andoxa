@@ -59,8 +59,24 @@ export type CalEvent = {
   lastAction: string;
   googleMeetUrl: string | null;
   gcalAttendees?: GcalAttendee[];
+  /**
+   * User ID of whoever created the event. The event panel uses this to
+   * display the true organisateur — independent of which colleague's column
+   * the event is being viewed from. Falls back to the event owner if absent.
+   */
+  creatorId?: string | null;
+  /**
+   * Andoxa user IDs of all attendees (excluding the creator). Used by the
+   * event panel to render colleagues alongside the prospect in the
+   * participants block.
+   */
+  attendeeUserIds?: string[];
   /** Host-only notes — never synced to Google Calendar. */
   internalNotes?: string | null;
+  /** Event description (synced to Google Calendar when applicable). */
+  description?: string | null;
+  /** Physical address, phone number, or other location detail. */
+  location?: string | null;
   /** True for events that span the entire day (e.g. holidays, school
    *  breaks, day-off). Rendered as a coloured band under the day number
    *  rather than as a time-grid block. */
@@ -80,16 +96,12 @@ export type CalendarColorEntry = { color: string; tint: string; name: string };
 export type CalendarColorMap = Record<string, CalendarColorEntry>;
 
 export function buildCalendarColors(
-  customCals: Array<{ id: string; name: string; color: string; accent: string }>,
   orgMembers: Array<{ id: string; name: string; color: string; accent: string }> = [],
 ): CalendarColorMap {
   const map: CalendarColorMap = {
     me: { color: "#0052D9", tint: "#E8F0FD", name: "Vous" },
     gcal: { color: "#4285F4", tint: "#E8F0FE", name: "Google Calendar" },
   };
-  for (const cal of customCals) {
-    map[cal.id] = { color: cal.color, tint: cal.accent, name: cal.name };
-  }
   for (const m of orgMembers) {
     map[m.id] = { color: m.color, tint: m.accent, name: m.name };
   }

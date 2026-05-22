@@ -8,41 +8,25 @@ import {
   ProspectContent,
   ProspectBreadcrumb,
 } from "@/components/prospect/prospect-content";
-import type { Prospect } from "@/lib/types/prospects";
+import type { ProspectOverviewPayload } from "@/app/api/prospects/[id]/overview/route";
 
 export default function ProspectProfilePage() {
   const params = useParams();
   const router = useRouter();
   const id = params?.id as string | undefined;
 
-  const { data: prospect, isLoading, error } = useQuery({
-    queryKey: ["prospect", id],
+  // Aggregated fetch — replaces 4 separate /api/prospects/[id]/* calls
+  // (main row, linked-chat, events, engagement) with one round trip + one
+  // server-side auth pass.
+  const { data: overview, isLoading, error } = useQuery({
+    queryKey: ["prospect-overview", id],
     queryFn: async () => {
-      const res = await fetch(`/api/prospects/${id}`, {
+      const res = await fetch(`/api/prospects/${id}/overview`, {
         credentials: "include",
       });
       if (!res.ok) throw new Error(String(res.status));
       const json = await res.json();
-      return (json.data ?? json) as Prospect;
-    },
-    enabled: !!id,
-  });
-
-  const { data: linkedChat } = useQuery({
-    queryKey: ["prospect-linked-chat", id],
-    queryFn: async () => {
-      const res = await fetch(`/api/prospects/${id}/linked-chat`, {
-        credentials: "include",
-      });
-      if (!res.ok) return null;
-      const json = await res.json();
-      const data = json?.data ?? json;
-      return (
-        (data as { unipile_chat_id?: string; chat_id?: string })
-          ?.unipile_chat_id ??
-        (data as { chat_id?: string })?.chat_id ??
-        null
-      );
+      return (json.data ?? json) as ProspectOverviewPayload;
     },
     enabled: !!id,
   });
@@ -52,7 +36,7 @@ export default function ProspectProfilePage() {
     return null;
   }
 
-  if (isLoading || (!prospect && !error)) {
+  if (isLoading || (!overview && !error)) {
     return (
       <div className="flex items-center justify-center gap-2 py-12">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -61,7 +45,7 @@ export default function ProspectProfilePage() {
     );
   }
 
-  if (error || !prospect) {
+  if (error || !overview) {
     return (
       <div className="flex flex-col items-center gap-4 p-8">
         <p className="text-muted-foreground">Prospect introuvable</p>
@@ -72,12 +56,16 @@ export default function ProspectProfilePage() {
     );
   }
 
+  const linkedChatId = overview.linkedChat.unipile_chat_id ?? undefined;
+
   return (
     <div className="px-3 pb-16 pt-3 sm:px-7">
-      <ProspectBreadcrumb prospect={prospect} />
+      <ProspectBreadcrumb prospect={overview.prospect} />
       <ProspectContent
-        prospect={prospect}
-        linkedChatId={linkedChat ?? undefined}
+        prospect={overview.prospect}
+        linkedChatId={linkedChatId}
+        timelineEvents={overview.events.events}
+        engagement={overview.engagement}
       />
     </div>
   );

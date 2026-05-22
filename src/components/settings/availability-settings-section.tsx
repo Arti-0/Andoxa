@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { SettingsCard, settingsLabelClass, settingsSaveButtonClass } from "@/components/settings/settings-card";
 import type { AvailabilityConfig } from "@/lib/booking/slots";
 import { useWorkspace } from "@/lib/workspace";

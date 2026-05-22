@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 // Wizard — visuals from design/whatsapp/Create Workflow.html.
 // Templates and triggers come from src/lib/workflows/templates.ts so the
@@ -6,7 +6,7 @@
 
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Icon, ICO } from "./icons";
 import {
   WORKFLOW_TEMPLATES,
@@ -22,12 +22,8 @@ const TRIGGER_ICONS: Record<
   { d: string; color: string; bg: string }
 > = {
   meeting_booked: { d: ICO.calendar, color: "#0052D9", bg: "#E8F0FD" },
-  linkedin_invite_accepted: { d: ICO.linkedin, color: "#0A66C2", bg: "#EFF6FF" },
-  whatsapp_reply_received: { d: ICO.whatsapp, color: "#10B981", bg: "#ECFDF5" },
-  no_reply_after_days: { d: ICO.clock, color: "#7C3AED", bg: "#F5F3FF" },
-  crm_status_changed: { d: ICO.database, color: "#0052D9", bg: "#EFF6FF" },
-  new_prospect_in_list: { d: ICO.user_plus, color: "#FF6700", bg: "#FFF7ED" },
   meeting_no_show: { d: ICO.bell, color: "#DC2626", bg: "#FFF1F2" },
+  crm_status_changed: { d: ICO.database, color: "#0052D9", bg: "#EFF6FF" },
   manual: { d: ICO.cursor, color: "#64748B", bg: "#F1F5F9" },
 };
 
@@ -447,6 +443,7 @@ export function WizardClient() {
           name: trimmed,
           description: desc.trim() || template.description,
           draft_definition: template.buildDefinition(),
+          trigger_kind: template.triggerKind,
           ui: { icon: template.ui.icon, color: template.ui.color, trigger },
         }),
       });

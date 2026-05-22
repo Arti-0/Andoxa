@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Fragment } from "react";
 import Link from "next/link";
@@ -15,7 +15,7 @@ import type { Conversation, TimelineEvent, Stage } from "./data";
 import { PIPELINE_ORDER, STAGES } from "./data";
 import { Avatar, StagePill } from "./components";
 import { useProspectTimeline, useUpdateProspectStatus } from "./queries";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 // Inverse of statusToStage — maps design stage back to the DB status enum value.
 const STAGE_TO_STATUS: Partial<Record<Stage, string>> = {

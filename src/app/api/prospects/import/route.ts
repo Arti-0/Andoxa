@@ -9,6 +9,7 @@ import {
 import { classifyProspectsForImport, mapProspectRow } from "../../../../lib/utils/deduplicateProspects";
 import { invalidate } from "@/lib/cache/redis";
 import { insertProspectActivity } from "@/lib/prospect-activity";
+import { emitWorkflowTrigger } from "@/lib/workflows/fire-trigger";
 import { ensureLinkedInRelationFromUnipileProfile } from "@/lib/linkedin/ensure-relation-from-unipile-profile";
 import { extractLinkedInSlug } from "@/lib/unipile/campaign";
 import { getLinkedInAccountIdForUserId } from "@/lib/unipile/account";
@@ -292,6 +293,19 @@ export const POST = createApiHandler(async (req, ctx) => {
       },
     });
 
+    // Restored prospect now belongs to the list — fire on_list_add too so
+    // workflows targeting this list pick the prospect up again.
+    try {
+      await emitWorkflowTrigger(ctx.supabase, {
+        organizationId: ctx.workspaceId,
+        prospectId: restoreEntry.prospectId,
+        startedByUserId: ctx.userId ?? null,
+        payload: { kind: "on_list_add", listId: bddId },
+      });
+    } catch {
+      // Sentry capture inside emitWorkflowTrigger.
+    }
+
     if (
       autoEnrichEligible &&
       prospect.linkedin?.trim() &&
@@ -356,6 +370,19 @@ export const POST = createApiHandler(async (req, ctx) => {
       continue;
     }
     created += 1;
+
+    // Fire on_list_add for each new prospect actually inserted into a list.
+    // Best-effort: a workflow emitter problem must not roll back the import.
+    try {
+      await emitWorkflowTrigger(ctx.supabase, {
+        organizationId: ctx.workspaceId,
+        prospectId: createdRow.id,
+        startedByUserId: ctx.userId ?? null,
+        payload: { kind: "on_list_add", listId: bddId },
+      });
+    } catch {
+      // Sentry capture happens inside emitWorkflowTrigger.
+    }
 
     if (
       autoEnrichEligible &&

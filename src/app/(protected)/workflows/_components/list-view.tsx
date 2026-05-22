@@ -1,17 +1,20 @@
-"use client";
+﻿"use client";
 
 // List view — data from /api/workflows. Theme-aligned with bg-card / bg-background.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "@/lib/toast";
 import { Icon, ICO } from "./icons";
 import { WF_NODE_TYPES, type WfNodeType } from "./node-types";
 import {
   WORKFLOW_TEMPLATES,
   type WorkflowTemplate,
 } from "@/lib/workflows";
+import { WORKFLOW_TRIGGER_KIND_OPTIONS } from "@/lib/workflows/trigger-kind";
+import type { WorkflowTriggerKind } from "@/lib/workflows/trigger-kind";
 import { toastFromApiError } from "@/lib/toast";
 import { LaunchButton } from "./launch-button";
 import type {
@@ -20,6 +23,10 @@ import type {
   PreviewNode,
 } from "./workflow-mapping";
 import { cn } from "@/lib/utils";
+import {
+  fetchWorkflowDetail,
+  workflowQueryKeys,
+} from "../_lib/queries";
 
 const STATUS_CFG = {
   active: { label: "Actif", bg: "#ECFDF5", color: "#15803D", dot: "#10B981" },
@@ -274,8 +281,45 @@ function BranchRow({
   );
 }
 
-function WorkflowDiagram({ diagram }: { diagram: PreviewNode[] }) {
-  // We always prepend the trigger node so cards look identical to the canvas.
+function TriggerPreviewPill({
+  triggerKind,
+  size = "md",
+}: {
+  triggerKind?: WorkflowTriggerKind | null;
+  size?: "sm" | "md";
+}) {
+  const cfg = WF_NODE_TYPES.trigger;
+  const meta = triggerKind
+    ? WORKFLOW_TRIGGER_KIND_OPTIONS.find((t) => t.id === triggerKind)
+    : undefined;
+  const label = meta?.label ?? "Déclencheur";
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-[7px] border font-semibold",
+        size === "sm"
+          ? "px-2 py-[3px] text-[10.5px]"
+          : "px-2.5 py-1 text-[11.5px]",
+      )}
+      style={{
+        background: cfg.bg,
+        borderColor: `${cfg.border}55`,
+        color: cfg.color,
+      }}
+      title={meta?.nodeSub}
+    >
+      {label}
+    </span>
+  );
+}
+
+function WorkflowDiagram({
+  diagram,
+  triggerKind,
+}: {
+  diagram: PreviewNode[];
+  triggerKind?: WorkflowTriggerKind | null;
+}) {
   const nodes: PreviewNode[] = [{ kind: "step", type: "trigger" }, ...diagram];
   return (
     <div className="rounded-[10px] border border-border bg-muted/40 px-4 py-3.5 dark:bg-muted/25">
@@ -291,9 +335,14 @@ function WorkflowDiagram({ diagram }: { diagram: PreviewNode[] }) {
             );
           }
           if (n.kind === "step") {
+            const isTrigger = n.type === "trigger";
             return (
               <span key={i} className="flex items-center gap-2">
-                <NodePill type={n.type} />
+                {isTrigger ? (
+                  <TriggerPreviewPill triggerKind={triggerKind} />
+                ) : (
+                  <NodePill type={n.type} />
+                )}
                 {!last && <ArrowConnector />}
               </span>
             );
@@ -375,6 +424,7 @@ function WorkflowCard({
   onOpen: (id: string) => void;
   onLaunch: (id: string) => void;
 }) {
+  const queryClient = useQueryClient();
   const launchDisabled = wf.status === "draft" || wf.status === "error";
   const launchReason =
     wf.status === "draft"
@@ -387,6 +437,13 @@ function WorkflowCard({
       role="button"
       tabIndex={0}
       onClick={() => onOpen(wf.id)}
+      onMouseEnter={() => {
+        void queryClient.prefetchQuery({
+          queryKey: workflowQueryKeys.detail(wf.id),
+          queryFn: () => fetchWorkflowDetail(wf.id),
+          staleTime: 60 * 1000,
+        });
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -415,7 +472,7 @@ function WorkflowCard({
 
       {/* Diagram preview. */}
       {wf.diagram.length > 0 || wf.stepCount === 0 ? (
-        <WorkflowDiagram diagram={wf.diagram} />
+        <WorkflowDiagram diagram={wf.diagram} triggerKind={wf.triggerKind} />
       ) : null}
 
       {/* Footer — inline stats (left), last modified + launch (right). */}
@@ -447,6 +504,7 @@ function WorkflowCard({
 export interface ListViewProps {
   workflows: DesignWorkflowCard[];
   loading: boolean;
+  refreshing?: boolean;
   userTemplates: UserTemplate[];
   onLaunch: (workflowId: string) => void;
 }
@@ -454,6 +512,7 @@ export interface ListViewProps {
 export function ListView({
   workflows,
   loading,
+  refreshing = false,
   userTemplates,
   onLaunch,
 }: ListViewProps) {
@@ -478,6 +537,7 @@ export function ListView({
           name: tpl.name,
           description: tpl.description,
           draft_definition: tpl.buildDefinition(),
+          trigger_kind: tpl.triggerKind,
           ui: {
             icon: tpl.ui.icon,
             color: tpl.ui.color,

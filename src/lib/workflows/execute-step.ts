@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureLinkedInRelationFromUnipileProfile } from "@/lib/linkedin/ensure-relation-from-unipile-profile";
 import { env } from "@/lib/config/environment";
+import { buildBookingPublicUrlForProfile } from "@/lib/booking/public-path";
 import { normalizePhoneForWhatsApp } from "@/lib/utils/phone";
 import {
   getLinkedInAccountIdForUserId,
@@ -95,12 +96,11 @@ async function getBookingLink(
 ): Promise<string | null> {
   const { data: profile } = await supabase
     .from("profiles")
-    .select("booking_slug")
+    .select("booking_public_path, booking_slug")
     .eq("id", userId)
     .single();
-  if (!profile?.booking_slug) return null;
   const appUrl = env.getConfig().appUrl.replace(/\/$/, "");
-  return `${appUrl}/booking/${profile.booking_slug}`;
+  return buildBookingPublicUrlForProfile(appUrl, profile);
 }
 
 type HandlerContext = {

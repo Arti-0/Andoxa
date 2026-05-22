@@ -1,6 +1,11 @@
-import { createApiHandler, Errors } from "../../../../lib/api";
+import { createApiHandler, Errors, type ApiContext } from "../../../../lib/api";
 import { buildWeekBuckets, bucketIndex } from "@/lib/dashboard/weeks";
-import { getPeriodPair, parsePeriod, trendPts } from "@/lib/dashboard/period";
+import {
+  getPeriodPair,
+  parsePeriod,
+  trendPts,
+  type DashboardPeriod,
+} from "@/lib/dashboard/period";
 import { readDashboardTargets } from "@/lib/dashboard/targets";
 import { isMockStatsEnabled, mockDashboardStats } from "@/lib/mock-stats";
 
@@ -51,13 +56,14 @@ interface ClosingsBlock extends KpiBlock {
   progress_pct: number;
 }
 
-export const GET = createApiHandler(async (req, ctx) => {
+export async function getDashboardStats(
+  ctx: ApiContext,
+  period: DashboardPeriod,
+) {
   if (!ctx.workspaceId) {
     throw Errors.badRequest("Workspace required");
   }
 
-  const url = new URL(req.url);
-  const period = parsePeriod(url.searchParams.get("period"));
   if (isMockStatsEnabled()) return mockDashboardStats(period);
 
   const { current, previous } = getPeriodPair(period);
@@ -709,4 +715,10 @@ export const GET = createApiHandler(async (req, ctx) => {
     closings: closingsBlock,
     week_labels: weekBuckets.map((b) => b.label),
   };
+}
+
+export const GET = createApiHandler(async (req, ctx) => {
+  const url = new URL(req.url);
+  const period = parsePeriod(url.searchParams.get("period"));
+  return getDashboardStats(ctx, period);
 });

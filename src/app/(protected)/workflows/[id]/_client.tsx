@@ -1,9 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ReactFlowProvider } from "@xyflow/react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { CanvasToolbar } from "../_components/canvas-toolbar";
 import { LeftPanel } from "../_components/left-panel";
 import { RightPanel } from "../_components/right-panel";
@@ -14,7 +15,12 @@ import { simulateWorkflow, type SimResult } from "../_components/simulate";
 import { TestResultsDialog } from "../_components/test-results-dialog";
 import { RunsPanel } from "../_components/runs-panel";
 import { WorkflowListEnrollModal } from "@/components/workflows/workflow-list-enroll-modal";
-import { computeStraightenedLayout } from "@/components/workflows/canvas/auto-layout";
+import {
+  computeStraightenedLayout,
+  LAYOUT_TRUNK_START_Y,
+  triggerCanvasPosition,
+} from "@/components/workflows/canvas/auto-layout";
+import { TemplateApplyDialog } from "../_components/template-apply-dialog";
 import { toastFromApiError } from "@/lib/toast";
 import {
   parseWorkflowUi,
@@ -31,6 +37,11 @@ import {
   type BackendWorkflowRow,
   type DesignStatus,
 } from "../_components/workflow-mapping";
+import {
+  fetchWorkflowDetail,
+  fetchWorkflowRuns,
+  workflowQueryKeys,
+} from "../_lib/queries";
 
 interface Props {
   workflowId: string;
@@ -66,6 +77,23 @@ function defaultConfigForType(type: WorkflowStepType): WorkflowStep["config"] {
 }
 
 const NEW_STEP_Y_OFFSET = 140;
+
+async function resolveTemplateTriggerConfig(
+  template: WorkflowTemplate
+): Promise<Record<string, unknown>> {
+  if (!template.triggerConfigStatusKey) return {};
+  try {
+    const res = await fetch("/api/prospect-statuses", { credentials: "include" });
+    if (!res.ok) return {};
+    const json = await res.json();
+    const items: Array<{ id: string; key: string }> =
+      json.data?.items ?? json.items ?? [];
+    const match = items.find((s) => s.key === template.triggerConfigStatusKey);
+    return match ? { targetStatusId: match.id } : {};
+  } catch {
+    return {};
+  }
+}
 
 /** Wire `childId` as the next output of `parentId` (inserts when parent already had a target). */
 function attachChildToStep(
@@ -109,12 +137,102 @@ function attachChildToStep(
   );
 }
 
+/** True when the step still has a free outgoing branch / next pointer. */
+function stepCanAcceptNewChild(step: WorkflowStep): boolean {
+  if (step.type === "condition") {
+    const c = step as WorkflowStep & {
+      on_true_id?: string;
+      on_false_id?: string;
+    };
+    return !c.on_true_id || !c.on_false_id;
+  }
+  return !("next_id" in step && step.next_id);
+}
+
+function resolveInitialCanvasPositions(
+  def: WorkflowDefinition,
+  saved: WorkflowCanvasPositions,
+): WorkflowCanvasPositions {
+  if (def.steps.length === 0) return saved;
+  const missingStep = def.steps.some((s) => !saved[s.id]);
+  if (!missingStep && saved[TRIGGER_NODE_ID]) return saved;
+  return computeStraightenedLayout(def);
+}
+
+function hydrateFromWorkflowRow(w: BackendWorkflowRow): {
+  steps: WorkflowStep[];
+  entryStepId: string | undefined;
+  canvasPositions: WorkflowCanvasPositions;
+  triggerKind: WorkflowTriggerKind;
+  triggerConfig: Record<string, unknown>;
+  trigger: WorkflowTemplateTrigger | null;
+  name: string;
+  description: string;
+  isTemplate: boolean;
+  iconKey: string;
+  colorKey: string;
+} {
+  const tk = w.trigger_kind;
+  const tc =
+    w.trigger_config && typeof w.trigger_config === "object" && !Array.isArray(w.trigger_config)
+      ? (w.trigger_config as Record<string, unknown>)
+      : {};
+  const ui = parseWorkflowUi(w.metadata);
+  const def = w.draft_definition as
+    | { steps?: WorkflowStep[]; entry_step_id?: string }
+    | null;
+  const steps = Array.isArray(def?.steps) ? def!.steps : [];
+  const entryStepId = def?.entry_step_id;
+  const definition: WorkflowDefinition = {
+    schemaVersion: 1,
+    steps,
+    ...(entryStepId ? { entry_step_id: entryStepId } : {}),
+  };
+  return {
+    steps,
+    entryStepId,
+    canvasPositions: resolveInitialCanvasPositions(
+      definition,
+      ui.canvas ?? {},
+    ),
+    triggerKind: isWorkflowTriggerKind(tk) ? tk : "manual",
+    triggerConfig: tc,
+    trigger: (ui.trigger as WorkflowTemplateTrigger | undefined) ?? null,
+    name: w.name,
+    description: w.description ?? "",
+    isTemplate: Boolean(w.is_template),
+    iconKey: ui.icon,
+    colorKey: ui.color,
+  };
+}
+
 export function CanvasClient({ workflowId }: Props) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+
+  const {
+    data: fetchedWorkflow,
+    isLoading: queryLoading,
+  } = useQuery({
+    queryKey: workflowQueryKeys.detail(workflowId),
+    queryFn: () => fetchWorkflowDetail(workflowId),
+    staleTime: 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  // Prefetch runs so the executions modal opens instantly from cache.
+  useQuery({
+    queryKey: workflowQueryKeys.runs(workflowId),
+    queryFn: () => fetchWorkflowRuns(workflowId),
+    staleTime: 2 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
 
   // Persisted server state.
   const [workflow, setWorkflow] = useState<BackendWorkflowRow | null>(null);
-  const [loading, setLoading] = useState(true);
+  const hydratedIdRef = useRef<string | null>(null);
 
   // Editable local state — persists on Save.
   const [steps, setSteps] = useState<WorkflowStep[]>([]);
@@ -123,6 +241,7 @@ export function CanvasClient({ workflowId }: Props) {
   // and side panel now drive identity entirely off trigger_kind).
   const [trigger, setTrigger] = useState<WorkflowTemplateTrigger | null>(null);
   const [triggerKind, setTriggerKind] = useState<WorkflowTriggerKind>("manual");
+  const [triggerConfig, setTriggerConfig] = useState<Record<string, unknown>>({});
 
   /* ── Undo stack ───────────────────────────────────────────────────────────
      Graph-level snapshots so Ctrl/Cmd+Z reverses the last mutation. We track
@@ -133,11 +252,13 @@ export function CanvasClient({ workflowId }: Props) {
     steps: WorkflowStep[];
     entryStepId: string | undefined;
     triggerKind: WorkflowTriggerKind;
+    triggerConfig: Record<string, unknown>;
   };
   const historyRef = useRef<Snapshot[]>([]);
   const stepsRef = useRef(steps);
   const entryStepIdRef = useRef(entryStepId);
   const triggerKindRef = useRef<WorkflowTriggerKind>(triggerKind);
+  const triggerConfigRef = useRef<Record<string, unknown>>(triggerConfig);
   useEffect(() => {
     stepsRef.current = steps;
   }, [steps]);
@@ -147,12 +268,16 @@ export function CanvasClient({ workflowId }: Props) {
   useEffect(() => {
     triggerKindRef.current = triggerKind;
   }, [triggerKind]);
+  useEffect(() => {
+    triggerConfigRef.current = triggerConfig;
+  }, [triggerConfig]);
   const HISTORY_LIMIT = 50;
   const pushHistory = useCallback(() => {
     historyRef.current.push({
       steps: stepsRef.current,
       entryStepId: entryStepIdRef.current,
       triggerKind: triggerKindRef.current,
+      triggerConfig: triggerConfigRef.current,
     });
     if (historyRef.current.length > HISTORY_LIMIT) {
       historyRef.current.shift();
@@ -164,6 +289,7 @@ export function CanvasClient({ workflowId }: Props) {
     setSteps(last.steps);
     setEntryStepId(last.entryStepId);
     setTriggerKind(last.triggerKind);
+    setTriggerConfig(last.triggerConfig);
     return true;
   }, []);
   const [name, setName] = useState("");
@@ -181,6 +307,8 @@ export function CanvasClient({ workflowId }: Props) {
   const [testResult, setTestResult] = useState<SimResult | null>(null);
   const [launchOpen, setLaunchOpen] = useState(false);
   const [runsOpen, setRunsOpen] = useState(false);
+  const [pendingTemplate, setPendingTemplate] = useState<WorkflowTemplate | null>(null);
+  const [applyingTemplate, setApplyingTemplate] = useState(false);
 
   // Async state.
   const [saving, setSaving] = useState(false);
@@ -190,47 +318,32 @@ export function CanvasClient({ workflowId }: Props) {
 
   const status: DesignStatus = workflow ? deriveStatus(workflow) : "draft";
 
-  const loadWorkflow = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/workflows/${workflowId}`, {
-        credentials: "include",
-      });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json?.error?.message ?? "Chargement impossible");
-      }
-      const w = json.data.workflow as BackendWorkflowRow;
-      setWorkflow(w);
-      setName(w.name);
-      setDescription(w.description ?? "");
-      setIsTemplate(Boolean(w.is_template));
-      const tk = w.trigger_kind;
-      setTriggerKind(isWorkflowTriggerKind(tk) ? tk : "manual");
-      const ui = parseWorkflowUi(w.metadata);
-      setIconKey(ui.icon);
-      setColorKey(ui.color);
-      setTrigger((ui.trigger as WorkflowTemplateTrigger | undefined) ?? null);
-      setCanvasPositions(ui.canvas ?? {});
-      const def = w.draft_definition as
-        | { steps?: WorkflowStep[]; entry_step_id?: string }
-        | null;
-      setSteps(Array.isArray(def?.steps) ? def!.steps : []);
-      setEntryStepId(def?.entry_step_id);
-      // Loading replaces the entire graph, so any earlier undo history would
-      // jump us back across workflows — wipe it.
-      historyRef.current = [];
-    } catch (e) {
-      toastFromApiError(e, "Chargement impossible");
-      setWorkflow(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [workflowId]);
+  useEffect(() => {
+    if (!fetchedWorkflow) return;
+    setWorkflow(fetchedWorkflow);
+    if (hydratedIdRef.current === fetchedWorkflow.id) return;
+    const h = hydrateFromWorkflowRow(fetchedWorkflow);
+    setName(h.name);
+    setDescription(h.description);
+    setIsTemplate(h.isTemplate);
+    setTriggerKind(h.triggerKind);
+    setTriggerConfig(h.triggerConfig);
+    setIconKey(h.iconKey);
+    setColorKey(h.colorKey);
+    setTrigger(h.trigger);
+    setCanvasPositions(h.canvasPositions);
+    setSteps(h.steps);
+    setEntryStepId(h.entryStepId);
+    historyRef.current = [];
+    hydratedIdRef.current = fetchedWorkflow.id;
+  }, [fetchedWorkflow]);
 
   useEffect(() => {
-    void loadWorkflow();
-  }, [loadWorkflow]);
+    hydratedIdRef.current = null;
+  }, [workflowId]);
+
+  const loading = queryLoading && !fetchedWorkflow;
+  const loadError = !queryLoading && !fetchedWorkflow;
 
   // ── Local mutations ────────────────────────────────────────────────────
 
@@ -259,8 +372,12 @@ export function CanvasClient({ workflowId }: Props) {
         if (focusId === TRIGGER_NODE_ID) {
           const entry = entryStepIdRef.current;
           if (!entry) return next;
+          const entryStep = next.find((s) => s.id === entry);
+          if (!entryStep || !stepCanAcceptNewChild(entryStep)) return next;
           return attachChildToStep(next, entry, newId);
         }
+        const focusStep = next.find((s) => s.id === focusId);
+        if (!focusStep || !stepCanAcceptNewChild(focusStep)) return next;
         return attachChildToStep(next, focusId, newId);
       });
 
@@ -275,7 +392,9 @@ export function CanvasClient({ workflowId }: Props) {
             : focusId;
         const anchor =
           prev[anchorId] ??
-          (anchorId === TRIGGER_NODE_ID ? { x: 0, y: -140 } : { x: 0, y: 0 });
+          (anchorId === TRIGGER_NODE_ID
+            ? triggerCanvasPosition()
+            : { x: -126, y: LAYOUT_TRUNK_START_Y });
         return {
           ...prev,
           [newId]: { x: anchor.x, y: anchor.y + NEW_STEP_Y_OFFSET },
@@ -419,28 +538,41 @@ export function CanvasClient({ workflowId }: Props) {
     [pushHistory]
   );
 
-  const applyTemplate = useCallback(
-    (t: WorkflowTemplate) => {
-      if (
-        steps.length > 0 &&
-        !window.confirm(
-          "Appliquer ce modèle remplacera les étapes actuelles. Continuer ?"
-        )
-      ) {
-        return;
-      }
+  const requestApplyTemplate = useCallback((t: WorkflowTemplate) => {
+    setPendingTemplate(t);
+  }, []);
+
+  const confirmApplyTemplate = useCallback(async () => {
+    const t = pendingTemplate;
+    if (!t) return;
+    setApplyingTemplate(true);
+    try {
       pushHistory();
       const def = t.buildDefinition();
+      const nextDefinition: WorkflowDefinition = {
+        schemaVersion: 1,
+        steps: def.steps,
+        ...(def.entry_step_id ? { entry_step_id: def.entry_step_id } : {}),
+      };
+      const triggerCfg = await resolveTemplateTriggerConfig(t);
+
       setSteps(def.steps);
+      setEntryStepId(def.entry_step_id);
       setTrigger(t.trigger);
+      setTriggerKind(t.triggerKind);
+      setTriggerConfig(triggerCfg);
       setIconKey(t.ui.icon);
       setColorKey(t.ui.color);
-      setCanvasPositions({});
+      setCanvasPositions(computeStraightenedLayout(nextDefinition));
       setSelectedId(null);
+      setPendingTemplate(null);
       toast.success("Modèle appliqué");
-    },
-    [steps.length, pushHistory]
-  );
+    } catch (e) {
+      toastFromApiError(e, "Impossible d'appliquer le modèle");
+    } finally {
+      setApplyingTemplate(false);
+    }
+  }, [pendingTemplate, pushHistory]);
 
   // Wraps `setTriggerKind` so trigger swaps participate in undo and stay
   // consistent with the rest of the graph history.
@@ -448,11 +580,30 @@ export function CanvasClient({ workflowId }: Props) {
     (next: WorkflowTriggerKind) => {
       pushHistory();
       setTriggerKind(next);
+      // Changing the trigger kind invalidates the previous trigger_config —
+      // a target status id is meaningless once you switch to on_no_show, etc.
+      setTriggerConfig({});
+    },
+    [pushHistory]
+  );
+
+  const setTriggerConfigWithHistory = useCallback(
+    (next: Record<string, unknown>) => {
+      pushHistory();
+      setTriggerConfig(next);
     },
     [pushHistory]
   );
 
   // ── Server mutations ───────────────────────────────────────────────────
+
+  const syncWorkflowCache = useCallback(
+    (row: BackendWorkflowRow) => {
+      setWorkflow(row);
+      queryClient.setQueryData(workflowQueryKeys.detail(workflowId), row);
+    },
+    [queryClient, workflowId],
+  );
 
   const handleSave = useCallback(async () => {
     if (!workflow) return;
@@ -468,6 +619,7 @@ export function CanvasClient({ workflowId }: Props) {
           is_template: isTemplate,
           draft_definition: definition,
           trigger_kind: triggerKind,
+          trigger_config: triggerConfig,
           ui: {
             icon: iconKey,
             color: colorKey,
@@ -484,7 +636,7 @@ export function CanvasClient({ workflowId }: Props) {
             "Enregistrement impossible"
         );
       }
-      setWorkflow(json.data.workflow as BackendWorkflowRow);
+      syncWorkflowCache(json.data.workflow as BackendWorkflowRow);
       const publishWarning = json.data?.publish_warning as
         | { reason: string; message: string }
         | null
@@ -513,6 +665,7 @@ export function CanvasClient({ workflowId }: Props) {
     colorKey,
     trigger,
     triggerKind,
+    triggerConfig,
     canvasPositions,
   ]);
 
@@ -531,14 +684,14 @@ export function CanvasClient({ workflowId }: Props) {
       if (!res.ok || !json.success) {
         throw new Error(json?.error?.message ?? "Mise à jour impossible");
       }
-      setWorkflow(json.data.workflow as BackendWorkflowRow);
+      syncWorkflowCache(json.data.workflow as BackendWorkflowRow);
       toast.success(next ? "Workflow activé" : "Workflow mis en pause");
     } catch (e) {
       toastFromApiError(e, "Mise à jour impossible");
     } finally {
       setTogglingActive(false);
     }
-  }, [workflow, workflowId]);
+  }, [workflow, workflowId, syncWorkflowCache]);
 
   const handleLaunch = useCallback(async () => {
     if (!workflow) return;
@@ -555,7 +708,7 @@ export function CanvasClient({ workflowId }: Props) {
         if (!res.ok || !json.success) {
           throw new Error(json?.error?.message ?? "Activation impossible");
         }
-        setWorkflow(json.data.workflow as BackendWorkflowRow);
+        syncWorkflowCache(json.data.workflow as BackendWorkflowRow);
         toast.success("Workflow activé");
       } catch (e) {
         toastFromApiError(e, "Activation impossible");
@@ -565,7 +718,7 @@ export function CanvasClient({ workflowId }: Props) {
       }
     }
     setLaunchOpen(true);
-  }, [workflow, workflowId]);
+  }, [workflow, workflowId, syncWorkflowCache, queryClient]);
 
   // Client-side dry run — simulates the workflow against a synthetic prospect
   // and surfaces every step's would-be outcome in a dialog. No real messages
@@ -595,24 +748,33 @@ export function CanvasClient({ workflowId }: Props) {
   // Persist canvas positions silently — drag is non-mutating UX, debounced.
   const commitPositions = useCallback(
     (next: WorkflowCanvasPositions) => {
+      if (!workflow) return;
       setCanvasPositions(next);
       if (positionsCommitTimer.current) {
         window.clearTimeout(positionsCommitTimer.current);
       }
       positionsCommitTimer.current = window.setTimeout(async () => {
         try {
-          await fetch(`/api/workflows/${workflowId}`, {
+          const res = await fetch(`/api/workflows/${workflowId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             credentials: "include",
             body: JSON.stringify({ ui: { canvas: next } }),
           });
-        } catch {
-          // Silent — non-critical UX persistence.
+          if (!res.ok) {
+            const json = await res.json().catch(() => null);
+            console.warn(
+              "[canvas] position save failed",
+              res.status,
+              json?.error?.message ?? res.statusText
+            );
+          }
+        } catch (err) {
+          console.warn("[canvas] position save failed", err);
         }
       }, 400);
     },
-    [workflowId]
+    [workflowId, workflow]
   );
 
   const straightenLayout = useCallback(() => {
@@ -679,6 +841,22 @@ export function CanvasClient({ workflowId }: Props) {
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="ws2-root flex h-full min-h-0 flex-col items-center justify-center gap-3 bg-background text-foreground">
+        <Whatsapp2Styles />
+        <p className="text-sm font-semibold">Workflow introuvable.</p>
+        <button
+          type="button"
+          onClick={() => router.push("/workflows")}
+          className="cursor-pointer rounded-[10px] border border-border bg-card px-4 py-2 text-[13px] font-medium text-foreground shadow-sm hover:bg-accent"
+        >
+          Retour
+        </button>
+      </div>
+    );
+  }
+
   if (!workflow) {
     return (
       <div className="ws2-root flex h-full min-h-0 flex-col items-center justify-center gap-3 bg-background text-foreground">
@@ -732,7 +910,7 @@ export function CanvasClient({ workflowId }: Props) {
           }}
         />
         <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-          <LeftPanel onAddStep={addStep} onApplyTemplate={applyTemplate} />
+          <LeftPanel onAddStep={addStep} onApplyTemplate={requestApplyTemplate} />
           <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
             <XyCanvas
               definition={definition}
@@ -750,9 +928,11 @@ export function CanvasClient({ workflowId }: Props) {
               selectedId={selectedId}
               step={selectedStep}
               triggerKind={triggerKind}
+              triggerConfig={triggerConfig}
               onClose={() => setSelectedId(null)}
               onUpdateStep={updateStep}
               onUpdateTriggerKind={setTriggerKindWithHistory}
+              onUpdateTriggerConfig={setTriggerConfigWithHistory}
               onDeleteStep={deleteStep}
               onDuplicateStep={duplicateStep}
             />
@@ -769,9 +949,9 @@ export function CanvasClient({ workflowId }: Props) {
           workflowId={workflowId}
           onSuccess={() => {
             setLaunchOpen(false);
-            void loadWorkflow();
-            // Auto-open the runs panel so the user immediately sees their
-            // newly enrolled prospects.
+            void queryClient.invalidateQueries({
+              queryKey: workflowQueryKeys.runs(workflowId),
+            });
             setRunsOpen(true);
           }}
         />
@@ -779,6 +959,14 @@ export function CanvasClient({ workflowId }: Props) {
           open={runsOpen}
           workflowId={workflowId}
           onClose={() => setRunsOpen(false)}
+        />
+        <TemplateApplyDialog
+          template={pendingTemplate}
+          busy={applyingTemplate}
+          onClose={() => {
+            if (!applyingTemplate) setPendingTemplate(null);
+          }}
+          onConfirm={() => void confirmApplyTemplate()}
         />
       </ReactFlowProvider>
     </div>

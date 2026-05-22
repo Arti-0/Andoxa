@@ -86,6 +86,25 @@ export const Errors = {
     new ApiError("INTERNAL_ERROR", message, 500),
   planRequired: (message = "Active plan required") =>
     new ApiError("PLAN_REQUIRED", message, 402),
+  /**
+   * Thrown when the workspace would exceed a plan limit (seats, prospects,
+   * campaigns, …). The client catches this code and opens the upgrade prompt
+   * with the relevant context. `details.resource` is the limited resource,
+   * `details.used` / `details.limit` carry the cap state for messaging.
+   */
+  planLimitReached: (
+    resource: string,
+    used: number,
+    limit: number,
+    message?: string
+  ) =>
+    new ApiError(
+      "PLAN_LIMIT_REACHED",
+      message ??
+        `Limite du plan atteinte pour « ${resource} » (${used}/${limit}).`,
+      409,
+      { resource, used, limit }
+    ),
   conflict: (message: string) =>
     new ApiError("CONFLICT", message, 409),
 };

@@ -5,6 +5,8 @@ import {
   updateGoogleCalendarEvent,
 } from "@/lib/google/calendar";
 import * as Sentry from "@sentry/nextjs";
+import { insertProspectActivity } from "@/lib/prospect-activity";
+import { emitWorkflowTrigger } from "@/lib/workflows/fire-trigger";
 
 type EventUpdateBody = {
   title?: string;
@@ -21,6 +23,7 @@ type EventUpdateBody = {
   wa_workflow?: boolean;
   pipeline_stage?: string | null;
   attendee_user_ids?: string[];
+  is_all_day?: boolean;
 };
 
 function getIdFromRequest(req: NextRequest): string | null {
@@ -43,6 +46,20 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
   }
 
   const body = await parseBody<EventUpdateBody>(req);
+
+  // Snapshot prior status so we can detect the "→ noshow" transition after
+  // the update succeeds. Fetched in the same workspace scope so RLS holds.
+  let previousStatus: string | null = null;
+  if (body.status !== undefined) {
+    const { data: prev } = await ctx.supabase
+      .from("events")
+      .select("status")
+      .eq("id", id)
+      .eq("organization_id", ctx.workspaceId)
+      .maybeSingle();
+    previousStatus = (prev as { status?: string | null } | null)?.status ?? null;
+  }
+
   const updates: Record<string, unknown> = {};
 
   if (body.title !== undefined) updates.title = body.title;
@@ -59,6 +76,7 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
   if (body.wa_workflow !== undefined) updates.wa_workflow = body.wa_workflow;
   if (body.pipeline_stage !== undefined) updates.pipeline_stage = body.pipeline_stage;
   if (body.attendee_user_ids !== undefined) updates.attendee_user_ids = body.attendee_user_ids;
+  if (body.is_all_day !== undefined) updates.is_all_day = body.is_all_day;
 
   if (Object.keys(updates).length === 0) {
     throw Errors.validation({ _: "Aucune modification fournie" });
@@ -75,6 +93,46 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
   if (error) {
     if (error.code === "PGRST116") throw Errors.notFound("Événement");
     throw Errors.internal("Failed to update event");
+  }
+
+  // -----------------------------------------------------------------
+  // No-show transition: activity log + on_no_show workflow trigger.
+  // Fires only when the status field actually flips into "noshow" (and
+  // wasn't already there). Activity log fixes a long-standing gap — until
+  // now, marking a meeting as no-show updated events.status but never
+  // wrote the `rdv_no_show` row that prospect_activity supports.
+  // -----------------------------------------------------------------
+  if (
+    body.status === "noshow" &&
+    previousStatus !== "noshow" &&
+    (data as { prospect_id?: string | null }).prospect_id
+  ) {
+    const prospectId = (data as { prospect_id: string }).prospect_id;
+    const eventTitle =
+      typeof (data as { title?: string | null }).title === "string"
+        ? (data as { title: string }).title
+        : null;
+
+    // Activity log first — read paths consume this independent of triggers.
+    await insertProspectActivity(ctx.supabase, {
+      organization_id: ctx.workspaceId,
+      prospect_id: prospectId,
+      actor_id: ctx.userId ?? null,
+      action: "rdv_no_show",
+      details: { event_id: id, title: eventTitle, previous_status: previousStatus },
+    });
+
+    // Trigger emission — best-effort.
+    try {
+      await emitWorkflowTrigger(ctx.supabase, {
+        organizationId: ctx.workspaceId,
+        prospectId,
+        startedByUserId: ctx.userId ?? null,
+        payload: { kind: "on_no_show", eventId: id },
+      });
+    } catch {
+      // Sentry already captures inside emitWorkflowTrigger.
+    }
   }
 
   // Push the change to Google Calendar if this event is mirrored there.

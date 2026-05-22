@@ -20,16 +20,16 @@ const CATEGORY_COLORS: Record<string, { bg: string; color: string; border: strin
   IA: { bg: "#F0FDF4", color: "#047857", border: "#059669" },
 };
 
+// Map each template id → category chip rendered on its card. New ids match
+// the 3 canonical templates in src/lib/workflows/templates.ts.
 const TEMPLATE_CATEGORY: Record<string, "WhatsApp" | "LinkedIn" | "CRM" | "IA"> = {
-  "post-meeting-whatsapp": "WhatsApp",
-  "linkedin-welcome-followup": "LinkedIn",
-  "no-show-recovery": "WhatsApp",
-  "post-proposal-followup": "CRM",
-  "reengage-silent-prospects": "IA",
-  blank: "WhatsApp",
+  "pre-rdv-whatsapp": "WhatsApp",
+  "recuperation-no-show": "CRM",
+  "suivi-post-rdv": "CRM",
 };
 
-/** Mini node preview — derives the step types from the template's definition. */
+/** Mini node preview — derives the step types from the template's definition.
+ *  Caps at 6 nodes so the chip strip stays readable on dense templates. */
 function templateNodes(t: WorkflowTemplate): WfNodeType[] {
   const def = t.buildDefinition();
   const out: WfNodeType[] = ["trigger"];
@@ -38,7 +38,11 @@ function templateNodes(t: WorkflowTemplate): WfNodeType[] {
     else if (s.type === "wait") out.push("wait");
     else if (s.type === "condition") out.push("condition");
     else if (s.type === "linkedin_invite" || s.type === "linkedin_message") out.push("linkedin");
+    else if (s.type === "crm") out.push("crm");
+    else if (s.type === "notification") out.push("notification");
+    else if (s.type === "task") out.push("task");
   }
+  if (out.length > 7) return [...out.slice(0, 6), "end"];
   return out.length > 1 ? out : ["trigger"];
 }
 

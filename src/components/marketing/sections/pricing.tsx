@@ -9,6 +9,11 @@ import { Eyebrow } from "@/components/marketing/ui/eyebrow";
 import { BillingToggle, type Billing } from "@/components/marketing/pricing/billing-toggle";
 import { MarketingTeamCalculator } from "@/components/marketing/team-calculator";
 import { cn } from "@/lib/utils";
+import {
+  PLAN_FEATURES_TEXT,
+  PLAN_PRESENTATION,
+  getPlanPrice,
+} from "@/lib/config/plans-config";
 
 /**
  * Tag passed to the optional `onSelectPlan` callback so callers (onboarding,
@@ -16,39 +21,6 @@ import { cn } from "@/lib/utils";
  * contact form by default, but consumers can override.
  */
 export type PricingPlanChoice = "solo" | "team" | "custom";
-
-const SOLO_FEATURES = [
-  "Extension Chrome LinkedIn",
-  "CRM complet (listes, pipeline, kanban)",
-  "Inbox unifiée LinkedIn et WhatsApp",
-  "Calendrier avec lien de booking",
-  "Séquences WhatsApp pré et post-RDV",
-  "Workflows custom illimités + 3 templates",
-  "800 invitations LinkedIn / mois (200/sem.)",
-  "1 utilisateur",
-];
-
-const TEAM_FEATURES = [
-  "Tout du plan Solo, plus :",
-  "Multi-utilisateurs (3 à 20)",
-  "Pipeline kanban partagé",
-  "Listes de prospects partagées",
-  "Sessions d'appels collaboratives",
-  "Dashboard manager équipe",
-  "Rôles et permissions granulaires",
-  "Support prioritaire (réponse < 24 h)",
-];
-
-const CUSTOM_FEATURES = [
-  "Tout du plan Team, plus :",
-  "Au-delà de 20 utilisateurs",
-  "SSO (Google, Okta, Microsoft)",
-  "SLA contractuel + DPA",
-  "Intégrations sur-mesure (HubSpot, Salesforce…)",
-  "Onboarding accompagné par un CSM",
-  "Formation équipe sur site",
-  "Facturation virement annuel",
-];
 
 export interface MarketingPricingSectionProps {
   /**
@@ -72,9 +44,15 @@ export function MarketingPricingSection({
 }: MarketingPricingSectionProps = {}) {
   const [billing, setBilling] = React.useState<Billing>(initialBilling);
   const reduce = useReducedMotion();
-  const soloPrice = billing === "monthly" ? 49 : 39;
-  const teamPrice = billing === "monthly" ? 45 : 36;
-  const teamMonthly = 45;
+  const cadence = billing === "monthly" ? "monthly" : "annual";
+  const soloPrice = getPlanPrice("solo", cadence) ?? 0;
+  const teamPrice = getPlanPrice("team", cadence) ?? 0;
+  const teamMonthly = getPlanPrice("team", "monthly") ?? 0;
+  const solo = PLAN_PRESENTATION.solo;
+  const team = PLAN_PRESENTATION.team;
+  const custom = PLAN_PRESENTATION.custom;
+  const customNote =
+    "custom" in custom.priceNote ? custom.priceNote.custom : "";
 
   const onClick = onSelectPlan
     ? (plan: PricingPlanChoice) => {
@@ -110,37 +88,39 @@ export function MarketingPricingSection({
         <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-3 lg:gap-6">
           <PlanCard
             plan="solo"
-            tag="Solo"
-            title="Pour les commerciaux indépendants."
-            subtitle="Freelances, consultants, sales en solo."
+            tag={solo.tag}
+            title={solo.title}
+            subtitle={solo.subtitle}
             price={soloPrice}
             billing={billing}
             subprice={
-              billing === "monthly" ? "/mois, par utilisateur" : "/mois, facturation annuelle"
+              "monthly" in solo.priceNote
+                ? solo.priceNote[cadence]
+                : undefined
             }
             ctaHref={`/checkout?plan=solo&billing=${billing}`}
-            ctaLabel="Commencer"
-            features={SOLO_FEATURES}
+            ctaLabel={solo.cta.marketing}
+            features={PLAN_FEATURES_TEXT.solo}
             reduce={!!reduce}
             onClick={onClick}
             loading={loadingPlan === "solo"}
           />
           <PlanCard
             plan="team"
-            tag="Team"
-            recommended
-            title="Pour les équipes commerciales."
-            subtitle="Sales teams, agences, cabinets de conseil."
+            tag={team.tag}
+            recommended={team.recommended}
+            title={team.title}
+            subtitle={team.subtitle}
             price={teamPrice}
             billing={billing}
             subprice={
-              billing === "monthly"
-                ? "/mois, par utilisateur (à partir de 3)"
-                : "/mois, par utilisateur, facturation annuelle"
+              "monthly" in team.priceNote
+                ? team.priceNote[cadence]
+                : undefined
             }
             ctaHref={`/checkout?plan=team&billing=${billing}`}
-            ctaLabel="Choisir Team"
-            features={TEAM_FEATURES}
+            ctaLabel={team.cta.marketing}
+            features={PLAN_FEATURES_TEXT.team}
             reduce={!!reduce}
             onClick={onClick}
             loading={loadingPlan === "team"}
@@ -154,15 +134,15 @@ export function MarketingPricingSection({
           />
           <PlanCard
             plan="custom"
-            tag="Custom"
-            title="Pour les équipes au-delà de 20."
-            subtitle="Sales orgs, scale-ups, grands groupes."
-            customPrice="Sur-mesure"
-            customSubprice="Tarification volume + intégrations dédiées"
+            tag={custom.tag}
+            title={custom.title}
+            subtitle={custom.subtitle}
+            customPrice={custom.customPriceLabel ?? "Sur-mesure"}
+            customSubprice={customNote}
             ctaHref="/contact?objet=custom"
-            ctaLabel="Demander un devis"
-            ctaVariant="outline"
-            features={CUSTOM_FEATURES}
+            ctaLabel={custom.cta.marketing}
+            ctaVariant={custom.ctaVariant === "outline" ? "outline" : undefined}
+            features={PLAN_FEATURES_TEXT.custom}
             reduce={!!reduce}
             onClick={onClick}
             loading={loadingPlan === "custom"}

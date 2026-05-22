@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 import type { DragEvent } from "react";
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { Upload } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {

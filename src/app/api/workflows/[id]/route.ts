@@ -12,6 +12,7 @@ import {
   type WorkflowUiState,
 } from "@/lib/workflows";
 import { isWorkflowTriggerKind } from "@/lib/workflows/trigger-kind";
+import { validateTriggerConfig } from "@/lib/workflows/trigger-config";
 import { getWorkflowPublishedDefinition } from "@/lib/workflows/queries";
 
 function getWorkflowIdFromUrl(req: Request): string {
@@ -40,29 +41,8 @@ export const GET = createApiHandler(async (req, ctx) => {
   if (!wf) throw Errors.notFound("Workflow");
 
   const canLaunch = wf.published_definition != null;
-  let launch_prereq_message: string | null = null;
-  if (!canLaunch) {
-    const parsed = safeParseWorkflowDefinition(wf.draft_definition);
-    if (parsed.success) {
-      const built = await tryBuildPublishedDefinition(
-        ctx.supabase,
-        ctx.userId!,
-        parsed.data,
-        { organizationId: ctx.workspaceId }
-      );
-      if (!built.ok) {
-        launch_prereq_message = built.message;
-      } else {
-        launch_prereq_message =
-          "Le parcours est cohérent : enregistrez-le depuis cette fiche (Modifier → Sauvegarder) pour activer le lancement sur les listes.";
-      }
-    } else {
-      launch_prereq_message =
-        "Ajoutez au moins une étape valide, puis enregistrez le parcours depuis cette fiche.";
-    }
-  }
 
-  return { workflow: wf, can_launch: canLaunch, launch_prereq_message };
+  return { workflow: wf, can_launch: canLaunch, launch_prereq_message: null };
 });
 
 /**
@@ -82,6 +62,7 @@ export const PATCH = createApiHandler(async (req, ctx) => {
     draft_definition?: unknown;
     pending_enrollment_bdd_ids?: string[];
     trigger_kind?: string;
+    trigger_config?: unknown;
     run_mode?: string;
     ui?: {
       icon?: string;
@@ -93,12 +74,18 @@ export const PATCH = createApiHandler(async (req, ctx) => {
 
   const { data: existing } = await ctx.supabase
     .from("workflows")
-    .select("id, metadata, is_active, trigger_kind")
+    .select("id, metadata, is_active, trigger_kind, trigger_config")
     .eq("id", id)
     .eq("organization_id", ctx.workspaceId)
     .maybeSingle();
 
-  if (!existing) throw Errors.notFound("Workflow");
+  if (!existing) {
+    console.error("[PATCH /api/workflows/[id]] workflow not found", {
+      id,
+      workspaceId: ctx.workspaceId,
+    });
+    throw Errors.notFound("Workflow");
+  }
 
   const updates: WorkflowUpdateRow = {
     updated_at: new Date().toISOString(),
@@ -128,11 +115,29 @@ export const PATCH = createApiHandler(async (req, ctx) => {
       throw Errors.validation({ trigger_kind: "Déclencheur invalide" });
     }
     // Generated supabase types haven't been regenerated since migration
-    // 20260517170000_workflow_on_booking_trigger added the 'on_booking'
-    // value to the CHECK constraint. Cast bridges the gap until next type
-    // regen — runtime is safe because the DB constraint validates.
+    // 20260520120300_workflow_trigger_config extended the CHECK with the
+    // 4 new kinds. Cast bridges the gap until next type regen — runtime
+    // is safe because the DB constraint validates.
     updates.trigger_kind =
       body.trigger_kind as WorkflowUpdateRow["trigger_kind"];
+  }
+
+  // Validate trigger_config against the schema for the *effective* trigger
+  // kind (incoming or current). The schemas live in trigger-config.ts and
+  // each kind has its own strict shape — see WORKFLOW_TRIGGER_KIND_OPTIONS
+  // for the configTarget per kind.
+  if (body.trigger_config !== undefined) {
+    const effectiveKind =
+      (updates.trigger_kind as ReturnType<typeof isWorkflowTriggerKind> extends true ? string : string) ??
+      existing.trigger_kind;
+    if (!isWorkflowTriggerKind(effectiveKind)) {
+      throw Errors.validation({ trigger_config: "Type de déclencheur inconnu" });
+    }
+    const validated = validateTriggerConfig(effectiveKind, body.trigger_config);
+    if (!validated.ok) {
+      throw Errors.validation({ trigger_config: validated.error });
+    }
+    (updates as Record<string, unknown>).trigger_config = validated.config as Json;
   }
 
   if (body.run_mode !== undefined) {

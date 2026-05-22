@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useParams, useRouter } from "next/navigation";
 import { useState, useCallback, useEffect, useRef } from "react";
@@ -20,17 +20,11 @@ import {
   RotateCcw,
   FileText,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { SessionScriptModal } from "@/components/call-sessions/session-script-modal";
 import { createClient } from "@/lib/supabase/client";
 import { extractCleanRole } from "@/lib/utils/extract-role";
-import {
-  PROSPECT_STATUSES,
-  PROSPECT_STATUS_LABELS,
-  PROSPECT_STATUS_COLORS,
-  PROSPECT_STATUS_DOT_COLORS,
-  type ProspectStatus,
-} from "@/lib/types/prospects";
+import { useProspectStatuses, useStatusResolver } from "@/lib/prospects/statuses";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -61,10 +55,6 @@ interface SessionData {
   ended_at: string | null;
   prospects: SessionProspect[];
   notesByProspect: Record<string, Array<{ content: string; author_id: string }>>;
-}
-
-function isProspectStatus(s: string | null): s is ProspectStatus {
-  return s != null && (PROSPECT_STATUSES as readonly string[]).includes(s);
 }
 
 function initials(name: string | null): string {
@@ -154,6 +144,12 @@ export default function CallSessionPage() {
   const [activeProspectId, setActiveProspectId] = useState<string | null>(null);
   const [scriptOpen, setScriptOpen] = useState(false);
   const [quickNoteDraft, setQuickNoteDraft] = useState("");
+
+  // Per-org statuses for the qualification picker. Drops the hardcoded
+  // 7-entry list — agents see the same statuses as the rest of the CRM.
+  const resolveStatus = useStatusResolver();
+  const { statuses: allStatusesForQual } = useProspectStatuses();
+  const qualificationStatuses = allStatusesForQual.filter((s) => !s.is_archived);
   const [stepFlushPending, setStepFlushPending] = useState(false);
   const [noteSavePending, setNoteSavePending] = useState(false);
   const currentItemRef = useRef<HTMLDivElement>(null);
@@ -277,7 +273,7 @@ export default function CallSessionPage() {
   }, [session?.id, session?.status, allProspectsProcessed]);
 
   const patchProspectStatusMutation = useMutation({
-    mutationFn: async ({ prospectId, status }: { prospectId: string; status: ProspectStatus }) => {
+    mutationFn: async ({ prospectId, status }: { prospectId: string; status: string }) => {
       const res = await fetch(`/api/prospects/${prospectId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -768,27 +764,29 @@ export default function CallSessionPage() {
                   <p className="text-xs text-muted-foreground">
                     Statut CRM actuel :{" "}
                     <span className="font-medium text-foreground">
-                      {isProspectStatus(activeProspect.status) ? PROSPECT_STATUS_LABELS[activeProspect.status] : activeProspect.status ?? "—"}
+                      {resolveStatus(activeProspect.status)?.label ?? activeProspect.status ?? "—"}
                     </span>
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {PROSPECT_STATUSES.map((st) => {
-                      const selected = activeProspect.status === st;
-                      const dot = PROSPECT_STATUS_DOT_COLORS[st];
+                    {qualificationStatuses.map((st) => {
+                      const selected = activeProspect.status === st.key;
                       return (
                         <button
-                          key={st}
+                          key={st.id}
                           type="button"
                           disabled={patchProspectStatusMutation.isPending}
-                          onClick={() => patchProspectStatusMutation.mutate({ prospectId: activeProspect.id, status: st })}
+                          onClick={() => patchProspectStatusMutation.mutate({ prospectId: activeProspect.id, status: st.key })}
                           className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                             selected
-                              ? `${PROSPECT_STATUS_COLORS[st]} border-transparent ring-2 ring-primary`
+                              ? "border-primary bg-primary/10 text-foreground ring-2 ring-primary"
                               : "border-border bg-background text-muted-foreground hover:bg-accent"
                           }`}
                         >
-                          <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
-                          {PROSPECT_STATUS_LABELS[st]}
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full ring-1 ring-inset ring-black/10"
+                            style={{ backgroundColor: st.color }}
+                          />
+                          {st.name}
                         </button>
                       );
                     })}

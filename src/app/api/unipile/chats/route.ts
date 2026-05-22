@@ -222,8 +222,11 @@ export const GET = createApiHandler(async (req, ctx) => {
     if (channelFilter === "all" || !channelFilter) {
       const accounts = await getAllAccountIdsForUser(ctx);
       if (accounts.length === 0) {
-        const defaultId = await getAccountIdForUser(ctx);
-        allItems = await fetchChatsForAccount(defaultId, "LINKEDIN");
+        // No connected account → return an empty list rather than throwing.
+        // The messagerie UI detects this via /api/unipile/me and shows a
+        // connect-account CTA; this guard prevents a 500 if anything else
+        // calls the endpoint in that state.
+        return { items: [] };
       } else {
         const results = await Promise.allSettled(
           accounts.map((a) => fetchChatsForAccount(a.accountId, a.accountType))

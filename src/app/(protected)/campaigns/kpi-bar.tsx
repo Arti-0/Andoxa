@@ -91,7 +91,14 @@ function KpiCard({
           {delta === null || delta === undefined ? "—" : isFlat ? "— stable" : `${Math.abs(delta).toFixed(1)}%`}
           <span className="ml-1 font-normal text-muted-foreground">{vsLabel}</span>
         </span>
-        <Sparkline data={spark} color={color} width={78} height={26} />
+        <Sparkline
+          data={spark}
+          color={color}
+          width={78}
+          height={26}
+          label={label}
+          unit={unit}
+        />
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * CRM v2 — Prospects tab.
@@ -17,31 +17,23 @@
  *   • channel list (`convs`) — currently inferred from linked_chat_id
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Search,
-  ChevronDown,
   Upload,
   Plus,
-  Filter,
   MoreVertical,
   MessageSquare,
   Calendar,
   Layers,
   List as ListIcon,
   Play,
-  X,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ProspectCreateDialog } from "@/components/crm/prospect-create-dialog";
 import { ProspectImportDialog } from "@/components/crm/prospect-import-dialog";
 import {
@@ -61,13 +53,16 @@ import {
   silenceTier,
   silenceTierClasses,
   prospectPhotoFromEnrichment,
+  useDynamicStatusConfig,
 } from "./crm-shared";
+import { type Prospect } from "@/lib/types/prospects";
+import { useProspectStatuses } from "@/lib/prospects/statuses";
+import { CrmProspectToolbar } from "./crm-prospect-toolbar";
+import { PipelineSettingsModal } from "./pipeline-settings-modal";
 import {
-  PROSPECT_STATUS_LABELS,
-  type Prospect,
-  type ProspectStatus,
-  PROSPECT_STATUSES,
-} from "@/lib/types/prospects";
+  sortProspects,
+  type ProspectSortKey,
+} from "./crm-prospect-sort";
 
 /* ============================================================
    Types
@@ -80,39 +75,6 @@ interface ProspectsApiResponse {
   pageSize: number;
   hasMore: boolean;
 }
-
-type FilterKey =
-  | "tous"
-  | "nouveaux"
-  | "encours"
-  | "rdv"
-  | "proposition"
-  | "won"
-  | "lost";
-
-interface FilterDef {
-  id: FilterKey;
-  label: string;
-  test: (p: Prospect) => boolean;
-}
-
-const FILTERS: FilterDef[] = [
-  { id: "tous", label: "Tous", test: () => true },
-  { id: "nouveaux", label: "Nouveaux", test: (p) => p.status === "new" },
-  {
-    id: "encours",
-    label: "En cours",
-    test: (p) => p.status === "contacted" || p.status === "qualified",
-  },
-  { id: "rdv", label: "RDV", test: (p) => p.status === "rdv" },
-  {
-    id: "proposition",
-    label: "Proposition",
-    test: (p) => p.status === "proposal",
-  },
-  { id: "won", label: "Closed won", test: (p) => p.status === "won" },
-  { id: "lost", label: "Closed lost", test: (p) => p.status === "lost" },
-];
 
 interface ProspectsTabProps {
   workspaceId: string | null;
@@ -150,17 +112,28 @@ export function ProspectsTab({
 }: ProspectsTabProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [filter, setFilter] = useState<FilterKey>("tous");
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<ProspectSortKey>("lastActivity");
   const [view, setView] = useState<"table" | "compact">("table");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [hoverRow, setHoverRow] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [showPipelineSettings, setShowPipelineSettings] = useState(false);
   const [bulkConfirmDelete, setBulkConfirmDelete] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<string[]>([]);
   const rowActions = useProspectActions("prospects-v2");
+
+  const { pipelineOrder, cfgByKey } = useDynamicStatusConfig();
+  const { statuses: statusOptions } = useProspectStatuses();
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [search]);
 
   /** Lightweight bdd lookup for the "Ajouter à une liste" bulk picker. */
   const { data: bddOptions } = useQuery({
@@ -178,14 +151,38 @@ export function ProspectsTab({
   });
 
   /* ---------- queries ---------- */
+  const { data: funnelData } = useQuery({
+    queryKey: ["prospects-funnel", workspaceId],
+    queryFn: async () => {
+      const res = await fetch("/api/prospects/funnel", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      const json = await res.json();
+      return (json.data ?? json) as {
+        stages: { status: string; count: number }[];
+      };
+    },
+    enabled: !!workspaceId,
+    staleTime: 30_000,
+  });
+
   const { data: prospectsData } = useQuery({
-    queryKey: ["prospects-v2", workspaceId, bddFilter, search, sourceFilter],
+    queryKey: [
+      "prospects-v2",
+      workspaceId,
+      bddFilter,
+      debouncedSearch,
+      sourceFilter,
+      statusFilter,
+    ],
     queryFn: async () => {
       const params = new URLSearchParams({ page: "1", pageSize: "150" });
       if (bddFilter) params.set("bdd_id", bddFilter);
-      if (search.trim()) params.set("search", search.trim());
+      if (debouncedSearch) params.set("search", debouncedSearch);
       if (sourceFilter.length > 0)
         params.set("source", sourceFilter.join(","));
+      if (statusFilter) params.set("status", statusFilter);
       const res = await fetch(`/api/prospects?${params.toString()}`, {
         credentials: "include",
       });
@@ -252,24 +249,60 @@ export function ProspectsTab({
   /* ---------- derived ---------- */
   const allProspects = prospectsData?.items ?? [];
   const totalProspects = prospectsData?.total ?? allProspects.length;
-  const counts = useMemo(() => {
-    const map = {} as Record<FilterKey, number>;
-    for (const f of FILTERS) {
-      map[f.id] = allProspects.filter(f.test).length;
+
+  const funnelByStatus = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of funnelData?.stages ?? []) {
+      map.set(s.status, s.count);
     }
     return map;
-  }, [allProspects]);
+  }, [funnelData]);
 
-  const rows = useMemo(() => {
-    const f = FILTERS.find((f) => f.id === filter)!;
-    return allProspects.filter(f.test);
-  }, [allProspects, filter]);
+  const statusPills = useMemo(() => {
+    const useLocalCounts = !!bddFilter || !!debouncedSearch || sourceFilter.length > 0;
+    return pipelineOrder.map((key) => ({
+      key,
+      label: cfgByKey.get(key)?.label ?? key,
+      count: useLocalCounts
+        ? allProspects.filter((p) => p.status === key).length
+        : (funnelByStatus.get(key) ?? 0),
+      color: cfgByKey.get(key)?.hex,
+    }));
+  }, [
+    pipelineOrder,
+    cfgByKey,
+    funnelByStatus,
+    bddFilter,
+    debouncedSearch,
+    sourceFilter,
+    allProspects,
+  ]);
 
-  const enCours = allProspects.filter(
-    (p) => p.status !== "lost" && p.status !== "won",
-  ).length;
-  const signed = allProspects.filter((p) => p.status === "won").length;
-  const lost = allProspects.filter((p) => p.status === "lost").length;
+  const totalAllStatuses = useMemo(() => {
+    if (bddFilter || debouncedSearch || sourceFilter.length > 0) {
+      return totalProspects;
+    }
+    let sum = 0;
+    for (const c of funnelByStatus.values()) sum += c;
+    return sum;
+  }, [
+    funnelByStatus,
+    bddFilter,
+    debouncedSearch,
+    sourceFilter,
+    totalProspects,
+  ]);
+
+  const rows = useMemo(
+    () => sortProspects(allProspects, sortBy),
+    [allProspects, sortBy],
+  );
+
+  const enCours = totalAllStatuses
+    - (funnelByStatus.get("won") ?? 0)
+    - (funnelByStatus.get("lost") ?? 0);
+  const signed = funnelByStatus.get("won") ?? 0;
+  const lost = funnelByStatus.get("lost") ?? 0;
 
   const selectedList = bddFilter
     ? (bddSingle?.name ??
@@ -338,63 +371,6 @@ export function ProspectsTab({
               );
             })}
           </div>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[13px] font-medium hover:bg-accent">
-                <Filter className="h-3.5 w-3.5" />
-                Filtres
-                {sourceFilter.length > 0 && (
-                  <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold text-white">
-                    {sourceFilter.length}
-                  </span>
-                )}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-[300px] p-3">
-              <div className="mb-2.5 flex items-center justify-between">
-                <span className="text-[13px] font-semibold">Filtres</span>
-                <button
-                  onClick={() => setSourceFilter([])}
-                  className="text-[11.5px] font-medium text-blue-700"
-                >
-                  Tout effacer
-                </button>
-              </div>
-              <div className="mb-1 text-[11.5px] font-medium text-muted-foreground">
-                Source
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {[
-                  { value: "linkedin_extension", label: "LinkedIn" },
-                  { value: "csv", label: "Import CSV" },
-                  { value: "xlsx", label: "Import Excel" },
-                  { value: "manual", label: "Manuel" },
-                  { value: "booking", label: "Booking" },
-                ].map((opt) => {
-                  const active = sourceFilter.includes(opt.value);
-                  return (
-                    <button
-                      key={opt.value}
-                      onClick={() =>
-                        setSourceFilter((prev) =>
-                          prev.includes(opt.value)
-                            ? prev.filter((v) => v !== opt.value)
-                            : [...prev, opt.value],
-                        )
-                      }
-                      className={`rounded-md px-2 py-1 text-[11.5px] ${
-                        active
-                          ? "bg-blue-600 text-white"
-                          : "bg-muted text-foreground/80 hover:bg-muted/70"
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </PopoverContent>
-          </Popover>
           <button
             type="button"
             onClick={() => setShowImport(true)}
@@ -431,55 +407,20 @@ export function ProspectsTab({
         </div>
       )}
 
-      {/* Filter pills + search + sort */}
-      <div className="mb-3.5 flex flex-wrap items-center gap-2">
-        {FILTERS.map((f) => {
-          const isActive = f.id === filter;
-          return (
-            <button
-              key={f.id}
-              onClick={() => setFilter(f.id)}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12.5px] font-medium ${
-                isActive
-                  ? "border-blue-600 bg-blue-50 text-blue-700"
-                  : "border-border bg-card text-foreground/80"
-              }`}
-            >
-              {f.label}
-              <span
-                className={`min-w-[18px] rounded-full px-1.5 text-center text-[11px] ${
-                  isActive
-                    ? "bg-blue-600 text-white"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {counts[f.id]}
-              </span>
-            </button>
-          );
-        })}
-        <div className="flex-1" />
-        <div className="flex w-full items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5 sm:w-[230px]">
-          <Search className="h-3.5 w-3.5 text-muted-foreground" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filtrer dans la liste…"
-            className="min-w-0 flex-1 border-none bg-transparent text-[12.5px] outline-none placeholder:text-muted-foreground"
-          />
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-2.5 w-2.5" />
-            </button>
-          )}
-        </div>
-        <button className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-[12.5px] text-foreground/80">
-          Trier : Activité <ChevronDown className="h-2.5 w-2.5" />
-        </button>
-      </div>
+      <CrmProspectToolbar
+        className="mb-3.5"
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        statusPills={statusPills}
+        totalCount={totalAllStatuses || totalProspects}
+        onOpenPipelineSettings={() => setShowPipelineSettings(true)}
+        search={search}
+        onSearchChange={setSearch}
+        sourceFilter={sourceFilter}
+        onSourceFilterChange={setSourceFilter}
+        sortBy={sortBy}
+        onSortByChange={setSortBy}
+      />
 
       <FloatingSelectionBar
         count={selected.size}
@@ -546,18 +487,24 @@ export function ProspectsTab({
             <div className="px-2 pb-1 pt-0.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
               Déplacer vers
             </div>
-            {PROSPECT_STATUSES.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() =>
-                  bulkMutation.mutate({ action: "status", value: s })
-                }
-                className="block w-full truncate rounded-md px-2.5 py-1.5 text-left text-[12.5px] hover:bg-accent"
-              >
-                {PROSPECT_STATUS_LABELS[s]}
-              </button>
-            ))}
+            {statusOptions
+              .filter((s) => !s.is_archived)
+              .map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() =>
+                    bulkMutation.mutate({ action: "status", value: s.key })
+                  }
+                  className="flex w-full items-center gap-2 truncate rounded-md px-2.5 py-1.5 text-left text-[12.5px] hover:bg-accent"
+                >
+                  <span
+                    className="size-2 shrink-0 rounded-full ring-1 ring-inset ring-black/10"
+                    style={{ backgroundColor: s.color }}
+                  />
+                  <span className="truncate">{s.name}</span>
+                </button>
+              ))}
           </PopoverContent>
         </Popover>
 
@@ -618,6 +565,17 @@ export function ProspectsTab({
 
       <ProspectCreateDialog open={showCreate} onOpenChange={setShowCreate} />
       <ProspectImportDialog open={showImport} onOpenChange={setShowImport} />
+      <PipelineSettingsModal
+        open={showPipelineSettings}
+        onOpenChange={(open) => {
+          setShowPipelineSettings(open);
+          if (!open) {
+            queryClient.invalidateQueries({ queryKey: ["prospect-statuses"] });
+            queryClient.invalidateQueries({ queryKey: ["prospects-funnel"] });
+            queryClient.invalidateQueries({ queryKey: ["prospects-v2"] });
+          }
+        }}
+      />
       {rowActions.dialogs}
     </div>
   );

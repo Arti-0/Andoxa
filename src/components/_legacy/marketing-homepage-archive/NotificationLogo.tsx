@@ -142,7 +142,11 @@ export function NotificationLogo({ position = "bottom-right", disableDrag = true
     console.log("[NotificationLogo] Subscribing to toast events");
     const unsubscribe = subscribeToToastEvents((message, type, duration) => {
       console.log("[NotificationLogo] Toast received:", { message, type, duration });
-      addToast({ message, type, duration });
+      addToast({
+        message,
+        type: type === "message" ? "info" : type,
+        duration,
+      });
     });
     return unsubscribe;
   }, []);
