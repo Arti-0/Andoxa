@@ -101,9 +101,10 @@ const PERSONAS: Persona[] = [
     ],
     metric: { value: "0 reporting", label: "manuel, toute la performance équipe en un écran" },
     visual: {
-      kind: "embed",
-      src: ANDOXA_PAGE.dashboard,
+      kind: "image",
+      src: "/screenshots/02-dashboard.png",
       alt: "Tableau de bord Andoxa avec priorités du jour",
+      objectPosition: "center top",
     },
   },
 ];

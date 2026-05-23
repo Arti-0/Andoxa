@@ -59,7 +59,7 @@ export default function ProspectProfilePage() {
   const linkedChatId = overview.linkedChat.unipile_chat_id ?? undefined;
 
   return (
-    <div className="px-3 pb-16 pt-3 sm:px-7">
+    <div className="min-w-0 max-w-full px-3 pb-16 pt-3 sm:px-7">
       <ProspectBreadcrumb prospect={overview.prospect} />
       <ProspectContent
         prospect={overview.prospect}

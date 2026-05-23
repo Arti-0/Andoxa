@@ -129,11 +129,8 @@ function KanbanSettings({
               );
             })}
             <div className="mt-1 border-t pt-1.5 px-2 text-[11px] text-muted-foreground">
-              Pour renommer ou ajouter des statuts, allez dans{" "}
-              <Link href="/settings?tab=pipeline" className="text-primary hover:underline">
-                Paramètres
-              </Link>
-              .
+              Pour renommer ou ajouter des statuts, utilisez l&apos;icône
+              paramètres dans l&apos;onglet Prospects.
             </div>
           </div>
         </>

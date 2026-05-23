@@ -43,6 +43,13 @@ export type WorkflowTriggerPayload =
       campaignJobId: string;
       channel: "linkedin" | "whatsapp";
     }
+  | {
+      kind: "on_invite_accepted";
+      providerId: string;
+      accountId: string;
+      /** NULL when the acceptance can't be paired to a campaign (e.g. single send). */
+      campaignJobId: string | null;
+    }
   | { kind: "on_list_add"; listId: string }
   | { kind: "on_tag"; tagId: string };
 
@@ -137,6 +144,7 @@ export function matchesConfig(
     case "on_no_show":
     case "on_linkedin_reply":
     case "on_whatsapp_reply":
+    case "on_invite_accepted":
       return true;
     case "manual":
       return false;
@@ -198,6 +206,18 @@ export function buildEnrollmentMetadata(
         campaign_job_id: payload.campaignJobId,
         channel: payload.channel,
         dedupe_key: `campaign_reply:${payload.messageId}`,
+      };
+    case "on_invite_accepted":
+      return {
+        source: "invite_accepted",
+        provider_id: payload.providerId,
+        account_id: payload.accountId,
+        campaign_job_id: payload.campaignJobId,
+        // Dedup by provider+account (the LinkedIn-side identity of the
+        // acceptance event). If the same prospect somehow gets re-invited
+        // after re-disconnecting they'd get the same dedupe key — accept
+        // the trade-off; LinkedIn re-acceptances are rare.
+        dedupe_key: `invite_accepted:${payload.accountId}:${payload.providerId}`,
       };
     case "on_list_add":
       return {

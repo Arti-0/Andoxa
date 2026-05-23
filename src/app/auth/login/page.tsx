@@ -16,7 +16,7 @@ export default async function Page() {
   }
 
   return (
-    <AuthShell title="Connexion" subtitle="Accédez à votre espace Andoxa.">
+    <AuthShell title="Bienvenue" subtitle="Connectez-vous ou créez votre compte.">
       <EmailPasswordLoginForm />
     </AuthShell>
   );

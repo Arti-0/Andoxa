@@ -52,6 +52,7 @@ import {
   Briefcase,
   Target,
   Users,
+  Loader2,
 } from "lucide-react";
 import { toast } from "@/lib/toast";
 import {
@@ -61,16 +62,22 @@ import {
   ChannelDot,
   Surface,
   SectionTitle,
-  STATUS_CONFIG,
-  PIPELINE_ORDER,
-  isProspectStatus,
+  useDynamicStatusConfig,
+  type StatusConfig,
 } from "@/components/crm/crm-shared";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import type { Prospect, ProspectStatus } from "@/lib/types/prospects";
+import type { Prospect } from "@/lib/types/prospects";
+
+const STATUS_FALLBACK: StatusConfig = {
+  label: "—",
+  hex: "#94a3b8",
+  dot: "bg-slate-400",
+  pill: "bg-muted text-foreground",
+};
 
 interface ProspectContentProps {
   prospect: Prospect;
@@ -111,14 +118,45 @@ export function ProspectContent({
   engagement,
 }: ProspectContentProps) {
   const [enrollOpen, setEnrollOpen] = useState(false);
+  const queryClient = useQueryClient();
+
+  const enrichMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/prospects/${prospect.id}/enrich`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(
+          (json as { error?: { message?: string } })?.error?.message ??
+            `Erreur ${res.status}`,
+        );
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["prospect", prospect.id] });
+      queryClient.invalidateQueries({
+        queryKey: ["prospect-overview", prospect.id],
+      });
+      toast.success("Profil LinkedIn actualisé");
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || "Enrichissement impossible"),
+  });
+
+  const handleEnrich = () => enrichMutation.mutate();
+
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="flex min-w-0 flex-col gap-4">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_min(360px,100%)] lg:items-start">
+      <div className="order-2 flex min-w-0 flex-col gap-4 lg:order-1">
         <HeaderBanner
           prospect={prospect}
           linkedChatId={linkedChatId ?? null}
           enrollOpen={enrollOpen}
           setEnrollOpen={setEnrollOpen}
+          onEnrich={handleEnrich}
+          enriching={enrichMutation.isPending}
         />
         <PipelineWorkflowSection
           prospect={prospect}
@@ -130,11 +168,15 @@ export function ProspectContent({
           linkedChatId={linkedChatId ?? null}
         />
         <NotesSection prospect={prospect} />
-        <ContexteSection prospect={prospect} />
+        <ContexteSection
+          prospect={prospect}
+          onEnrich={handleEnrich}
+          enriching={enrichMutation.isPending}
+        />
         <MetadonneesSection prospect={prospect} />
       </div>
 
-      <div className="flex flex-col gap-3 lg:sticky lg:top-[76px] lg:self-start">
+      <div className="order-1 flex min-w-0 flex-col gap-3 lg:order-2 lg:sticky lg:top-[76px] lg:self-start">
         <NextActionCard
           prospect={prospect}
           linkedChatId={linkedChatId ?? null}
@@ -152,22 +194,23 @@ export function ProspectContent({
    ============================================================ */
 
 export function ProspectBreadcrumb({ prospect }: { prospect: Prospect }) {
+  const name = prospect.full_name ?? "Sans nom";
   return (
-    <div className="mb-2 flex items-center gap-2 text-[12.5px] text-muted-foreground">
+    <div className="mb-3 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-muted-foreground">
       <Link
         href={prospect.bdd_id ? `/crm?bdd_id=${prospect.bdd_id}` : "/crm"}
-        className="inline-flex items-center gap-1 text-blue-700 hover:underline"
+        className="inline-flex shrink-0 items-center gap-1 text-blue-700 hover:underline"
       >
         <ArrowLeft className="h-3 w-3" />
         Retour
       </Link>
-      <span className="text-border">·</span>
-      <span>CRM</span>
-      <span className="text-border">›</span>
-      <span>Prospects</span>
-      <span className="text-border">›</span>
-      <span className="font-medium text-foreground">
-        {prospect.full_name ?? "Sans nom"}
+      <span className="hidden text-border sm:inline">·</span>
+      <span className="hidden sm:inline">CRM</span>
+      <span className="hidden text-border sm:inline">›</span>
+      <span className="hidden md:inline">Prospects</span>
+      <span className="hidden text-border md:inline">›</span>
+      <span className="min-w-0 truncate font-medium text-foreground" title={name}>
+        {name}
       </span>
     </div>
   );
@@ -182,14 +225,19 @@ function HeaderBanner({
   linkedChatId,
   enrollOpen,
   setEnrollOpen,
+  onEnrich,
+  enriching,
 }: {
   prospect: Prospect;
   linkedChatId: string | null;
   enrollOpen: boolean;
   setEnrollOpen: (v: boolean) => void;
+  onEnrich: () => void;
+  enriching: boolean;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { pipelineOrder, cfgByKey } = useDynamicStatusConfig();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   // "Programmer un RDV" now opens an inline modal (mounted right here) instead
@@ -199,7 +247,7 @@ function HeaderBanner({
   const [rdvOpen, setRdvOpen] = useState(false);
 
   const statusMutation = useMutation({
-    mutationFn: async (next: ProspectStatus) => {
+    mutationFn: async (next: string) => {
       const res = await fetch(`/api/prospects/${prospect.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -214,7 +262,8 @@ function HeaderBanner({
       queryClient.invalidateQueries({
         queryKey: ["prospect-events", prospect.id],
       });
-      toast.success(`Déplacé vers ${STATUS_CONFIG[next].label}`);
+      const label = cfgByKey.get(next)?.label ?? next;
+      toast.success(`Déplacé vers ${label}`);
     },
     onError: () => toast.error("Impossible de mettre à jour le statut"),
   });
@@ -225,22 +274,6 @@ function HeaderBanner({
   const chatHref = linkedChatId
     ? `/messagerie?chat=${encodeURIComponent(linkedChatId)}`
     : "/messagerie";
-
-  const enrichMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/prospects/${prospect.id}/enrich`, {
-        method: "POST",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(String(res.status));
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["prospect", prospect.id] });
-      queryClient.invalidateQueries({ queryKey: ["prospect-overview", prospect.id] });
-      toast.success("Enrichissement lancé");
-    },
-    onError: () => toast.error("Enrichissement impossible"),
-  });
 
   const inviteMutation = useMutation({
     mutationFn: async () => {
@@ -283,21 +316,23 @@ function HeaderBanner({
 
   return (
     <Surface padding="p-4 sm:p-5">
-      <div className="flex flex-wrap items-start gap-4">
-        <NameAvatar
-          name={prospect.full_name ?? "?"}
-          size={84}
-          photo={
-            (
-              prospect.enrichment_metadata as
-                | { profile_picture_url?: string }
-                | null
-            )?.profile_picture_url ?? null
-          }
-        />
-        <div className="min-w-[280px] flex-[1_1_360px]">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h2 className="m-0 text-[22px] font-semibold tracking-tight">
+      <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+            <NameAvatar
+              name={prospect.full_name ?? "?"}
+              size={72}
+              photo={
+                (
+                  prospect.enrichment_metadata as
+                    | { profile_picture_url?: string }
+                    | null
+                )?.profile_picture_url ?? null
+              }
+            />
+            <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+            <h2 className="m-0 min-w-0 text-xl font-semibold tracking-tight sm:text-[22px]">
               {prospect.full_name ?? "Sans nom"}
             </h2>
             <Popover>
@@ -311,21 +346,22 @@ function HeaderBanner({
                   <ChevronDown className="h-3 w-3 text-muted-foreground" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent align="start" className="w-[200px] p-1">
+              <PopoverContent align="start" className="w-[220px] p-1">
                 <div className="px-2 pb-1 pt-0.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Déplacer vers
                 </div>
-                {(PIPELINE_ORDER as ProspectStatus[]).map((s) => {
-                  const cfg = STATUS_CONFIG[s];
-                  const active = prospect.status === s;
+                {pipelineOrder.map((stId) => {
+                  const cfg = cfgByKey.get(stId) ?? STATUS_FALLBACK;
+                  const active = prospect.status === stId;
                   return (
                     <button
-                      key={s}
-                      onClick={() => statusMutation.mutate(s)}
+                      key={stId}
+                      onClick={() => statusMutation.mutate(stId)}
                       className={`flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-left text-[12.5px] hover:bg-accent ${active ? "font-semibold" : ""}`}
                     >
                       <span
-                        className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`}
+                        className="h-1.5 w-1.5 shrink-0 rounded-full ring-1 ring-inset ring-black/10"
+                        style={{ backgroundColor: cfg.hex }}
                       />
                       {cfg.label}
                       {active && (
@@ -341,19 +377,24 @@ function HeaderBanner({
                 href={prospect.linkedin}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-blue-700 hover:underline"
+                className="inline-flex max-w-full min-w-0 items-center gap-1 truncate text-xs text-blue-700 hover:underline"
+                title={prospect.linkedin}
               >
-                <ExternalLink className="h-3 w-3" />
-                {prospect.linkedin.replace(/^https?:\/\//, "")}
+                <ExternalLink className="h-3 w-3 shrink-0" />
+                <span className="truncate">
+                  {prospect.linkedin.replace(/^https?:\/\//, "")}
+                </span>
               </a>
             )}
           </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            {prospect.job_title ?? "—"}
-            <span className="text-border">·</span>
-            <span className="inline-flex items-center gap-1.5">
-              <Building2 className="h-3 w-3 text-muted-foreground/70" />
-              {prospect.company ?? "—"}
+          <div className="mt-1.5 flex flex-col gap-1 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+            <span className="min-w-0 line-clamp-2 sm:line-clamp-none">
+              {prospect.job_title ?? "—"}
+            </span>
+            <span className="hidden text-border sm:inline">·</span>
+            <span className="inline-flex min-w-0 items-center gap-1.5">
+              <Building2 className="h-3 w-3 shrink-0 text-muted-foreground/70" />
+              <span className="truncate">{prospect.company ?? "—"}</span>
             </span>
           </div>
           <div className="mt-3 flex flex-wrap gap-1.5">
@@ -374,47 +415,54 @@ function HeaderBanner({
             )}
             <SourcePill source={prospect.source} />
           </div>
-        </div>
-        <div className="relative flex w-full shrink-0 flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
+            </div>
+          </div>
+        <div className="relative flex w-full shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap lg:w-auto lg:justify-end">
           <Link
             href={chatHref}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-[13px] font-medium text-white hover:bg-blue-700"
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-[13px] font-medium text-white hover:bg-blue-700 sm:w-auto"
           >
-            <MessageSquare className="h-3.5 w-3.5" />
-            Démarrer conversation
+            <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+            <span className="sm:hidden">Conversation</span>
+            <span className="hidden sm:inline">Démarrer conversation</span>
           </Link>
           <button
             type="button"
             onClick={() => setRdvOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-card px-3.5 py-2 text-[13px] font-medium text-blue-700 hover:bg-blue-50"
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-card px-3.5 py-2 text-[13px] font-medium text-blue-700 hover:bg-blue-50 sm:w-auto"
           >
-            <Calendar className="h-3.5 w-3.5" />
-            Programmer un RDV
+            <Calendar className="h-3.5 w-3.5 shrink-0" />
+            <span className="sm:hidden">RDV</span>
+            <span className="hidden sm:inline">Programmer un RDV</span>
           </button>
-          <button
-            onClick={() => setEnrollOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-card px-3.5 py-2 text-[13px] font-medium text-blue-700 hover:bg-blue-50"
-          >
-            <Play className="h-3.5 w-3.5" />
-            Ajouter à un parcours
-          </button>
-          <button
-            onClick={() => setMenuOpen((o) => !o)}
-            className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-foreground/70 hover:bg-accent ${
-              menuOpen ? "bg-accent" : ""
-            }`}
-          >
-            <MoreVertical className="h-4 w-4" />
-          </button>
+          <div className="flex w-full gap-2 sm:w-auto">
+            <button
+              onClick={() => setEnrollOpen(true)}
+              className="inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-card px-3 py-2 text-[13px] font-medium text-blue-700 hover:bg-blue-50 sm:flex-none sm:px-3.5"
+            >
+              <Play className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Parcours</span>
+            </button>
+            <button
+              onClick={() => setMenuOpen((o) => !o)}
+              className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-foreground/70 hover:bg-accent sm:h-9 sm:w-9 ${
+                menuOpen ? "bg-accent" : ""
+              }`}
+              aria-label="Plus d'actions"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+          </div>
           {menuOpen && (
-            <div className="absolute right-0 top-11 z-30 w-[240px] rounded-xl border border-border bg-popover p-1 shadow-lg">
+            <div className="absolute right-0 top-full z-30 mt-1 w-[min(240px,calc(100vw-2rem))] rounded-xl border border-border bg-popover p-1 shadow-lg sm:top-11">
               <MenuRow
+                disabled={!prospect.linkedin || enriching}
                 onClick={() => {
                   setMenuOpen(false);
-                  enrichMutation.mutate();
+                  onEnrich();
                 }}
               >
-                Enrichir
+                {enriching ? "Enrichissement…" : "Enrichir via LinkedIn"}
               </MenuRow>
               <MenuRow
                 disabled={!prospect.linkedin}
@@ -455,6 +503,7 @@ function HeaderBanner({
               </MenuRow>
             </div>
           )}
+        </div>
         </div>
       </div>
 
@@ -546,7 +595,7 @@ function PipelineWorkflowSection({
   const pct = wf && wf.total > 0 ? Math.round((wf.step / wf.total) * 100) : 0;
   return (
     <Surface padding="p-4 sm:p-5">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="m-0 text-sm font-semibold">Pipeline & Workflow</h3>
         <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           Dans le pipeline depuis {inDays}j
@@ -557,7 +606,7 @@ function PipelineWorkflowSection({
       <div className="mt-3 rounded-xl border border-violet-200/60 bg-gradient-to-br from-violet-50 to-violet-100/40 p-3.5 dark:border-violet-900/40 dark:from-violet-950/30 dark:to-violet-900/20">
         {wf ? (
           <>
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
               <div className="flex h-8 w-8 items-center justify-center rounded-md bg-violet-500 text-white">
                 <Play className="h-3 w-3" />
               </div>
@@ -581,22 +630,24 @@ function PipelineWorkflowSection({
             </div>
           </>
         ) : (
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-violet-500 text-white">
-              <Play className="h-3 w-3" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-[13.5px] font-semibold">
-                Aucun parcours actif
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-2.5">
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-violet-500 text-white">
+                <Play className="h-3 w-3" />
               </div>
-              <div className="mt-0.5 text-xs text-violet-700 dark:text-violet-300">
-                Inscrivez ce prospect dans un parcours pour automatiser le
-                suivi.
+              <div className="min-w-0 flex-1">
+                <div className="text-[13.5px] font-semibold">
+                  Aucun parcours actif
+                </div>
+                <div className="mt-0.5 text-xs text-violet-700 dark:text-violet-300">
+                  Inscrivez ce prospect dans un parcours pour automatiser le
+                  suivi.
+                </div>
               </div>
             </div>
             <button
               onClick={onEnrol}
-              className="rounded-md border border-violet-200 bg-card px-2.5 py-1 text-[11px] font-semibold text-violet-700 hover:bg-violet-50 dark:border-violet-900/40 dark:bg-violet-950/40 dark:text-violet-300"
+              className="w-full shrink-0 rounded-md border border-violet-200 bg-card px-2.5 py-1.5 text-[11px] font-semibold text-violet-700 hover:bg-violet-50 sm:w-auto dark:border-violet-900/40 dark:bg-violet-950/40 dark:text-violet-300"
             >
               Inscrire
             </button>
@@ -608,16 +659,14 @@ function PipelineWorkflowSection({
 }
 
 function Stepper({ status }: { status: string | null }) {
-  const stages = (PIPELINE_ORDER as ProspectStatus[]).filter(
-    (s) => s !== "lost",
-  );
-  const currentIdx = isProspectStatus(status)
-    ? stages.indexOf(status as (typeof stages)[number])
-    : -1;
+  const { pipelineOrder, cfgByKey } = useDynamicStatusConfig();
+  const stages = pipelineOrder.filter((s) => s !== "lost");
+  const currentIdx = status ? stages.indexOf(status) : -1;
   return (
-    <div className="flex items-start gap-0">
+    <div className="-mx-1 overflow-x-auto overscroll-x-contain px-1 pb-1 sm:mx-0 sm:overflow-visible sm:px-0">
+      <div className="flex min-w-max items-start gap-0 sm:min-w-0 sm:w-full">
       {stages.map((s, i) => {
-        const cfg = STATUS_CONFIG[s];
+        const cfg = cfgByKey.get(s) ?? STATUS_FALLBACK;
         const isCurrent = i === currentIdx;
         const isPast = i < currentIdx && currentIdx >= 0;
         const dotBg = isCurrent
@@ -633,7 +682,7 @@ function Stepper({ status }: { status: string | null }) {
         return (
           <div
             key={s}
-            className="flex shrink-0 flex-col items-center"
+            className="flex w-[4.5rem] shrink-0 flex-col items-center sm:w-auto sm:min-w-0"
             style={{ flex: i < stages.length - 1 ? "1 1 0" : "0 0 auto" }}
           >
             <div className="flex w-full items-center">
@@ -651,13 +700,15 @@ function Stepper({ status }: { status: string | null }) {
               />
             </div>
             <div
-              className={`mt-1.5 whitespace-nowrap text-[11.5px] ${txt}`}
+              className={`mt-1.5 max-w-[72px] truncate text-center text-[11.5px] ${txt}`}
+              title={cfg.label}
             >
               {cfg.label}
             </div>
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
@@ -845,17 +896,17 @@ function TimelineSection({
   ];
 
   return (
-    <Surface padding="p-5">
-      <div className="mb-3.5 flex items-center justify-between">
-        <h3 className="m-0 text-sm font-semibold">Timeline d’activité</h3>
-        <div className="flex gap-1">
+    <Surface padding="p-4 sm:p-5">
+      <div className="mb-3.5 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="m-0 shrink-0 text-sm font-semibold">Timeline d’activité</h3>
+        <div className="-mx-1 flex gap-1 overflow-x-auto overscroll-x-contain px-1 pb-0.5 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
           {filters.map((f) => {
             const active = f.id === filter;
             return (
               <button
                 key={f.id}
                 onClick={() => setFilter(f.id)}
-                className={`rounded-md border px-2 py-1 text-[11.5px] font-medium ${
+                className={`shrink-0 rounded-md border px-2 py-1 text-[11.5px] font-medium whitespace-nowrap ${
                   active
                     ? "border-blue-600 bg-blue-50 text-blue-700"
                     : "border-border bg-card text-foreground/80"
@@ -941,8 +992,8 @@ function ConversationsSection({
     });
   }
   return (
-    <Surface padding="p-5">
-      <div className="mb-3.5 flex items-center justify-between">
+    <Surface padding="p-4 sm:p-5">
+      <div className="mb-3.5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="m-0 text-sm font-semibold">Conversations actives</h3>
         <Link
           href={
@@ -950,9 +1001,9 @@ function ConversationsSection({
               ? `/messagerie?chat=${encodeURIComponent(linkedChatId)}`
               : "/messagerie"
           }
-          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-blue-700 hover:underline"
+          className="inline-flex items-center gap-1.5 self-start rounded-md px-2 py-1 text-xs font-medium text-blue-700 hover:underline"
         >
-          <MessageSquare className="h-3 w-3" />
+          <MessageSquare className="h-3 w-3 shrink-0" />
           Démarrer une conversation
         </Link>
       </div>
@@ -966,23 +1017,25 @@ function ConversationsSection({
             <Link
               key={it.kind}
               href={it.href}
-              className="flex items-center gap-3 rounded-xl border border-border bg-muted/20 p-3 hover:bg-muted/40"
+              className="flex flex-col gap-2 rounded-xl border border-border bg-muted/20 p-3 hover:bg-muted/40 sm:flex-row sm:items-center sm:gap-3"
             >
-              <ChannelDot kind={it.kind} size={32} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[12.5px] font-semibold capitalize">
-                    {it.kind}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    · {it.when}
-                  </span>
-                </div>
-                <div className="mt-0.5 truncate text-[12.5px] text-foreground/70">
-                  {it.last}
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <ChannelDot kind={it.kind} size={32} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[12.5px] font-semibold capitalize">
+                      {it.kind}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      · {it.when}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 truncate text-[12.5px] text-foreground/70">
+                    {it.last}
+                  </div>
                 </div>
               </div>
-              <div className="inline-flex items-center gap-1 text-xs font-medium text-blue-700">
+              <div className="inline-flex shrink-0 items-center gap-1 self-end text-xs font-medium text-blue-700 sm:self-auto">
                 Ouvrir <ArrowRight className="h-3 w-3" />
               </div>
             </Link>
@@ -1020,7 +1073,7 @@ function NotesSection({ prospect }: { prospect: Prospect }) {
   });
 
   return (
-    <Surface padding="p-5">
+    <Surface padding="p-4 sm:p-5">
       <h3 className="mb-3.5 m-0 text-sm font-semibold">Notes</h3>
       <div className="flex flex-col gap-2.5">
         {prospect.notes && prospect.notes.trim() ? (
@@ -1033,17 +1086,17 @@ function NotesSection({ prospect }: { prospect: Prospect }) {
           </div>
         )}
       </div>
-      <div className="mt-3 flex items-end gap-1 rounded-xl border border-border bg-card p-1">
+      <div className="mt-3 flex flex-col gap-2 rounded-xl border border-border bg-card p-2 sm:flex-row sm:items-end sm:gap-1 sm:p-1">
         <textarea
           value={val}
           onChange={(e) => setVal(e.target.value)}
           placeholder="Ajouter une note pour l'équipe…"
-          className="min-h-[60px] flex-1 resize-none border-none bg-transparent px-3 py-2.5 text-[13px] outline-none placeholder:text-muted-foreground"
+          className="min-h-[60px] w-full flex-1 resize-none border-none bg-transparent px-3 py-2.5 text-[13px] outline-none placeholder:text-muted-foreground"
         />
         <button
           disabled={!val.trim() || mutation.isPending}
           onClick={() => mutation.mutate(val.trim())}
-          className={`m-1.5 inline-flex items-center justify-center rounded-md px-3 py-1.5 text-xs font-medium ${
+          className={`inline-flex w-full shrink-0 items-center justify-center rounded-md px-3 py-2 text-xs font-medium sm:m-1.5 sm:w-auto sm:py-1.5 ${
             val.trim()
               ? "bg-blue-600 text-white hover:bg-blue-700"
               : "bg-muted text-muted-foreground"
@@ -1060,25 +1113,79 @@ function NotesSection({ prospect }: { prospect: Prospect }) {
    ContexteSection
    ============================================================ */
 
-function ContexteSection({ prospect }: { prospect: Prospect }) {
-  const items = [
-    { icon: Briefcase, label: "Industrie", value: prospect.industry },
-    { icon: Users, label: "Taille", value: prospect.employees },
+function ContexteSection({
+  prospect,
+  onEnrich,
+  enriching,
+}: {
+  prospect: Prospect;
+  onEnrich: () => void;
+  enriching: boolean;
+}) {
+  const summary =
+    (
+      prospect.enrichment_metadata as { summary?: string | null } | null
+    )?.summary?.trim() ?? null;
+  const canEnrich = !!prospect.linkedin?.trim();
+
+  const items: {
+    icon: typeof Building2;
+    label: string;
+    value: string | null | undefined;
+    href?: string | null;
+  }[] = [
+    { icon: Building2, label: "Entreprise", value: prospect.company },
     { icon: MapIcon, label: "Localisation", value: prospect.location },
-    { icon: Globe, label: "Site web", value: prospect.website },
+    {
+      icon: Globe,
+      label: "Site web",
+      value: prospect.website,
+      href: prospect.website,
+    },
   ];
+  if (prospect.industry?.trim()) {
+    items.push({
+      icon: Briefcase,
+      label: "Industrie",
+      value: prospect.industry,
+    });
+  }
+  if (prospect.employees?.trim()) {
+    items.push({ icon: Users, label: "Taille", value: prospect.employees });
+  }
+
   return (
-    <Surface padding="p-5">
-      <div className="mb-3.5 flex items-center justify-between">
+    <Surface padding="p-4 sm:p-5">
+      <div className="mb-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <h3 className="m-0 text-sm font-semibold">Contexte entreprise</h3>
-        <button className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-blue-700">
-          <Sparkles className="h-3 w-3" />
-          Enrichir
+        <button
+          type="button"
+          onClick={onEnrich}
+          disabled={!canEnrich || enriching}
+          title={
+            canEnrich
+              ? "Relance une lecture du profil LinkedIn pour mettre à jour l'entreprise, la localisation et le site web"
+              : "Ajoutez une URL LinkedIn pour enrichir ce prospect"
+          }
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-1"
+        >
+          {enriching ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Sparkles className="h-3 w-3" />
+          )}
+          {enriching ? "Enrichissement…" : "Actualiser via LinkedIn"}
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-3.5">
+      <p className="mb-3.5 mt-0 text-[12px] leading-relaxed text-muted-foreground">
+        Données issues du CRM et, le cas échéant, du dernier enrichissement
+        LinkedIn. L&apos;entreprise affichée en haut de page provient du même
+        champ.
+      </p>
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
         {items.map((it) => {
           const Icon = it.icon;
+          const display = it.value?.trim();
           return (
             <div key={it.label} className="flex items-start gap-2.5">
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted text-foreground/70">
@@ -1089,7 +1196,24 @@ function ContexteSection({ prospect }: { prospect: Prospect }) {
                   {it.label}
                 </div>
                 <div className="mt-0.5 text-[13.5px] font-medium">
-                  {it.value || (
+                  {display ? (
+                    it.href ? (
+                      <a
+                        href={
+                          display.startsWith("http")
+                            ? display
+                            : `https://${display}`
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="truncate text-blue-700 hover:underline"
+                      >
+                        {display}
+                      </a>
+                    ) : (
+                      <span className="break-words">{display}</span>
+                    )
+                  ) : (
                     <span className="font-normal text-muted-foreground/70">
                       Non renseigné
                     </span>
@@ -1100,6 +1224,16 @@ function ContexteSection({ prospect }: { prospect: Prospect }) {
           );
         })}
       </div>
+      {summary && (
+        <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Résumé LinkedIn
+          </div>
+          <p className="mb-0 mt-1.5 text-[13px] leading-relaxed text-foreground/85">
+            {summary}
+          </p>
+        </div>
+      )}
     </Surface>
   );
 }
@@ -1131,7 +1265,7 @@ function MetadonneesSection({ prospect }: { prospect: Prospect }) {
         )}
       </button>
       {open && (
-        <div className="mt-3.5 grid grid-cols-2 gap-x-6 gap-y-2.5 text-[12.5px]">
+        <div className="mt-3.5 grid grid-cols-1 gap-x-6 gap-y-2.5 text-[12.5px] sm:grid-cols-2">
           {rows.map(([k, v]) => (
             <div key={k}>
               <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -1171,7 +1305,7 @@ function nextActionFor(prospect: Prospect): {
   ctaHref?: string;
   tone: "default" | "warning" | "success";
 } {
-  const status = prospect.status as ProspectStatus | null;
+  const status = prospect.status;
   const lastAt =
     prospect.last_activity?.at ?? prospect.updated_at ?? prospect.created_at;
   const silentDays = lastAt ? daysSince(lastAt) : 0;
@@ -1241,9 +1375,7 @@ function nextActionFor(prospect: Prospect): {
     };
   }
   return {
-    title: status
-      ? `Étape ${STATUS_CONFIG[status]?.label ?? "—"}`
-      : "Cycle en cours",
+    title: status ? "Étape en cours" : "Cycle en cours",
     body:
       "Continuez à nourrir l’échange — un message ou un rendez-vous de qualification peut faire avancer le pipeline.",
     ctaLabel: "Programmer une action",
@@ -1277,7 +1409,7 @@ function NextActionCard({
 
   /** Map the heuristic action to a real intent. */
   const performCta = () => {
-    const status = prospect.status as ProspectStatus | null;
+    const status = prospect.status;
     if (status === "won") {
       // "Voir les notes" → scroll to notes section if we want, but
       // simplest: do nothing meaningful, no-op so it doesn't mislead.
@@ -1366,7 +1498,7 @@ function SyntheseCard({
         </span>
         <StatusPill status={prospect.status} size="lg" />
       </div>
-      <div className="mb-3.5 grid grid-cols-2 gap-3">
+      <div className="mb-3.5 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <div className="text-[11px] font-medium text-muted-foreground">
             Dans le pipeline

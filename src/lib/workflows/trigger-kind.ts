@@ -19,6 +19,7 @@ export type WorkflowTriggerKind =
   | "on_linkedin_reply"
   | "on_whatsapp_reply"
   | "on_campaign_reply"
+  | "on_invite_accepted"
   | "on_list_add"
   | "on_tag";
 
@@ -40,6 +41,7 @@ const ALL_KINDS: WorkflowTriggerKind[] = [
   "on_linkedin_reply",
   "on_whatsapp_reply",
   "on_campaign_reply",
+  "on_invite_accepted",
   "on_list_add",
   "on_tag",
 ];
@@ -117,6 +119,15 @@ export const WORKFLOW_TRIGGER_KIND_OPTIONS: WorkflowTriggerOption[] = [
     description:
       "Quand une réponse entrante est rattachée à une campagne active du prospect. Pinnable à une campagne spécifique.",
     configTarget: "campaign_job",
+  },
+  {
+    id: "on_invite_accepted",
+    category: "reply",
+    label: "Invitation LinkedIn acceptée",
+    nodeSub: "Connexion établie après invitation",
+    description:
+      "Quand un prospect accepte votre demande de connexion LinkedIn. Une fois par invitation acceptée.",
+    configTarget: "none",
   },
 
   // ---------- Liste & Tag ----------

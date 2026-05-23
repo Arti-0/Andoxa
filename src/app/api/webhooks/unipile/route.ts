@@ -12,6 +12,7 @@ import { createNotification } from '@/lib/notifications/create-notification';
 import { insertWebhookDedupe } from '@/lib/webhooks/dedupe';
 import { insertProspectActivity } from '@/lib/prospect-activity';
 import { emitWorkflowTrigger } from '@/lib/workflows/fire-trigger';
+import { recordLinkedInInviteAccepted } from '@/lib/linkedin/record-invite-accepted';
 
 const UNIPILE_MESSAGING_HANDLED_EVENTS = new Set([
     'message_received',
@@ -34,9 +35,12 @@ function computeUnipileDedupeKey(body: UnipileWebhookPayload): string | null {
     if (body.event === 'new_relation') {
         const attendee = body.user_provider_id ?? body.attendee_id ?? '';
         const account = body.account_id ?? '';
-        const ts = body.timestamp ?? '';
         if (!attendee || !account) return null;
-        return `new_relation:${account}:${attendee}:${ts}`;
+        // No timestamp in the key: Unipile retries the same logical event with
+        // a refreshed timestamp, which previously defeated dedupe. A second
+        // legitimate acceptance of the same attendee on the same account isn't
+        // a thing LinkedIn does, so the pair is a stable identity.
+        return `new_relation:${account}:${attendee}`;
     }
     return null;
 }
@@ -115,6 +119,13 @@ interface UnipileWebhookPayload {
     };
     account_info?: { user_id?: string; id?: string };
     sender?: { attendee_provider_id?: string };
+    /**
+     * On `message_received`, Unipile includes the full attendee roster of
+     * the chat. We use this in the outbound branch to infer acceptance: if
+     * we just messaged an attendee we previously invited, they must have
+     * accepted.
+     */
+    attendees?: Array<{ attendee_provider_id?: string }>;
 }
 
 async function fetchUnipileAccount(
@@ -178,6 +189,15 @@ async function storeUnipileAccount(
         );
     }
 
+    // On any "good" transition (CREATION_SUCCESS, RECONNECTED, ACCOUNT_STATUS_OK),
+    // zero out the silent-reconnect failure counter so a future credentials
+    // event re-enables the retry budget. Errored events leave the counter alone
+    // (it's incremented from the cron).
+    const isHealthyTransition =
+        eventCode === 'CREATION_SUCCESS' ||
+        eventCode === 'RECONNECTED' ||
+        eventCode === 'ACCOUNT_STATUS_OK';
+
     const { error } = await supabase.from('user_unipile_accounts').upsert(
         [
             {
@@ -191,6 +211,7 @@ async function storeUnipileAccount(
                     : null,
                 last_status_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
+                ...(isHealthyTransition && { reconnect_attempts_failed: 0 }),
                 ...(premiumData != null && {
                     is_premium: premiumData.isPremium,
                     premium_features: premiumData.premiumFeatures,
@@ -774,6 +795,62 @@ export async function POST(req: NextRequest) {
                     }
                 }
             }
+        } else {
+            // Outbound message: we just sent a message in this chat. If the
+            // chat's other attendee is someone we previously invited, that
+            // invite must have been accepted (you can't message non-1st-degree
+            // contacts without InMail). Use this as a secondary acceptance
+            // signal — the helper dedupes against existing invite_accepted
+            // rows, so a missed `new_relation` webhook still gets recovered.
+            if (unipileAccountId) {
+                const supabase = createServiceClient();
+
+                const { data: accountRow } = await supabase
+                    .from('user_unipile_accounts')
+                    .select('user_id, account_type')
+                    .eq('unipile_account_id', unipileAccountId)
+                    .maybeSingle();
+
+                const userId = accountRow?.user_id;
+                const isLinkedIn =
+                    (accountRow?.account_type ?? 'LINKEDIN').toUpperCase() ===
+                    'LINKEDIN';
+
+                if (userId && isLinkedIn) {
+                    // Pull non-self attendees from the payload. accountInfo.user_id
+                    // identifies us; everyone else is a prospect candidate.
+                    const selfProviderId = accountInfo?.user_id ?? null;
+                    const otherAttendees = (body.attendees ?? [])
+                        .map((a) => a?.attendee_provider_id)
+                        .filter(
+                            (p): p is string =>
+                                typeof p === 'string' &&
+                                p.length > 0 &&
+                                p !== selfProviderId
+                        );
+
+                    // 1:1 chats — the common case for invite acceptance — have
+                    // exactly one other attendee. Group chats are skipped (they
+                    // don't model a single acceptance event cleanly).
+                    if (otherAttendees.length === 1) {
+                        try {
+                            await recordLinkedInInviteAccepted(supabase, {
+                                userId,
+                                providerId: otherAttendees[0]!,
+                                accountId: unipileAccountId,
+                                chatId,
+                                source: 'outbound_message',
+                            });
+                        } catch (err) {
+                            console.error(
+                                '[Unipile webhook] outbound acceptance inference:',
+                                err
+                            );
+                            Sentry.captureException(err);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -804,25 +881,22 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ received: true }, { status: 200 });
         }
 
-        const connectedAt = new Date().toISOString();
-        const { error: relErr } = await supabase
-            .from('linkedin_relations')
-            .upsert(
-                [
-                    {
-                        user_id: userId,
-                        attendee_id: attendeeId,
-                        connected_at: connectedAt,
-                    },
-                ],
-                { onConflict: 'user_id,attendee_id' }
-            );
-        if (relErr) {
+        // Pair the acceptance to its sending invite(s), upsert
+        // linkedin_relations, and fire the on_invite_accepted workflow
+        // trigger. Best-effort: errors are captured inside the helper.
+        try {
+            await recordLinkedInInviteAccepted(supabase, {
+                userId,
+                providerId: attendeeId,
+                accountId: unipileAccountId,
+                source: 'new_relation',
+            });
+        } catch (err) {
             console.error(
-                '[Unipile webhook] linkedin_relations upsert:',
-                relErr
+                '[Unipile webhook] recordLinkedInInviteAccepted:',
+                err
             );
-            Sentry.captureException(relErr);
+            Sentry.captureException(err);
         }
 
         const { data: waitingExecutions, error: waitErr } = await supabase
@@ -860,57 +934,6 @@ export async function POST(req: NextRequest) {
                     Sentry.captureException(err);
                 }
             }
-        }
-
-        // Emit `linkedin_invite_accepted` activity for every campaign invite
-        // matching this attendee. process-job-batch.ts stamps `provider_id` and
-        // `account_id` into the invite's details so we can pair the acceptance
-        // back to the exact campaign job — which feeds `campaign_job_stats`
-        // and the /campaigns "Performance" column.
-        try {
-            const { data: matchingInvites } = await supabase
-                .from('prospect_activity')
-                .select(
-                    'id, prospect_id, organization_id, actor_id, campaign_job_id, details'
-                )
-                .eq('action', 'linkedin_invite_sent')
-                .filter('details->>provider_id', 'eq', attendeeId)
-                .filter('details->>account_id', 'eq', unipileAccountId)
-                .order('created_at', { ascending: false })
-                .limit(5);
-
-            for (const inv of matchingInvites ?? []) {
-                if (!inv.prospect_id) continue;
-                // Skip if we've already logged the acceptance for this prospect+job.
-                let dedupeQ = supabase
-                    .from('prospect_activity')
-                    .select('id')
-                    .eq('action', 'linkedin_invite_accepted')
-                    .eq('prospect_id', inv.prospect_id);
-                dedupeQ = inv.campaign_job_id
-                    ? dedupeQ.eq('campaign_job_id', inv.campaign_job_id)
-                    : dedupeQ.is('campaign_job_id', null);
-                const { data: existing } = await dedupeQ.limit(1).maybeSingle();
-                if (existing) continue;
-
-                await insertProspectActivity(supabase, {
-                    organization_id: inv.organization_id,
-                    prospect_id: inv.prospect_id,
-                    actor_id: inv.actor_id ?? userId,
-                    campaign_job_id: inv.campaign_job_id ?? null,
-                    action: 'linkedin_invite_accepted',
-                    details: {
-                        campaign_job_id: inv.campaign_job_id ?? null,
-                        provider_id: attendeeId,
-                    },
-                });
-            }
-        } catch (err) {
-            console.error(
-                '[Unipile webhook] new_relation invite-accepted activity:',
-                err
-            );
-            Sentry.captureException(err);
         }
 
         return NextResponse.json({ received: true }, { status: 200 });

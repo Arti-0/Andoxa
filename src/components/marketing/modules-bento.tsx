@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import {
   CalendarCheck,
   Database,
@@ -13,12 +14,21 @@ import { Eyebrow } from "@/components/marketing/ui/eyebrow";
 import { BentoGrid, BentoGridItem } from "@/components/marketing/aceternity/bento-grid";
 import {
   CalendarMockup,
-  CampaignsMockup,
-  CrmMockup,
-  DashboardMockup,
   InboxMockup,
-  WorkflowsMockup,
 } from "@/components/marketing/mockups/product-mockups";
+
+function Screenshot({ src, alt }: { src: string; alt: string }) {
+  return (
+    <Image
+      src={src}
+      alt={alt}
+      fill
+      sizes="(min-width: 768px) 50vw, 100vw"
+      className="object-cover"
+      style={{ objectPosition: "center top" }}
+    />
+  );
+}
 
 /**
  * "Six modules, une seule interface" bento. Cells host the realistic product
@@ -53,7 +63,7 @@ export function MarketingModulesBentoSection() {
             title="Tableau de bord"
             description="RDV, taux de réponse, closings : pilotez la performance avec les KPI qui comptent."
             icon={<LayoutDashboard size={16} />}
-            header={<Cell><DashboardMockup /></Cell>}
+            header={<Cell><Screenshot src="/screenshots/02-dashboard.png" alt="Tableau de bord Andoxa" /></Cell>}
           />
           <BentoGridItem
             title="Messagerie"
@@ -71,20 +81,20 @@ export function MarketingModulesBentoSection() {
             title="CRM"
             description="Pipeline visuel, fiches prospect, listes segmentées."
             icon={<Database size={16} />}
-            header={<Cell><CrmMockup /></Cell>}
+            header={<Cell><Screenshot src="/screenshots/03-crm.png" alt="CRM Andoxa" /></Cell>}
           />
           <BentoGridItem
             title="Campagnes"
             description="Invitations et séquences LinkedIn dans le respect des limites."
             icon={<Megaphone size={16} />}
-            header={<Cell><CampaignsMockup /></Cell>}
+            header={<Cell><Screenshot src="/screenshots/04-campagnes.png" alt="Campagnes Andoxa" /></Cell>}
           />
           <BentoGridItem
             className="md:col-span-3 md:row-span-2"
             title="Workflows"
             description="Automations visuelles type Zapier, pensées pour les sales. Triggers avancés sur silence, no-show, statut."
             icon={<Workflow size={16} />}
-            header={<Cell><WorkflowsMockup /></Cell>}
+            header={<Cell><Screenshot src="/screenshots/09-workflow-canvas.png" alt="Workflow canvas Andoxa" /></Cell>}
           />
         </BentoGrid>
       </Container>

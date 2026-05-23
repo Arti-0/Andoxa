@@ -27,6 +27,7 @@ import {
   useDeleteSession,
   useDuplicateJob,
   useLaunchJob,
+  useOrgMembersForCampaigns,
   useUpdateJobStatus,
   type CampaignJobBulkOperation,
 } from "./queries";
@@ -79,6 +80,7 @@ export default function CampaignsPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const { workspaceId } = useWorkspace();
+  const { data: orgMembers = [] } = useOrgMembersForCampaigns();
   const {
     data: campaigns = [],
     isPlaceholderData: campaignsPlaceholder,
@@ -447,7 +449,11 @@ export default function CampaignsPage() {
       </div>
 
       <div className="px-6 pt-5 lg:px-8">
-        <KpiBar period={filters.period} creators={filters.creators} />
+        <KpiBar
+          period={filters.period}
+          creators={filters.creators}
+          memberDirectory={orgMembers}
+        />
       </div>
 
       <div className="flex flex-wrap items-end justify-between gap-4 px-6 pt-6 lg:px-8">
@@ -504,6 +510,7 @@ export default function CampaignsPage() {
           setFilters={setFilters}
           totalCount={totalCount}
           filteredCount={counts.all}
+          members={orgMembers}
         />
       </div>
 

@@ -1,35 +1,30 @@
 import { createApiHandler, Errors } from "@/lib/api";
+import { loadCampaignJobStats } from "@/lib/campaigns/job-stats";
 import { isMockStatsEnabled, mockCampaignJobStats } from "@/lib/mock-stats";
 
 /**
  * GET /api/campaigns/jobs/stats
  *
- * Returns per-job aggregate counters for the current workspace. Backed by the
- * `campaign_job_stats` SQL view (see migrations/047_campaign_job_stats.sql).
- * Used by /campaigns2's job list to show accepted/replied/meetings inline.
- *
- * Shape: { items: [{ job_id, accepted, replied, meetings }] }
+ * Per-job accepted / replied / meetings counters for the campaigns table
+ * performance column. Aggregated from prospect_activity with job attribution
+ * (explicit campaign_job_id, or prospect membership on the job).
  */
 export const GET = createApiHandler(async (_req, ctx) => {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
 
-  const { data, error } = await ctx.supabase
-    .from("campaign_job_stats")
-    .select("job_id, accepted, replied, meetings")
-    .eq("organization_id", ctx.workspaceId);
-
-  if (error) {
-    // The view ships in migration 047 — if it hasn't been applied yet, return
-    // an empty list rather than 500'ing the whole list endpoint.
-    return { items: [] as { job_id: string; accepted: number; replied: number; meetings: number }[] };
+  let rows: Awaited<ReturnType<typeof loadCampaignJobStats>>;
+  try {
+    rows = await loadCampaignJobStats(ctx.supabase, ctx.workspaceId);
+  } catch (err) {
+    console.error("[campaigns/jobs/stats] aggregation failed:", err);
+    throw Errors.internal("Failed to load campaign stats");
   }
 
-  const rows = data ?? [];
   if (isMockStatsEnabled()) {
     return {
       items: rows.map((row, i) => ({
         job_id: row.job_id,
-        ...mockCampaignJobStats(row.accepted ?? 0, i),
+        ...mockCampaignJobStats(row.accepted, i),
       })),
     };
   }

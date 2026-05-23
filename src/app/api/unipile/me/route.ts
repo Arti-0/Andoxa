@@ -1,6 +1,8 @@
 import { createApiHandler } from "@/lib/api";
 import { inferLinkedInAccountTier } from "@/lib/linkedin/tier";
 import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";
+import { reconcileUnipileAccountStatusFromAccount } from "@/lib/unipile/account-status";
+import type { UnipileAccount } from "@/lib/unipile/types";
 
 function isUnipileAccountGoneError(e: unknown): boolean {
   if (e instanceof UnipileApiError) {
@@ -18,8 +20,13 @@ function toStringArray(features: unknown): string[] {
 
 /**
  * GET /api/unipile/me
- * Returns connection status for LinkedIn and WhatsApp Unipile accounts.
- * Vérifie encore l’existence du compte côté Unipile ; si 404, supprime la ligne locale (id obsolète).
+ *
+ * Returns LinkedIn + WhatsApp connection state for the current user, and
+ * keeps `user_unipile_accounts` in sync with Unipile's authoritative view:
+ *   - 404 → row deleted (account is gone Unipile-side).
+ *   - Otherwise → `sources[].status` is mapped to our local `status` and
+ *     written back if it changed. Closes the desync window when a status
+ *     webhook (ACCOUNT_CREDENTIALS, ACCOUNT_STOPPED, ...) is missed.
  */
 export const GET = createApiHandler(
   async (_req, ctx) => {
@@ -35,12 +42,25 @@ export const GET = createApiHandler(
 
     let linkedinClearedStale = false;
     let whatsappClearedStale = false;
+    let linkedinReconciledStatus: string | null = null;
+    let whatsappReconciledStatus: string | null = null;
 
     if (linkedin?.unipile_account_id) {
       try {
-        await unipileFetch(
+        const account = await unipileFetch<UnipileAccount>(
           `/accounts/${encodeURIComponent(linkedin.unipile_account_id)}`
         );
+        const reconciled = await reconcileUnipileAccountStatusFromAccount(
+          ctx.supabase,
+          {
+            userId: ctx.userId,
+            accountType: "LINKEDIN",
+            unipileAccount: account,
+          }
+        );
+        if (reconciled?.changed) {
+          linkedinReconciledStatus = reconciled.status;
+        }
       } catch (e) {
         if (isUnipileAccountGoneError(e)) {
           const { error: delErr } = await ctx.supabase
@@ -62,9 +82,20 @@ export const GET = createApiHandler(
 
     if (whatsapp?.unipile_account_id) {
       try {
-        await unipileFetch(
+        const account = await unipileFetch<UnipileAccount>(
           `/accounts/${encodeURIComponent(whatsapp.unipile_account_id)}`
         );
+        const reconciled = await reconcileUnipileAccountStatusFromAccount(
+          ctx.supabase,
+          {
+            userId: ctx.userId,
+            accountType: "WHATSAPP",
+            unipileAccount: account,
+          }
+        );
+        if (reconciled?.changed) {
+          whatsappReconciledStatus = reconciled.status;
+        }
       } catch (e) {
         if (isUnipileAccountGoneError(e)) {
           const { error: delErr } = await ctx.supabase
@@ -89,20 +120,24 @@ export const GET = createApiHandler(
       toStringArray(linkedin?.premium_features)
     );
 
+    const linkedinStatus = linkedinClearedStale
+      ? "disconnected"
+      : (linkedinReconciledStatus ?? linkedin?.status ?? "unknown");
+
+    const whatsappStatus = whatsappClearedStale
+      ? "disconnected"
+      : (whatsappReconciledStatus ?? whatsapp?.status ?? "unknown");
+
     return {
       connected: !!linkedin?.unipile_account_id,
       account_id: linkedin?.unipile_account_id ?? undefined,
-      linkedin_status: linkedinClearedStale
-        ? "disconnected"
-        : (linkedin?.status ?? "unknown"),
+      linkedin_status: linkedinStatus,
       linkedin_error: linkedin?.error_message ?? null,
       linkedin_is_premium: linkedin?.is_premium ?? false,
       linkedin_premium_features: toStringArray(linkedin?.premium_features),
       linkedin_tier: linkedinTier,
       whatsapp_connected: !!whatsapp?.unipile_account_id,
-      whatsapp_status: whatsappClearedStale
-        ? "disconnected"
-        : (whatsapp?.status ?? "unknown"),
+      whatsapp_status: whatsappStatus,
       whatsapp_error: whatsapp?.error_message ?? null,
     };
   },

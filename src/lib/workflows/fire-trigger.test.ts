@@ -118,6 +118,20 @@ describe("matchesConfig", () => {
         )
       ).toBe(true);
     });
+
+    it("on_invite_accepted always matches", () => {
+      expect(
+        matchesConfig(
+          {
+            kind: "on_invite_accepted",
+            providerId: "p1",
+            accountId: "a1",
+            campaignJobId: "job-A",
+          },
+          {}
+        )
+      ).toBe(true);
+    });
   });
 
   it("manual never matches (handled by /api/workflows/[id]/runs)", () => {
@@ -198,6 +212,32 @@ describe("buildEnrollmentMetadata", () => {
   it("tag dedupe is the tagId — re-applying same tag is a no-op", () => {
     const meta = buildEnrollmentMetadata({ kind: "on_tag", tagId: "tag-1" });
     expect(meta.dedupe_key).toBe("tag_added:tag-1");
+  });
+
+  it("invite_accepted dedupe is account:provider — same prospect can't re-fire", () => {
+    const meta = buildEnrollmentMetadata({
+      kind: "on_invite_accepted",
+      providerId: "prov-1",
+      accountId: "acc-7",
+      campaignJobId: "job-9",
+    });
+    expect(meta).toMatchObject({
+      source: "invite_accepted",
+      provider_id: "prov-1",
+      account_id: "acc-7",
+      campaign_job_id: "job-9",
+      dedupe_key: "invite_accepted:acc-7:prov-1",
+    });
+  });
+
+  it("invite_accepted carries null campaign_job_id for direct sends", () => {
+    const meta = buildEnrollmentMetadata({
+      kind: "on_invite_accepted",
+      providerId: "prov-2",
+      accountId: "acc-2",
+      campaignJobId: null,
+    });
+    expect(meta.campaign_job_id).toBeNull();
   });
 
   it("linkedin_reply and campaign_reply on the same message have distinct dedupe namespaces", () => {

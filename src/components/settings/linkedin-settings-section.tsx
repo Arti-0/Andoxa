@@ -288,6 +288,10 @@ export function LinkedInSettingsSection() {
             const res = await fetch("/api/unipile/connect-linkedin", {
                 method: "POST",
                 credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                // Return the user to /settings after the Hosted Auth flow
+                // (default lands on /onboarding, which is wrong for reconnects).
+                body: JSON.stringify({ redirect: "/settings" }),
             });
             const json = await res.json();
             const data = json?.data ?? json;

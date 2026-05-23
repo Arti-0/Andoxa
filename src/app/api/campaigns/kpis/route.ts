@@ -121,39 +121,46 @@ export const GET = createApiHandler(async (req, ctx): Promise<KpiResponse> => {
   const meetings = scoped.filter((a) => a.action === "rdv_scheduled");
 
   // ─── Calls ─────────────────────────────────────────────────────────────────
-  //
-  // The "calls passed" metric counts rows in call_session_prospects that have
-  // been processed (outcome IS NOT NULL). We join to call_sessions for the org
-  // scope and creator filter. `created_at` here is the call_session_prospects
-  // row's creation; if a more accurate timestamp exists (`called_at`) we use
-  // that instead via a server-side coalesce in JS below.
+  // Two-step fetch: sessions scoped to org (+ optional creator filter), then
+  // prospect rows with an outcome. Avoids PostgREST embedded joins that fail
+  // when the FK hint is missing from generated types / schema cache.
 
-  let callsQuery = ctx.supabase
-    .from("call_session_prospects")
-    .select(
-      "called_at, outcome, call_sessions!inner(organization_id, created_by, created_at)",
-    )
-    .not("outcome", "is", null);
+  let sessionsQuery = ctx.supabase
+    .from("call_sessions")
+    .select("id, created_by, created_at")
+    .eq("organization_id", ctx.workspaceId);
   if (creators.length > 0) {
-    callsQuery = callsQuery.in("call_sessions.created_by", creators);
+    sessionsQuery = sessionsQuery.in("created_by", creators);
   }
-  const { data: callsRaw, error: cErr } = await callsQuery;
-  if (cErr) throw Errors.internal("Failed to load calls");
+  const { data: callSessions, error: sessionsErr } = await sessionsQuery;
+  if (sessionsErr) throw Errors.internal("Failed to load call sessions");
 
-  type CallRow = {
-    called_at: string | null;
-    call_sessions?: { organization_id?: string; created_at?: string } | null;
-  };
+  const sessionById = new Map(
+    (callSessions ?? []).map((s) => [s.id, s]),
+  );
+  const sessionIds = [...sessionById.keys()];
+
   const prevStartMs = prevStart.getTime();
-  const calls = ((callsRaw ?? []) as unknown as CallRow[])
-    .filter((row) => row.call_sessions?.organization_id === ctx.workspaceId)
-    .map((row) => ({
-      created_at: row.called_at ?? row.call_sessions?.created_at ?? "",
-    }))
-    .filter((row) => {
-      if (!row.created_at) return false;
-      return new Date(row.created_at).getTime() >= prevStartMs;
-    });
+  let calls: { created_at: string }[] = [];
+  if (sessionIds.length > 0) {
+    const { data: callRows, error: cErr } = await ctx.supabase
+      .from("call_session_prospects")
+      .select("call_session_id, called_at, outcome")
+      .in("call_session_id", sessionIds)
+      .not("outcome", "is", null);
+    if (cErr) throw Errors.internal("Failed to load calls");
+
+    calls = (callRows ?? [])
+      .map((row) => {
+        const session = sessionById.get(row.call_session_id);
+        const created_at = row.called_at ?? session?.created_at ?? "";
+        return { created_at };
+      })
+      .filter((row) => {
+        if (!row.created_at) return false;
+        return new Date(row.created_at).getTime() >= prevStartMs;
+      });
+  }
 
   // ─── Compose ───────────────────────────────────────────────────────────────
 

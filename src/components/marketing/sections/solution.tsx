@@ -4,9 +4,8 @@ import { motion, useReducedMotion } from "framer-motion";
 import { CalendarCheck, Database } from "lucide-react";
 import { Eyebrow } from "@/components/marketing/ui/eyebrow";
 import { LinkedinIcon, WhatsappIcon } from "@/components/marketing/icons/brand-icons";
+import Image from "next/image";
 import { ContainerScroll } from "@/components/marketing/aceternity/container-scroll-animation";
-import { EmbeddedPage } from "@/components/marketing/ui/embedded-page";
-import { ANDOXA_PAGE } from "@/lib/andoxa-pages";
 
 const SOURCES = [
   { icon: LinkedinIcon, label: "LinkedIn", tone: "blue" as const },
@@ -77,7 +76,15 @@ export function MarketingSolutionSection() {
         }
       >
         <div className="relative h-full w-full select-none">
-          <EmbeddedPage src={ANDOXA_PAGE.dashboard} title="" eager className="h-full w-full" />
+          <Image
+            src="/screenshots/02-dashboard.png"
+            alt="Tableau de bord Andoxa"
+            fill
+            priority
+            sizes="(min-width: 1024px) 1100px, 100vw"
+            className="object-cover"
+            style={{ objectPosition: "center top" }}
+          />
         </div>
       </ContainerScroll>
     </div>

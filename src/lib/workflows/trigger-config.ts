@@ -46,6 +46,7 @@ const SCHEMAS: Record<WorkflowTriggerKind, z.ZodTypeAny> = {
   on_no_show: EmptySchema,
   on_linkedin_reply: EmptySchema,
   on_whatsapp_reply: EmptySchema,
+  on_invite_accepted: EmptySchema,
   on_status_change: StatusConfigSchema,
   on_tag: TagConfigSchema,
   on_list_add: ListConfigSchema,

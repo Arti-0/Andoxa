@@ -49,6 +49,7 @@ const TRIGGER_ICONS: Record<
   on_no_show: asLucide(CalendarX),
   on_status_change: asLucide(Database),
   on_linkedin_reply: LinkedinIcon,
+  on_invite_accepted: LinkedinIcon,
   on_whatsapp_reply: WhatsappIcon,
   on_campaign_reply: asLucide(Megaphone),
   on_list_add: asLucide(ListPlus),

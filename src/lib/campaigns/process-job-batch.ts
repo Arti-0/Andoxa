@@ -9,6 +9,7 @@ import {
   UnipileRateLimitError,
   unipileFetch,
 } from "@/lib/unipile/client";
+import { markUnipileAccountErroredFromError } from "@/lib/unipile/account-status";
 import {
   applyMessageVariables,
   extractLinkedInSlug,
@@ -391,6 +392,10 @@ async function runBatchLinkedIn(
         break;
       }
       const msg = err instanceof UnipileApiError ? err.message : String(err);
+      // If Unipile told us the account is broken (creds expired, disconnected,
+      // etc.), flip user_unipile_accounts.status='error' so the in-app banner
+      // appears even if the status webhook was missed. Best-effort, no throw.
+      void markUnipileAccountErroredFromError(accountId, err);
       await supabase
         .from("campaign_job_prospects")
         .update({
@@ -611,6 +616,7 @@ async function runBatchWhatsApp(
         break;
       }
       const msg = err instanceof UnipileApiError ? err.message : String(err);
+      void markUnipileAccountErroredFromError(accountId, err);
       await supabase
         .from("campaign_job_prospects")
         .update({

@@ -1,12 +1,14 @@
 ﻿'use client';
 
 import { useEffect, useRef, useState, useMemo, Suspense } from 'react';
+import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { logger } from '@/lib/utils/logger';
 import { translateAuthError } from '@/lib/utils/translate-auth-error';
 import { resolveClientAppOrigin } from '@/lib/config/app-url';
@@ -14,15 +16,7 @@ import { toast } from '@/lib/toast';
 
 const MIN_PASSWORD_LEN = 8;
 
-function isInvalidCredentialsMessage(message: string, code?: string): boolean {
-    const m = message.toLowerCase();
-    if (code === 'invalid_credentials') return true;
-    return (
-        m.includes('invalid login credentials') ||
-        m.includes('invalid credentials') ||
-        m.includes('wrong password')
-    );
-}
+type AuthTab = 'login' | 'signup';
 
 function isEmailNotConfirmedError(message: string, code?: string): boolean {
     const m = message.toLowerCase();
@@ -52,20 +46,6 @@ function appPublicOrigin(): string {
     return resolveClientAppOrigin();
 }
 
-async function postUpdatePassword(password: string): Promise<{
-    ok: boolean;
-    error?: string;
-}> {
-    const res = await fetch('/api/auth/update-password', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-    });
-    const data = (await res.json()) as { success?: boolean; error?: string };
-    return { ok: res.ok && data.success === true, error: data.error };
-}
-
 async function redeemInviteToken(token: string): Promise<boolean> {
     const res = await fetch('/api/invitations/redeem', {
         method: 'POST',
@@ -87,6 +67,17 @@ async function redeemInviteToken(token: string): Promise<boolean> {
     return true;
 }
 
+function resolveInitialTab(
+    modeParam: string | null,
+    tabParam: string | null,
+    inviteToken: string | null
+): AuthTab {
+    if (modeParam === 'set-password') return 'login';
+    if (tabParam === 'signup') return 'signup';
+    if (inviteToken) return 'signup';
+    return 'login';
+}
+
 function EmailPasswordLoginFormInner() {
     const router = useRouter();
     const pathname = usePathname();
@@ -95,12 +86,18 @@ function EmailPasswordLoginFormInner() {
     const modeParam = searchParams.get('mode');
     const inviteToken = searchParams.get('invite_token');
     const inviteEmailParam = searchParams.get('email');
+    const tabParam = searchParams.get('tab');
 
     const safeNext =
         nextParam?.startsWith('/') && !nextParam.startsWith('//')
             ? nextParam
             : '/dashboard';
 
+    const isSetPasswordMode = modeParam === 'set-password';
+
+    const [authTab, setAuthTab] = useState<AuthTab>(() =>
+        resolveInitialTab(modeParam, tabParam, inviteToken)
+    );
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -111,10 +108,16 @@ function EmailPasswordLoginFormInner() {
 
     const emailLocked = Boolean(
         inviteEmailParam?.trim() &&
-        (Boolean(inviteToken) || modeParam === 'set-password')
+        (Boolean(inviteToken) || isSetPasswordMode)
     );
 
     const supabase = useMemo(() => createClient(), []);
+
+    const forgotPasswordHref = useMemo(() => {
+        const trimmed = email.trim();
+        if (!trimmed) return '/auth/forgot-password';
+        return `/auth/forgot-password?email=${encodeURIComponent(trimmed)}`;
+    }, [email]);
 
     useEffect(() => {
         if (invitePrefillDone.current || !inviteEmailParam?.trim()) return;
@@ -133,6 +136,123 @@ function EmailPasswordLoginFormInner() {
         router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
     }, [urlError, pathname, router, searchParams]);
 
+    const handleTabChange = (value: string) => {
+        if (value !== 'login' && value !== 'signup') return;
+        setAuthTab(value);
+        const params = new URLSearchParams(searchParams.toString());
+        if (value === 'signup') {
+            params.set('tab', 'signup');
+        } else {
+            params.delete('tab');
+        }
+        const q = params.toString();
+        router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
+    };
+
+    const finishAuthenticated = async () => {
+        if (inviteToken) {
+            const ok = await redeemInviteToken(inviteToken);
+            if (!ok) return;
+            router.push('/onboarding');
+        } else {
+            router.push(safeNext);
+        }
+        router.refresh();
+    };
+
+    const handleLogin = async (trimmedEmail: string) => {
+        const { error: signInErr } = await supabase.auth.signInWithPassword({
+            email: trimmedEmail,
+            password,
+        });
+
+        if (signInErr) {
+            const signInMsg = signInErr.message ?? '';
+            const signInCode =
+                'code' in signInErr
+                    ? (signInErr as { code?: string }).code
+                    : undefined;
+
+            if (isEmailNotConfirmedError(signInMsg, signInCode)) {
+                toast.error(translateAuthError(signInErr));
+                return;
+            }
+
+            toast.error(translateAuthError(signInErr));
+            return;
+        }
+
+        await finishAuthenticated();
+    };
+
+    const handleSignup = async (trimmedEmail: string) => {
+        const base = appPublicOrigin();
+        const nextAfterConfirm = inviteToken ? '/onboarding' : '/dashboard';
+        const confirmQuery = inviteToken
+            ? `invite_token=${encodeURIComponent(inviteToken)}&next=${encodeURIComponent(nextAfterConfirm)}`
+            : `next=${encodeURIComponent(nextAfterConfirm)}`;
+        const emailRedirectTo = base
+            ? `${base}/api/auth/confirm?${confirmQuery}`
+            : undefined;
+
+        const { data: signUpData, error: signUpErr } =
+            await supabase.auth.signUp({
+                email: trimmedEmail,
+                password,
+                options: emailRedirectTo ? { emailRedirectTo } : undefined,
+            });
+
+        if (signUpErr) {
+            if (
+                isDuplicateSignupError(
+                    signUpErr.message ?? '',
+                    signUpErr.code
+                )
+            ) {
+                toast.error(
+                    'Un compte existe déjà avec cet e-mail. Connectez-vous.'
+                );
+                handleTabChange('login');
+            } else {
+                toast.error(translateAuthError(signUpErr));
+            }
+            return;
+        }
+
+        if (signUpData.session) {
+            await finishAuthenticated();
+            return;
+        }
+
+        toast.success(
+            'Un e-mail de confirmation vient de vous être envoyé.'
+        );
+        setPassword('');
+    };
+
+    const handleSetPassword = async () => {
+        const res = await fetch('/api/auth/update-password', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password }),
+        });
+
+        const data = (await res.json()) as {
+            success?: boolean;
+            error?: string;
+        };
+
+        if (!res.ok || !data.success) {
+            toast.error(
+                data.error ?? 'Impossible de définir le mot de passe.'
+            );
+            return;
+        }
+
+        window.location.assign(safeNext);
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const trimmedEmail = email.trim();
@@ -149,145 +269,16 @@ function EmailPasswordLoginFormInner() {
 
         setLoading(true);
         try {
-            if (modeParam === 'set-password') {
-                const res = await fetch('/api/auth/update-password', {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password }),
-                });
-
-                const data = (await res.json()) as {
-                    success?: boolean;
-                    error?: string;
-                };
-
-                console.log(
-                    '[set-password] status:',
-                    res.status,
-                    'data:',
-                    data
-                );
-                console.log(
-                    '[set-password] safeNext:',
-                    safeNext,
-                    'nextParam:',
-                    nextParam
-                );
-
-                if (!res.ok || !data.success) {
-                    toast.error(
-                        data.error ?? 'Impossible de définir le mot de passe.'
-                    );
-                    return;
-                }
-
-                // Navigation document complète : le proxy voit les cookies posés par update-password.
-                // assign est plus fiable que location.href (moins interceptable) vs router.refresh/push.
-                window.location.assign(safeNext);
+            if (isSetPasswordMode) {
+                await handleSetPassword();
                 return;
             }
 
-            const { error: signInErr } = await supabase.auth.signInWithPassword(
-                {
-                    email: trimmedEmail,
-                    password,
-                }
-            );
-
-            if (!signInErr) {
-                if (inviteToken) {
-                    const ok = await redeemInviteToken(inviteToken);
-                    if (!ok) {
-                        return;
-                    }
-                    router.push('/onboarding');
-                } else {
-                    router.push(safeNext);
-                }
-                router.refresh();
-                return;
+            if (authTab === 'login') {
+                await handleLogin(trimmedEmail);
+            } else {
+                await handleSignup(trimmedEmail);
             }
-
-            const signInMsg = signInErr.message ?? '';
-            const signInCode =
-                'code' in signInErr
-                    ? (signInErr as { code?: string }).code
-                    : undefined;
-
-            if (isEmailNotConfirmedError(signInMsg, signInCode)) {
-                toast.error(translateAuthError(signInErr));
-                return;
-            }
-
-            if (!isInvalidCredentialsMessage(signInMsg, signInCode)) {
-                toast.error(translateAuthError(signInErr));
-                return;
-            }
-
-            const base = appPublicOrigin();
-            const nextAfterConfirm = inviteToken ? '/onboarding' : '/dashboard';
-            const confirmQuery = inviteToken
-                ? `invite_token=${encodeURIComponent(inviteToken)}&next=${encodeURIComponent(nextAfterConfirm)}`
-                : `next=${encodeURIComponent(nextAfterConfirm)}`;
-            const emailRedirectTo = base
-                ? `${base}/api/auth/confirm?${confirmQuery}`
-                : undefined;
-
-            const { data: signUpData, error: signUpErr } =
-                await supabase.auth.signUp({
-                    email: trimmedEmail,
-                    password,
-                    options: emailRedirectTo ? { emailRedirectTo } : undefined,
-                });
-
-            if (signUpErr) {
-                if (
-                    isDuplicateSignupError(
-                        signUpErr.message ?? '',
-                        signUpErr.code
-                    )
-                ) {
-                    if (inviteToken) {
-                        const { ok: pwdOk, error: pwdErr } =
-                            await postUpdatePassword(password);
-                        if (!pwdOk) {
-                            toast.error(
-                                pwdErr ??
-                                    'Veuillez d’abord cliquer sur le lien reçu par e-mail avant de définir votre mot de passe.'
-                            );
-                            return;
-                        }
-                        const ok = await redeemInviteToken(inviteToken);
-                        if (!ok) return;
-                        router.push('/onboarding');
-                        router.refresh();
-                        return;
-                    }
-                    toast.error('Mot de passe incorrect.');
-                } else {
-                    toast.error(translateAuthError(signUpErr));
-                }
-                return;
-            }
-
-            if (signUpData.session) {
-                if (inviteToken) {
-                    const ok = await redeemInviteToken(inviteToken);
-                    if (!ok) return;
-                    router.push('/onboarding');
-                } else {
-                    router.push(safeNext);
-                }
-                router.refresh();
-                return;
-            }
-
-            toast.success(
-                'Un e-mail de confirmation vient de vous être envoyé.'
-            );
-            setPassword('');
-            return;
         } catch (err: unknown) {
             logger.error('Email auth error:', err);
             toast.error(
@@ -299,10 +290,6 @@ function EmailPasswordLoginFormInner() {
     };
 
     const handleGoogle = async () => {
-        // Supabase OAuth handles the round-trip — emailRedirectTo equivalent
-        // is `redirectTo`. We send users back to /auth/callback which finishes
-        // the code exchange and forwards to `safeNext` (or /onboarding when an
-        // invite is in play).
         const base = appPublicOrigin();
         const nextAfter = inviteToken ? '/onboarding' : safeNext;
         const callbackQuery = inviteToken
@@ -317,8 +304,13 @@ function EmailPasswordLoginFormInner() {
         if (error) {
             toast.error(translateAuthError(error));
         }
-        // No success-path navigation here — Supabase performs a full redirect.
     };
+
+    const submitLabel = isSetPasswordMode
+        ? 'Enregistrer le mot de passe'
+        : authTab === 'login'
+          ? 'Se connecter'
+          : 'Créer mon compte';
 
     return (
         <Card className="backdrop-blur-xl bg-white/10 dark:bg-black/20 border-white/20 dark:border-white/10 shadow-xl rounded-2xl">
@@ -326,15 +318,36 @@ function EmailPasswordLoginFormInner() {
                 <div className="space-y-6">
                     <div className="text-center">
                         <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-200">
-                            Connexion ou création
+                            {isSetPasswordMode
+                                ? 'Définir votre mot de passe'
+                                : authTab === 'login'
+                                  ? 'Connexion'
+                                  : 'Créer un compte'}
                         </h2>
                         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                            Un seul formulaire — on détecte si vous avez déjà un compte.
+                            {isSetPasswordMode
+                                ? 'Choisissez un mot de passe pour accéder à votre espace.'
+                                : authTab === 'login'
+                                  ? 'Accédez à votre espace Andoxa.'
+                                  : 'Inscrivez-vous pour commencer avec Andoxa.'}
                         </p>
                     </div>
 
-                    {/* Google OAuth — single click, no password to remember. The
-                        Supabase callback finishes the exchange via /auth/callback. */}
+                    {!isSetPasswordMode ? (
+                        <Tabs
+                            value={authTab}
+                            onValueChange={handleTabChange}
+                            className="gap-4"
+                        >
+                            <TabsList className="grid h-10 w-full grid-cols-2 bg-slate-100/80 dark:bg-white/5">
+                                <TabsTrigger value="login">Connexion</TabsTrigger>
+                                <TabsTrigger value="signup">
+                                    Créer un compte
+                                </TabsTrigger>
+                            </TabsList>
+                        </Tabs>
+                    ) : null}
+
                     <button
                         type="button"
                         onClick={handleGoogle}
@@ -379,7 +392,11 @@ function EmailPasswordLoginFormInner() {
                             <Input
                                 id="auth-password"
                                 type="password"
-                                autoComplete="current-password"
+                                autoComplete={
+                                    authTab === 'signup' || isSetPasswordMode
+                                        ? 'new-password'
+                                        : 'current-password'
+                                }
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
@@ -392,14 +409,21 @@ function EmailPasswordLoginFormInner() {
                             className="w-full h-11"
                             disabled={loading}
                         >
-                            {loading ? 'Patientez…' : 'Continuer'}
+                            {loading ? 'Patientez…' : submitLabel}
                         </Button>
-                    </form>
 
-                    <p className="text-center text-[11.5px] text-slate-500 dark:text-slate-400">
-                        Première fois ? On crée votre compte automatiquement.{' '}
-                        Déjà inscrit ? On vous connecte.
-                    </p>
+                        {authTab === 'login' && !isSetPasswordMode ? (
+                            <p className="text-center text-[11.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+                                Mot de passe oublié ?{' '}
+                                <Link
+                                    href={forgotPasswordHref}
+                                    className="font-medium text-slate-700 underline-offset-2 hover:underline dark:text-slate-300"
+                                >
+                                    Réinitialiser par e-mail
+                                </Link>
+                            </p>
+                        ) : null}
+                    </form>
                 </div>
             </CardContent>
         </Card>

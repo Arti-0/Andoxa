@@ -63,6 +63,7 @@ import {
   sortProspects,
   type ProspectSortKey,
 } from "./crm-prospect-sort";
+import { extractCleanRole } from "@/lib/utils/extract-role";
 
 /* ============================================================
    Types
@@ -619,8 +620,8 @@ function TableView({
     rows.length > 0 && !allSelected && rows.some((p) => selected.has(p.id));
 
   return (
-    <div className="overflow-x-auto rounded-xl border bg-card">
-      <table className="w-full min-w-[920px] border-collapse text-[13.5px]">
+    <div className="overflow-x-auto overscroll-x-contain rounded-xl border bg-card scrollbar-gutter-stable">
+      <table className="w-full table-fixed border-collapse text-[13.5px]">
         <thead>
           <tr>
             <th className="h-[38px] w-[42px] border-b bg-muted/40 pl-3.5 align-middle">
@@ -638,12 +639,12 @@ function TableView({
               />
             </th>
             <ProTh>Prospect</ProTh>
-            <ProTh>Statut pipeline</ProTh>
-            <ProTh>Source</ProTh>
-            <ProTh>Dernière activité</ProTh>
-            <ProTh>Workflow</ProTh>
-            <ProTh>Canaux</ProTh>
-            <ProTh className="w-[120px]" />
+            <ProTh className="w-[118px]">Statut pipeline</ProTh>
+            <ProTh className="w-[108px]">Source</ProTh>
+            <ProTh className="w-[132px]">Dernière activité</ProTh>
+            <ProTh className="w-[148px]">Workflow</ProTh>
+            <ProTh className="w-[72px]">Canaux</ProTh>
+            <ProTh className="w-[108px]" />
           </tr>
         </thead>
         <tbody>
@@ -771,28 +772,34 @@ function ProspectRow({
           />
         </label>
       </td>
-      <td className="p-3.5">
-        <div className="flex items-center gap-2.5">
+      <td className="max-w-0 p-3.5">
+        <div className="flex min-w-0 items-center gap-2.5">
           <NameAvatar
             name={p.full_name ?? "?"}
             size={34}
             photo={prospectPhoto(p)}
           />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="truncate font-medium">
               {p.full_name ?? "Sans nom"}
             </div>
-            <div className="mt-0.5 truncate text-xs text-muted-foreground">
-              {p.job_title ?? "—"}
+            <div
+              className="mt-0.5 truncate text-xs text-muted-foreground"
+              title={
+                [p.job_title, p.company].filter(Boolean).join(" · ") ||
+                undefined
+              }
+            >
+              {p.job_title ? extractCleanRole(p.job_title) : "—"}
               {p.company ? ` · ${p.company}` : ""}
             </div>
           </div>
         </div>
       </td>
-      <td className="p-3.5">
+      <td className="max-w-0 p-3.5">
         <StatusPill status={p.status} />
       </td>
-      <td className="p-3.5">
+      <td className="max-w-0 p-3.5">
         <SourcePill
           source={p.source}
           list={listName}
@@ -800,35 +807,41 @@ function ProspectRow({
           onClick={onSourceClick}
         />
       </td>
-      <td className="p-3.5">
+      <td className="max-w-0 overflow-hidden p-3.5">
         {tier ? (
           <span
-            className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[12.5px] font-medium ${tCls.bg} ${tCls.text}`}
+            className={`inline-flex max-w-full items-center gap-1.5 truncate rounded-md px-2 py-0.5 text-[12.5px] font-medium ${tCls.bg} ${tCls.text}`}
+            title={activityLabel}
           >
-            <span className={`h-1.5 w-1.5 rounded-full ${tCls.dot}`} />
-            {activityLabel}
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${tCls.dot}`} />
+            <span className="truncate">{activityLabel}</span>
           </span>
         ) : (
-          <span className="text-[12.5px] text-muted-foreground">
+          <span
+            className="block truncate text-[12.5px] text-muted-foreground"
+            title={activityLabel}
+          >
             {activityLabel}
           </span>
         )}
       </td>
-      <td className="p-3.5">
+      <td className="max-w-0 overflow-hidden p-3.5">
         {p.workflow ? (
           <span
             data-stop
-            className="inline-flex items-center gap-1.5 rounded-md bg-violet-50 px-2 py-0.5 text-[12px] font-medium text-violet-700 dark:bg-violet-900/20 dark:text-violet-300"
+            className="inline-flex max-w-full items-center gap-1.5 truncate rounded-md bg-violet-50 px-2 py-0.5 text-[12px] font-medium text-violet-700 dark:bg-violet-900/20 dark:text-violet-300"
             title={`${p.workflow.name} · ${p.workflow.step}/${p.workflow.total}`}
           >
-            <Play className="h-2.5 w-2.5" />
-            {p.workflow.name} · {p.workflow.step}/{p.workflow.total}
+            <Play className="h-2.5 w-2.5 shrink-0" />
+            <span className="truncate">
+              {p.workflow.name} · {p.workflow.step}/{p.workflow.total}
+            </span>
           </span>
         ) : (
           <span className="text-xs text-muted-foreground/50">—</span>
         )}
       </td>
-      <td className="p-3.5">
+      <td className="w-[72px] p-3.5">
         <div data-stop className="flex gap-1">
           {channels.length === 0 ? (
             <span className="text-xs text-muted-foreground/50">—</span>
@@ -837,21 +850,22 @@ function ProspectRow({
           )}
         </div>
       </td>
-      <td className="relative p-3.5 text-right align-middle">
+      <td className="relative w-[108px] overflow-hidden p-3.5 text-right align-middle">
         <div data-stop className="inline-flex items-center justify-end gap-0.5">
-          {(hovered || menuOpen) && (
-            <>
-              <RowActionBtn
-                title="Démarrer une conversation"
-                onClick={() => onOpen()}
-              >
-                <MessageSquare className="h-3.5 w-3.5" />
-              </RowActionBtn>
-              <RowActionBtn title="Programmer un RDV" onClick={() => onOpen()}>
-                <Calendar className="h-3.5 w-3.5" />
-              </RowActionBtn>
-            </>
-          )}
+          <RowActionBtn
+            title="Démarrer une conversation"
+            className={cn(!(hovered || menuOpen) && "invisible pointer-events-none")}
+            onClick={() => onOpen()}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+          </RowActionBtn>
+          <RowActionBtn
+            title="Programmer un RDV"
+            className={cn(!(hovered || menuOpen) && "invisible pointer-events-none")}
+            onClick={() => onOpen()}
+          >
+            <Calendar className="h-3.5 w-3.5" />
+          </RowActionBtn>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -876,10 +890,12 @@ function RowActionBtn({
   title,
   onClick,
   children,
+  className,
 }: {
   title: string;
   onClick?: () => void;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
     <button
@@ -888,7 +904,10 @@ function RowActionBtn({
         e.stopPropagation();
         onClick?.();
       }}
-      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
+      className={cn(
+        "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent",
+        className,
+      )}
     >
       {children}
     </button>

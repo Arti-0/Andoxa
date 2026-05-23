@@ -126,6 +126,7 @@ export async function getDashboardStats(
     invitesActivityRes,
     messagesActivityRes,
     inboundChatsRes,
+    acceptedActivityRes,
     eventsLastMonthsRes,
   ] = await Promise.all([
     // ── v1 base counts ─────────────────────────────────────────────
@@ -274,11 +275,23 @@ export async function getDashboardStats(
       .filter("details->>step_type", "eq", "linkedin_message")
       .gte("created_at", sparkStartIso)
       .lte("created_at", sparkEndIso),
-    // Inbound chats (proxy for acceptances + responses) over the same window.
+    // Inbound chats — still used as the proxy for *response rate*
+    // (last_inbound_at on a chat the prospect was messaged in).
     supabase
       .from("unipile_chat_prospects")
       .select("created_at, last_inbound_at, prospect_id")
       .eq("organization_id", workspaceId)
+      .gte("created_at", sparkStartIso)
+      .lte("created_at", sparkEndIso),
+
+    // Invite acceptances — definitive signal written by
+    // recordLinkedInInviteAccepted (new_relation webhook, outbound message
+    // inference, periodic reconciler). Replaces the chat-created heuristic.
+    supabase
+      .from("prospect_activity")
+      .select("created_at, prospect_id, campaign_job_id")
+      .eq("organization_id", workspaceId)
+      .eq("action", "linkedin_invite_accepted")
       .gte("created_at", sparkStartIso)
       .lte("created_at", sparkEndIso),
 
@@ -591,6 +604,16 @@ export async function getDashboardStats(
     if (idx >= 0) responseByWeek[idx]++;
   }
 
+  // Acceptances sparkline lives next to invites for visual symmetry —
+  // recorded by recordLinkedInInviteAccepted, so each row is one acceptance.
+  const acceptancesByWeek = new Array(weekBuckets.length).fill(0) as number[];
+  for (const a of acceptedActivityRes.data ?? []) {
+    if (typeof a.created_at !== "string") continue;
+    const idx = bucketIndex(weekBuckets, new Date(a.created_at));
+    if (idx >= 0) acceptancesByWeek[idx]++;
+  }
+  void acceptancesByWeek;
+
   // Period-scoped totals for the displayed rate.
   function inWindow(iso: string | null | undefined, w: { start: Date; end: Date }): boolean {
     if (!iso) return false;
@@ -617,14 +640,20 @@ export async function getDashboardStats(
     if (a.prospect_id) messagedProspectIds.add(a.prospect_id as string);
   }
 
-  // Acceptances ≈ chats whose `created_at` lands in window AND prospect was invited.
-  let acceptances = 0;
-  for (const c of inboundChatsRes.data ?? []) {
-    if (!inWindow(c.created_at ?? null, current)) continue;
-    if (c.prospect_id && invitedProspectIds.has(c.prospect_id as string)) {
-      acceptances++;
-    }
+  // Acceptances = distinct prospects with a `linkedin_invite_accepted`
+  // activity row in the current window. Authoritative now that
+  // recordLinkedInInviteAccepted is wired into both the new_relation webhook
+  // and the outbound-message branch (the previous chat-created heuristic
+  // missed invites where Andoxa recorded an acceptance via
+  // reconciler/inference, and over-counted chats that pre-existed the
+  // invite). Dedupe to distinct prospects so the ratio stays ≤ 100% when a
+  // prospect is invited in multiple campaigns.
+  const acceptedProspectIds = new Set<string>();
+  for (const a of acceptedActivityRes.data ?? []) {
+    if (!inWindow((a.created_at as string) ?? null, current)) continue;
+    if (a.prospect_id) acceptedProspectIds.add(a.prospect_id as string);
   }
+  const acceptances = acceptedProspectIds.size;
   // Responses ≈ chats with last_inbound in window AND prospect was messaged.
   let responses = 0;
   for (const c of inboundChatsRes.data ?? []) {

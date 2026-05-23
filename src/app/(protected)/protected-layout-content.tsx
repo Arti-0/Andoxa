@@ -9,7 +9,6 @@ import { LoadingSpinner } from "../../components/ui/loading-spinner";
 import { DeletedOrganizationBanner } from "../../components/guards/DeletedOrganizationBanner";
 import { UnipileAccountBanner } from "@/components/guards/UnipileAccountBanner";
 import { AnnouncementBanner } from "../../components/guards/AnnouncementBanner";
-import { ErrorButton } from "../../components/debug/ErrorButton";
 import { CommandPalette } from "../../components/layout/command-palette";
 import { PlanRouteGuard } from "../../components/guards/PlanRouteGuard";
 import { ExpiredSubscriptionState } from "@/components/guards/ExpiredSubscriptionState";
@@ -127,7 +126,6 @@ function ProtectedLayoutContentInner({ children }: { children: ReactNode }) {
           </main>
         </div>
         <CommandPalette />
-        {process.env.NODE_ENV === "development" && <ErrorButton />}
       </div>
     </UpgradePromptProvider>
   );

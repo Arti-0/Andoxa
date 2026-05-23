@@ -32,7 +32,7 @@ export default async function globalSetup() {
   // Fill the form
   await page.getByLabel('E-mail').fill(email);
   await page.getByLabel('Mot de passe').fill(password);
-  await page.getByRole('button', { name: 'Continuer' }).click();
+  await page.getByRole('button', { name: 'Se connecter' }).click();
 
   // Wait until we land somewhere past the login page
   await expect(page).toHaveURL(/\/(dashboard|whatsapp|crm|calendar|prospect)/, {

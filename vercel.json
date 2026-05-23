@@ -41,6 +41,14 @@
     {
       "path": "/api/cron/apply-scheduled-downgrades",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/linkedin-acceptance-reconciler",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/unipile-accounts-reconcile",
+      "schedule": "17 * * * *"
     }
   ],
   "headers": [

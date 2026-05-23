@@ -11,7 +11,8 @@ test.describe('Login page', () => {
 
     await expect(page.getByLabel('E-mail')).toBeVisible();
     await expect(page.getByLabel('Mot de passe')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Continuer' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Se connecter' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Créer un compte' })).toBeVisible();
   });
 
   test('shows an error for empty password (< 8 chars)', async ({ page }) => {
@@ -19,7 +20,7 @@ test.describe('Login page', () => {
 
     await page.getByLabel('E-mail').fill('test@example.com');
     await page.getByLabel('Mot de passe').fill('short');
-    await page.getByRole('button', { name: 'Continuer' }).click();
+    await page.getByRole('button', { name: 'Se connecter' }).click();
 
     // Sonner toast or inline error should appear
     await expect(page.getByText(/au moins 8 caractères/i)).toBeVisible({
@@ -32,11 +33,10 @@ test.describe('Login page', () => {
 
     await page.getByLabel('E-mail').fill('nobody@nowhere.invalid');
     await page.getByLabel('Mot de passe').fill('wrongpassword1234');
-    await page.getByRole('button', { name: 'Continuer' }).click();
+    await page.getByRole('button', { name: 'Se connecter' }).click();
 
-    // Either "Mot de passe incorrect" or the translated Supabase error
     await expect(
-      page.getByText(/mot de passe incorrect|identifiants invalides|incorrect/i)
+      page.getByText(/email ou mot de passe incorrect|identifiants invalides|incorrect/i)
     ).toBeVisible({ timeout: 10_000 });
   });
 
@@ -48,7 +48,7 @@ test.describe('Login page', () => {
     await page.goto('/auth/login');
     await page.getByLabel('E-mail').fill(email);
     await page.getByLabel('Mot de passe').fill(password);
-    await page.getByRole('button', { name: 'Continuer' }).click();
+    await page.getByRole('button', { name: 'Se connecter' }).click();
 
     await expect(page).toHaveURL(/\/(dashboard|whatsapp|crm|calendar)/, {
       timeout: 15_000,

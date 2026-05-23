@@ -13,6 +13,7 @@ import {
   sendWhatsAppMessage,
 } from "@/lib/unipile/campaign";
 import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";
+import { markUnipileAccountErroredFromError } from "@/lib/unipile/account-status";
 import {
   prospectHasInboundReplyAfter,
   prospectHasLinkedInInboundReply,
@@ -261,14 +262,23 @@ async function handleLinkedInInvite(
     throw new LinkedInInviteWeeklyQuotaError(quota.cap, consumed.used);
   }
 
-  await unipileFetch("/users/invite", {
-    method: "POST",
-    body: JSON.stringify({
-      account_id: accountId,
-      provider_id: providerId,
-      message: note,
-    }),
-  });
+  try {
+    await unipileFetch("/users/invite", {
+      method: "POST",
+      body: JSON.stringify({
+        account_id: accountId,
+        provider_id: providerId,
+        message: note,
+      }),
+    });
+  } catch (err) {
+    // Credential-class errors → flip account row to error (banner shows up
+    // even when the ACCOUNT_CREDENTIALS webhook never arrived).
+    if (err instanceof UnipileApiError) {
+      void markUnipileAccountErroredFromError(accountId, err);
+    }
+    throw err;
+  }
 
   const AWAIT_CONNECTION_TIMEOUT_MS = 30 * 24 * 60 * 60 * 1000;
   const runAfter = new Date(
@@ -323,22 +333,31 @@ async function handleLinkedInMessage(ctx: HandlerContext): Promise<void> {
     "Bonjour {{firstName}}, j’ai vu votre profil chez {{company}} et souhaiterais échanger avec vous.";
   const text = applyMessageVariables(template, ctx.prospect, { bookingLink });
 
-  const profileRes = await unipileFetch<{ provider_id?: string }>(
-    `/users/${encodeURIComponent(slug)}?account_id=${accountId}`
-  );
-  const providerId = profileRes?.provider_id;
-  if (!providerId) {
-    throw new Error("Impossible de résoudre le profil LinkedIn");
-  }
+  let providerId: string | undefined;
+  let chatRes: (UnipileChat & { id: string }) | undefined;
+  try {
+    const profileRes = await unipileFetch<{ provider_id?: string }>(
+      `/users/${encodeURIComponent(slug)}?account_id=${accountId}`
+    );
+    providerId = profileRes?.provider_id;
+    if (!providerId) {
+      throw new Error("Impossible de résoudre le profil LinkedIn");
+    }
 
-  const chatRes = await unipileFetch<UnipileChat & { id: string }>("/chats", {
-    method: "POST",
-    body: JSON.stringify({
-      account_id: accountId,
-      attendees_ids: [providerId],
-      text,
-    }),
-  });
+    chatRes = await unipileFetch<UnipileChat & { id: string }>("/chats", {
+      method: "POST",
+      body: JSON.stringify({
+        account_id: accountId,
+        attendees_ids: [providerId],
+        text,
+      }),
+    });
+  } catch (err) {
+    if (err instanceof UnipileApiError) {
+      void markUnipileAccountErroredFromError(accountId, err);
+    }
+    throw err;
+  }
   const chatId = chatRes?.id;
   if (chatId && ctx.run.organization_id) {
     await ctx.supabase.from("unipile_chat_prospects").upsert(
@@ -392,6 +411,9 @@ async function handleWhatsAppMessage(ctx: HandlerContext): Promise<void> {
       );
     }
   } catch (err) {
+    if (err instanceof UnipileApiError) {
+      void markUnipileAccountErroredFromError(accountId, err);
+    }
     console.error("Unipile WA error (workflow):", err);
     throw err;
   }

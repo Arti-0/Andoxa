@@ -15,12 +15,12 @@ import {
 } from "lucide-react";
 import {
   CHANNEL_META,
-  CREATORS,
   PERF_COLORS,
   computePerf,
   formatRelativeDate,
   type Campaign,
 } from "./data";
+import { creatorFromCampaign } from "./queries";
 import { Avatar, ChannelPill, ProgressBar, StatusBadge, TypeBadge } from "./primitives";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -245,7 +245,7 @@ export function CampaignsTable({
                     {c.name}
                   </div>
                   <div className="mt-1 flex items-center gap-1.5">
-                    <Avatar creator={CREATORS.find((x) => x.id === c.creator)} size={16} />
+                    <Avatar creator={creatorFromCampaign(c)} size={16} />
                     <span className="text-[11.5px] text-muted-foreground">
                       {c.creatorName} · {c.total} prospects
                     </span>

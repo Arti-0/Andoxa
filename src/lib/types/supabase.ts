@@ -974,6 +974,11 @@ export interface Database {
                     last_status_at: string | null;
                     is_premium: boolean;
                     premium_features: string[];
+                    cookie_payload: Json | null;
+                    linkedin_member_id: string | null;
+                    date_last_cookie: string | null;
+                    date_last_reconnect_attempt: string | null;
+                    reconnect_attempts_failed: number;
                 };
                 Insert: {
                     id?: string;
@@ -988,6 +993,11 @@ export interface Database {
                     last_status_at?: string | null;
                     is_premium?: boolean;
                     premium_features?: string[];
+                    cookie_payload?: Json | null;
+                    linkedin_member_id?: string | null;
+                    date_last_cookie?: string | null;
+                    date_last_reconnect_attempt?: string | null;
+                    reconnect_attempts_failed?: number;
                 };
                 Update: {
                     id?: string;
@@ -1002,6 +1012,11 @@ export interface Database {
                     last_status_at?: string | null;
                     is_premium?: boolean;
                     premium_features?: string[];
+                    cookie_payload?: Json | null;
+                    linkedin_member_id?: string | null;
+                    date_last_cookie?: string | null;
+                    date_last_reconnect_attempt?: string | null;
+                    reconnect_attempts_failed?: number;
                 };
                 Relationships: [];
             };

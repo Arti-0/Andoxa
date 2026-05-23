@@ -11,11 +11,11 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import {
-  CREATORS,
   type CampaignStatus,
   type Channel,
   type FilterState,
   type Period,
+  type Creator,
 } from "./data";
 import { Avatar, StatusBadge } from "./primitives";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -176,9 +176,11 @@ function PeriodDropdown({
 }
 
 function CreatorDropdown({
+  members = [],
   selected,
   onChange,
 }: {
+  members?: Creator[];
   selected: string[];
   onChange: (next: string[]) => void;
 }) {
@@ -186,13 +188,13 @@ function CreatorDropdown({
   const [query, setQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
   useOutsideClose(ref, () => setOpen(false));
-  const allIds = CREATORS.map((c) => c.id);
+  const allIds = members.map((c) => c.id);
   const isAll = selected.length === 0 || selected.length === allIds.length;
   const isActive = !isAll;
   const summary = isAll
     ? "Tous"
     : selected.length === 1
-      ? CREATORS.find((c) => c.id === selected[0])?.name
+      ? members.find((c) => c.id === selected[0])?.name
       : `${selected.length} sur ${allIds.length}`;
   const isChecked = (id: string) => isAll || selected.includes(id);
   const toggle = (id: string) => {
@@ -200,7 +202,7 @@ function CreatorDropdown({
     const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
     onChange(next.length === allIds.length ? [] : next);
   };
-  const filtered = CREATORS.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()));
+  const filtered = members.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()));
   return (
     <div ref={ref} className="relative">
       <FilterButton active={isActive} onClick={() => setOpen((o) => !o)}>
@@ -253,11 +255,13 @@ export function FiltersBar({
   setFilters,
   totalCount,
   filteredCount,
+  members = [],
 }: {
   filters: FilterState;
   setFilters: (next: FilterState) => void;
   totalCount: number;
   filteredCount: number;
+  members?: Creator[];
 }) {
   const hasActive =
     filters.channels.length > 0 ||
@@ -291,6 +295,7 @@ export function FiltersBar({
         onChange={(v) => setFilters({ ...filters, period: v })}
       />
       <CreatorDropdown
+        members={members}
         selected={filters.creators}
         onChange={(v) => setFilters({ ...filters, creators: v })}
       />

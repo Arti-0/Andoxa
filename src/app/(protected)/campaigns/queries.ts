@@ -63,6 +63,18 @@ function memberColorFor(id: string): string {
   return MEMBER_COLORS[hash % MEMBER_COLORS.length];
 }
 
+export function creatorFromCampaign(c: {
+  creator: string;
+  creatorName: string;
+}): Creator {
+  return {
+    id: c.creator,
+    name: c.creatorName,
+    initials: memberInitials(c.creatorName),
+    color: memberColorFor(c.creator),
+  };
+}
+
 // ─── Org members (for creator avatars and the filter dropdown) ───────────────
 
 export function useOrgMembersForCampaigns() {
@@ -176,14 +188,14 @@ function mapJob(
 // campaign_jobs through RLS). Queried in parallel with /api/campaigns/jobs so
 // we don't N+1 the worker. Empty map until the migration runs.
 async function fetchJobStats(workspaceId: string): Promise<Map<string, JobStatsRow>> {
-  const res = await fetch(
-    `/api/campaigns/jobs/stats?workspace_id=${encodeURIComponent(workspaceId)}`,
-    { credentials: "include" },
-  );
-  if (!res.ok) return new Map();
-  const json = (await res.json()) as { data?: { items?: JobStatsRow[] } };
-  const items = json.data?.items ?? [];
-  return new Map(items.map((r) => [r.job_id, r]));
+  try {
+    const data = await getJson<{ items: JobStatsRow[] }>(
+      `/api/campaigns/jobs/stats?workspace_id=${encodeURIComponent(workspaceId)}`,
+    );
+    return new Map((data.items ?? []).map((r) => [r.job_id, r]));
+  } catch {
+    return new Map();
+  }
 }
 
 export function useCampaignJobs() {
@@ -358,7 +370,7 @@ export function useCampaignKpis(period: Period, creators: string[]) {
     },
     enabled: !!workspaceId,
     staleTime: FIVE_MIN,
-    placeholderData: (prev) => prev,
+    retry: 1,
   });
 }
 

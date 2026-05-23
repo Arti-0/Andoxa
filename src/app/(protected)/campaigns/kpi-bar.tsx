@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, CalendarDays, Info } from "lucide-react";
-import { CREATORS, type KpiSet, type Period } from "./data";
+import { CREATORS, type KpiSet, type Period, type Creator } from "./data";
 import { Sparkline } from "./primitives";
 import { useCampaignKpis } from "./queries";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const PERIOD_LABELS: Record<Period, { vsLabel: string; horizon: string }> = {
   "7": { vsLabel: "vs 7j préc.", horizon: "sur les 7 derniers jours" },
@@ -104,17 +105,55 @@ function KpiCard({
   );
 }
 
-export function KpiBar({ period, creators }: { period: Period; creators: string[] }) {
-  const { data } = useCampaignKpis(period, creators);
+export function KpiBar({
+  period,
+  creators,
+  memberDirectory = CREATORS,
+}: {
+  period: Period;
+  creators: string[];
+  memberDirectory?: Creator[];
+}) {
+  const { data, isLoading, isError, refetch } = useCampaignKpis(period, creators);
   const kpis = data ?? EMPTY_KPIS;
   const labels = PERIOD_LABELS[period] ?? PERIOD_LABELS["7"];
-  const allIds = CREATORS.map((c) => c.id);
+  const allIds = memberDirectory.map((c) => c.id);
   const isAllCreators = creators.length === 0 || creators.length === allIds.length;
   const creatorScope = isAllCreators
     ? "toute l'équipe"
     : creators.length === 1
-      ? CREATORS.find((c) => c.id === creators[0])?.name
+      ? memberDirectory.find((c) => c.id === creators[0])?.name
       : `${creators.length} créateurs`;
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-4 w-64" />
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-[108px] rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-xl border border-dashed bg-card px-4 py-6 text-center">
+        <p className="text-sm text-muted-foreground">
+          Impossible de charger les indicateurs.
+        </p>
+        <button
+          type="button"
+          onClick={() => void refetch()}
+          className="mt-2 text-sm font-medium text-primary hover:underline"
+        >
+          Réessayer
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2">

@@ -447,11 +447,8 @@ export function CrmToolbar({
                         <label className="mb-2 block text-xs font-medium text-muted-foreground">Statut</label>
                         {statuses.length === 0 ? (
                           <p className="text-xs text-muted-foreground">
-                            Aucun statut. Configurez votre pipeline dans{" "}
-                            <Link href="/settings?tab=pipeline" className="text-primary hover:underline">
-                              Paramètres
-                            </Link>
-                            .
+                            Aucun statut. Configurez votre pipeline via l&apos;icône
+                            paramètres dans l&apos;onglet Prospects.
                           </p>
                         ) : (
                           <div className="flex flex-wrap gap-1">
@@ -483,11 +480,8 @@ export function CrmToolbar({
                         <label className="mb-2 block text-xs font-medium text-muted-foreground">Tags</label>
                         {tags.length === 0 ? (
                           <p className="text-xs text-muted-foreground">
-                            Aucun tag pour le moment. Créez-en dans{" "}
-                            <Link href="/settings?tab=pipeline" className="text-primary hover:underline">
-                              Paramètres
-                            </Link>
-                            .
+                            Aucun tag pour le moment. Créez-en via l&apos;icône
+                            paramètres dans l&apos;onglet Prospects.
                           </p>
                         ) : (
                           <div className="flex flex-wrap gap-1">

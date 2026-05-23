@@ -2,6 +2,19 @@ export function extractCleanRole(rawRole: string | null | undefined): string {
   if (!rawRole) return "";
   if (rawRole.length <= 35) return rawRole;
 
+  // Pattern 0: LinkedIn-style headline — pitch first, role in the last sentence.
+  const lastSentence = rawRole.split(/\.\s+/).pop()?.trim();
+  if (
+    lastSentence &&
+    lastSentence.length >= 5 &&
+    lastSentence.length < rawRole.length
+  ) {
+    const fromTail = extractCleanRole(lastSentence);
+    if (fromTail && fromTail.length <= 50 && fromTail !== rawRole) {
+      return fromTail;
+    }
+  }
+
   // Pattern 1: "Title @ Company" or "Title | Company"
   const pipeMatch = rawRole.match(/^([^@|]+?)(?:\s*[@|])/);
   if (pipeMatch && pipeMatch[1].trim().length <= 50) {

@@ -190,25 +190,41 @@ export const DEFAULT_FILTERS: FilterState = {
 };
 
 // Performance per campaign type — { rate%, label, tier }
-export function computePerf(c: Campaign): { rate: number; label: string; tier: "high" | "mid" | "low" } | null {
+export type PerfTier = "zero" | "minimal" | "muted" | "soft" | "strong";
+
+function perfTierFromRate(rate: number): PerfTier {
+  const pct = Math.round(rate);
+  if (pct === 0) return "zero";
+  if (pct <= 5) return "minimal";
+  if (pct <= 10) return "muted";
+  if (pct <= 15) return "soft";
+  return "strong";
+}
+
+export function computePerf(
+  c: Campaign,
+): { rate: number; label: string; tier: PerfTier } | null {
   if (c.processed === 0) return null;
   let rate = 0;
   let label = "";
-  if (c.type === "invitation") {
+  const isInviteCampaign =
+    c.type === "invitation" || c.type === "invitation_message";
+  if (isInviteCampaign) {
     rate = (c.accepted / c.processed) * 100;
     label = "acceptation";
   } else {
     rate = (c.replied / c.processed) * 100;
     label = "réponse";
   }
-  const tier = rate > 30 ? "high" : rate >= 15 ? "mid" : "low";
-  return { rate, label, tier };
+  return { rate, label, tier: perfTierFromRate(rate) };
 }
 
-export const PERF_COLORS: Record<"high" | "mid" | "low", { fg: string; bg: string }> = {
-  high: { fg: "#0E7A3A", bg: "#E8F4EC" },
-  mid: { fg: "#5B6072", bg: "#F1F2F4" },
-  low: { fg: "#A8221C", bg: "#FDECEC" },
+export const PERF_COLORS: Record<PerfTier, { fg: string; bg: string }> = {
+  zero: { fg: "#A8221C", bg: "#FDECEC" },
+  minimal: { fg: "var(--foreground)", bg: "transparent" },
+  muted: { fg: "var(--muted-foreground)", bg: "transparent" },
+  soft: { fg: "#3A8F5C", bg: "#E8F4EC" },
+  strong: { fg: "#0E7A3A", bg: "#E8F4EC" },
 };
 
 export function formatRelativeDate(iso: string | null | undefined): string {
