@@ -101,7 +101,7 @@ export async function sendLinkedInInviteForProspect(
     body: JSON.stringify({
       account_id: accountId,
       provider_id: providerId,
-      message: personalizedMessage,
+      ...(personalizedMessage ? { message: personalizedMessage } : {}),
     }),
   });
 

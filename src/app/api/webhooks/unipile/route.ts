@@ -567,11 +567,73 @@ export async function POST(req: NextRequest) {
         if (!isOutbound) {
             const supabase = createServiceClient();
 
-            const { data: chatLinkRow } = await supabase
+            const { data: existingChatLink } = await supabase
                 .from('unipile_chat_prospects')
                 .select('organization_id, prospect_id')
                 .eq('unipile_chat_id', chatId)
                 .maybeSingle();
+
+            // Backfill: invite campaigns don't create a unipile_chat_prospects
+            // row at send time (no chat exists yet). When the prospect's first
+            // inbound message arrives we resolve the link by matching the
+            // sender's provider_id against a recent outbound to that
+            // provider on the same Unipile account. Without this, the
+            // conversation appears in messagerie but is unlinked from CRM, so
+            // notifications and inbound-reply activities are dropped.
+            let chatLinkRow = existingChatLink;
+            if (
+                !chatLinkRow &&
+                unipileAccountId &&
+                sender?.attendee_provider_id
+            ) {
+                const { data: outboundMatch } = await supabase
+                    .from('prospect_activity')
+                    .select('prospect_id, organization_id')
+                    .in('action', [
+                        'linkedin_invite_sent',
+                        'linkedin_invite_accepted',
+                        'linkedin_message_outbound',
+                    ])
+                    .filter(
+                        'details->>provider_id',
+                        'eq',
+                        sender.attendee_provider_id
+                    )
+                    .filter('details->>account_id', 'eq', unipileAccountId)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (
+                    outboundMatch?.prospect_id &&
+                    outboundMatch.organization_id
+                ) {
+                    const { error: backfillErr } = await supabase
+                        .from('unipile_chat_prospects')
+                        .upsert(
+                            [
+                                {
+                                    organization_id: outboundMatch.organization_id,
+                                    prospect_id: outboundMatch.prospect_id,
+                                    unipile_chat_id: chatId,
+                                },
+                            ],
+                            { onConflict: 'unipile_chat_id', ignoreDuplicates: false }
+                        );
+                    if (backfillErr) {
+                        console.error(
+                            '[Unipile webhook] backfill chat link:',
+                            backfillErr
+                        );
+                        Sentry.captureException(backfillErr);
+                    } else {
+                        chatLinkRow = {
+                            organization_id: outboundMatch.organization_id,
+                            prospect_id: outboundMatch.prospect_id,
+                        };
+                    }
+                }
+            }
 
             const { error: inboundErr } = await supabase
                 .from('unipile_chat_prospects')
@@ -661,10 +723,14 @@ export async function POST(req: NextRequest) {
                         : 'LinkedIn';
 
                 const dedupeInbound =
-                    typeof body.message_id === 'string' &&
+                    typeof body.message_id === "string" &&
                     body.message_id.trim().length > 0
                         ? `unipile:inbound:${chatId}:${body.message_id.trim()}`
-                        : undefined;
+                        : `unipile:inbound:${chatId}:${crypto
+                              .createHash("sha256")
+                              .update(String(body.message ?? chatId))
+                              .digest("hex")
+                              .slice(0, 16)}`;
 
                 await createNotification(supabase, {
                     title: `Nouveau message · ${chLabel}`,

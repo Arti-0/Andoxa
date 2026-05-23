@@ -369,8 +369,28 @@ export function useCampaignKpis(period: Period, creators: string[]) {
       return getJson<KpiSet>(`/api/campaigns/kpis?${qs.toString()}`);
     },
     enabled: !!workspaceId,
-    staleTime: FIVE_MIN,
+    // Campaign batches and webhook deliveries (invite accepted, inbound reply)
+    // land in prospect_activity over time. A 5-minute stale window felt like
+    // the KPI bar was broken — users launched a batch, saw the campaigns
+    // table tick up, and the cards stayed frozen. Drop to 1 minute and poll
+    // every 60s while the tab is visible so the numbers track the table.
+    staleTime: ONE_MIN,
+    refetchInterval: ONE_MIN,
+    refetchIntervalInBackground: false,
     retry: 1,
+  });
+}
+
+/**
+ * Predicate for invalidating the KPI bar across all (period, creators) tuples
+ * after a mutation lands an activity row. Use from mutation onSettled callbacks.
+ */
+function invalidateCampaignKpis(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({
+    predicate: (q) =>
+      Array.isArray(q.queryKey) &&
+      q.queryKey[0] === "campaigns" &&
+      q.queryKey[1] === "kpis",
   });
 }
 
@@ -473,6 +493,7 @@ export function useLaunchJob() {
     onSuccess: (_d, id) => {
       void qc.invalidateQueries({ queryKey: ["campaigns", "jobs", workspaceId] });
       void qc.invalidateQueries({ queryKey: ["campaigns", "job", workspaceId, id] });
+      invalidateCampaignKpis(qc);
     },
     onError: (err) => {
       toast.error(err instanceof Error ? err.message : "Impossible de lancer la campagne");

@@ -37,6 +37,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useGoogleStatus } from "@/hooks/use-google-status";
 import { cn } from "@/lib/utils";
+import {
+  dateYmdInBookingTz,
+  wallClockIsoInBookingTz,
+} from "@/lib/booking/wall-clock-iso";
 
 const FR_MONTHS = [
   "janvier",
@@ -201,9 +205,18 @@ export function ProspectRdvModal({
   const create = useMutation({
     mutationFn: async () => {
       if (!selectedDay || !selectedSlot) throw new Error("Choisissez un créneau");
-      const start = new Date(selectedDay);
-      start.setHours(selectedSlot.h, selectedSlot.m, 0, 0);
-      const end = new Date(start.getTime() + duration * 60_000);
+      const dateYmd = dateYmdInBookingTz(selectedDay);
+      const startIso = wallClockIsoInBookingTz(
+        dateYmd,
+        selectedSlot.h,
+        selectedSlot.m
+      );
+      const endTotalMin = selectedSlot.h * 60 + selectedSlot.m + duration;
+      const endIso = wallClockIsoInBookingTz(
+        dateYmd,
+        Math.floor(endTotalMin / 60) % 24,
+        endTotalMin % 60
+      );
 
       const title = prospect.full_name
         ? `RDV avec ${prospect.full_name}`
@@ -215,8 +228,8 @@ export function ProspectRdvModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title,
-          start_time: start.toISOString(),
-          end_time: end.toISOString(),
+          start_time: startIso,
+          end_time: endIso,
           prospect_id: prospect.id,
           meeting_kind: withMeet ? "meet" : "other",
           google_meet: withMeet,

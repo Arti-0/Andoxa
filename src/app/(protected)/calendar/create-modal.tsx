@@ -8,6 +8,7 @@ import {
   type CreateEventInput, type OrgMember,
 } from "./queries";
 import { useGoogleStatus } from "@/hooks/use-google-status";
+import { wallClockIsoInBookingTz } from "@/lib/booking/wall-clock-iso";
 
 type Prefill = { day?: number; start?: number; end?: number } | null;
 
@@ -222,8 +223,8 @@ export function CreateEventModal({ open, prefill, editing, onClose, onCreate, we
       const endH = timeStrToDecimal(endTime);
       const sH = Math.floor(startH); const sM = Math.round((startH - sH) * 60);
       const eH = Math.floor(endH);   const eM = Math.round((endH - eH) * 60);
-      startIso = `${dateStr}T${String(sH).padStart(2,"0")}:${String(sM).padStart(2,"0")}:00`;
-      endIso   = `${dateStr}T${String(eH).padStart(2,"0")}:${String(eM).padStart(2,"0")}:00`;
+      startIso = wallClockIsoInBookingTz(dateStr, sH, sM);
+      endIso = wallClockIsoInBookingTz(dateStr, eH, eM);
     }
 
     const attendeeUserIds = selectedAttendees.filter((a) => a.kind === "member").map((a) => a.id);

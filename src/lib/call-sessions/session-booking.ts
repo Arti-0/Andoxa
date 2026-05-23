@@ -1,5 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/supabase";
+import { createRdvCalendarEvent } from "@/lib/events/create-rdv-event";
+import { afterRdvCreated } from "@/lib/events/after-rdv-created";
+import { resolveMeetingDisplay } from "@/lib/booking/meeting-display";
 
 export const BOOKING_DEFAULT_DURATION_MIN = 30;
 
@@ -44,24 +47,55 @@ export async function performSessionQuickBooking(
   if (scheduled_for) {
     const { data: prospect } = await supabase
       .from("prospects")
-      .select("full_name")
+      .select("full_name, email, phone, linkedin")
       .eq("id", prospectId)
       .single();
 
-    const prospectName = prospect?.full_name ?? "Prospect";
-    const startTime = new Date(scheduled_for);
-    const endTime = new Date(startTime.getTime() + BOOKING_DEFAULT_DURATION_MIN * 60 * 1000);
+    const { data: hostProfile } = await supabase
+      .from("profiles")
+      .select("full_name, email, metadata")
+      .eq("id", userId)
+      .single();
 
-    await supabase.from("events").insert({
-      organization_id: organizationId,
-      title: `RDV avec ${prospectName}`,
-      description: notes ?? null,
-      start_time: startTime.toISOString(),
-      end_time: endTime.toISOString(),
-      prospect_id: prospectId,
-      created_by: userId,
-      is_all_day: false,
+    const prospectName = prospect?.full_name ?? "Prospect";
+    const hostName = hostProfile?.full_name?.trim() || "Hôte";
+    const meeting = resolveMeetingDisplay(
+      (hostProfile?.metadata ?? {}) as Record<string, unknown>,
+      hostName
+    );
+    const startTime = new Date(scheduled_for);
+    const endTime = new Date(
+      startTime.getTime() + BOOKING_DEFAULT_DURATION_MIN * 60 * 1000
+    );
+
+    const created = await createRdvCalendarEvent(supabase, {
+      organizationId,
+      userId,
+      ownerEmail: hostProfile?.email ?? null,
+      title: meeting.title,
+      hostDescription: notes?.trim() || meeting.description,
+      guestName: prospectName,
+      guestEmail: prospect?.email ?? null,
+      guestLinkedin: prospect?.linkedin ?? null,
+      guestPhone: prospect?.phone ?? null,
+      startIso: startTime.toISOString(),
+      endIso: endTime.toISOString(),
+      prospectId,
       source: "booking",
+      withGoogleMeet: true,
+      extraAttendeeEmails: prospect?.email ? [prospect.email] : [],
+    });
+
+    await afterRdvCreated(supabase, {
+      organizationId,
+      eventId: created.eventId,
+      prospectId,
+      hostUserId: userId,
+      hostName,
+      guestOrProspectName: prospectName,
+      fromPublicBooking: false,
+      meetUrl: created.meetUrl,
+      slotStartIso: startTime.toISOString(),
     });
   }
 

@@ -109,8 +109,12 @@ export function WorkflowEnrollModal({
         (json.data?.skipped as { prospect_id: string; reason: string }[] | undefined) ??
         [];
       const skipped = skipRows.length;
-      const inCampaign = skipRows.filter((s) => s.reason === "in_active_campaign")
-        .length;
+      const inCampaign = skipRows.filter(
+        (s) => s.reason === "in_active_campaign"
+      ).length;
+      const optedOut = skipRows.filter(
+        (s) => s.reason === "automation_excluded"
+      ).length;
       if (created) {
         toast.success(
           created === 1
@@ -119,11 +123,15 @@ export function WorkflowEnrollModal({
         );
       }
       if (skipped) {
-        toast.message(`${skipped} ignoré(s)`, {
-          description: inCampaign
-            ? `${inCampaign} déjà dans une campagne active (envoi en cours). Autres : parcours déjà lancé, prospect invalide ou téléphone manquant.`
-            : "Déjà un parcours actif pour ce suivi, prospect invalide ou téléphone manquant.",
-        });
+        const parts: string[] = [];
+        if (optedOut)
+          parts.push(`${optedOut} exclu(s) des automatisations`);
+        if (inCampaign)
+          parts.push(`${inCampaign} déjà dans une campagne active`);
+        const description = parts.length
+          ? `${parts.join(" · ")}. Autres : parcours déjà lancé, prospect invalide ou téléphone manquant.`
+          : "Déjà un parcours actif pour ce suivi, prospect invalide ou téléphone manquant.";
+        toast.message(`${skipped} ignoré(s)`, { description });
       }
       if (!created && !skipped) {
         toast.error("Aucune inscription effectuée");

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   Zap,
@@ -501,10 +501,12 @@ function QuickInsertModal({
   conv,
   onClose,
   onPick,
+  bookingLink,
 }: {
   conv: Conversation;
   onClose: () => void;
   onPick: (text: string) => void;
+  bookingLink: string | null;
 }) {
   const [q, setQ] = useState("");
   // Filter id is dynamic — either "all", "mine", or a category UUID from
@@ -637,9 +639,7 @@ function QuickInsertModal({
               <button
                 key={t.id}
                 onClick={() => {
-                  // TODO(BACKEND.md §5.5): read user's booking link from
-                  // workspace settings instead of empty string fallback.
-                  onPick(resolveVars(t.content, conv, ""));
+                  onPick(resolveVars(t.content, conv, bookingLink ?? ""));
                   onClose();
                 }}
                 style={{
@@ -791,20 +791,23 @@ export function Thread({
     staleTime: 5 * 60 * 1000,
   });
   const bookingPublicPath = bookingSlugRow?.booking_public_path ?? null;
+  const bookingPublicUrl = useMemo(() => {
+    if (!bookingPublicPath) return null;
+    const origin =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "https://andoxa.fr";
+    return `${origin}/booking/${bookingPublicPath.replace(/^\/+|\/+$/g, "")}`;
+  }, [bookingPublicPath]);
 
   const insertBookingLink = () => {
-    if (!bookingPublicPath) {
+    if (!bookingPublicUrl) {
       toast.error(
         "Aucun lien de booking — configurez votre lien dans le Calendrier.",
       );
       return;
     }
-    const origin =
-      typeof window !== "undefined"
-        ? window.location.origin
-        : "https://andoxa.fr";
-    const url = `${origin}/booking/${bookingPublicPath.replace(/^\/+|\/+$/g, "")}`;
-    setDraft((d) => (d ? `${d.trimEnd()}\n\n${url}` : url));
+    setDraft((d) => (d ? `${d.trimEnd()}\n\n${bookingPublicUrl}` : bookingPublicUrl));
   };
 
   // The legacy `handleFilePicked` (Supabase storage upload → URL pasted
@@ -1169,6 +1172,7 @@ export function Thread({
       {tplOpen && (
         <QuickInsertModal
           conv={conv}
+          bookingLink={bookingPublicUrl}
           onClose={() => setTplOpen(false)}
           onPick={(text) => setDraft((d) => (d ? d + "\n\n" + text : text))}
         />

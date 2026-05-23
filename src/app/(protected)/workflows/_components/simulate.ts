@@ -13,6 +13,7 @@ import {
   WORKFLOW_TRIGGERS,
   type WorkflowTemplateTrigger,
 } from "@/lib/workflows";
+import { applyMessageVariables } from "@/lib/messaging/template-variables";
 
 export type SimEntryStatus = "ok" | "warn" | "stop";
 
@@ -43,16 +44,21 @@ const SAMPLE_PROSPECT = {
   linkedin: "https://www.linkedin.com/in/alice-demo/",
 };
 
-/** Mirrors lib/unipile/campaign#applyMessageVariables for client-side preview. */
+const MOCK_BOOKING_LINK = "https://andoxa.fr/booking/demo";
+
+/** Mirrors server send paths via shared `applyMessageVariables`. */
 function resolveTemplate(template: string): string {
-  return template
-    .replace(/\{\{\s*firstName\s*\}\}/g, SAMPLE_PROSPECT.first_name)
-    .replace(/\{\{\s*lastName\s*\}\}/g, SAMPLE_PROSPECT.last_name)
-    .replace(/\{\{\s*fullName\s*\}\}/g, SAMPLE_PROSPECT.full_name)
-    .replace(/\{\{\s*company\s*\}\}/g, SAMPLE_PROSPECT.company)
-    .replace(/\{\{\s*jobTitle\s*\}\}/g, SAMPLE_PROSPECT.job_title)
-    .replace(/\{\{\s*email\s*\}\}/g, SAMPLE_PROSPECT.email)
-    .replace(/\{\{\s*phone\s*\}\}/g, SAMPLE_PROSPECT.phone);
+  return applyMessageVariables(
+    template,
+    {
+      full_name: SAMPLE_PROSPECT.full_name,
+      company: SAMPLE_PROSPECT.company,
+      job_title: SAMPLE_PROSPECT.job_title,
+      phone: SAMPLE_PROSPECT.phone,
+      email: SAMPLE_PROSPECT.email,
+    },
+    { bookingLink: MOCK_BOOKING_LINK }
+  );
 }
 
 function summariseStep(

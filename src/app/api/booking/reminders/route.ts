@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { unipileFetch } from "@/lib/unipile/client";
 import { captureRouteError } from "@/lib/sentry/route-error";
+import { applyMessageVariables } from "@/lib/messaging/template-variables";
+import { BOOKING_TIMEZONE } from "@/lib/booking/constants";
 
 /**
  * POST /api/booking/reminders
@@ -83,12 +85,28 @@ export async function POST(req: Request) {
       "Bonjour {{name}}, ceci est un rappel pour votre rendez-vous prévu le {{date}} à {{time}}. À bientôt !";
 
     const scheduledDate = new Date(booking.scheduled_for!);
-    const message = template
-      .replace(/\{\{name\}\}/g, prospect.full_name ?? "")
-      // Force Europe/Paris — Vercel runs UTC and would otherwise format
-      // the reminder 1-2h off (CET/CEST). Same fix as the booking emails.
-      .replace(/\{\{date\}\}/g, scheduledDate.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" }))
-      .replace(/\{\{time\}\}/g, scheduledDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }));
+    const dateLine = scheduledDate.toLocaleDateString("fr-FR", {
+      timeZone: BOOKING_TIMEZONE,
+    });
+    const timeLine = scheduledDate.toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: BOOKING_TIMEZONE,
+    });
+    const message = applyMessageVariables(
+      template,
+      {
+        full_name: prospect.full_name,
+        company: null,
+        job_title: null,
+        phone: prospect.phone,
+      },
+      {
+        name: prospect.full_name ?? "",
+        date: dateLine,
+        time: timeLine,
+      }
+    );
 
     try {
       await unipileFetch("/chats", {

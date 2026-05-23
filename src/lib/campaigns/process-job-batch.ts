@@ -16,6 +16,7 @@ import {
   sendWhatsAppMessage,
 } from "@/lib/unipile/campaign";
 import { normalizePhoneForWhatsApp } from "@/lib/utils/phone";
+import type { CampaignJobType } from "@/lib/campaigns/types";
 import type { UnipileChat } from "@/lib/unipile/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/supabase";
@@ -175,7 +176,7 @@ async function runBatchLinkedIn(
   const prospectIds = pendingProspects.map((p) => p.prospect_id);
   const { data: prospects } = await supabase
     .from("prospects")
-    .select("id, full_name, company, job_title, phone, email, linkedin")
+    .select("id, full_name, company, job_title, phone, email, linkedin, metadata")
     .in("id", prospectIds);
 
   const prospectMap = new Map((prospects ?? []).map((p) => [p.id, p]));
@@ -207,9 +208,16 @@ async function runBatchLinkedIn(
 
   // Invite-type batches go through atomic per-prospect consume below; we still
   // fetch the cap once so the per-iteration consume call knows the limit.
+  // `invite_then_message` counts as an invite for quota purposes — the phase-1
+  // wire call is a bare /users/invite. The phase-2 follow-up message is sent
+  // from `record-invite-accepted.ts` when LinkedIn signals acceptance, and is
+  // tracked under the daily linkedin_contact counter at that point.
   const weekKey = weeklyPeriodKey();
+  const linkedInJobType = job.type as CampaignJobType;
   const isInviteBatch =
-    job.type === "invite" || job.type === "invite_with_note";
+    linkedInJobType === "invite" ||
+    linkedInJobType === "invite_with_note" ||
+    linkedInJobType === "invite_then_message";
   const inviteCap = isInviteBatch
     ? (await fetchLinkedInInviteWeeklyQuotaState(supabase, job.created_by, weekKey))
         .cap
@@ -291,12 +299,19 @@ async function runBatchLinkedIn(
           ? override
           : applyMessageVariables(messageTemplate, prospect, { bookingLink });
 
-      if (job.type === "invite" || job.type === "invite_with_note") {
+      if (
+        linkedInJobType === "invite" ||
+        linkedInJobType === "invite_with_note" ||
+        linkedInJobType === "invite_then_message"
+      ) {
         const inviteBody: Record<string, unknown> = {
           account_id: accountId,
           provider_id: providerId,
         };
-        if (job.type === "invite_with_note" && text?.trim()) {
+        // invite_then_message is a two-phase send: phase 1 is a bare invite
+        // (no note attached), phase 2 fires from record-invite-accepted.ts
+        // using the template stored on the job row.
+        if (linkedInJobType === "invite_with_note" && text?.trim()) {
           inviteBody.message = text;
         }
         await unipileFetch("/users/invite", {
@@ -334,7 +349,11 @@ async function runBatchLinkedIn(
         .eq("id", cjp.id);
       batchSuccess++;
 
-      if (job.type === "invite" || job.type === "invite_with_note") {
+      if (
+        linkedInJobType === "invite" ||
+        linkedInJobType === "invite_with_note" ||
+        linkedInJobType === "invite_then_message"
+      ) {
         void insertProspectActivity(supabase, {
           organization_id: job.organization_id,
           prospect_id: cjp.prospect_id,
@@ -343,7 +362,7 @@ async function runBatchLinkedIn(
           action: "linkedin_invite_sent",
           details: {
             message:
-              job.type === "invite_with_note"
+              linkedInJobType === "invite_with_note"
                 ? clipDetailMessage(text ?? "", 500)
                 : "",
             campaign_job_id: jobId,
@@ -352,9 +371,13 @@ async function runBatchLinkedIn(
             // linkedin_invite_accepted with the right campaign_job_id.
             provider_id: providerId,
             account_id: accountId,
+            // For invite_then_message we additionally pin the job type so
+            // record-invite-accepted.ts can decide whether to dispatch a
+            // follow-up message without re-fetching the campaign_jobs row.
+            job_type: linkedInJobType,
           },
         });
-      } else if (job.type === "contact") {
+      } else if (linkedInJobType === "contact") {
         void insertProspectActivity(supabase, {
           organization_id: job.organization_id,
           prospect_id: cjp.prospect_id,
@@ -506,7 +529,7 @@ async function runBatchWhatsApp(
   const prospectIds = pendingProspects.map((p) => p.prospect_id);
   const { data: prospects } = await supabase
     .from("prospects")
-    .select("id, full_name, company, job_title, phone, email")
+    .select("id, full_name, company, job_title, phone, email, metadata")
     .in("id", prospectIds);
 
   const prospectMap = new Map((prospects ?? []).map((p) => [p.id, p]));

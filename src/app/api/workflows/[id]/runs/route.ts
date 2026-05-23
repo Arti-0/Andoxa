@@ -22,6 +22,7 @@ import {
   ensureUnipileAccountUsable,
   UnipileAccountUnusableError,
 } from "@/lib/unipile/account-status";
+import { isProspectAutomationExcluded } from "@/lib/prospects/automation-opt-out";
 
 function getWorkflowIdFromUrl(req: Request): string {
   const segments = new URL(req.url).pathname.split("/").filter(Boolean);
@@ -264,11 +265,11 @@ export const POST = createApiHandler(
       }
     }
 
-    // Pull phone alongside id so we can pre-skip prospects without numbers
-    // when the workflow contains a WhatsApp step.
+    // Pull phone + metadata alongside id so we can pre-skip prospects without
+    // numbers (WhatsApp steps) and prospects opted out of automation.
     const { data: prospects, error: pErr } = await ctx.supabase
       .from("prospects")
-      .select("id, phone")
+      .select("id, phone, metadata")
       .eq("organization_id", ctx.workspaceId)
       .in("id", prospectIds);
 
@@ -276,8 +277,12 @@ export const POST = createApiHandler(
 
     const validIds = new Set((prospects ?? []).map((p) => p.id));
     const phoneById = new Map<string, string | null>();
+    const optedOutIds = new Set<string>();
     for (const p of prospects ?? []) {
       phoneById.set(p.id, (p.phone as string | null) ?? null);
+      if (isProspectAutomationExcluded(p as { metadata?: unknown })) {
+        optedOutIds.add(p.id);
+      }
     }
 
     if (needsWhatsApp) {
@@ -314,6 +319,15 @@ export const POST = createApiHandler(
     for (const prospectId of prospectIds) {
       if (!validIds.has(prospectId)) {
         skipped.push({ prospect_id: prospectId, reason: "not_in_workspace" });
+        continue;
+      }
+      // Automation opt-out — checked before phone/overlap so the toast can
+      // explain why the prospect was skipped regardless of other gates.
+      if (optedOutIds.has(prospectId)) {
+        skipped.push({
+          prospect_id: prospectId,
+          reason: "automation_excluded",
+        });
         continue;
       }
       if (needsWhatsApp) {

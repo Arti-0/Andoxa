@@ -1,6 +1,8 @@
 // Types and helpers for the messagerie view layer.
 // Shapes are derived from real backend payloads — see queries.ts for fetch logic.
 
+import { applyMessageVariables } from "@/lib/messaging/template-variables";
+
 export type Stage =
   | "contacted"
   | "replied"
@@ -95,6 +97,8 @@ export type Conversation = {
   role: string | null;
   company: string | null;
   linkedinUrl: string | null;
+  phone: string | null;
+  email: string | null;
   channel: Channel;
   stage: Stage;
   lastTime: string;
@@ -160,26 +164,23 @@ export function parseTemplateCategory(
     : "other";
 }
 
-// Variable resolution for template insertion. Backend stores `{{firstName}}`
-// style; we accept both the `{{x}}` canonical form and the older `{x}` French
-// form to be forgiving while old templates exist.
 export function resolveVars(
   text: string,
-  conv: Pick<Conversation, "name" | "company" | "role">,
+  conv: Pick<Conversation, "name" | "company" | "role" | "phone" | "email">,
   bookingLink: string,
+  extras?: { phone?: string | null; email?: string | null }
 ) {
-  const first = (conv.name || "").split(" ")[0] || "";
-  const last = (conv.name || "").split(" ").slice(1).join(" ") || "";
-  const company = conv.company || "";
-  const role = conv.role || "";
-  const repl = (s: string) =>
-    s
-      .replace(/\{\{firstName\}\}|\{prénom\}/g, first)
-      .replace(/\{\{lastName\}\}|\{nom\}/g, last)
-      .replace(/\{\{company\}\}|\{entreprise\}/g, company)
-      .replace(/\{\{jobTitle\}\}|\{poste\}/g, role)
-      .replace(/\{\{bookingLink\}\}|\{lien_booking\}/g, bookingLink);
-  return repl(text);
+  return applyMessageVariables(
+    text,
+    {
+      full_name: conv.name || null,
+      company: conv.company,
+      job_title: conv.role,
+      phone: extras?.phone ?? conv.phone ?? null,
+      email: extras?.email ?? conv.email ?? null,
+    },
+    { bookingLink: bookingLink || null }
+  );
 }
 
 // Format a UnipileChat.timestamp (ISO) into the compact label used in the list.

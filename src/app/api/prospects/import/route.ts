@@ -7,6 +7,7 @@ import {
   type PlanId,
 } from "../../../../lib/config/plans-config";
 import { classifyProspectsForImport, mapProspectRow } from "../../../../lib/utils/deduplicateProspects";
+import { buildImportKeyMaps } from "@/lib/prospects/dedup-keys";
 import { invalidate } from "@/lib/cache/redis";
 import { insertProspectActivity } from "@/lib/prospect-activity";
 import { emitWorkflowTrigger } from "@/lib/workflows/fire-trigger";
@@ -151,26 +152,7 @@ export const POST = createApiHandler(async (req, ctx) => {
     .select("id, email, phone, linkedin, deleted_at")
     .eq("organization_id", ctx.workspaceId);
 
-  const existingLiveKeys = new Set<string>();
-  const trashedByKey = new Map<string, string>();
-  for (const row of existingRows ?? []) {
-    const keys: string[] = [];
-    if (row.email) keys.push(String(row.email).trim().toLowerCase());
-    if (row.phone) keys.push(String(row.phone).trim().toLowerCase());
-    if (row.linkedin) keys.push(String(row.linkedin).trim().toLowerCase());
-    if (row.deleted_at) {
-      for (const k of keys) {
-        if (!existingLiveKeys.has(k) && !trashedByKey.has(k)) {
-          trashedByKey.set(k, row.id);
-        }
-      }
-    } else {
-      for (const k of keys) {
-        existingLiveKeys.add(k);
-        trashedByKey.delete(k);
-      }
-    }
-  }
+  const { existingLiveKeys, trashedByKey } = buildImportKeyMaps(existingRows ?? []);
 
   const metadataByIdx = new Map<number, Record<string, string> | null>();
   const rowsForDedup = normalizedRows.map((r, i) => {
@@ -264,11 +246,32 @@ export const POST = createApiHandler(async (req, ctx) => {
 
   for (const restoreEntry of restores) {
     const prospect = withMeta(restoreEntry.row);
+    const { data: existingProspect } = await ctx.supabase
+      .from("prospects")
+      .select("full_name, email, phone, linkedin")
+      .eq("id", restoreEntry.prospectId)
+      .eq("organization_id", ctx.workspaceId)
+      .maybeSingle();
+
+    const mergeField = (
+      incoming: string | null | undefined,
+      current: string | null | undefined
+    ) => {
+      const next = incoming?.trim();
+      if (next) return next;
+      const kept = current?.trim();
+      return kept || undefined;
+    };
+
     const { error: restoreError } = await ctx.supabase
       .from("prospects")
       .update({
         deleted_at: null,
         bdd_id: bddId,
+        full_name: mergeField(prospect.full_name, existingProspect?.full_name),
+        email: mergeField(prospect.email, existingProspect?.email),
+        phone: mergeField(prospect.phone, existingProspect?.phone),
+        linkedin: mergeField(prospect.linkedin, existingProspect?.linkedin),
         updated_at: new Date().toISOString(),
       })
       .eq("id", restoreEntry.prospectId)

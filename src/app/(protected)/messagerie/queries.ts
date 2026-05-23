@@ -166,6 +166,8 @@ function mergeConversations(
       role: p?.job_title ?? null,
       company: p?.company ?? null,
       linkedinUrl: p?.linkedin ?? null,
+      phone: p?.phone ?? null,
+      email: p?.email ?? null,
       channel: accountTypeToChannel(c.account_type),
       stage: statusToStage(p?.status),
       lastTime: formatChatTimestamp(c.timestamp),

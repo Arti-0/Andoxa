@@ -2,6 +2,7 @@ export type LinkedInUsagePayload = {
   invitations_sent: number;
   invitations_workflow: number;
   invitations_direct: number;
+  invitations_campaign: number;
   messages_sent: number;
   profile_views: number;
   invitations_week: number;

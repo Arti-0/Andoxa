@@ -33,7 +33,7 @@ export async function performPaiementsCheckout(params: {
 }): Promise<PaiementsCheckoutResult> {
   const { supabase, user, planRaw, billingRaw, frequencyRaw, seats } = params;
 
-  let billing: BillingCadence = "monthly";
+  let billing: BillingCadence = "annual";
   const cadence =
     normalizeBillingCadence(
       typeof billingRaw === "string" ? billingRaw : undefined

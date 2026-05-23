@@ -267,11 +267,13 @@ export function mockDashboardActivity() {
 
 export function mockLinkedInUsage() {
   const inv = randInt(18, 42);
-  const wf = randInt(12, inv - 2);
+  const wf = randInt(8, Math.max(9, inv - 4));
+  const cmp = randInt(2, Math.max(3, inv - wf - 1));
   return {
     invitations_sent: inv,
     invitations_workflow: wf,
-    invitations_direct: inv - wf,
+    invitations_campaign: cmp,
+    invitations_direct: Math.max(0, inv - wf - cmp),
     messages_sent: randInt(24, 68),
     profile_views: randInt(8, 32),
     invitations_week: randInt(62, 118),

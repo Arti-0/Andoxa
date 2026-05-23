@@ -152,7 +152,7 @@ const preRdvWhatsappTemplate: WorkflowTemplate = {
   buildDefinition: () => {
     const steps = chain([
       whatsapp(
-        "Bonjour {{firstName}}, votre RDV est bien confirmé. À très vite !"
+        "Bonjour {{firstName}}, votre RDV est bien confirmé !\n📅 {{date}} à {{time}}\n🔗 Lien de visio : {{meetLink}}"
       ),
       wait(24), // approx J-1
       whatsapp(

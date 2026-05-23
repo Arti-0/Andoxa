@@ -15,6 +15,7 @@ import { BentoGrid, BentoGridItem } from "@/components/marketing/aceternity/bent
 import {
   CalendarMockup,
   InboxMockup,
+  WorkflowsMockup,
 } from "@/components/marketing/mockups/product-mockups";
 
 function Screenshot({ src, alt }: { src: string; alt: string }) {
@@ -94,7 +95,7 @@ export function MarketingModulesBentoSection() {
             title="Workflows"
             description="Automations visuelles type Zapier, pensées pour les sales. Triggers avancés sur silence, no-show, statut."
             icon={<Workflow size={16} />}
-            header={<Cell><Screenshot src="/screenshots/09-workflow-canvas.png" alt="Workflow canvas Andoxa" /></Cell>}
+            header={<Cell><WorkflowsMockup /></Cell>}
           />
         </BentoGrid>
       </Container>

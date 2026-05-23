@@ -6,6 +6,11 @@ import {
   type DaySchedule,
   type TimeRange,
 } from "@/lib/booking/slots";
+import {
+  resolveMeetingDisplay,
+  resolveAvailabilityDefaults,
+} from "@/lib/booking/meeting-display";
+import { orgHasActiveOnBookingWhatsAppWorkflow } from "@/lib/workflows/on-booking-whatsapp";
 
 type DaySchedulesMap = Record<number, DaySchedule>;
 
@@ -61,36 +66,37 @@ export const GET = createApiHandler(
 
     const { data: profile, error } = await ctx.supabase
       .from("profiles")
-      .select("metadata, full_name, booking_slug")
+      .select("metadata, full_name, booking_slug, active_organization_id")
       .eq("id", ctx.userId)
       .single();
 
     if (error) throw Errors.internal("Profil introuvable");
 
     const meta = ((profile?.metadata ?? {}) as Record<string, unknown>) || {};
+    const hostName = profile?.full_name ?? "moi";
+    const meeting = resolveMeetingDisplay(meta, hostName);
+    const availabilityDefaults = resolveAvailabilityDefaults(meta);
     const availability = (meta.availability ?? {}) as Record<string, unknown>;
-    const booking = (meta.booking ?? {}) as Record<string, unknown>;
+    const orgId =
+      ctx.workspaceId ??
+      (profile as { active_organization_id?: string | null })
+        .active_organization_id ??
+      null;
+    const hasOnBookingWaWorkflow = orgId
+      ? await orgHasActiveOnBookingWhatsAppWorkflow(ctx.supabase, orgId)
+      : false;
 
     return {
-      title: (booking.title as string | undefined) ?? `RDV avec ${profile?.full_name ?? "moi"}`,
-      description: (booking.description as string | undefined) ?? "",
+      title: meeting.title,
+      description: meeting.description,
+      mode: meeting.mode,
       slug: profile?.booking_slug ?? null,
-      /**
-       * When true, the personnaliser modal shows the "Un WhatsApp post-RDV
-       * sera envoyé" hint. Lets users hide the notice if they prefer the
-       * cleaner UI once they understand the on_booking workflow exists.
-       * Default true (show the hint).
-       */
-      show_post_booking_wa_notice:
-        (booking.show_post_booking_wa_notice as boolean | undefined) ?? true,
+      show_post_booking_wa_notice: meeting.showPostBookingWaNotice,
+      has_on_booking_wa_workflow: hasOnBookingWaWorkflow,
       availability: {
-        slotMinutes: (availability.slotMinutes as number | undefined) ?? 30,
-        daysAhead: (availability.daysAhead as number | undefined) ?? 14,
-        /** Minimum lead time in hours before a slot can be booked. Default 4. */
-        minNoticeHours:
-          typeof availability.minNoticeHours === "number" && (availability.minNoticeHours as number) >= 0
-            ? (availability.minNoticeHours as number)
-            : 4,
+        slotMinutes: availabilityDefaults.slotMinutes,
+        daysAhead: availabilityDefaults.daysAhead,
+        minNoticeHours: availabilityDefaults.minNoticeHours,
         daySchedules: normaliseDaySchedules(availability.daySchedules),
         exceptions: Array.isArray(availability.exceptions)
           ? (availability.exceptions as AvailabilityException[])
@@ -112,6 +118,7 @@ export const PATCH = createApiHandler(
     const body = await parseBody<{
       title?: string;
       description?: string;
+      mode?: string;
       /** Toggle for the on_booking WA workflow hint. */
       show_post_booking_wa_notice?: boolean;
       availability?: {
@@ -143,6 +150,7 @@ export const PATCH = createApiHandler(
         ...currentBooking,
         ...(body.title !== undefined ? { title: body.title } : {}),
         ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.mode !== undefined ? { mode: body.mode } : {}),
         ...(body.show_post_booking_wa_notice !== undefined
           ? { show_post_booking_wa_notice: body.show_post_booking_wa_notice }
           : {}),

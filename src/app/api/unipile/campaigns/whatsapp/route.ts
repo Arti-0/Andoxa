@@ -1,7 +1,8 @@
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
 import { getWhatsAppAccountIdForUserId } from "@/lib/unipile/account";
 import { unipileFetch } from "@/lib/unipile/client";
-import { applyMessageVariables } from "@/lib/unipile/campaign";
+import { applyMessageVariables } from "@/lib/messaging/template-variables";
+import { buildBookingPublicUrlForProfile } from "@/lib/booking/public-path";
 import { normalizePhoneForWhatsApp } from "@/lib/utils/phone";
 import {
   randomDelay,
@@ -39,9 +40,19 @@ export const POST = createApiHandler(
 
     const { data: prospects } = await service
       .from("prospects")
-      .select("id, full_name, company, job_title, phone, email")
+      .select("id, full_name, company, job_title, phone, email, metadata")
       .eq("organization_id", ctx.workspaceId)
       .in("id", body.prospect_ids);
+
+    const { data: hostProfile } = await service
+      .from("profiles")
+      .select("booking_slug, booking_public_path")
+      .eq("id", ctx.userId)
+      .maybeSingle();
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
+    const bookingLink = hostProfile
+      ? buildBookingPublicUrlForProfile(appUrl, hostProfile)
+      : null;
 
     const prospectMap = new Map((prospects ?? []).map((p) => [p.id, p]));
     const results: {
@@ -63,8 +74,8 @@ export const POST = createApiHandler(
       const override = body.message_by_prospect?.[prospectId]?.trim();
       const text =
         override && override.length > 0
-          ? override
-          : applyMessageVariables(body.message, prospect, {});
+          ? applyMessageVariables(override, prospect, { bookingLink })
+          : applyMessageVariables(body.message, prospect, { bookingLink });
 
       try {
         const chatRes = await unipileFetch<{ id?: string }>("/chats", {

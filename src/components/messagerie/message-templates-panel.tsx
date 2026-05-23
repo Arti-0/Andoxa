@@ -14,6 +14,7 @@ import {
   Copy,
 } from "lucide-react";
 import { toast } from "@/lib/toast";
+import { applyTemplatePreview } from "@/lib/messaging/template-variables";
 
 export interface MessageTemplate {
   id: string;
@@ -54,22 +55,8 @@ const VARIABLES = [
   { key: "bookingLink", label: "Lien de prise de RDV" },
 ];
 
-const PREVIEW_PROSPECT: Record<string, string> = {
-  firstName: "Marie",
-  lastName: "Dupont",
-  company: "TechCorp",
-  jobTitle: "Directrice Marketing",
-  phone: "+33 6 12 34 56 78",
-  email: "marie@techcorp.fr",
-  bookingLink: "https://andoxa.fr/booking/mon-lien",
-};
-
 function applyPreview(content: string): string {
-  let result = content;
-  for (const [key, value] of Object.entries(PREVIEW_PROSPECT)) {
-    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
-  }
-  return result;
+  return applyTemplatePreview(content);
 }
 
 export type TemplateChannelFilter = "all" | "linkedin" | "whatsapp";

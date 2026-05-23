@@ -11,6 +11,8 @@ export async function sendBookingGuestConfirmationEmail(params: {
   slotStartIso: string;
   slotEndIso: string;
   meetUrl: string | null;
+  /** Full event description (fallback when Google Calendar invite was not sent). */
+  description?: string | null;
   /** Optional text/calendar part (UTF-8) — attached as `rendez-vous.ics`. */
   icsInvitation?: string | null;
 }): Promise<boolean> {
@@ -64,6 +66,7 @@ export async function sendBookingGuestConfirmationEmail(params: {
       dateLine,
       timeLine,
       meetUrl: params.meetUrl,
+      description: params.description ?? null,
     }),
     ...(attachments?.length ? { attachments } : {}),
   });

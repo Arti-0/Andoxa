@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { applyTemplatePreview } from "@/lib/messaging/template-variables";
 import "../styles.css";
 import { useMemo, useRef, useState } from "react";
 import {
@@ -437,11 +438,10 @@ function EditModal({ tpl, onClose, onSave, onDelete, categories }: {
     setTimeout(() => { ta.focus(); ta.setSelectionRange(start + v.length, start + v.length); }, 0);
   };
 
-  const renderedPreview = useMemo(() => {
-    let s = content;
-    Object.entries(SAMPLE).forEach(([k, val]) => { s = s.split(k).join(`__VAR_OPEN__${val}__VAR_CLOSE__`); });
-    return s;
-  }, [content]);
+  const renderedPreview = useMemo(
+    () => applyTemplatePreview(content),
+    [content]
+  );
 
   const charCount = content.length;
   const charHint = channel === "wa" ? "Optimal : 100–300 caractères pour WhatsApp" : channel === "li" ? "Optimal : 50–150 caractères pour LinkedIn" : "Optimal : 50–150 (LinkedIn) · 100–300 (WhatsApp)";
@@ -496,15 +496,16 @@ function EditModal({ tpl, onClose, onSave, onDelete, categories }: {
               Aperçu du rendu
             </button>
             {previewOpen && (
-              <div className="m2-preview-block" style={{ marginTop: 8 }}>
+              <div
+                className="m2-preview-block"
+                style={{ marginTop: 8, whiteSpace: "pre-wrap" }}
+              >
                 {renderedPreview ? (
-                  renderedPreview.split("__VAR_OPEN__").map((part, i) => {
-                    if (i === 0) return <span key={i}>{part}</span>;
-                    const [val, rest] = part.split("__VAR_CLOSE__");
-                    return <span key={i}><span className="m2-var-resolved">{val}</span>{rest}</span>;
-                  })
+                  renderedPreview
                 ) : (
-                  <span style={{ color: "var(--m2-slate-500)", fontStyle: "italic" }}>Votre message apparaîtra ici…</span>
+                  <span style={{ color: "var(--m2-slate-500)", fontStyle: "italic" }}>
+                    Votre message apparaîtra ici…
+                  </span>
                 )}
               </div>
             )}

@@ -153,6 +153,9 @@ export function WorkflowListEnrollModal({
             const inCampaign = skipRows.filter(
                 (s) => s.reason === "in_active_campaign",
             ).length;
+            const optedOut = skipRows.filter(
+                (s) => s.reason === "automation_excluded",
+            ).length;
             if (created) {
                 toast.success(
                     created === 1
@@ -161,11 +164,17 @@ export function WorkflowListEnrollModal({
                 );
             }
             if (skipped) {
-                toast.message(`${skipped} ignoré(s)`, {
-                    description: inCampaign
-                        ? `${inCampaign} dans une campagne active. Autres : parcours déjà lancé pour ce contact ou hors sélection.`
-                        : 'Déjà dans ce parcours ou hors sélection.',
-                });
+                const parts: string[] = [];
+                if (optedOut)
+                    parts.push(
+                        `${optedOut} exclu(s) des automatisations`
+                    );
+                if (inCampaign)
+                    parts.push(`${inCampaign} dans une campagne active`);
+                const description = parts.length
+                    ? `${parts.join(' · ')}. Autres : parcours déjà lancé pour ce contact ou hors sélection.`
+                    : 'Déjà dans ce parcours ou hors sélection.';
+                toast.message(`${skipped} ignoré(s)`, { description });
             }
             if (!created && !skipped) {
                 toast.error('Aucun contact ajouté (listes vides ?)');

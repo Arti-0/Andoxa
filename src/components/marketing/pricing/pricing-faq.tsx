@@ -21,8 +21,7 @@ const QA: { q: string; a: React.ReactNode }[] = [
     q: "Que se passe-t-il si je dépasse 20 utilisateurs ?",
     a: (
       <p>
-        Vous passez automatiquement sur le plan Scale (29&nbsp;€/user/mois en annuel) pour les
-        utilisateurs supplémentaires. Pour les très grandes équipes, contactez-nous pour un{" "}
+        Le plan Team couvre jusqu&apos;à 20 utilisateurs. Au-delà, contactez-nous pour un{" "}
         <a href="/contact?objet=custom" className="font-medium text-[var(--brand-blue)] hover:underline">
           devis Custom
         </a>
@@ -68,9 +67,10 @@ const QA: { q: string; a: React.ReactNode }[] = [
     q: "Puis-je essayer Andoxa avant de souscrire ?",
     a: (
       <p>
-        Pas de free trial — la démo commerciale gratuite de 30 minutes vous montre la plateforme
-        avec vos cas d&apos;usage réels. Une fois souscrit, vous pouvez annuler à tout moment dans
-        le mois si ça ne convient pas.
+        Oui. Réservez une démo commerciale gratuite de 30 minutes pour voir la plateforme avec vos
+        cas d&apos;usage réels. Un essai Solo peut aussi être proposé depuis la page tarifs selon
+        l&apos;offre en cours. Une fois souscrit, vous pouvez annuler à tout moment dans le mois si
+        ça ne convient pas.
       </p>
     ),
   },

@@ -1,6 +1,8 @@
 // Mock data for the call session preview page.
 // Mock/fixtures retained for outbound script templates (see ../../BACKEND.md).
 
+import { applyMessageVariables } from "@/lib/messaging/template-variables";
+
 export interface SessionProspect {
   id: string;
   firstName: string;
@@ -73,12 +75,15 @@ Voici mon lien si besoin : {{bookingLink}}`;
 
 export function interpolateScript(template: string, p: SessionProspect): string {
   if (!template) return "";
-  return template
-    .replace(/\{\{firstName\}\}/g, p.firstName || "")
-    .replace(/\{\{lastName\}\}/g, p.lastName || "")
-    .replace(/\{\{company\}\}/g, p.company || "")
-    .replace(/\{\{jobTitle\}\}/g, p.jobTitle || "")
-    .replace(/\{\{phone\}\}/g, p.phone || "")
-    .replace(/\{\{email\}\}/g, p.email || "[email à renseigner]")
-    .replace(/\{\{bookingLink\}\}/g, "andoxa.com/sebastian-bodin");
+  return applyMessageVariables(
+    template,
+    {
+      full_name: [p.firstName, p.lastName].filter(Boolean).join(" ") || null,
+      company: p.company || null,
+      job_title: p.jobTitle || null,
+      phone: p.phone || null,
+      email: p.email || null,
+    },
+    { bookingLink: "andoxa.com/sebastian-bodin" }
+  );
 }

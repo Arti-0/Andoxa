@@ -31,7 +31,7 @@ export const POST = createApiHandler(async (req, ctx) => {
   if (!body?.prospect_ids?.length) {
     throw Errors.validation({ prospect_ids: "Au moins un prospect est requis" });
   }
-  const message = (body.message ?? "").trim() || "Bonjour, j'aimerais vous ajouter à mon réseau.";
+  const message = (body.message ?? "").trim();
 
   const { data: prospects } = await ctx.supabase
     .from("prospects")

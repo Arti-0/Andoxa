@@ -98,6 +98,13 @@ const LINKEDIN_OPTIONS: LinkedInActionOption[] = [
         description: 'Demande avec message personnalisé (300 car.)',
         premiumOnly: true,
     },
+    {
+        value: 'invite_then_message',
+        label: 'Invitation + message',
+        description:
+            'Invitation sans note, puis message personnalisé à l’acceptation',
+        premiumOnly: false,
+    },
 ];
 
 function applyPreviewVariables(
@@ -242,6 +249,7 @@ export function CampaignModal({
     const isWhatsApp = channel === 'whatsapp';
     const isInvitePlain = linkedInAction === 'invite';
     const isInviteWithNote = linkedInAction === 'invite_with_note';
+    const isInviteThenMessage = linkedInAction === 'invite_then_message';
     const isContact = linkedInAction === 'contact';
 
     const effectiveConfig: CampaignConfig = useMemo(() => {
@@ -268,7 +276,11 @@ export function CampaignModal({
           ? INVITE_NOTE_PLACEHOLDER
           : CONTACT_PLACEHOLDER;
 
-    /** WhatsApp : uniquement le texte saisi (obligatoire), jamais le placeholder comme contenu réel. */
+    /**
+     * Final message body. For `invite_then_message` this is the follow-up that
+     * fires post-acceptance — stored as `message_template`, dispatched from
+     * `record-invite-accepted.ts`. For bare invite, the wire body has no text.
+     */
     const text = isWhatsApp
         ? message.trim()
         : isLinkedIn && isInvitePlain
@@ -410,15 +422,34 @@ export function CampaignModal({
                 return;
             }
             const jobId = (json?.data?.id ?? json?.id) as string | undefined;
-            const skipped =
-              (json?.data?.skipped as
-                | { prospect_id: string; reason: string }[]
-                | undefined)?.length ?? 0;
-            if (skipped) {
-              toast.message(`${skipped} prospect(s) ignoré(s)`, {
-                description:
-                  "Déjà dans un parcours actif avec envoi LinkedIn ou WhatsApp.",
-              });
+            const skippedRows =
+                (json?.data?.skipped as
+                    | { prospect_id: string; reason: string }[]
+                    | undefined) ?? [];
+            if (skippedRows.length > 0) {
+                const byReason = skippedRows.reduce<Record<string, number>>(
+                    (acc, r) => {
+                        acc[r.reason] = (acc[r.reason] ?? 0) + 1;
+                        return acc;
+                    },
+                    {}
+                );
+                const reasonLabel: Record<string, string> = {
+                    automation_excluded:
+                        'exclus des automatisations (réglage prospect)',
+                    in_active_workflow: 'déjà dans un parcours actif',
+                    in_active_campaign: 'déjà dans une autre campagne active',
+                };
+                const lines = Object.entries(byReason).map(
+                    ([reason, n]) =>
+                        `${n} ${reasonLabel[reason] ?? reason}`
+                );
+                toast.message(
+                    `${skippedRows.length} prospect(s) ignoré(s)`,
+                    {
+                        description: lines.join(' · '),
+                    }
+                );
             }
             if (saveAsTemplate && templateName.trim() && templateText.trim()) {
                 const ok = await trySaveAsTemplate(
@@ -640,16 +671,29 @@ export function CampaignModal({
                                 l&apos;aperçu pour enregistrer le brouillon.
                             </div>
                         ) : (
-                            <MessageComposeForm
-                                message={message}
-                                onMessageChange={setMessage}
-                                channel={isWhatsApp ? 'whatsapp' : 'linkedin'}
-                                linkedinMode={
-                                    isInviteWithNote ? 'invite' : 'contact'
-                                }
-                                linkedInTier={linkedInTier}
-                                maxLength={maxChars}
-                            />
+                            <>
+                                {isLinkedIn && isInviteThenMessage && (
+                                    <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs leading-relaxed text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+                                        L&apos;invitation est envoyée sans note
+                                        (taux d&apos;acceptation plus élevé).
+                                        Le message ci-dessous part
+                                        automatiquement quand le prospect
+                                        accepte la connexion.
+                                    </div>
+                                )}
+                                <MessageComposeForm
+                                    message={message}
+                                    onMessageChange={setMessage}
+                                    channel={
+                                        isWhatsApp ? 'whatsapp' : 'linkedin'
+                                    }
+                                    linkedinMode={
+                                        isInviteWithNote ? 'invite' : 'contact'
+                                    }
+                                    linkedInTier={linkedInTier}
+                                    maxLength={maxChars}
+                                />
+                            </>
                         )}
 
                         {saveAsTemplate && !(isLinkedIn && isInvitePlain) && (

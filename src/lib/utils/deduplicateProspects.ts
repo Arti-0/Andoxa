@@ -1,6 +1,11 @@
 // utils/deduplicateProspects.ts
 // Fonction utilitaire pour dédupliquer un tableau de prospects avant import
-// Place ce fichier dans my-app/lib/utils/deduplicateProspects.ts
+
+import {
+  dedupKeysForImportRow,
+  type ProspectCandidate,
+  resolveProspectMatch,
+} from "@/lib/prospects/dedup-keys";
 
 export interface ProspectRow {
   [key: string]: string | number | boolean | null | undefined;
@@ -91,7 +96,7 @@ export function classifyProspectsForImport<
   rows: T[],
   existingLiveKeys: Set<string>,
   trashedByKey: Map<string, string>,
-  keyPriority: string[] = ["email", "phone", "linkedin"]
+  _keyPriority?: string[]
 ): {
   inserts: T[];
   restores: Array<{ row: T; prospectId: string }>;
@@ -104,32 +109,46 @@ export function classifyProspectsForImport<
   const duplicates: T[] = [];
 
   for (const row of rows) {
-    const key = keyPriority.find(
-      (k) => row[k] && typeof row[k] === "string" && (row[k] as string).trim() !== ""
-    );
-    if (!key) {
+    const keys = dedupKeysForImportRow({
+      email: row.email as string | null | undefined,
+      phone: row.phone as string | null | undefined,
+      linkedin: row.linkedin as string | null | undefined,
+    });
+
+    if (keys.length === 0) {
       inserts.push(row);
       continue;
     }
-    const value = String(row[key] ?? "").toLowerCase().trim();
 
-    if (liveSeen.has(value)) {
+    const liveHit = keys.find((k) => liveSeen.has(k));
+    if (liveHit) {
       duplicates.push(row);
       continue;
     }
-    const trashedProspectId = trashedSeen.get(value);
+
+    const trashedProspectId = keys
+      .map((k) => trashedSeen.get(k))
+      .find((id): id is string => !!id);
+
     if (trashedProspectId) {
       restores.push({ row, prospectId: trashedProspectId });
-      trashedSeen.delete(value);
-      liveSeen.add(value);
+      for (const k of keys) {
+        trashedSeen.delete(k);
+        liveSeen.add(k);
+      }
       continue;
     }
+
     inserts.push(row);
-    liveSeen.add(value);
+    for (const k of keys) {
+      liveSeen.add(k);
+    }
   }
 
   return { inserts, restores, duplicates };
 }
+
+export { resolveProspectMatch, type ProspectCandidate };
 
 /**
  * Mapping dynamique pour remplir les champs standards à partir des metadata ou autres colonnes CSV

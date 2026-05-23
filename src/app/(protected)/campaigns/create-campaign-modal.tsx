@@ -44,6 +44,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { applyMessageVariables } from "@/lib/messaging/template-variables";
 
 export type LinkedInCampaignType =
   | "invitation_only"
@@ -102,13 +103,17 @@ const VARIABLES = [
   { token: "{{bookingLink}}", label: "Lien booking" },
 ];
 
+const PREVIEW_PROSPECT = {
+  full_name: "Marie Dupont",
+  company: "Acme",
+  job_title: "CTO",
+};
+const PREVIEW_BOOKING_LINK = "andoxa.fr/booking/vous";
+
 function applyPreviewVars(text: string): string {
-  return text
-    .replace(/\{\{firstName\}\}/g, "Marie")
-    .replace(/\{\{lastName\}\}/g, "Dupont")
-    .replace(/\{\{company\}\}/g, "Acme")
-    .replace(/\{\{jobTitle\}\}/g, "CTO")
-    .replace(/\{\{bookingLink\}\}/g, "andoxa.fr/booking/vous");
+  return applyMessageVariables(text, PREVIEW_PROSPECT, {
+    bookingLink: PREVIEW_BOOKING_LINK,
+  });
 }
 
 /**
@@ -909,7 +914,7 @@ function Step4Recap({
       {hasNote && (
         <RecapCard label="Note d'invitation">
           <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-foreground">
-            {invitationNote || "—"}
+            {applyPreviewVars(invitationNote || "—")}
           </div>
         </RecapCard>
       )}
@@ -917,7 +922,7 @@ function Step4Recap({
       {(type === "message_only" || type === "invitation_message") && (
         <RecapCard label="Message">
           <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-foreground">
-            {message || "—"}
+            {applyPreviewVars(message || "—")}
           </div>
         </RecapCard>
       )}

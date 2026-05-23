@@ -33,7 +33,7 @@ export function buildBookingInviteIcs(opts: {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Andoxa//Booking//FR",
+    "PRODID:-//Calendar Invite//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "BEGIN:VEVENT",

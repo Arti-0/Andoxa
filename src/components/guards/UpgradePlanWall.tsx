@@ -18,12 +18,12 @@ export function UpgradePlanWall({ featurePath }: UpgradePlanWallProps) {
       </div>
       <div className="max-w-md space-y-2">
         <h2 className="text-lg font-semibold tracking-tight">
-          {isMessagerie ? "Messagerie — plan Pro" : "Fonctionnalité Pro ou Business"}
+          {isMessagerie ? "Messagerie — plan Team" : "Fonctionnalité Team ou Custom"}
         </h2>
         <p className="text-sm text-muted-foreground">
           {isMessagerie
-            ? "La messagerie centralisée LinkedIn et WhatsApp est incluse à partir du plan Pro."
-            : "Cette page est réservée aux plans Pro et Business."}
+            ? "La messagerie centralisée LinkedIn et WhatsApp est incluse à partir du plan Team."
+            : "Cette page est réservée aux plans Team et Custom."}
         </p>
       </div>
       <div className="flex flex-wrap items-center justify-center gap-2">

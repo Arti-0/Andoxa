@@ -74,7 +74,7 @@ export const PATCH = createApiHandler(async (req, ctx) => {
       )
     ) {
       throw Errors.badRequest(
-        "L'enrichissement automatique à l'import est réservé aux plans Pro et Business."
+        "L'enrichissement automatique à l'import est réservé aux plans Team et Custom."
       );
     }
     const { data: orgMeta } = await ctx.supabase

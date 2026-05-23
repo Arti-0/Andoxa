@@ -8,6 +8,7 @@ import {
   type BookingException,
   type BookingTimeRange,
 } from "./queries";
+import { DEFAULT_MEETING_MODE } from "@/lib/booking/constants";
 
 type Props = { open: boolean; onClose: () => void };
 
@@ -91,6 +92,7 @@ export function BookingModal({ open, onClose }: Props) {
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [mode, setMode] = useState(DEFAULT_MEETING_MODE);
   const [slotMinutes, setSlotMinutes] = useState(30);
   // `daysAhead` is no longer surfaced in the UI — it was a duplicate of the
   // lead-time concept and confused users. We preserve whatever value is
@@ -102,6 +104,7 @@ export function BookingModal({ open, onClose }: Props) {
   const [noticeUnit, setNoticeUnit] = useState<NoticeUnit>("hours");
   /** Toggle for the "Un WhatsApp post-RDV sera envoyé" notice (default true). */
   const [showPostBookingWaNotice, setShowPostBookingWaNotice] = useState(true);
+  const [hasOnBookingWaWorkflow, setHasOnBookingWaWorkflow] = useState(false);
   const [schedules, setSchedules] = useState<Record<number, BookingDaySchedule>>(DEFAULT_SCHEDULES);
   const [exceptions, setExceptions] = useState<BookingException[]>([]);
   const [copyOpen, setCopyOpen] = useState<number | null>(null);
@@ -112,6 +115,7 @@ export function BookingModal({ open, onClose }: Props) {
     if (open && settings) {
       setTitle(settings.title);
       setDescription(settings.description);
+      setMode(settings.mode ?? DEFAULT_MEETING_MODE);
       setSlotMinutes(settings.availability.slotMinutes);
       setDaysAhead(settings.availability.daysAhead);
       const stored = settings.availability.minNoticeHours ?? 4;
@@ -119,6 +123,7 @@ export function BookingModal({ open, onClose }: Props) {
       setNoticeValue(value);
       setNoticeUnit(unit);
       setShowPostBookingWaNotice(settings.show_post_booking_wa_notice ?? true);
+      setHasOnBookingWaWorkflow(settings.has_on_booking_wa_workflow ?? false);
       setSchedules(settings.availability.daySchedules ?? DEFAULT_SCHEDULES);
       setExceptions(settings.availability.exceptions ?? []);
       setSaved(false);
@@ -233,6 +238,7 @@ export function BookingModal({ open, onClose }: Props) {
       {
         title: title.trim(),
         description: description.trim(),
+        mode: mode.trim() || DEFAULT_MEETING_MODE,
         show_post_booking_wa_notice: showPostBookingWaNotice,
         availability: {
           slotMinutes,
@@ -287,6 +293,31 @@ export function BookingModal({ open, onClose }: Props) {
 
                 <Field label="Description" hint="Affichée sous le titre. Quelques mots suffisent.">
                   <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Une courte description, ce que vous proposez, votre disponibilité…" style={{ ...inputStyle, minHeight: 76, resize: "vertical", fontFamily: "inherit" }} />
+                </Field>
+
+                {hasOnBookingWaWorkflow && (
+                  <Field label="WhatsApp post-RDV">
+                    <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", padding: "10px 12px", border: "1px solid var(--cal2-border-faint)", borderRadius: 8, background: "var(--cal2-surface)" }}>
+                      <span
+                        onClick={() => setShowPostBookingWaNotice(!showPostBookingWaNotice)}
+                        style={{ position: "relative", width: 32, height: 18, background: showPostBookingWaNotice ? "#0052D9" : "var(--cal2-border)", borderRadius: 999, flexShrink: 0, transition: "background 140ms", cursor: "pointer", marginTop: 1 }}
+                      >
+                        <span style={{ position: "absolute", top: 2, left: showPostBookingWaNotice ? 16 : 2, width: 14, height: 14, background: "var(--cal2-surface)", borderRadius: "50%", transition: "left 140ms" }} />
+                      </span>
+                      <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--cal2-text)" }}>
+                          Afficher l&apos;indication « Un WhatsApp post-RDV sera envoyé »
+                        </span>
+                        <span style={{ fontSize: 11.5, color: "var(--cal2-text-faint)", textWrap: "balance", lineHeight: 1.45 }}>
+                          Visible uniquement si un workflow « Réunion réservée » est actif sur votre compte.
+                        </span>
+                      </span>
+                    </label>
+                  </Field>
+                )}
+
+                <Field label="Format du rendez-vous" hint="Affiché dans le récapitulatif (ex. Visioconférence, Téléphone…).">
+                  <input type="text" value={mode} onChange={(e) => setMode(e.target.value)} placeholder={DEFAULT_MEETING_MODE} style={inputStyle} />
                 </Field>
               </Section>
 
@@ -381,27 +412,6 @@ export function BookingModal({ open, onClose }: Props) {
                       Ajouter une exception
                     </button>
                   </div>
-                </Field>
-              </Section>
-
-              <Section label="Options" hint="Petits réglages que vos invités voient ou ressentent.">
-                <Field label="WhatsApp post-RDV">
-                  <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", padding: "10px 12px", border: "1px solid var(--cal2-border-faint)", borderRadius: 8, background: "var(--cal2-surface)" }}>
-                    <span
-                      onClick={() => setShowPostBookingWaNotice(!showPostBookingWaNotice)}
-                      style={{ position: "relative", width: 32, height: 18, background: showPostBookingWaNotice ? "#0052D9" : "var(--cal2-border)", borderRadius: 999, flexShrink: 0, transition: "background 140ms", cursor: "pointer", marginTop: 1 }}
-                    >
-                      <span style={{ position: "absolute", top: 2, left: showPostBookingWaNotice ? 16 : 2, width: 14, height: 14, background: "var(--cal2-surface)", borderRadius: "50%", transition: "left 140ms" }} />
-                    </span>
-                    <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                      <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--cal2-text)" }}>
-                        Afficher l&apos;indication « Un WhatsApp post-RDV sera envoyé »
-                      </span>
-                      <span style={{ fontSize: 11.5, color: "var(--cal2-text-faint)", textWrap: "balance", lineHeight: 1.45 }}>
-                        Visible uniquement si un workflow « Réunion réservée » est actif sur votre compte.
-                      </span>
-                    </span>
-                  </label>
                 </Field>
               </Section>
 

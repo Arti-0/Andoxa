@@ -23,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Save, X } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import { applyMessageVariables } from "@/lib/messaging/template-variables";
 
 interface ProspectLite {
   id: string;
@@ -46,19 +47,21 @@ function splitName(full: string | null | undefined): { first: string; last: stri
   return { first: parts[0] ?? "", last: parts.slice(1).join(" ") };
 }
 
-/** Replace {{tokens}} with the prospect's actual fields. Missing values
- *  stay as the raw token so the rep notices the gap. */
+/** Replace {{tokens}} with the prospect's actual fields via shared engine. */
 function interpolate(text: string, p: ProspectLite | undefined): string {
   if (!p) return text;
   const { first, last } = splitName(p.full_name ?? null);
-  const map: Record<string, string> = {
-    firstName: p.first_name ?? first ?? "",
-    lastName: p.last_name ?? last ?? "",
-    company: p.company ?? "",
-    jobTitle: p.job_title ?? "",
-  };
-  return text.replace(/\{\{([a-zA-Z]+)\}\}/g, (m, key) =>
-    map[key] && map[key].length > 0 ? map[key] : m,
+  return applyMessageVariables(
+    text,
+    {
+      full_name:
+        p.full_name ??
+        [p.first_name ?? first, p.last_name ?? last].filter(Boolean).join(" ") ??
+        null,
+      company: p.company ?? null,
+      job_title: p.job_title ?? null,
+    },
+    {}
   );
 }
 

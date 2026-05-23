@@ -41,6 +41,7 @@ import {
   type WorkflowDefinition,
   type WorkflowStepType,
 } from "./schema";
+import type { MessageVariablesContext } from "@/lib/messaging/template-variables";
 
 const RETRY_DELAY_MS = 60_000;
 const STALE_PROCESSING_MS = 15 * 60 * 1000;
@@ -102,6 +103,77 @@ async function getBookingLink(
     .single();
   const appUrl = env.getConfig().appUrl.replace(/\/$/, "");
   return buildBookingPublicUrlForProfile(appUrl, profile);
+}
+
+async function resolveMessageVariableContext(
+  supabase: SupabaseClient<Database>,
+  run: RunRow,
+  startedByUserId: string
+): Promise<MessageVariablesContext> {
+  const enrollmentRaw = (
+    run as RunRow & { enrollment_metadata?: unknown }
+  ).enrollment_metadata;
+  const meta =
+    enrollmentRaw &&
+    typeof enrollmentRaw === "object" &&
+    !Array.isArray(enrollmentRaw)
+      ? (enrollmentRaw as Record<string, unknown>)
+      : {};
+
+  let meetLink =
+    typeof meta.meet_url === "string" && meta.meet_url.trim()
+      ? meta.meet_url.trim()
+      : null;
+  let slotStart =
+    typeof meta.slot_start === "string" && meta.slot_start.trim()
+      ? meta.slot_start.trim()
+      : null;
+
+  const eventId =
+    typeof meta.event_id === "string" && meta.event_id.trim()
+      ? meta.event_id.trim()
+      : null;
+
+  if (eventId && (!meetLink || !slotStart)) {
+    const { data: event } = await supabase
+      .from("events")
+      .select("google_meet_url, start_time")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (!meetLink && event?.google_meet_url) {
+      meetLink = event.google_meet_url;
+    }
+    if (!slotStart && event?.start_time) {
+      slotStart = event.start_time;
+    }
+  }
+
+  let date: string | null = null;
+  let time: string | null = null;
+  if (slotStart) {
+    const slotDate = new Date(slotStart);
+    if (!Number.isNaN(slotDate.getTime())) {
+      date = new Intl.DateTimeFormat("fr-FR", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        timeZone: "Europe/Paris",
+      }).format(slotDate);
+      time = new Intl.DateTimeFormat("fr-FR", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Europe/Paris",
+      }).format(slotDate);
+    }
+  }
+
+  return {
+    bookingLink: await getBookingLink(supabase, startedByUserId),
+    meetLink,
+    date,
+    time,
+  };
 }
 
 type HandlerContext = {
@@ -268,7 +340,7 @@ async function handleLinkedInInvite(
       body: JSON.stringify({
         account_id: accountId,
         provider_id: providerId,
-        message: note,
+        ...(note ? { message: note } : {}),
       }),
     });
   } catch (err) {
@@ -393,7 +465,12 @@ async function handleWhatsAppMessage(ctx: HandlerContext): Promise<void> {
   if (!template.trim()) {
     throw new Error("Message WhatsApp vide");
   }
-  const text = applyMessageVariables(template, ctx.prospect, {});
+  const variableContext = await resolveMessageVariableContext(
+    ctx.supabase,
+    ctx.run,
+    ctx.startedByUserId
+  );
+  const text = applyMessageVariables(template, ctx.prospect, variableContext);
 
   try {
     // Unipile's POST /chats needs multipart/form-data + a WhatsApp JID

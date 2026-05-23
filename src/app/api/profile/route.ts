@@ -46,7 +46,7 @@ export const PATCH = createApiHandler(
         )
       ) {
         throw Errors.badRequest(
-          "L'enrichissement automatique à l'import est réservé aux plans Pro et Business."
+          "L'enrichissement automatique à l'import est réservé aux plans Team et Custom."
         );
       }
     }
@@ -71,7 +71,21 @@ export const PATCH = createApiHandler(
         .eq("id", ctx.userId)
         .single();
       const existing = (currentProfile?.metadata as Record<string, unknown> | null) ?? {};
-      patch.metadata = { ...existing, ...body.metadata } as Json;
+      const incoming = body.metadata as Record<string, unknown>;
+      const nextMeta: Record<string, unknown> = { ...existing, ...incoming };
+      if (incoming.availability && typeof incoming.availability === "object") {
+        nextMeta.availability = {
+          ...((existing.availability as Record<string, unknown> | undefined) ?? {}),
+          ...(incoming.availability as Record<string, unknown>),
+        };
+      }
+      if (incoming.booking && typeof incoming.booking === "object") {
+        nextMeta.booking = {
+          ...((existing.booking as Record<string, unknown> | undefined) ?? {}),
+          ...(incoming.booking as Record<string, unknown>),
+        };
+      }
+      patch.metadata = nextMeta as Json;
     }
 
     const { error } = await ctx.supabase

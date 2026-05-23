@@ -259,6 +259,13 @@ export const PLAN_PRESENTATION: Record<'solo' | 'team' | 'custom', PlanPresentat
     },
 };
 
+/** Rounded annual savings vs monthly for marketing badges (e.g. Solo −20%). */
+export function planAnnualSavingsPercent(plan: "solo" | "team"): number {
+  const prices = PLAN_PRESENTATION[plan].price;
+  if (!prices) return 0;
+  return Math.round((1 - prices.annual / prices.monthly) * 100);
+}
+
 /**
  * Helpers for reading the per-user price at a given cadence. Returns the EUR
  * amount or `null` for contact-sales plans.

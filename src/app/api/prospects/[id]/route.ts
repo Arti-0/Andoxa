@@ -6,8 +6,9 @@ import { enrichProspects } from "@/lib/crm/enrich-prospects";
 import { logStatusChange } from "@/lib/prospect-activity";
 import { emitWorkflowTrigger } from "@/lib/workflows/fire-trigger";
 import { findStatusByAny } from "@/lib/prospects/statuses";
+import { automationExclusionPatch } from "@/lib/prospects/automation-opt-out";
 import type { Prospect } from "@/lib/types/prospects";
-import type { Database } from "@/lib/types/supabase";
+import type { Database, Json } from "@/lib/types/supabase";
 
 type ProspectUpdateRow = Database["public"]["Tables"]["prospects"]["Update"];
 
@@ -90,6 +91,13 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
     location?: string;
     budget?: string;
     source?: string;
+    /**
+     * Toggle the prospect's automation opt-out flag. Translated server-side
+     * into a `metadata.automation_excluded` patch via automationExclusionPatch
+     * so clients never write raw metadata. Filtered by the campaign + workflow
+     * enrollment paths (see lib/prospects/automation-opt-out.ts).
+     */
+    automation_excluded?: boolean;
   }>(req);
 
   // Fetch current prospect to detect status changes
@@ -152,6 +160,27 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
   }
   if (linkedin_url !== undefined) {
     updateData.linkedin = linkedin_url.trim() || null;
+  }
+
+  // Automation opt-out toggle. Read current metadata once, apply the patch
+  // helper, write it back as part of the same update so the toggle and any
+  // other field changes commit atomically.
+  if (body.automation_excluded !== undefined) {
+    const { data: existing, error: metaErr } = await ctx.supabase
+      .from("prospects")
+      .select("metadata")
+      .eq("id", id)
+      .eq("organization_id", ctx.workspaceId)
+      .single();
+    if (metaErr || !existing) {
+      throw Errors.notFound("Prospect");
+    }
+    const nextMeta = automationExclusionPatch(
+      (existing as { metadata?: Record<string, unknown> | null }).metadata,
+      body.automation_excluded
+    );
+    updateData.metadata =
+      (Object.keys(nextMeta).length === 0 ? null : nextMeta) as Json | null;
   }
 
   const { data, error } = await ctx.supabase

@@ -7,6 +7,7 @@ import {
   ensureUnipileAccountUsable,
   UnipileAccountUnusableError,
 } from "@/lib/unipile/account-status";
+import { isProspectAutomationExcluded, type ProspectWithMetadata } from "@/lib/prospects/automation-opt-out";
 
 /**
  * POST /api/campaigns/jobs
@@ -18,7 +19,12 @@ export const POST = createApiHandler(
 
     const body = await parseBody<{
       name?: string;
-      type: "invite" | "invite_with_note" | "contact" | "whatsapp";
+      type:
+        | "invite"
+        | "invite_with_note"
+        | "invite_then_message"
+        | "contact"
+        | "whatsapp";
       prospect_ids?: string[];
       /**
        * Target a whole bdd (list) — the server resolves the prospect ids
@@ -41,10 +47,17 @@ export const POST = createApiHandler(
       message_overrides?: Record<string, string>;
     }>(req);
 
-    const allowedTypes = ["invite", "invite_with_note", "contact", "whatsapp"] as const;
+    const allowedTypes = [
+      "invite",
+      "invite_with_note",
+      "invite_then_message",
+      "contact",
+      "whatsapp",
+    ] as const;
     if (!body.type || !allowedTypes.includes(body.type)) {
       throw Errors.validation({
-        type: "Must be 'invite', 'invite_with_note', 'contact', or 'whatsapp'",
+        type:
+          "Must be 'invite', 'invite_with_note', 'invite_then_message', 'contact', or 'whatsapp'",
       });
     }
 
@@ -147,7 +160,28 @@ export const POST = createApiHandler(
       }
     }
 
+    // Prospect-level automation opt-out. The flag lives on prospects.metadata
+    // (`automation_excluded: true`) and is filtered out of every batch send
+    // unconditionally — there is no wizard toggle, the user opts a prospect
+    // out from the CRM and trusts it sticks across all campaigns.
+    const blockedByOptOut = new Set<string>();
+    {
+      const { data: optOutRows } = await ctx.supabase
+        .from("prospects")
+        .select("id, metadata")
+        .eq("organization_id", ctx.workspaceId)
+        .in("id", rawIds);
+      for (const r of optOutRows ?? []) {
+        if (isProspectAutomationExcluded(r as ProspectWithMetadata))
+          blockedByOptOut.add(r.id);
+      }
+    }
+
     const prospect_ids = rawIds.filter((id) => {
+      if (blockedByOptOut.has(id)) {
+        skipped.push({ prospect_id: id, reason: "automation_excluded" });
+        return false;
+      }
       if (blockedByWorkflow.has(id)) {
         skipped.push({ prospect_id: id, reason: "in_active_workflow" });
         return false;
@@ -161,7 +195,7 @@ export const POST = createApiHandler(
 
     if (!prospect_ids.length) {
       throw Errors.badRequest(
-        "Aucun prospect éligible : chacun est déjà dans un parcours actif avec envoi LinkedIn ou WhatsApp."
+        "Aucun prospect éligible : chacun est déjà dans un parcours actif, dans une autre campagne, ou exclu des automatisations."
       );
     }
 
@@ -178,6 +212,7 @@ export const POST = createApiHandler(
       const isLinkedInType =
         body.type === "invite" ||
         body.type === "invite_with_note" ||
+        body.type === "invite_then_message" ||
         body.type === "contact";
       const channelType: "LINKEDIN" | "WHATSAPP" | null = isLinkedInType
         ? "LINKEDIN"

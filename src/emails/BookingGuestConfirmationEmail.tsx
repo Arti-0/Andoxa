@@ -3,6 +3,7 @@ export type BookingGuestConfirmationEmailProps = {
   dateLine: string;
   timeLine: string;
   meetUrl: string | null;
+  description?: string | null;
 };
 
 function esc(s: string): string {
@@ -17,10 +18,12 @@ export function BookingGuestConfirmationEmail({
   dateLine,
   timeLine,
   meetUrl,
+  description,
 }: BookingGuestConfirmationEmailProps) {
   const safeHost = esc(hostName);
   const safeDate = esc(dateLine);
   const safeTime = esc(timeLine);
+  const safeDescription = description?.trim() ? esc(description.trim()) : null;
 
   return (
     <html lang="fr">
@@ -95,6 +98,25 @@ export function BookingGuestConfirmationEmail({
                           </tbody>
                         </table>
 
+                        {safeDescription ? (
+                          <p
+                            style={{
+                              margin: "0 0 24px 0",
+                              padding: "12px 16px",
+                              backgroundColor: "#f8fafc",
+                              border: "1px solid #e2e8f0",
+                              borderRadius: 8,
+                              fontFamily: "system-ui,sans-serif",
+                              fontSize: 14,
+                              lineHeight: 1.6,
+                              color: "#334155",
+                              whiteSpace: "pre-wrap",
+                            }}
+                          >
+                            {safeDescription}
+                          </p>
+                        ) : null}
+
                         {meetUrl ? (
                           <table role="presentation" cellPadding={0} cellSpacing={0} style={{ margin: "0 auto 24px auto" }}>
                             <tbody>
@@ -139,17 +161,6 @@ export function BookingGuestConfirmationEmail({
                           </p>
                         )}
 
-                        <p
-                          style={{
-                            margin: 0,
-                            fontFamily: "system-ui,sans-serif",
-                            fontSize: 12,
-                            lineHeight: 1.5,
-                            color: "#94a3b8",
-                          }}
-                        >
-                          Propulsé par Andoxa
-                        </p>
                       </td>
                     </tr>
                   </tbody>

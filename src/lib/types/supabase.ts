@@ -21,6 +21,7 @@ export interface Database {
                     type:
                         | 'invite'
                         | 'invite_with_note'
+                        | 'invite_then_message'
                         | 'contact'
                         | 'whatsapp';
                     status:
@@ -51,6 +52,7 @@ export interface Database {
                     type:
                         | 'invite'
                         | 'invite_with_note'
+                        | 'invite_then_message'
                         | 'contact'
                         | 'whatsapp';
                     status?: string;

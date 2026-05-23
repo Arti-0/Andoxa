@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { BOOKING_TIMEZONE } from "@/lib/booking/constants";
+import { buildGoogleCalendarUrl } from "@/lib/booking/google-calendar-url";
 
 interface Slot {
     start: string;
@@ -64,42 +66,31 @@ const WEEKDAYS_FULL_FR = [
     "Samedi",
 ];
 
+function formatBookingTimezoneLabel(): string {
+    try {
+        const offset =
+            new Intl.DateTimeFormat("fr-FR", {
+                timeZone: BOOKING_TIMEZONE,
+                timeZoneName: "shortOffset",
+            })
+                .formatToParts(new Date())
+                .find((p) => p.type === "timeZoneName")?.value ?? "";
+        return `Europe/Paris${offset ? ` (${offset})` : ""}`;
+    } catch {
+        return BOOKING_TIMEZONE;
+    }
+}
+
 function sameDay(a: Date | null, b: Date | null): boolean {
     return !!a && !!b && a.toDateString() === b.toDateString();
 }
 
 /**
- * Builds a Google Calendar TEMPLATE URL — opens calendar.google.com in a new
- * tab with the event pre-filled. Works for any guest with a Google account;
- * no API call or event ID needed (which we don't have for the guest side).
- *
- * Format: YYYYMMDDTHHmmssZ (UTC), no punctuation.
+ * Shared booking client renderer. Used by:
+ *   - this route (/booking/[slug]) — slug comes from useParams.
+ *   - /booking/[org]/[user] — slug is resolved server-side and passed in.
+ * Pass `slug` to bypass the useParams read.
  */
-function buildGoogleCalendarUrl({
-    startIso,
-    endIso,
-    title,
-    details,
-    location,
-}: {
-    startIso: string;
-    endIso: string;
-    title: string;
-    details?: string;
-    location?: string;
-}): string {
-    const toGcal = (iso: string) =>
-        new Date(iso).toISOString().replace(/[-:]|\.\d{3}/g, "");
-    const params = new URLSearchParams({
-        action: "TEMPLATE",
-        text: title,
-        dates: `${toGcal(startIso)}/${toGcal(endIso)}`,
-    });
-    if (details) params.set("details", details);
-    if (location) params.set("location", location);
-    return `https://calendar.google.com/calendar/render?${params.toString()}`;
-}
-
 function buildMonthGrid(
     year: number,
     month: number
@@ -136,6 +127,7 @@ function formatTime(iso: string): string {
     return new Date(iso).toLocaleTimeString("fr-FR", {
         hour: "2-digit",
         minute: "2-digit",
+        timeZone: BOOKING_TIMEZONE,
     });
 }
 
@@ -190,6 +182,18 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
     const [consentDirty, setConsentDirty] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
+    const [showPostBookingWaNotice, setShowPostBookingWaNotice] = useState(true);
+    const [hasOnBookingWaWorkflow, setHasOnBookingWaWorkflow] = useState(false);
+    const [confirmedEvent, setConfirmedEvent] = useState<{
+        title: string;
+        description: string;
+        meetUrl: string | null;
+    } | null>(null);
+
+    const timezoneLabel = useMemo(() => formatBookingTimezoneLabel(), []);
+
+    const showWaGuestNotice =
+        hasOnBookingWaWorkflow && showPostBookingWaNotice;
 
     const loadSlots = useCallback(async () => {
         if (!slug) {
@@ -213,6 +217,12 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
             if (data?.host) setHost(data.host as HostInfo);
             if (data?.meetingType)
                 setMeetingType(data.meetingType as MeetingTypeInfo);
+            if (typeof data?.show_post_booking_wa_notice === "boolean") {
+                setShowPostBookingWaNotice(data.show_post_booking_wa_notice);
+            }
+            if (typeof data?.has_on_booking_wa_workflow === "boolean") {
+                setHasOnBookingWaWorkflow(data.has_on_booking_wa_workflow);
+            }
         } catch {
             setLoadError("Erreur lors du chargement");
             setSlots([]);
@@ -291,6 +301,18 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
                 setSubmitError(json?.error ?? "Erreur lors de la réservation");
                 return;
             }
+            const payload = json?.data ?? json;
+            setConfirmedEvent({
+                title:
+                    (payload?.title as string | undefined)?.trim() ||
+                    meetingType.title,
+                description:
+                    (payload?.description as string | undefined)?.trim() ||
+                    meetingType.description,
+                meetUrl:
+                    (payload?.google_meet_url as string | null | undefined) ??
+                    null,
+            });
             setStep(3);
         } catch {
             setSubmitError("Erreur lors de la réservation");
@@ -606,7 +628,7 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
                                                 type="button"
                                                 className="cal-tz"
                                             >
-                                                <Globe /> Europe/Paris (GMT+1){" "}
+                                                <Globe /> {timezoneLabel}{" "}
                                                 <ChevronDown />
                                             </button>
                                         </div>
@@ -871,7 +893,7 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
                                                 Au moins l&apos;e-mail ou le
                                                 numéro WhatsApp est requis.
                                             </div>
-                                            {guestPhone.trim() && (
+                                            {guestPhone.trim() && showWaGuestNotice && (
                                                 <div className="wa-bonus">
                                                     <span className="wa-bonus-icon">
                                                         <MessageCircle
@@ -884,10 +906,10 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
                                                             WhatsApp
                                                         </span>
                                                         <span className="wa-bonus-sub">
-                                                            Vous recevrez un
-                                                            message avec les
-                                                            détails du
-                                                            rendez-vous.
+                                                            Un WhatsApp post-RDV
+                                                            sera envoyé avec les
+                                                            détails du rendez-vous
+                                                            (lien de visio inclus).
                                                         </span>
                                                     </span>
                                                 </div>
@@ -986,28 +1008,56 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
                                     Rendez-vous confirmé
                                 </h2>
                                 <p className="confirm-sub">
-                                    {guestEmail.trim() && guestPhone.trim() ? (
-                                        <>
-                                            Un e-mail récapitulatif et un message
-                                            WhatsApp (avec le lien de visio)
-                                            viennent d&apos;être envoyés.{" "}
-                                            {hostName} vous attend à l&apos;heure
-                                            prévue.
-                                        </>
-                                    ) : guestEmail.trim() ? (
-                                        <>
-                                            Un e-mail récapitulatif vient
-                                            d&apos;être envoyé. {hostName} vous
-                                            attend à l&apos;heure prévue.
-                                        </>
-                                    ) : (
-                                        <>
-                                            Un message WhatsApp de confirmation
-                                            avec le lien de visio vient d&apos;être
-                                            envoyé. {hostName} vous attend à
-                                            l&apos;heure prévue.
-                                        </>
-                                    )}
+                                    {(() => {
+                                        const hasEmail = Boolean(
+                                            guestEmail.trim()
+                                        );
+                                        const hasPhone = Boolean(
+                                            guestPhone.trim()
+                                        );
+                                        const waNotice =
+                                            showWaGuestNotice && hasPhone;
+                                        if (hasEmail && waNotice) {
+                                            return (
+                                                <>
+                                                    Un e-mail récapitulatif et
+                                                    un message WhatsApp (avec le
+                                                    lien de visio) viennent
+                                                    d&apos;être envoyés.{" "}
+                                                    {hostName} vous attend à
+                                                    l&apos;heure prévue.
+                                                </>
+                                            );
+                                        }
+                                        if (hasEmail) {
+                                            return (
+                                                <>
+                                                    Un e-mail récapitulatif vient
+                                                    d&apos;être envoyé. {hostName}{" "}
+                                                    vous attend à l&apos;heure
+                                                    prévue.
+                                                </>
+                                            );
+                                        }
+                                        if (waNotice) {
+                                            return (
+                                                <>
+                                                    Un message WhatsApp de
+                                                    confirmation avec le lien de
+                                                    visio vient d&apos;être
+                                                    envoyé. {hostName} vous attend
+                                                    à l&apos;heure prévue.
+                                                </>
+                                            );
+                                        }
+                                        return (
+                                            <>
+                                                Votre rendez-vous est confirmé.{" "}
+                                                {hostName} vous attend à
+                                                l&apos;heure prévue.
+                                            </>
+                                        );
+                                    })()}
                                 </p>
                                 <div className="confirm-recap">
                                     <div className="row">
@@ -1045,8 +1095,21 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
                                         href={buildGoogleCalendarUrl({
                                             startIso: selectedSlot.start,
                                             endIso: selectedSlot.end,
-                                            title: `RDV avec ${hostName}`,
-                                            details: `Rendez-vous via Andoxa · ${meetingType.duration} min · ${meetingType.mode}`,
+                                            title:
+                                                confirmedEvent?.title ??
+                                                meetingType.title,
+                                            details: [
+                                                confirmedEvent?.description ??
+                                                    meetingType.description,
+                                                confirmedEvent?.meetUrl
+                                                    ? `Rejoindre : ${confirmedEvent.meetUrl}`
+                                                    : null,
+                                            ]
+                                                .filter(Boolean)
+                                                .join("\n\n"),
+                                            location:
+                                                confirmedEvent?.meetUrl ??
+                                                undefined,
                                         })}
                                         target="_blank"
                                         rel="noopener noreferrer"

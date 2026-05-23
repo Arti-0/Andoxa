@@ -70,6 +70,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
+import { isProspectAutomationExcluded } from "@/lib/prospects/automation-opt-out";
 import type { Prospect } from "@/lib/types/prospects";
 
 const STATUS_FALLBACK: StatusConfig = {
@@ -1265,18 +1267,90 @@ function MetadonneesSection({ prospect }: { prospect: Prospect }) {
         )}
       </button>
       {open && (
-        <div className="mt-3.5 grid grid-cols-1 gap-x-6 gap-y-2.5 text-[12.5px] sm:grid-cols-2">
-          {rows.map(([k, v]) => (
-            <div key={k}>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {k}
+        <div className="mt-3.5 flex flex-col gap-4">
+          <div className="grid grid-cols-1 gap-x-6 gap-y-2.5 text-[12.5px] sm:grid-cols-2">
+            {rows.map(([k, v]) => (
+              <div key={k}>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {k}
+                </div>
+                <div className="mt-0.5 text-foreground/80">{v ?? "—"}</div>
               </div>
-              <div className="mt-0.5 text-foreground/80">{v ?? "—"}</div>
-            </div>
-          ))}
+            ))}
+          </div>
+          <AutomationOptOutToggle prospect={prospect} />
         </div>
       )}
     </Surface>
+  );
+}
+
+/**
+ * Per-prospect automation opt-out toggle. When enabled the prospect is
+ * filtered out of every batch send (campaigns, workflow auto-enrollments,
+ * manual workflow enrollment) — see `lib/prospects/automation-opt-out.ts`
+ * for the full list of consumers. Lives in the Métadonnées block because
+ * it sits below the day-to-day workflow and is rarely toggled.
+ */
+function AutomationOptOutToggle({ prospect }: { prospect: Prospect }) {
+  const queryClient = useQueryClient();
+  const excluded = isProspectAutomationExcluded(prospect);
+
+  const mutation = useMutation({
+    mutationFn: async (next: boolean) => {
+      const res = await fetch(`/api/prospects/${prospect.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ automation_excluded: next }),
+      });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        throw new Error(
+          json.error?.message ?? "Impossible de mettre à jour le réglage"
+        );
+      }
+      return next;
+    },
+    onSuccess: (next) => {
+      queryClient.invalidateQueries({ queryKey: ["prospect", prospect.id] });
+      queryClient.invalidateQueries({
+        queryKey: ["prospect-overview", prospect.id],
+      });
+      queryClient.invalidateQueries({ queryKey: ["prospects"] });
+      toast.success(
+        next
+          ? "Prospect exclu des automatisations"
+          : "Prospect réintégré aux automatisations"
+      );
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-md border border-dashed bg-muted/30 px-3 py-2.5">
+      <div className="min-w-0">
+        <div className="text-[12.5px] font-medium">
+          Exclure des automatisations
+        </div>
+        <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted-foreground">
+          Quand cette option est activée, le prospect n&apos;est jamais inclus
+          dans les campagnes ni enrôlé dans un workflow — déclencheur
+          automatique (acceptation, réponse, changement de statut…) ou
+          sélection manuelle. Utile pour les contacts sensibles à protéger
+          des envois en masse.
+        </p>
+      </div>
+      <Switch
+        checked={excluded}
+        disabled={mutation.isPending}
+        onCheckedChange={(next) => mutation.mutate(next)}
+        aria-label="Exclure des automatisations"
+        className="mt-0.5 shrink-0"
+      />
+    </div>
   );
 }
 

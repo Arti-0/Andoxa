@@ -2,10 +2,11 @@
 
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { planAnnualSavingsPercent } from "@/lib/config/plans-config";
 
 export type Billing = "monthly" | "annual";
 
-/** Mensuel / Annuel (−20 %) segmented toggle for the pricing surfaces. */
+/** Mensuel / Annuel segmented toggle for the pricing surfaces. */
 export function BillingToggle({
   value,
   onChange,
@@ -13,6 +14,7 @@ export function BillingToggle({
   value: Billing;
   onChange: (v: Billing) => void;
 }) {
+  const savingsBadge = `−${planAnnualSavingsPercent("solo")}%`;
   return (
     <div
       role="tablist"
@@ -30,7 +32,7 @@ export function BillingToggle({
             value === "annual" ? "bg-white/20 text-white" : "bg-emerald-500 text-white",
           )}
         >
-          −20%
+          {savingsBadge}
         </span>
       </Pill>
     </div>

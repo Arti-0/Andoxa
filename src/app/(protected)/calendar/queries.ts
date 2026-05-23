@@ -332,6 +332,7 @@ export interface BookingException {
 export interface BookingSettings {
   title: string;
   description: string;
+  mode?: string;
   slug: string | null;
   /**
    * Toggle for the "Un WhatsApp post-RDV sera envoyé" hint in the
@@ -339,6 +340,8 @@ export interface BookingSettings {
    * Default true.
    */
   show_post_booking_wa_notice?: boolean;
+  /** True when an active on_booking workflow includes a WhatsApp step. */
+  has_on_booking_wa_workflow?: boolean;
   availability: {
     slotMinutes: number;
     daysAhead: number;

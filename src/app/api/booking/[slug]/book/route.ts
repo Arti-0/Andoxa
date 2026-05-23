@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { validateAndNormalizeLinkedIn } from "@/lib/utils/linkedin";
-import { getValidGoogleAccessToken, createGoogleMeetEvent } from "@/lib/google/calendar";
 import { sendBookingOwnerConfirmationEmail } from "@/lib/email/send-booking-owner-confirmation";
 import { sendBookingGuestConfirmationEmail } from "@/lib/email/send-booking-guest-confirmation";
 import { captureRouteError } from "@/lib/sentry/route-error";
-import { createNotification } from "@/lib/notifications/create-notification";
+import { afterRdvCreated } from "@/lib/events/after-rdv-created";
+import { createRdvCalendarEvent } from "@/lib/events/create-rdv-event";
 import { normalizePhoneForWhatsApp } from "@/lib/utils/phone";
-import { getWhatsAppAccountIdForUserId } from "@/lib/unipile/account";
-import { unipileFetch } from "@/lib/unipile/client";
 import { buildBookingInviteIcs } from "@/lib/booking/build-booking-invite-ics";
-import { enrollOnBooking } from "@/lib/workflows/enroll-on-booking";
+import { resolveMeetingDisplay, resolveAvailabilityDefaults } from "@/lib/booking/meeting-display";
+import { validateBookingSlotRequest } from "@/lib/booking/validate-booking-slot";
+import { resolveProspectMatch } from "@/lib/prospects/dedup-keys";
+import { BOOKING_TIMEZONE } from "@/lib/booking/constants";
+import type { AvailabilityConfig } from "@/lib/booking/slots";
 
 function looksLikeEmail(s: string): boolean {
   const t = s.trim();
@@ -162,7 +164,7 @@ export async function POST(
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("id, full_name, active_organization_id, email")
+      .select("id, full_name, active_organization_id, email, metadata")
       .eq("booking_slug", slug)
       .single();
 
@@ -181,18 +183,35 @@ export async function POST(
       );
     }
 
-    const { data: events } = await supabase
+    const meta = (profile.metadata ?? {}) as Record<string, unknown>;
+    const availability = (meta.availability ?? {}) as AvailabilityConfig;
+    const hostName = profile.full_name?.trim() || "Hôte";
+    const meeting = resolveMeetingDisplay(meta, hostName);
+    const eventTitle = meeting.title;
+
+    const { daysAhead } = resolveAvailabilityDefaults(meta);
+    const from = new Date();
+    const endRange = new Date(from);
+    endRange.setDate(endRange.getDate() + daysAhead);
+
+    const { data: bookedEvents } = await supabase
       .from("events")
-      .select("id")
+      .select("start_time, end_time")
       .eq("organization_id", orgId)
       .eq("created_by", profile.id)
-      .lt("start_time", slot_end)
-      .gt("end_time", slot_start);
+      .gte("start_time", from.toISOString())
+      .lte("end_time", endRange.toISOString());
 
-    if (events && events.length > 0) {
+    const slotCheck = validateBookingSlotRequest(
+      slot_start,
+      slot_end,
+      availability,
+      bookedEvents ?? []
+    );
+    if (!slotCheck.ok) {
       return NextResponse.json(
-        { success: false, error: "This slot is no longer available" },
-        { status: 409 }
+        { success: false, error: slotCheck.error },
+        { status: slotCheck.error === "This slot is no longer available" ? 409 : 400 }
       );
     }
 
@@ -225,7 +244,6 @@ export async function POST(
         .from("prospects")
         .select("id, full_name, email, linkedin, phone")
         .eq("organization_id", orgId)
-        .eq("user_id", profile.id)
         .is("deleted_at", null)
         .or(orFilters.join(","));
       if (lookupErr) {
@@ -241,26 +259,12 @@ export async function POST(
       candidates = data ?? [];
     }
 
-    let match: (typeof candidates)[number] | null = null;
-    if (linkedin) {
-      match =
-        candidates.find((p) => {
-          const norm = validateAndNormalizeLinkedIn(p.linkedin);
-          return norm && norm.toLowerCase() === linkedin.toLowerCase();
-        }) ?? null;
-    }
-    if (!match && hasEmail) {
-      match =
-        candidates.find((p) => p.email?.toLowerCase() === emailRaw.toLowerCase()) ??
-        null;
-    }
-    if (!match && hasPhone) {
-      match =
-        candidates.find((p) => {
-          const ph = p.phone?.trim();
-          return ph && normalizePhoneForWhatsApp(ph) === normalizedPhone;
-        }) ?? null;
-    }
+    let match = resolveProspectMatch(candidates, {
+      linkedin,
+      email: hasEmail ? emailRaw : null,
+      phone: hasPhone ? phoneRaw : null,
+      normalizedPhone: hasPhone ? normalizedPhone : undefined,
+    });
 
     if (match) {
       // Additive merge — only set fields the existing row doesn't have.
@@ -328,37 +332,33 @@ export async function POST(
       );
     }
 
-    const descriptionLines = [
-      "Rendez-vous réservé via le lien de prise de RDV.",
-      "",
-      `Invité : ${name}`,
-    ];
-    if (emailForDb) descriptionLines.push(`E-mail : ${emailForDb}`);
-    if (linkedin) descriptionLines.push(`LinkedIn : ${linkedin}`);
-    if (phoneForDb) descriptionLines.push(`Téléphone : ${phoneForDb}`);
-    const description = descriptionLines.join("\n");
+    let eventId: string;
+    let meetUrl: string | null = null;
+    let googleEventId: string | null = null;
+    let description: string;
 
-    const { data: event, error: eventError } = await supabase
-      .from("events")
-      .insert({
-        organization_id: orgId,
-        title: `RDV avec ${name}`,
-        description,
-        start_time: slot_start,
-        end_time: slot_end,
-        prospect_id: prospectId,
-        created_by: profile.id,
-        is_all_day: false,
+    try {
+      const created = await createRdvCalendarEvent(supabase, {
+        organizationId: orgId,
+        userId: profile.id,
+        ownerEmail: profile.email?.trim() ?? null,
+        title: eventTitle,
+        hostDescription: meeting.description,
+        guestName: name,
+        guestEmail: emailForDb,
+        guestLinkedin: linkedin,
+        guestPhone: phoneForDb,
+        startIso: slot_start,
+        endIso: slot_end,
+        prospectId,
         source: "booking",
-        guest_name: name,
-        guest_email: emailForDb,
-        guest_linkedin: linkedin,
-        guest_phone: phoneForDb,
-      })
-      .select("id, start_time, end_time, title")
-      .single();
-
-    if (eventError || !event?.id) {
+        withGoogleMeet: true,
+      });
+      eventId = created.eventId;
+      meetUrl = created.meetUrl;
+      googleEventId = created.googleEventId;
+      description = created.description;
+    } catch (eventError) {
       captureRouteError(route, eventError ?? new Error("missing_event_id"), {
         extra: { slug, step: "event_create" },
       });
@@ -368,52 +368,16 @@ export async function POST(
       );
     }
 
-    const eventId = event.id;
-    let meetUrl: string | null = null;
-    let googleEventId: string | null = null;
+    const { data: event } = await supabase
+      .from("events")
+      .select("id, start_time, end_time, title")
+      .eq("id", eventId)
+      .single();
 
-    try {
-      const accessToken = await getValidGoogleAccessToken(supabase, profile.id);
-      if (accessToken) {
-        const ownerEmail = profile.email?.trim();
-        const attendeeRaw = [
-          ownerEmail,
-          ...(hasEmail ? [emailRaw] : []),
-        ].filter((e): e is string => !!e && e.includes("@"));
-        const seen = new Set<string>();
-        const uniqueAttendees: string[] = [];
-        for (const e of attendeeRaw) {
-          const low = e.toLowerCase();
-          if (!seen.has(low)) {
-            seen.add(low);
-            uniqueAttendees.push(e);
-          }
-        }
-
-        const cal = await createGoogleMeetEvent(accessToken, {
-          summary: `RDV Andoxa — ${name}`,
-          description,
-          startIso: slot_start,
-          endIso: slot_end,
-          attendeeEmails: uniqueAttendees.length > 0 ? uniqueAttendees : undefined,
-        });
-        meetUrl = cal.meetUrl;
-        googleEventId = cal.eventId || null;
-        await supabase
-          .from("events")
-          .update({
-            google_meet_url: meetUrl,
-            google_event_id: googleEventId,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", eventId);
-      }
-    } catch (e) {
-      captureRouteError(
-        route,
-        e,
-        { extra: { slug, step: "google_meet" } },
-        "warn"
+    if (!event?.id) {
+      return NextResponse.json(
+        { success: false, error: "Failed to create booking" },
+        { status: 500 }
       );
     }
 
@@ -453,58 +417,23 @@ export async function POST(
         .eq("id", eventId);
     }
 
-    // Guest WhatsApp first when applicable (priority channel), then optional email.
-    if (hasPhone) {
-      try {
-        const waAccountId = await getWhatsAppAccountIdForUserId(supabase, profile.id);
-        if (waAccountId && normalizedPhone) {
-          const dateStr = new Intl.DateTimeFormat("fr-FR", {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-            timeZone: "Europe/Paris",
-          }).format(slotStartDate);
-          const hostName = profile.full_name?.trim() || "votre interlocuteur";
-          const waLines = [
-            `✅ Votre rendez-vous avec ${hostName} est confirmé !`,
-            `📅 ${dateStr}`,
-          ];
-          if (meetUrl) waLines.push(`🔗 Lien de visio : ${meetUrl}`);
-          await unipileFetch("/chats", {
-            method: "POST",
-            body: JSON.stringify({
-              account_id: waAccountId,
-              attendees_ids: [normalizedPhone],
-              text: waLines.join("\n"),
-            }),
-          });
-        }
-      } catch (e) {
-        captureRouteError(route, e, {
-          extra: { slug, step: "whatsapp_confirmation", eventId },
-        }, "warn");
-      }
-    }
+    const googleCalendarInviteSent = Boolean(googleEventId && hasEmail);
 
-    if (hasEmail) {
+    // When Google Calendar sent the invite, skip the custom guest email — it
+    // would duplicate and show less detail (no attendees, truncated body).
+    if (hasEmail && !googleCalendarInviteSent) {
       try {
         const host =
           process.env.NEXT_PUBLIC_APP_URL?.replace(/^https?:\/\//, "").split("/")[0] ??
           "andoxa.app";
         const hostDisplay = profile.full_name?.trim() || ownerEmail || "Hôte";
-        const guestIcsLines = [
-          `Rendez-vous avec ${hostDisplay}`,
-          meetUrl ? `Visioconférence : ${meetUrl}` : "",
-        ].filter(Boolean);
+        const fallbackDescription = description;
         const guestIcs = buildBookingInviteIcs({
           uid: `${eventId}@${host}`,
           startUtc: slotStartDate,
           endUtc: slotEndDate,
-          summary: `RDV — ${hostDisplay}`,
-          description: guestIcsLines.join("\n"),
+          summary: eventTitle,
+          description: fallbackDescription,
           organizerName: hostDisplay,
           organizerEmail: ownerEmail && ownerEmail.includes("@") ? ownerEmail : null,
         });
@@ -514,6 +443,7 @@ export async function POST(
           slotStartIso: slot_start,
           slotEndIso: slot_end,
           meetUrl,
+          description: fallbackDescription,
           icsInvitation: guestIcs,
         });
       } catch (e) {
@@ -524,30 +454,17 @@ export async function POST(
     }
 
     const ownerName = profile.full_name?.trim() || "vous";
-    await createNotification(supabase, {
-      title: "Nouveau rendez-vous",
-      message: `${name} a réservé un créneau avec ${ownerName}`,
-      category: "event",
-      action_type: "event_created",
-      actor_id: null,
-      organization_id: orgId,
-      target_url: "/calendar",
-      dedupe_key: `booking:new:${eventId}`,
+    await afterRdvCreated(supabase, {
+      organizationId: orgId,
+      eventId,
+      prospectId,
+      hostUserId: profile.id,
+      hostName: ownerName,
+      guestOrProspectName: name,
+      fromPublicBooking: true,
+      meetUrl,
+      slotStartIso: slot_start,
     });
-
-    // Fire `on_booking` workflows for the host. One run per
-    // (workflow, prospect, event) tuple — enforced by the unique partial
-    // index added in migration 20260517170000. Rebookings get a new event
-    // → new run, per product spec. Failures are non-fatal (the booking
-    // already succeeded by this point and the user got their confirmation).
-    if (prospectId) {
-      await enrollOnBooking(supabase, {
-        organizationId: orgId,
-        prospectId,
-        eventId,
-        startedByUserId: profile.id,
-      });
-    }
 
     return NextResponse.json({
       success: true,
@@ -556,6 +473,7 @@ export async function POST(
         start_time: event.start_time,
         end_time: event.end_time,
         title: event.title,
+        description,
         google_meet_url: meetUrl,
       },
     });

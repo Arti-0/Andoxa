@@ -30,9 +30,18 @@ export async function enrollOnBooking(
     eventId: string;
     /** Booking-owner user id — stored as `started_by` for the run. */
     startedByUserId: string;
+    meetUrl?: string | null;
+    slotStartIso?: string | null;
   }
 ): Promise<number> {
-  const { organizationId, prospectId, eventId, startedByUserId } = args;
+  const {
+    organizationId,
+    prospectId,
+    eventId,
+    startedByUserId,
+    meetUrl,
+    slotStartIso,
+  } = args;
   let enrolled = 0;
 
   try {
@@ -51,6 +60,8 @@ export async function enrollOnBooking(
         enrollmentMetadata: {
           source: "booking",
           event_id: eventId,
+          meet_url: meetUrl ?? null,
+          slot_start: slotStartIso ?? null,
         },
         sentryAction: "enroll_on_booking_insert",
       });

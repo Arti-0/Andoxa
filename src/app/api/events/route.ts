@@ -2,6 +2,12 @@ import { createApiHandler, Errors, getPagination, getSearchParams, parseBody } f
 import { generateMockCalendarEvents } from "@/lib/mock-stats/calendar-events";
 import { isMockStatsEnabled } from "@/lib/mock-stats";
 import { getValidGoogleAccessToken, createGoogleMeetEvent } from "@/lib/google/calendar";
+import { afterRdvCreated } from "@/lib/events/after-rdv-created";
+import {
+  buildGoogleAttendeeEmails,
+  shouldNotifyGoogleAttendees,
+} from "@/lib/booking/event-payload";
+import { BOOKING_TIMEZONE } from "@/lib/booking/constants";
 import type { Database } from "@/lib/types/supabase";
 
 type EventInsert = Database["public"]["Tables"]["events"]["Insert"];
@@ -178,9 +184,6 @@ export const POST = createApiHandler(async (req, ctx) => {
         const attendeeEmails = Array.isArray(body.attendee_emails)
           ? body.attendee_emails.filter((e) => typeof e === "string" && e.includes("@"))
           : [];
-        // Resolve emails for invited colleagues (attendee_user_ids) so the
-        // Google Meet invite goes out and the meeting appears in their
-        // Google calendar too — Calendar #5.
         const userIds = Array.isArray(body.attendee_user_ids)
           ? body.attendee_user_ids.filter((id): id is string => typeof id === "string")
           : [];
@@ -196,13 +199,42 @@ export const POST = createApiHandler(async (req, ctx) => {
             }
           }
         }
+        if (body.prospect_id) {
+          const { data: linkedProspect } = await ctx.supabase
+            .from("prospects")
+            .select("email")
+            .eq("id", body.prospect_id)
+            .eq("organization_id", ctx.workspaceId)
+            .maybeSingle();
+          const prospectEmail = linkedProspect?.email?.trim();
+          if (
+            prospectEmail &&
+            prospectEmail.includes("@") &&
+            !attendeeEmails.includes(prospectEmail)
+          ) {
+            attendeeEmails.push(prospectEmail);
+          }
+        }
+        const { data: creatorProfile } = await ctx.supabase
+          .from("profiles")
+          .select("email")
+          .eq("id", ctx.userId)
+          .maybeSingle();
+        const uniqueAttendees = buildGoogleAttendeeEmails(
+          creatorProfile?.email,
+          attendeeEmails
+        );
+        const notify =
+          body.notify_attendees === true &&
+          shouldNotifyGoogleAttendees(uniqueAttendees);
         const cal = await createGoogleMeetEvent(accessToken, {
           summary: body.title,
           description: body.description,
           startIso: body.start_time,
           endIso: body.end_time,
-          attendeeEmails: attendeeEmails.length > 0 ? attendeeEmails : undefined,
-          notifyAttendees: body.notify_attendees === true,
+          timeZone: BOOKING_TIMEZONE,
+          attendeeEmails: uniqueAttendees.length > 0 ? uniqueAttendees : undefined,
+          notifyAttendees: notify,
         });
         meetUrl = cal.meetUrl;
         googleEventId = cal.eventId || null;
@@ -245,6 +277,34 @@ export const POST = createApiHandler(async (req, ctx) => {
     console.error("[api/events POST] Supabase error:", error);
     const msg = error.message || "Erreur lors de la création de l'événement";
     throw Errors.internal(msg);
+  }
+
+  if (data?.id && body.prospect_id && ctx.userId && ctx.workspaceId) {
+    const { data: hostProfile } = await ctx.supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", ctx.userId)
+      .maybeSingle();
+    const { data: prospect } = await ctx.supabase
+      .from("prospects")
+      .select("full_name")
+      .eq("id", body.prospect_id)
+      .maybeSingle();
+    try {
+      await afterRdvCreated(ctx.supabase, {
+        organizationId: ctx.workspaceId,
+        eventId: data.id,
+        prospectId: body.prospect_id,
+        hostUserId: ctx.userId,
+        hostName: hostProfile?.full_name?.trim() || "vous",
+        guestOrProspectName: prospect?.full_name?.trim() || "Prospect",
+        fromPublicBooking: false,
+        meetUrl,
+        slotStartIso: body.start_time,
+      });
+    } catch (e) {
+      console.error("[api/events POST] afterRdvCreated failed:", e);
+    }
   }
 
   return data;

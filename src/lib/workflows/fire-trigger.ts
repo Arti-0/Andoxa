@@ -22,6 +22,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import * as Sentry from "@sentry/nextjs";
 import type { Database } from "@/lib/types/supabase";
+import { isProspectAutomationExcluded } from "@/lib/prospects/automation-opt-out";
 import {
   listActiveWorkflowsForTrigger,
   startWorkflowRun,
@@ -68,6 +69,34 @@ export async function emitWorkflowTrigger(
   const { organizationId, prospectId, payload, startedByUserId = null } = args;
 
   if (payload.kind === "manual") return { enrolled: 0 };
+
+  // Prospect-level automation opt-out. Every system-triggered enrollment
+  // (status change, reply webhook, invite accepted, etc.) routes through
+  // this function, so a single guard here keeps opted-out prospects out of
+  // every workflow automation. Manual enrollments go through
+  // /api/workflows/[id]/runs and have their own check there.
+  try {
+    const { data: prospect } = await supabase
+      .from("prospects")
+      .select("metadata")
+      .eq("id", prospectId)
+      .maybeSingle();
+    if (
+      isProspectAutomationExcluded(
+        prospect as { metadata?: unknown } | null | undefined
+      )
+    ) {
+      return { enrolled: 0 };
+    }
+  } catch (err) {
+    // Best-effort: if the opt-out lookup itself fails (network, RLS), don't
+    // block the trigger — we'd rather over-enroll than miss legitimate
+    // workflow fires. The error still gets reported.
+    Sentry.captureException(err, {
+      tags: { feature: "workflows", action: "opt_out_lookup" },
+      extra: { prospectId, organizationId },
+    });
+  }
 
   let enrolled = 0;
   try {

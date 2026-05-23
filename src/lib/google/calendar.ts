@@ -60,6 +60,8 @@ export type CreateMeetEventInput = {
   description?: string;
   startIso: string;
   endIso: string;
+  /** IANA timezone for wall-clock times (defaults to Europe/Paris). */
+  timeZone?: string;
   /** Optional attendee emails (Google Calendar). */
   attendeeEmails?: string[];
   /**
@@ -90,11 +92,13 @@ export async function createGoogleMeetEvent(
     .filter((e) => e && e.includes("@"))
     .map((email) => ({ email }));
 
+  const timeZone = input.timeZone ?? "Europe/Paris";
+
   const body: Record<string, unknown> = {
     summary: input.summary,
     description: input.description ?? "",
-    start: { dateTime: input.startIso },
-    end: { dateTime: input.endIso },
+    start: { dateTime: input.startIso, timeZone },
+    end: { dateTime: input.endIso, timeZone },
     conferenceData: {
       createRequest: {
         requestId,
@@ -151,6 +155,7 @@ export type UpdateGoogleEventInput = {
   description?: string;
   startIso?: string;
   endIso?: string;
+  timeZone?: string;
   location?: string;
   /** Replaces the attendee list when provided. */
   attendeeEmails?: string[];
@@ -174,8 +179,14 @@ export async function updateGoogleCalendarEvent(
   if (input.summary !== undefined) body.summary = input.summary;
   if (input.description !== undefined) body.description = input.description;
   if (input.location !== undefined) body.location = input.location;
-  if (input.startIso !== undefined) body.start = { dateTime: input.startIso };
-  if (input.endIso !== undefined) body.end = { dateTime: input.endIso };
+  if (input.startIso !== undefined) {
+    const tz = input.timeZone ?? "Europe/Paris";
+    body.start = { dateTime: input.startIso, timeZone: tz };
+  }
+  if (input.endIso !== undefined) {
+    const tz = input.timeZone ?? "Europe/Paris";
+    body.end = { dateTime: input.endIso, timeZone: tz };
+  }
   if (input.attendeeEmails !== undefined) {
     body.attendees = input.attendeeEmails
       .filter((e) => e && e.includes("@"))
