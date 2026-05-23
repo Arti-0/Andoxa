@@ -4,6 +4,17 @@ import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";
 import { reconcileUnipileAccountStatusFromAccount } from "@/lib/unipile/account-status";
 import type { UnipileAccount } from "@/lib/unipile/types";
 
+/**
+ * Staleness window for the Unipile validation call. The hourly reconciler cron
+ * keeps every row touched within an hour; the per-request gate just avoids
+ * burning Unipile API quota when the user mashes refresh.
+ *
+ * Picked at 60s: long enough that a typical session (poll on focus, navigate
+ * around) only ever hits Unipile once; short enough that a user who just
+ * reconnected sees the green badge on the next /me poll.
+ */
+const ME_RECONCILE_MAX_AGE_MS = 60 * 1000;
+
 function isUnipileAccountGoneError(e: unknown): boolean {
   if (e instanceof UnipileApiError) {
     return (
@@ -18,6 +29,13 @@ function toStringArray(features: unknown): string[] {
   return features.map((x) => String(x));
 }
 
+function isFresh(lastStatusAt: string | null | undefined, maxAgeMs: number): boolean {
+  if (!lastStatusAt) return false;
+  const t = new Date(lastStatusAt).getTime();
+  if (!Number.isFinite(t)) return false;
+  return Date.now() - t < maxAgeMs;
+}
+
 /**
  * GET /api/unipile/me
  *
@@ -27,13 +45,18 @@ function toStringArray(features: unknown): string[] {
  *   - Otherwise → `sources[].status` is mapped to our local `status` and
  *     written back if it changed. Closes the desync window when a status
  *     webhook (ACCOUNT_CREDENTIALS, ACCOUNT_STOPPED, ...) is missed.
+ *
+ * Cost: usually one DB read. We only call Unipile when `last_status_at` is
+ * older than ME_RECONCILE_MAX_AGE_MS. The hourly reconciler cron handles the
+ * background drift, so this in-request reconcile is the safety net for
+ * "user just hit Settings; show me the truth right now."
  */
 export const GET = createApiHandler(
   async (_req, ctx) => {
     const { data: accounts } = await ctx.supabase
       .from("user_unipile_accounts")
       .select(
-        "account_type, unipile_account_id, status, error_message, is_premium, premium_features"
+        "account_type, unipile_account_id, status, error_message, last_status_at, is_premium, premium_features"
       )
       .eq("user_id", ctx.userId);
 
@@ -45,7 +68,11 @@ export const GET = createApiHandler(
     let linkedinReconciledStatus: string | null = null;
     let whatsappReconciledStatus: string | null = null;
 
-    if (linkedin?.unipile_account_id) {
+    // LinkedIn — skip the Unipile call when the row was checked recently.
+    if (
+      linkedin?.unipile_account_id &&
+      !isFresh(linkedin.last_status_at, ME_RECONCILE_MAX_AGE_MS)
+    ) {
       try {
         const account = await unipileFetch<UnipileAccount>(
           `/accounts/${encodeURIComponent(linkedin.unipile_account_id)}`
@@ -80,7 +107,10 @@ export const GET = createApiHandler(
       }
     }
 
-    if (whatsapp?.unipile_account_id) {
+    if (
+      whatsapp?.unipile_account_id &&
+      !isFresh(whatsapp.last_status_at, ME_RECONCILE_MAX_AGE_MS)
+    ) {
       try {
         const account = await unipileFetch<UnipileAccount>(
           `/accounts/${encodeURIComponent(whatsapp.unipile_account_id)}`

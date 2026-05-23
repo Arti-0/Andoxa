@@ -15,7 +15,7 @@ import * as Sentry from "@sentry/nextjs";
 
 import type { Database } from "@/lib/types/supabase";
 import { createServiceClient } from "@/lib/supabase/service";
-import { UnipileApiError } from "./client";
+import { UnipileApiError, unipileFetch } from "./client";
 import type { UnipileAccount } from "./types";
 
 /**
@@ -224,5 +224,151 @@ export async function markUnipileAccountErroredFromError(
   } catch (e) {
     console.error("[unipile] markUnipileAccountErroredFromError:", e);
     return false;
+  }
+}
+
+/** Local-status values that mean "the user must reconnect before we touch Unipile." */
+const BROKEN_STATUSES = new Set(["error", "stopped", "disconnected"]);
+
+/** Default reconcile staleness gate — see `ensureUnipileAccountUsable`. */
+const DEFAULT_PREFLIGHT_MAX_AGE_MS = 10 * 60 * 1000;
+
+export class UnipileAccountUnusableError extends Error {
+  constructor(
+    public reason:
+      | "not_connected"
+      | "broken_status"
+      | "account_gone",
+    public localizedMessage: string,
+    public accountType: "LINKEDIN" | "WHATSAPP"
+  ) {
+    super(localizedMessage);
+    this.name = "UnipileAccountUnusableError";
+  }
+}
+
+function brokenStatusMessage(
+  accountType: "LINKEDIN" | "WHATSAPP",
+  errorMessage: string | null
+): string {
+  const channelLabel = accountType === "WHATSAPP" ? "WhatsApp" : "LinkedIn";
+  // Prefer the persisted detail (e.g. "Identifiants LinkedIn invalides —
+  // reconnexion requise.") since it tells the user exactly what's wrong.
+  if (errorMessage?.trim()) {
+    return `${errorMessage} Reconnectez votre compte ${channelLabel} depuis les paramètres.`;
+  }
+  return `Votre compte ${channelLabel} est en erreur. Reconnectez-le depuis les paramètres pour relancer.`;
+}
+
+/**
+ * Pre-flight check before launching a campaign/workflow that uses a Unipile
+ * account. Returns the `unipile_account_id` on success; throws
+ * `UnipileAccountUnusableError` (callers should translate to a 400) when the
+ * account is missing or known-broken.
+ *
+ * Cost: usually one DB read. We only hit Unipile when the local status is
+ * 'connected' but `last_status_at` is older than `maxAgeMs` (default 10 min).
+ * Inside that window we trust the cache — keeps the common case cheap.
+ *
+ * Note on the broken-status fast path: when the row is already 'error' /
+ * 'stopped' / 'disconnected', we DO NOT bother calling Unipile. Hitting their
+ * API would just confirm what we already know, and would block campaign
+ * launch behind extra network latency.
+ */
+export async function ensureUnipileAccountUsable(
+  supabase: SupabaseClient<Database>,
+  params: {
+    userId: string;
+    accountType: "LINKEDIN" | "WHATSAPP";
+    maxAgeMs?: number;
+  }
+): Promise<{ accountId: string; status: string }> {
+  const accountType = params.accountType;
+  const maxAgeMs = params.maxAgeMs ?? DEFAULT_PREFLIGHT_MAX_AGE_MS;
+  const channelLabel = accountType === "WHATSAPP" ? "WhatsApp" : "LinkedIn";
+
+  const { data: row } = await supabase
+    .from("user_unipile_accounts")
+    .select("unipile_account_id, status, last_status_at, error_message")
+    .eq("user_id", params.userId)
+    .eq("account_type", accountType)
+    .maybeSingle();
+
+  if (!row?.unipile_account_id) {
+    throw new UnipileAccountUnusableError(
+      "not_connected",
+      `Connectez votre compte ${channelLabel} depuis les paramètres avant de lancer.`,
+      accountType
+    );
+  }
+
+  if (BROKEN_STATUSES.has(row.status ?? "")) {
+    throw new UnipileAccountUnusableError(
+      "broken_status",
+      brokenStatusMessage(accountType, row.error_message),
+      accountType
+    );
+  }
+
+  // Staleness gate: trust the cache if we checked recently.
+  const lastAt = row.last_status_at ? new Date(row.last_status_at).getTime() : 0;
+  if (Date.now() - lastAt < maxAgeMs) {
+    return { accountId: row.unipile_account_id, status: row.status ?? "unknown" };
+  }
+
+  // Stale — confirm against Unipile and reconcile. On transient Unipile
+  // failures, fall back to the cached "connected" status (better to let the
+  // campaign run and hit the per-prospect credential error path than to
+  // refuse launch over a 502).
+  try {
+    const account = await unipileFetch<UnipileAccount>(
+      `/accounts/${encodeURIComponent(row.unipile_account_id)}`
+    );
+    const reconciled = await reconcileUnipileAccountStatusFromAccount(supabase, {
+      userId: params.userId,
+      accountType,
+      unipileAccount: account,
+    });
+    const newStatus = reconciled?.status ?? row.status ?? "unknown";
+    if (BROKEN_STATUSES.has(newStatus)) {
+      // Re-fetch the row to surface the updated error_message in the user
+      // message (the helper only persists the labelled message on transition).
+      const { data: refreshed } = await supabase
+        .from("user_unipile_accounts")
+        .select("error_message")
+        .eq("user_id", params.userId)
+        .eq("account_type", accountType)
+        .maybeSingle();
+      throw new UnipileAccountUnusableError(
+        "broken_status",
+        brokenStatusMessage(accountType, refreshed?.error_message ?? null),
+        accountType
+      );
+    }
+    return { accountId: row.unipile_account_id, status: newStatus };
+  } catch (err) {
+    if (err instanceof UnipileAccountUnusableError) throw err;
+    if (err instanceof UnipileApiError) {
+      if (err.status === 404 || err.unipileType === "errors/resource_not_found") {
+        // The account is gone Unipile-side. Drop our row so the user starts
+        // fresh next time they hit Settings.
+        await supabase
+          .from("user_unipile_accounts")
+          .delete()
+          .eq("user_id", params.userId)
+          .eq("account_type", accountType);
+        throw new UnipileAccountUnusableError(
+          "account_gone",
+          `Votre compte ${channelLabel} n'est plus accessible. Reconnectez-le depuis les paramètres.`,
+          accountType
+        );
+      }
+    }
+    // Transient — log and trust the cache.
+    console.warn(
+      "[unipile preflight] reconcile failed, trusting cache:",
+      err instanceof Error ? err.message : err
+    );
+    return { accountId: row.unipile_account_id, status: row.status ?? "unknown" };
   }
 }

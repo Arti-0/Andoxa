@@ -16,9 +16,12 @@ import {
 } from "@/lib/workflows/schema";
 import { getWorkflowPublishedDefinition } from "@/lib/workflows/queries";
 import {
-  getLinkedInAccountIdForUserId,
   resolveWhatsAppAccountIdForOrganization,
 } from "@/lib/unipile/account";
+import {
+  ensureUnipileAccountUsable,
+  UnipileAccountUnusableError,
+} from "@/lib/unipile/account-status";
 
 function getWorkflowIdFromUrl(req: Request): string {
   const segments = new URL(req.url).pathname.split("/").filter(Boolean);
@@ -244,14 +247,20 @@ export const POST = createApiHandler(
       }
     }
     if (needsLinkedIn) {
-      const accountId = await getLinkedInAccountIdForUserId(
-        ctx.supabase,
-        ctx.userId!
-      );
-      if (!accountId) {
-        throw Errors.badRequest(
-          "Connectez votre compte LinkedIn depuis les paramètres pour lancer ce parcours."
-        );
+      try {
+        // Preflight: not just "row exists" — also rejects status='error' (e.g.
+        // ACCOUNT_CREDENTIALS) and reconciles a stale 'connected' row against
+        // Unipile's live source status. Avoids enrolling prospects whose
+        // first step will deterministically fail with expired credentials.
+        await ensureUnipileAccountUsable(ctx.supabase, {
+          userId: ctx.userId!,
+          accountType: "LINKEDIN",
+        });
+      } catch (err) {
+        if (err instanceof UnipileAccountUnusableError) {
+          throw Errors.badRequest(err.localizedMessage);
+        }
+        throw err;
       }
     }
 

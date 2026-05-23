@@ -3,6 +3,10 @@ import {
   definitionHasOutboundMessaging,
   safeParseWorkflowDefinition,
 } from "@/lib/workflows/schema";
+import {
+  ensureUnipileAccountUsable,
+  UnipileAccountUnusableError,
+} from "@/lib/unipile/account-status";
 
 /**
  * POST /api/campaigns/jobs
@@ -167,6 +171,37 @@ export const POST = createApiHandler(
     if (body.name?.trim()) metadata.name = body.name.trim();
 
     const initialStatus = body.launch_now ? "pending" : "draft";
+
+    // Preflight the Unipile channel when this job will actually fire now.
+    // Drafts don't run anything yet, so skip the check until they're launched.
+    if (body.launch_now) {
+      const isLinkedInType =
+        body.type === "invite" ||
+        body.type === "invite_with_note" ||
+        body.type === "contact";
+      const channelType: "LINKEDIN" | "WHATSAPP" | null = isLinkedInType
+        ? "LINKEDIN"
+        : body.type === "whatsapp"
+          ? "WHATSAPP"
+          : null;
+      // WhatsApp campaigns resolve the account org-wide (any member with a
+      // connected WA box can run the job), so the per-user preflight here only
+      // applies to LinkedIn. WA still goes through the existence check inside
+      // resolveWhatsAppAccountIdForOrganization at execution time.
+      if (channelType === "LINKEDIN") {
+        try {
+          await ensureUnipileAccountUsable(ctx.supabase, {
+            userId: ctx.userId!,
+            accountType: "LINKEDIN",
+          });
+        } catch (err) {
+          if (err instanceof UnipileAccountUnusableError) {
+            throw Errors.badRequest(err.localizedMessage);
+          }
+          throw err;
+        }
+      }
+    }
 
     const { data: job, error: jobError } = await ctx.supabase
       .from("campaign_jobs")

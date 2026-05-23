@@ -108,9 +108,23 @@ export const POST = createApiHandler(
       return { url };
     } catch (err) {
       if (err instanceof UnipileApiError) {
-        throw Errors.badRequest(err.message, {
-          unipileType: err.unipileType ?? "",
-        });
+        const type = err.unipileType ?? "";
+        // `errors/missing_credentials` on /hosted/accounts/link does NOT mean
+        // the user's LinkedIn session is bad — at this point the user has no
+        // session yet, that's why they're connecting. It means Unipile
+        // rejected the SERVER's UNIPILE_API_KEY (wrong, expired, or not
+        // entitled for the requested provider). Surface a clear admin-flavored
+        // message instead of the generic "Compte non connecté" so the user
+        // doesn't think their LinkedIn is broken.
+        if (type === "errors/missing_credentials" || err.message === "Compte non connecté") {
+          throw Errors.badRequest(
+            "Le service de messagerie n'a pas pu valider la clé d'accès serveur (UNIPILE_API_KEY). " +
+              "Vérifiez que la clé est correcte et non expirée, redémarrez l'application après modification, " +
+              "puis réessayez « Connecter LinkedIn ».",
+            { unipileType: type }
+          );
+        }
+        throw Errors.badRequest(err.message, { unipileType: type });
       }
       throw Errors.internal(
         err instanceof Error ? err.message : "Erreur de connexion"
