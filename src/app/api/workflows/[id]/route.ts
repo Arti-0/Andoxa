@@ -160,25 +160,18 @@ export const PATCH = createApiHandler(async (req, ctx) => {
       // metadata, so a workflow can technically reach `published_definition`
       // with no configured trigger. Block activation in that case — an
       // un-triggered workflow can't actually fire anything.
+      //
+      // Source of truth is `trigger_kind` on the row — `metadata.ui.trigger`
+      // is a display alias for legacy templates and DOES NOT control which
+      // events fire the workflow at runtime (start-run.ts queries
+      // `trigger_kind` strictly). A workflow with `trigger_kind = "manual"`
+      // but `ui.trigger = "reply"` would activate but never fire — exactly
+      // the failure mode behind the LinkedIn-reply-not-firing report. Hence
+      // we require an explicit `trigger_kind` here and ignore ui.trigger.
       const effectiveTriggerKind = updates.trigger_kind ?? existing.trigger_kind;
-      const effectiveMeta =
-        (updates.metadata as Record<string, unknown> | null | undefined) ??
-        (existing.metadata as Record<string, unknown> | null | undefined);
-      const ui =
-        effectiveMeta &&
-        typeof effectiveMeta === "object" &&
-        !Array.isArray(effectiveMeta) &&
-        "ui" in effectiveMeta &&
-        typeof effectiveMeta.ui === "object" &&
-        effectiveMeta.ui !== null
-          ? (effectiveMeta.ui as Record<string, unknown>)
-          : null;
-      const triggerInMeta =
-        ui && typeof ui.trigger === "string" ? ui.trigger : undefined;
       const hasTrigger =
-        (typeof effectiveTriggerKind === "string" &&
-          effectiveTriggerKind.length > 0) ||
-        (typeof triggerInMeta === "string" && triggerInMeta.length > 0);
+        typeof effectiveTriggerKind === "string" &&
+        effectiveTriggerKind.length > 0;
       if (!hasTrigger) {
         throw Errors.badRequest(
           "Configurez un déclencheur avant d’activer le workflow."

@@ -151,10 +151,24 @@ function mergeConversations(
 ): Conversation[] {
   const rows = chats.flatMap<Conversation>((c) => {
     const prospectId = chatToProspect[c.id] ?? null;
-    // Hide conversations that have no linked prospect (hors CRM)
-    if (!prospectId) return [];
-    const p = prospects.get(prospectId) ?? null;
-    const name = p?.full_name?.trim() || c.name?.trim() || "Inconnu";
+    // Surface every chat — including ones that aren't yet linked to a CRM
+    // prospect. Without this, conversations started outside an Andoxa
+    // campaign (manual messages on LinkedIn, fresh inbound from a stranger)
+    // never appear in messagerie even though they exist on Unipile.
+    // Conversation.prospectId is nullable; the cockpit panel renders a
+    // "hors CRM" affordance when missing.
+    const p = prospectId ? (prospects.get(prospectId) ?? null) : null;
+    // /api/unipile/chats enriches every chat with `interlocutor_name` from
+    // the Unipile attendees lookup (cached 24h). For unlinked chats this is
+    // typically the only place we have a real name — c.name is often null
+    // for direct LinkedIn DMs.
+    const interlocutor = (c as { interlocutor_name?: string | null })
+      .interlocutor_name;
+    const name =
+      p?.full_name?.trim() ||
+      interlocutor?.trim() ||
+      c.name?.trim() ||
+      "Inconnu";
     const enrichedPicture =
       (p?.enrichment_metadata as { profile_picture_url?: string | null } | undefined)
         ?.profile_picture_url ?? null;

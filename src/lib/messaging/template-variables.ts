@@ -84,6 +84,27 @@ export function applyImportMetadataVariables(template: string, metadata: unknown
   return result;
 }
 
+/**
+ * Strip a trailing " chez X" / " at X" / " @ X" suffix from `jobTitle` when
+ * `X` matches the prospect's company. LinkedIn headlines sneak the company
+ * into the title field ("CTO chez Anthropic"), which then collides with
+ * templates like "{{Poste}} chez {{company}}" — producing
+ * "CTO chez Anthropic chez Anthropic".
+ */
+function stripCompanyFromJobTitle(
+  jobTitle: string | null | undefined,
+  company: string | null | undefined
+): string | null | undefined {
+  if (!jobTitle?.trim() || !company?.trim()) return jobTitle;
+  const escaped = company.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(
+    `\\s+(?:chez|at|@|pour|with)\\s+${escaped}\\s*\\.?\\s*$`,
+    "i"
+  );
+  const stripped = jobTitle.replace(pattern, "").trim();
+  return stripped.length > 0 ? stripped : jobTitle;
+}
+
 export function applyMessageVariables(
   template: string,
   prospect: ProspectForVariables,
@@ -92,6 +113,7 @@ export function applyMessageVariables(
   const normalized = normalizeTemplateSyntax(template);
   const { firstName, lastName } = deriveNameParts(prospect.full_name);
   const fullName = [firstName, lastName].filter(Boolean).join(" ");
+  const jobTitle = stripCompanyFromJobTitle(prospect.job_title, prospect.company);
   const replaceIfPresent = (
     input: string,
     token: string,
@@ -106,7 +128,7 @@ export function applyMessageVariables(
   result = replaceIfPresent(result, "lastName", lastName);
   result = replaceIfPresent(result, "name", context?.name ?? (fullName || firstName));
   result = replaceIfPresent(result, "company", prospect.company);
-  result = replaceIfPresent(result, "jobTitle", prospect.job_title);
+  result = replaceIfPresent(result, "jobTitle", jobTitle);
   result = replaceIfPresent(result, "phone", prospect.phone);
   result = replaceIfPresent(result, "email", prospect.email);
   result = replaceIfPresent(result, "bookingLink", context?.bookingLink);

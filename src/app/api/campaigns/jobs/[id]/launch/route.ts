@@ -42,6 +42,7 @@ export const POST = createApiHandler(async (req, ctx) => {
   const isLinkedInType =
     job.type === "invite" ||
     job.type === "invite_with_note" ||
+    job.type === "invite_then_message" ||
     job.type === "contact";
 
   if (isLinkedInType) {

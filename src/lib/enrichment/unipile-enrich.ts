@@ -84,7 +84,11 @@ export async function enrichProspectFromUnipile(params: {
 
   const updatePayload = {
     full_name: fullName || prospect.full_name,
-    job_title: profile.headline || work0?.position || prospect.job_title,
+    // Prefer the structured position field over headline. `headline` is the
+    // freeform tagline LinkedIn shows under the name and very often embeds the
+    // company ("CTO chez Anthropic", "VP Eng at Stripe | building X"), which
+    // collides with templates like "{{Poste}} chez {{company}}".
+    job_title: work0?.position || profile.headline || prospect.job_title,
     company: work0?.company || prospect.company,
     location: profile.location || prospect.location,
     website: profile.websites?.[0] || prospect.website,

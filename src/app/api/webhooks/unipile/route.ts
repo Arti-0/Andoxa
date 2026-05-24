@@ -635,6 +635,121 @@ export async function POST(req: NextRequest) {
                 }
             }
 
+            // Secondary backfill: when the outbound-activity match fails (no
+            // prior Andoxa outbound to this attendee — conversation started
+            // manually on LinkedIn, or inbound from someone we hadn't yet
+            // messaged), resolve the sender's public LinkedIn slug from Unipile
+            // and match against an existing prospect by `linkedin` URL. The
+            // owning workspace is the one whose Unipile account received the
+            // webhook, so we scope by user_id → organization_id via
+            // user_unipile_accounts to avoid leaking cross-org links.
+            if (
+                !chatLinkRow &&
+                unipileAccountId &&
+                sender?.attendee_provider_id
+            ) {
+                try {
+                    const { data: ownerRow } = await supabase
+                        .from('user_unipile_accounts')
+                        .select('user_id')
+                        .eq('unipile_account_id', unipileAccountId)
+                        .eq('account_type', 'LINKEDIN')
+                        .maybeSingle();
+                    const ownerUserId = ownerRow?.user_id ?? null;
+
+                    if (ownerUserId) {
+                        const profile = await unipileFetch<{
+                            public_identifier?: string | null;
+                        }>(
+                            `/users/${encodeURIComponent(
+                                sender.attendee_provider_id
+                            )}?account_id=${encodeURIComponent(unipileAccountId)}`
+                        ).catch(() => null);
+
+                        const slug = profile?.public_identifier?.trim() || null;
+                        if (slug) {
+                            // Owner's workspaces — the chat must land in one of
+                            // them. We bias toward `active_organization_id`
+                            // (the org currently used in the app) but accept
+                            // any workspace the owner is a member of.
+                            const { data: memberOrgs } = await supabase
+                                .from('organization_members')
+                                .select('organization_id')
+                                .eq('user_id', ownerUserId);
+                            const orgIds = (memberOrgs ?? [])
+                                .map((r) => r.organization_id)
+                                .filter(
+                                    (v): v is string =>
+                                        typeof v === 'string' && v.length > 0
+                                );
+
+                            if (orgIds.length > 0) {
+                                // `prospects.linkedin` is stored as a URL; the
+                                // slug appears as `/in/<slug>` (case-insensitive
+                                // and possibly with trailing slash / query).
+                                // Using `ilike` keeps the match permissive
+                                // without hitting case-sensitivity false
+                                // negatives.
+                                const { data: matched } = await supabase
+                                    .from('prospects')
+                                    .select('id, organization_id')
+                                    .in('organization_id', orgIds)
+                                    .is('deleted_at', null)
+                                    .ilike('linkedin', `%/in/${slug}%`)
+                                    .limit(1)
+                                    .maybeSingle();
+
+                                if (matched?.id && matched.organization_id) {
+                                    const { error: linkErr } = await supabase
+                                        .from('unipile_chat_prospects')
+                                        .upsert(
+                                            [
+                                                {
+                                                    organization_id:
+                                                        matched.organization_id,
+                                                    prospect_id: matched.id,
+                                                    unipile_chat_id: chatId,
+                                                },
+                                            ],
+                                            {
+                                                onConflict: 'unipile_chat_id',
+                                                ignoreDuplicates: false,
+                                            }
+                                        );
+                                    if (linkErr) {
+                                        console.error(
+                                            '[Unipile webhook] slug-backfill link:',
+                                            linkErr
+                                        );
+                                        Sentry.captureException(linkErr);
+                                    } else {
+                                        chatLinkRow = {
+                                            organization_id:
+                                                matched.organization_id,
+                                            prospect_id: matched.id,
+                                        };
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (err) {
+                    // Best-effort: never let secondary backfill break the
+                    // primary inbound-message flow.
+                    console.warn(
+                        '[Unipile webhook] slug backfill non-blocking error:',
+                        err
+                    );
+                    Sentry.captureException(err, {
+                        tags: {
+                            feature: 'unipile_webhook',
+                            action: 'slug_backfill',
+                        },
+                        level: 'warning',
+                    });
+                }
+            }
+
             const { error: inboundErr } = await supabase
                 .from('unipile_chat_prospects')
                 .update({ last_inbound_at: new Date().toISOString() })
@@ -799,8 +914,27 @@ export async function POST(req: NextRequest) {
                         //      from the most recent outbound on this prospect).
                         // All three are deduped by message_id inside the
                         // emitter (uq_workflow_runs_dedupe partial index).
-                        const messageId = body.message_id ?? null;
-                        if (messageId) {
+                        // When Unipile omits message_id (happens on some chat
+                        // resync paths), synthesise a stable id from the chat
+                        // + body hash so the trigger still fires. Two replays
+                        // of the same payload will hash identically and dedupe.
+                        const rawMessageId =
+                            typeof body.message_id === 'string' &&
+                            body.message_id.trim().length > 0
+                                ? body.message_id.trim()
+                                : null;
+                        const messageId =
+                            rawMessageId ??
+                            `synth:${chatId}:${crypto
+                                .createHash('sha256')
+                                .update(
+                                    String(body.message ?? '') +
+                                        '|' +
+                                        String(sender?.attendee_provider_id ?? '')
+                                )
+                                .digest('hex')
+                                .slice(0, 16)}`;
+                        {
                             const occurredAt = new Date().toISOString();
                             try {
                                 await emitWorkflowTrigger(supabase, {

@@ -27,7 +27,7 @@ const RESERVED_KEY = "automation_excluded";
 type ProspectMetadataLike = Record<string, unknown> | null | undefined;
 
 export interface ProspectWithMetadata {
-  metadata?: ProspectMetadataLike;
+  metadata?: unknown;
 }
 
 /** True iff metadata explicitly opts the prospect out of automation. */

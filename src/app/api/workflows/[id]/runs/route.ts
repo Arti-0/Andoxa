@@ -22,7 +22,10 @@ import {
   ensureUnipileAccountUsable,
   UnipileAccountUnusableError,
 } from "@/lib/unipile/account-status";
-import { isProspectAutomationExcluded } from "@/lib/prospects/automation-opt-out";
+import {
+  isProspectAutomationExcluded,
+  type ProspectWithMetadata,
+} from "@/lib/prospects/automation-opt-out";
 
 function getWorkflowIdFromUrl(req: Request): string {
   const segments = new URL(req.url).pathname.split("/").filter(Boolean);
@@ -280,7 +283,7 @@ export const POST = createApiHandler(
     const optedOutIds = new Set<string>();
     for (const p of prospects ?? []) {
       phoneById.set(p.id, (p.phone as string | null) ?? null);
-      if (isProspectAutomationExcluded(p as { metadata?: unknown })) {
+      if (isProspectAutomationExcluded(p as ProspectWithMetadata)) {
         optedOutIds.add(p.id);
       }
     }

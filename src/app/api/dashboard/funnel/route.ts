@@ -73,12 +73,16 @@ async function countInWindow(
   const endIso = end.toISOString();
 
   const [invitesRes, chatsRes, rdvsRes, closingsRes] = await Promise.all([
+    // Invitations cover both paths: campaigns (process-job-batch.ts writes
+    // `linkedin_invite_sent`) AND workflows (execute-step.ts now writes the
+    // same action on the LinkedIn invite step). Previously this only counted
+    // the workflow path via `workflow_step_completed`/`step_type=linkedin_invite`,
+    // missing every campaign-driven invite — the dominant source in practice.
     ctx.supabase
       .from("prospect_activity")
       .select("prospect_id, created_at")
       .eq("organization_id", ctx.workspaceId!)
-      .eq("action", "workflow_step_completed")
-      .filter("details->>step_type", "eq", "linkedin_invite")
+      .eq("action", "linkedin_invite_sent")
       .gte("created_at", startIso)
       .lte("created_at", endIso),
     // Date-windowed: previously this loaded EVERY chat row for the workspace
@@ -94,12 +98,17 @@ async function countInWindow(
         `and(created_at.gte.${startIso},created_at.lte.${endIso}),` +
           `and(last_inbound_at.gte.${startIso},last_inbound_at.lte.${endIso})`
       ),
+    // "RDV bookés" = bookings *taken* during the window. Filtering by
+    // end_time skewed the funnel toward meetings that *happened* in the
+    // period regardless of when they were booked — a meeting booked 3
+    // weeks ago that ran today would land in this week's bucket. Use
+    // created_at so the count tracks new pipeline added in the window.
     ctx.supabase
       .from("events")
-      .select("prospect_id, end_time")
+      .select("prospect_id, end_time, created_at")
       .eq("organization_id", ctx.workspaceId!)
-      .gte("end_time", startIso)
-      .lte("end_time", endIso),
+      .gte("created_at", startIso)
+      .lte("created_at", endIso),
     ctx.supabase
       .from("prospects")
       .select("id, updated_at")

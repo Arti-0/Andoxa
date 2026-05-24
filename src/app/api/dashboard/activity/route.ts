@@ -223,9 +223,11 @@ export async function getDashboardActivity(
         ? "Invitation"
         : c.type === "invite_with_note"
           ? "Invitation (note)"
-          : c.type === "whatsapp"
-            ? "WhatsApp"
-            : "Contact";
+          : c.type === "invite_then_message"
+            ? "Invitation + message"
+            : c.type === "whatsapp"
+              ? "WhatsApp"
+              : "Contact";
     activities.push({
       id: `campaign-${c.id}`,
       type: "campaign_started",

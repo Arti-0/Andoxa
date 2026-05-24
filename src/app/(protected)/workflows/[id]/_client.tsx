@@ -605,69 +605,157 @@ export function CanvasClient({ workflowId }: Props) {
     [queryClient, workflowId],
   );
 
-  const handleSave = useCallback(async () => {
-    if (!workflow) return;
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/workflows/${workflowId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          name: name.trim() || workflow.name,
-          description: description.trim() || null,
-          is_template: isTemplate,
-          draft_definition: definition,
-          trigger_kind: triggerKind,
-          trigger_config: triggerConfig,
-          ui: {
-            icon: iconKey,
-            color: colorKey,
-            trigger: trigger ?? undefined,
-            canvas: canvasPositions,
-          },
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(
-          json?.error?.message ??
-            json?.error?.details?.draft_definition ??
-            "Enregistrement impossible"
-        );
+  const handleSave = useCallback(
+    async (opts: { silent?: boolean } = {}): Promise<boolean> => {
+      if (!workflow) return false;
+      const silent = opts.silent ?? false;
+      // Backend rejects draft_definition updates while a workflow is active
+      // (route.ts requires pause first). The manual Save button surfaces the
+      // resulting 400 to the user; autosave silently no-ops instead.
+      if (silent && workflow.is_active) return false;
+      if (!silent) setSaving(true);
+      try {
+        const res = await fetch(`/api/workflows/${workflowId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            name: name.trim() || workflow.name,
+            description: description.trim() || null,
+            is_template: isTemplate,
+            draft_definition: definition,
+            trigger_kind: triggerKind,
+            trigger_config: triggerConfig,
+            ui: {
+              icon: iconKey,
+              color: colorKey,
+              trigger: trigger ?? undefined,
+              canvas: canvasPositions,
+            },
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          throw new Error(
+            json?.error?.message ??
+              json?.error?.details?.draft_definition ??
+              "Enregistrement impossible"
+          );
+        }
+        syncWorkflowCache(json.data.workflow as BackendWorkflowRow);
+        // Keep the breadcrumb query in sync — it lives under a separate cache
+        // key (["workflow-breadcrumb", id]) and has a 5-minute staleTime, so
+        // without an explicit invalidation a renamed workflow still shows the
+        // old name in the header for up to 5 min after Save.
+        void queryClient.invalidateQueries({
+          queryKey: ["workflow-breadcrumb", workflowId],
+        });
+        const publishWarning = json.data?.publish_warning as
+          | { reason: string; message: string }
+          | null
+          | undefined;
+        if (!silent) {
+          if (publishWarning) {
+            // Save succeeded but the workflow can't be activated/launched yet.
+            // Surface the precise reason (e.g. "Connectez WhatsApp…") so the
+            // user knows their next step.
+            toast.warning(publishWarning.message, { duration: 8000 });
+          } else {
+            toast.success("Modifications enregistrées");
+          }
+        }
+        return true;
+      } catch (e) {
+        if (silent) {
+          console.warn("[workflow] autosave failed:", e);
+        } else {
+          toastFromApiError(e, "Enregistrement impossible");
+        }
+        return false;
+      } finally {
+        if (!silent) setSaving(false);
       }
-      syncWorkflowCache(json.data.workflow as BackendWorkflowRow);
-      const publishWarning = json.data?.publish_warning as
-        | { reason: string; message: string }
-        | null
-        | undefined;
-      if (publishWarning) {
-        // Save succeeded but the workflow can't be activated/launched yet.
-        // Surface the precise reason (e.g. "Connectez WhatsApp…") so the
-        // user knows their next step.
-        toast.warning(publishWarning.message, { duration: 8000 });
-      } else {
-        toast.success("Modifications enregistrées");
-      }
-    } catch (e) {
-      toastFromApiError(e, "Enregistrement impossible");
-    } finally {
-      setSaving(false);
-    }
-  }, [
-    workflow,
-    workflowId,
-    name,
-    description,
-    isTemplate,
-    definition,
-    iconKey,
-    colorKey,
-    trigger,
-    triggerKind,
-    triggerConfig,
-    canvasPositions,
-  ]);
+    },
+    [
+      workflow,
+      workflowId,
+      name,
+      description,
+      isTemplate,
+      definition,
+      iconKey,
+      colorKey,
+      trigger,
+      triggerKind,
+      triggerConfig,
+      canvasPositions,
+      queryClient,
+      syncWorkflowCache,
+    ]
+  );
+
+  // Lazy autosave — debounce every editable-state change and silently flush
+  // to the backend. Compares the live editor state against what the workflow
+  // row was last hydrated with so we don't write twice for the same content.
+  // Canvas positions and `is_active` toggles are handled by their own paths
+  // (positionsCommitTimer + handleToggleActive) and intentionally excluded
+  // from the dirty diff.
+  const remoteStateJson = useMemo(() => {
+    if (!workflow) return null;
+    const h = hydrateFromWorkflowRow(workflow);
+    return JSON.stringify({
+      steps: h.steps,
+      entryStepId: h.entryStepId ?? null,
+      name: h.name.trim(),
+      description: h.description.trim(),
+      isTemplate: h.isTemplate,
+      triggerKind: h.triggerKind,
+      triggerConfig: h.triggerConfig,
+      iconKey: h.iconKey,
+      colorKey: h.colorKey,
+      trigger: h.trigger ?? null,
+    });
+  }, [workflow]);
+
+  const editableStateJson = useMemo(
+    () =>
+      JSON.stringify({
+        steps,
+        entryStepId: entryStepId ?? null,
+        name: name.trim(),
+        description: description.trim(),
+        isTemplate,
+        triggerKind,
+        triggerConfig,
+        iconKey,
+        colorKey,
+        trigger: trigger ?? null,
+      }),
+    [
+      steps,
+      entryStepId,
+      name,
+      description,
+      isTemplate,
+      triggerKind,
+      triggerConfig,
+      iconKey,
+      colorKey,
+      trigger,
+    ]
+  );
+
+  const isDirty =
+    remoteStateJson !== null && editableStateJson !== remoteStateJson;
+
+  useEffect(() => {
+    if (!isDirty) return;
+    if (!workflow || workflow.is_active) return;
+    const t = window.setTimeout(() => {
+      void handleSave({ silent: true });
+    }, 1500);
+    return () => window.clearTimeout(t);
+  }, [isDirty, workflow, handleSave]);
 
   const handleToggleActive = useCallback(async () => {
     if (!workflow) return;
@@ -695,6 +783,19 @@ export function CanvasClient({ workflowId }: Props) {
 
   const handleLaunch = useCallback(async () => {
     if (!workflow) return;
+    // Pre-launch save: flush any pending edits before activation so the
+    // published_definition the worker runs against matches what's on screen.
+    // Without this, a user who just edited a step and immediately clicked
+    // Lancer could enroll prospects against the previously-saved graph.
+    if (isDirty && !workflow.is_active) {
+      const saved = await handleSave({ silent: true });
+      if (!saved) {
+        toast.error(
+          "Modifications non enregistrées — corrigez l'erreur avant de lancer."
+        );
+        return;
+      }
+    }
     if (!workflow.is_active) {
       setTogglingActive(true);
       try {
@@ -718,7 +819,7 @@ export function CanvasClient({ workflowId }: Props) {
       }
     }
     setLaunchOpen(true);
-  }, [workflow, workflowId, syncWorkflowCache, queryClient]);
+  }, [workflow, workflowId, syncWorkflowCache, queryClient, isDirty, handleSave]);
 
   // Client-side dry run — simulates the workflow against a synthetic prospect
   // and surfaces every step's would-be outcome in a dialog. No real messages

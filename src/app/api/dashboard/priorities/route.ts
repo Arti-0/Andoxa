@@ -1,5 +1,6 @@
 import { createApiHandler, Errors, type ApiContext } from "@/lib/api";
 import { isMockStatsEnabled, mockDashboardPriorities } from "@/lib/mock-stats";
+import { todayBoundsIso } from "@/lib/dashboard/timezone";
 
 /**
  * GET /api/dashboard/priorities
@@ -30,14 +31,6 @@ export interface PrioritiesPayload {
   items: PriorityItem[];
 }
 
-function startOfTodayLocalIso(): { startIso: string; endIso: string } {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
-  return { startIso: start.toISOString(), endIso: end.toISOString() };
-}
-
 function daysAgoIso(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() - days);
@@ -59,7 +52,11 @@ export async function getDashboardPriorities(
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
   if (isMockStatsEnabled()) return mockDashboardPriorities();
 
-  const { startIso: todayStartIso, endIso: todayEndIso } = startOfTodayLocalIso();
+  // "Today" boundaries computed in the org's display timezone (defaults to
+  // Europe/Paris). Critical to avoid the UTC-midnight rollover: at 23:30 in
+  // Paris, server-local "today" already shifted to tomorrow in UTC, so the
+  // RDV count would jump ahead a day.
+  const { startIso: todayStartIso, endIso: todayEndIso } = todayBoundsIso();
   const sevenDaysAgo = daysAgoIso(7);
   const twoDaysAgo = daysAgoIso(2);
 

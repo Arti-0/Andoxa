@@ -81,11 +81,7 @@ export async function emitWorkflowTrigger(
       .select("metadata")
       .eq("id", prospectId)
       .maybeSingle();
-    if (
-      isProspectAutomationExcluded(
-        prospect as { metadata?: unknown } | null | undefined
-      )
-    ) {
+    if (isProspectAutomationExcluded(prospect)) {
       return { enrolled: 0 };
     }
   } catch (err) {

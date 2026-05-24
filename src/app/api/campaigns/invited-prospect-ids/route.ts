@@ -2,9 +2,10 @@ import { createApiHandler, Errors, getSearchParams } from "@/lib/api";
 
 /**
  * GET /api/campaigns/invited-prospect-ids?prospect_ids=id1,id2,...
- * Retourne les prospect_ids déjà invités avec succès (invite / invite_with_note)
- * par l'utilisateur courant dans le workspace courant, ainsi que les prospects
- * ayant déjà une conversation Unipile liée (connexion / échange effectif).
+ * Retourne les prospect_ids déjà invités avec succès (invite / invite_with_note
+ * / invite_then_message) par l'utilisateur courant dans le workspace courant,
+ * ainsi que les prospects ayant déjà une conversation Unipile liée (connexion
+ * / échange effectif).
  */
 export const GET = createApiHandler(async (req, ctx) => {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
@@ -38,7 +39,7 @@ export const GET = createApiHandler(async (req, ctx) => {
       .in("id", jobIds)
       .eq("created_by", ctx.userId)
       .eq("organization_id", ctx.workspaceId)
-      .in("type", ["invite", "invite_with_note"]);
+      .in("type", ["invite", "invite_with_note", "invite_then_message"]);
 
     if (jobsErr) {
       console.error("[invited-prospect-ids] jobs", jobsErr);

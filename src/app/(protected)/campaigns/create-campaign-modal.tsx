@@ -301,10 +301,9 @@ export function CreateCampaignModal({
     if (type === "message_only") {
       return message.trim().length > 0 && message.length <= 2000;
     }
-    // invitation_message
-    const noteOk =
-      !hasNote || (invitationNote.trim().length > 0 && invitationNote.length <= 300);
-    return noteOk && message.trim().length > 0 && message.length <= 2000;
+    // invitation_message — bare invite phase 1 (no note), follow-up message
+    // phase 2 dispatched on acceptance. Only the message body is required.
+    return message.trim().length > 0 && message.length <= 2000;
   })();
 
   const goNext = () => {
@@ -321,7 +320,10 @@ export function CreateCampaignModal({
     refine_exclude_contacted: excludeContacted,
     refine_only_with_phone: onlyWithPhone,
     refine_exclude_active: excludeActive,
-    invitation_note: hasNote ? invitationNote.trim() : undefined,
+    // Notes only flow through for invitation_only — invitation_message is
+    // intentionally bare-invite (higher acceptance rate per LinkedIn data).
+    invitation_note:
+      type === "invitation_only" && hasNote ? invitationNote.trim() : undefined,
     message: type === "invitation_only" ? undefined : message.trim(),
   });
 
@@ -684,7 +686,9 @@ function Step3Config({
   message: string;
   setMessage: (v: string) => void;
 }) {
-  const showNote = type === "invitation_only" || type === "invitation_message";
+  // invitation_message is bare-invite + post-acceptance message. The phase-1
+  // invite carries no note, so the wizard only collects the follow-up body.
+  const showNote = type === "invitation_only";
   const showMessage = type === "message_only" || type === "invitation_message";
 
   // Refs are what makes variable pills insert at caret instead of appending
@@ -695,11 +699,19 @@ function Step3Config({
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
       <div className="space-y-4">
+        {type === "invitation_message" && (
+          <div className="rounded-md border border-[var(--brand-blue)]/30 bg-[var(--brand-blue-tint)] px-3 py-2.5 text-[12px] leading-relaxed text-foreground">
+            <strong className="font-semibold">Envoi en deux temps.</strong> Une
+            invitation sans note part d&apos;abord (taux d&apos;acceptation plus
+            élevé). Le message ci-dessous est envoyé automatiquement dès que le
+            prospect accepte la connexion.
+          </div>
+        )}
         {showNote && (
           <div className="rounded-lg border p-4">
             <div className="mb-3 flex items-center justify-between">
               <Label className="text-sm font-semibold">
-                {type === "invitation_message" ? "1. Note d'invitation" : "Note d'invitation"}
+                Note d&apos;invitation
               </Label>
               <label className="flex cursor-pointer items-center gap-2 text-xs">
                 <Switch checked={hasNote} onCheckedChange={setHasNote} />
@@ -749,7 +761,7 @@ function Step3Config({
         {showMessage && (
           <div className="rounded-lg border p-4">
             <Label className="mb-2 block text-sm font-semibold">
-              {type === "invitation_message" ? "2. Message après acceptation" : "Message"}
+              {type === "invitation_message" ? "Message après acceptation" : "Message"}
             </Label>
             <VariablePills
               onInsert={(t) => insertAtCaret(messageRef, message, t, setMessage)}
@@ -911,12 +923,20 @@ function Step4Recap({
         </RecapCard>
       </div>
 
-      {hasNote && (
+      {type === "invitation_only" && hasNote && (
         <RecapCard label="Note d'invitation">
           <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-foreground">
             {applyPreviewVars(invitationNote || "—")}
           </div>
         </RecapCard>
+      )}
+
+      {type === "invitation_message" && (
+        <div className="rounded-md border border-[var(--brand-blue)]/30 bg-[var(--brand-blue-tint)] px-3 py-2.5 text-[12px] leading-relaxed text-foreground">
+          <strong className="font-semibold">Envoi en deux temps.</strong>{" "}
+          Invitation sans note d&apos;abord, puis le message ci-dessous part
+          dès l&apos;acceptation.
+        </div>
       )}
 
       {(type === "message_only" || type === "invitation_message") && (

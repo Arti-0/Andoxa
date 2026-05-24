@@ -9,7 +9,26 @@ import { BOOKING_TIMEZONE } from "@/lib/booking/constants";
 import {
   createGoogleMeetEvent,
   getValidGoogleAccessToken,
+  updateGoogleCalendarEvent,
 } from "@/lib/google/calendar";
+
+/**
+ * Compose the calendar event title so the host's calendar shows who the RDV
+ * is with, regardless of how the booking template is configured. Defaults
+ * lean host-centric ("RDV avec [Host]") which is confusing on the host's own
+ * calendar — they'd rather see the guest's name. We append the guest only
+ * when it isn't already implied by the configured title.
+ */
+function composeCalendarTitle(
+  configuredTitle: string,
+  guestName: string | null | undefined
+): string {
+  const base = configuredTitle.trim() || "RDV";
+  const guest = guestName?.trim();
+  if (!guest) return base;
+  if (base.toLowerCase().includes(guest.toLowerCase())) return base;
+  return `${base} — ${guest}`;
+}
 
 export type CreateRdvEventParams = {
   organizationId: string;
@@ -43,6 +62,10 @@ export async function createRdvCalendarEvent(
   supabase: SupabaseClient<Database>,
   params: CreateRdvEventParams
 ): Promise<CreateRdvEventResult> {
+  // One title shared by both the Andoxa events row and the Google Calendar
+  // event so the host sees the same "RDV — Guest" string everywhere.
+  const calendarTitle = composeCalendarTitle(params.title, params.guestName);
+
   const description = buildBookingEventDescription({
     hostDescription: params.hostDescription,
     guestName: params.guestName,
@@ -55,7 +78,7 @@ export async function createRdvCalendarEvent(
     .from("events")
     .insert({
       organization_id: params.organizationId,
-      title: params.title,
+      title: calendarTitle,
       description,
       start_time: params.startIso,
       end_time: params.endIso,
@@ -87,7 +110,7 @@ export async function createRdvCalendarEvent(
           params.guestEmail,
         ]);
         const cal = await createGoogleMeetEvent(accessToken, {
-          summary: params.title,
+          summary: calendarTitle,
           description,
           startIso: params.startIso,
           endIso: params.endIso,
@@ -116,6 +139,26 @@ export async function createRdvCalendarEvent(
               updated_at: new Date().toISOString(),
             })
             .eq("id", event.id);
+          // Mirror Andoxa's full description (with the Meet URL) back to the
+          // Google Calendar event so the native Google view shows the same
+          // text. The initial POST had to send the description without the
+          // Meet URL since Google only returns it after the event is created.
+          if (googleEventId) {
+            try {
+              await updateGoogleCalendarEvent(accessToken, {
+                eventId: googleEventId,
+                description: descWithMeet,
+              });
+            } catch (patchErr) {
+              // Non-fatal: Google already shows the Meet link natively via
+              // conferenceData, so even without this patch the meeting is
+              // joinable. We just lose the description-text consistency.
+              console.warn(
+                "[create-rdv] post-meet description sync failed:",
+                patchErr
+              );
+            }
+          }
         }
       }
     } catch {

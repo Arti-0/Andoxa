@@ -41,6 +41,7 @@ const SEGMENT_LABELS: Record<string, string> = {
 const CAMPAIGN_JOB_TYPES = new Set<string>([
   "invite",
   "invite_with_note",
+  "invite_then_message",
   "contact",
   "whatsapp",
 ]);

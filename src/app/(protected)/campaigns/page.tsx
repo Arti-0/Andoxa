@@ -56,17 +56,29 @@ const PERIOD_MS: Record<string, number> = {
 };
 const NOW_REF = new Date("2026-05-06T12:00:00").getTime();
 
+/**
+ * Map the wizard's UI type to the backend campaign job type.
+ *
+ *   invitation_only       → invite_with_note when a note is provided, else invite
+ *   message_only          → contact
+ *   invitation_message    → invite_then_message (bare invite, message after accept)
+ *
+ * The three backend invite types diverge sharply at dispatch time:
+ *   invite             — wire body has no `message`
+ *   invite_with_note   — wire body carries the note
+ *   invite_then_message — bare invite phase 1, follow-up message dispatched from
+ *                         record-invite-accepted.ts on the `new_relation` webhook
+ */
 function mapLinkedInCampaignType(
-  t: LinkedInCampaignType,
-): "invite" | "invite_with_note" | "contact" {
-  switch (t) {
+  data: CreateCampaignPayload,
+): "invite" | "invite_with_note" | "invite_then_message" | "contact" {
+  switch (data.type) {
     case "invitation_only":
-      return "invite";
+      return data.invitation_note ? "invite_with_note" : "invite";
     case "message_only":
       return "contact";
     case "invitation_message":
-    default:
-      return "invite_with_note";
+      return "invite_then_message";
   }
 }
 
@@ -308,12 +320,16 @@ export default function CampaignsPage() {
    * passes booleans, never raw ids.
    */
   const buildCampaignPayload = (data: CreateCampaignPayload, launchNow: boolean) => ({
-    type: mapLinkedInCampaignType(data.type),
+    type: mapLinkedInCampaignType(data),
     name: data.name.trim(),
     bdd_id: data.bdd_id,
     refine_exclude_contacted: data.refine_exclude_contacted,
     refine_only_with_phone: data.refine_only_with_phone,
     refine_exclude_active: data.refine_exclude_active,
+    // invitation_only — message_template carries the note (or null when none).
+    // invitation_message — message_template is the post-acceptance follow-up,
+    // dispatched by record-invite-accepted.ts when LinkedIn signals the invite
+    // was accepted. The phase-1 invite is bare (no note).
     message_template:
       data.type === "invitation_only" ? data.invitation_note : data.message,
     launch_now: launchNow,

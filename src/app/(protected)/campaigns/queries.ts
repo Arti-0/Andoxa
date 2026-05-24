@@ -137,6 +137,8 @@ function typeToDesign(t: CampaignJobType): CampaignType {
     case "invite":
     case "invite_with_note":
       return "invitation";
+    case "invite_then_message":
+      return "invitation_message";
     case "contact":
       return "message";
     case "whatsapp":
@@ -247,7 +249,19 @@ export function useCampaignJobDetail(jobId: string | undefined) {
       };
     },
     enabled: !!workspaceId && !!jobId && !members.isLoading,
-    staleTime: 30 * 1000,
+    staleTime: 15 * 1000,
+    // Real-time-ish progression: while the job is actively being dispatched
+    // (status running/pending), poll every 8 s so the progress bar, prospect
+    // statuses, and KPI tiles tick up without a manual refresh. Once the job
+    // settles (draft / completed / paused / failed) we stop polling. Pausing
+    // in background keeps idle tabs cheap.
+    refetchInterval: (query) => {
+      const status = query.state.data?.apiStatus;
+      if (status === "running" || status === "pending") return 8 * 1000;
+      return false;
+    },
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 }
 

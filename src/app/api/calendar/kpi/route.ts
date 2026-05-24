@@ -4,29 +4,28 @@ import {
   kpiFromMockCalendarEvents,
 } from "@/lib/mock-stats/calendar-events";
 import { isMockStatsEnabled } from "@/lib/mock-stats";
+import { todayBoundsIso, weekBoundsIso } from "@/lib/dashboard/timezone";
 
 /**
  * GET /api/calendar/kpi
  *
  * Calendar KPI cards (today / week / 30-day). Uses mock data when MOCK_STATS
- * is enabled in .env.local.
+ * is enabled in .env.local. Day/week boundaries are computed in the org's
+ * display timezone (defaults to Europe/Paris) so the buckets align with what
+ * the user sees on the calendar UI rather than UTC midnight.
  */
 export const GET = createApiHandler(async (_req, ctx) => {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
 
   const now = new Date();
 
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date(now);
-  todayEnd.setHours(23, 59, 59, 999);
+  const todayBounds = todayBoundsIso();
+  const todayStart = new Date(todayBounds.startIso);
+  const todayEnd = new Date(todayBounds.endIso);
 
-  const dow = now.getDay();
-  const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
-  weekStart.setHours(0, 0, 0, 0);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 7);
+  const weekBounds = weekBoundsIso();
+  const weekStart = new Date(weekBounds.startIso);
+  const weekEnd = new Date(new Date(weekBounds.endIso).getTime() + 1);
 
   const thirtyAgo = new Date(now);
   thirtyAgo.setDate(now.getDate() - 30);

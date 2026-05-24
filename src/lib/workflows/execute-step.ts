@@ -31,6 +31,7 @@ import {
   nextUtcInstantWhenWeeklyInviteCounterResets,
 } from "@/lib/linkedin/weekly-invite-quota";
 import {
+  insertProspectActivity,
   logWorkflowRunCompleted,
   logWorkflowStepCompleted,
   logWorkflowStepFailed,
@@ -352,6 +353,26 @@ async function handleLinkedInInvite(
     throw err;
   }
 
+  // Write a `linkedin_invite_sent` activity so workflow-driven invites show
+  // up in the campaigns KPI bar, the dashboard funnel, and (critically) so
+  // record-invite-accepted.ts can pair the future `new_relation` webhook to
+  // this exact send via the provider_id + account_id details — same wiring
+  // used by campaign sends in process-job-batch.ts.
+  void insertProspectActivity(ctx.supabase, {
+    organization_id: ctx.run.organization_id,
+    prospect_id: ctx.prospect.id,
+    actor_id: ctx.startedByUserId,
+    campaign_job_id: null,
+    action: "linkedin_invite_sent",
+    details: {
+      message: note ?? "",
+      provider_id: providerId,
+      account_id: accountId,
+      workflow_id: ctx.run.workflow_id,
+      workflow_run_id: ctx.run.id,
+    },
+  });
+
   const AWAIT_CONNECTION_TIMEOUT_MS = 30 * 24 * 60 * 60 * 1000;
   const runAfter = new Date(
     Date.now() + AWAIT_CONNECTION_TIMEOUT_MS
@@ -441,6 +462,23 @@ async function handleLinkedInMessage(ctx: HandlerContext): Promise<void> {
       { onConflict: "prospect_id,unipile_chat_id" }
     );
   }
+
+  // Activity log so workflow-driven LinkedIn DMs surface in the campaigns
+  // KPI bar's "Messages envoyés" counter and the per-job stats aggregator
+  // (which keys on `linkedin_message_outbound`).
+  void insertProspectActivity(ctx.supabase, {
+    organization_id: ctx.run.organization_id,
+    prospect_id: ctx.prospect.id,
+    actor_id: ctx.startedByUserId,
+    campaign_job_id: null,
+    action: "linkedin_message_outbound",
+    details: {
+      message: text.length > 500 ? `${text.slice(0, 499)}…` : text,
+      chat_id: chatId ?? null,
+      workflow_id: ctx.run.workflow_id,
+      workflow_run_id: ctx.run.id,
+    },
+  });
 }
 
 async function handleWhatsAppMessage(ctx: HandlerContext): Promise<void> {
@@ -472,12 +510,14 @@ async function handleWhatsAppMessage(ctx: HandlerContext): Promise<void> {
   );
   const text = applyMessageVariables(template, ctx.prospect, variableContext);
 
+  let waChatId: string | null = null;
   try {
     // Unipile's POST /chats needs multipart/form-data + a WhatsApp JID
     // attendee — see sendWhatsAppMessage(). Plain JSON + bare phone silently
     // fails for WhatsApp, which is why this step was broken.
     const chat = await sendWhatsAppMessage({ accountId, phone, text });
     if (chat?.id && ctx.run.organization_id) {
+      waChatId = chat.id;
       await ctx.supabase.from("unipile_chat_prospects").upsert(
         {
           prospect_id: ctx.prospect.id,
@@ -494,6 +534,22 @@ async function handleWhatsAppMessage(ctx: HandlerContext): Promise<void> {
     console.error("Unipile WA error (workflow):", err);
     throw err;
   }
+
+  // Mirror the LinkedIn path: log an outbound activity so this WhatsApp send
+  // counts in the campaigns "Messages envoyés" KPI and the per-job stats.
+  void insertProspectActivity(ctx.supabase, {
+    organization_id: ctx.run.organization_id,
+    prospect_id: ctx.prospect.id,
+    actor_id: ctx.startedByUserId,
+    campaign_job_id: null,
+    action: "whatsapp_message_outbound",
+    details: {
+      message: text.length > 500 ? `${text.slice(0, 499)}…` : text,
+      chat_id: waChatId,
+      workflow_id: ctx.run.workflow_id,
+      workflow_run_id: ctx.run.id,
+    },
+  });
 }
 
 /**
