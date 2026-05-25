@@ -7,8 +7,7 @@ import {
   parseISO,
 } from "date-fns";
 
-const DEFAULT_SLOT_MINUTES = 30;
-const DEFAULT_DAYS_AHEAD = 14;
+import { DEFAULT_DAYS_AHEAD, DEFAULT_SLOT_MINUTES } from "./constants";
 const DEFAULT_WORKING_DAYS = [1, 2, 3, 4, 5]; // Mon-Fri
 const DEFAULT_RANGES: TimeRange[] = [
   { start: "09:00", end: "12:00" },

@@ -5,6 +5,7 @@ import {
   DEFAULT_MIN_NOTICE_HOURS,
   DEFAULT_SLOT_MINUTES,
   DEFAULT_DAYS_AHEAD,
+  LEGACY_IMPLICIT_DAYS_AHEAD,
 } from "./constants";
 import type { AvailabilityConfig } from "./slots";
 
@@ -70,9 +71,15 @@ export function resolveAvailabilityDefaults(
   Pick<AvailabilityConfig, "slotMinutes" | "daysAhead" | "minNoticeHours">
 > {
   const availability = (meta?.availability ?? {}) as AvailabilityConfig;
+  const storedDaysAhead = availability.daysAhead;
+  const daysAhead =
+    storedDaysAhead == null ||
+    storedDaysAhead === LEGACY_IMPLICIT_DAYS_AHEAD
+      ? DEFAULT_DAYS_AHEAD
+      : storedDaysAhead;
   return {
     slotMinutes: availability.slotMinutes ?? DEFAULT_SLOT_MINUTES,
-    daysAhead: availability.daysAhead ?? DEFAULT_DAYS_AHEAD,
+    daysAhead,
     minNoticeHours:
       typeof availability.minNoticeHours === "number" &&
       availability.minNoticeHours >= 0

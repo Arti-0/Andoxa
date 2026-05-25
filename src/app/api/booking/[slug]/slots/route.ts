@@ -81,7 +81,12 @@ export async function GET(
       );
     }
 
-    const allSlots = getDefaultSlotsForDateRange(from, availability);
+    const allSlots = getDefaultSlotsForDateRange(from, {
+      ...availability,
+      slotMinutes,
+      daysAhead,
+      minNoticeHours,
+    });
     const availableSlots = excludeBookedSlots(allSlots, events ?? []);
 
     const now = new Date();

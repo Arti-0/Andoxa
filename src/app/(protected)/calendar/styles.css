@@ -18,6 +18,20 @@
   --cal2-border-faint: #edf1f5;
   --cal2-lunch-tint: rgba(241, 245, 249, 0.5);
   --cal2-event-gloss: rgba(255, 255, 255, 0.6);
+  --cal2-primary: #0052d9;
+  --cal2-success: #10b981;
+  --cal2-overlay: rgba(15, 23, 42, 0.45);
+  --cal2-shadow-lg: 0 24px 60px rgba(15, 23, 42, 0.22);
+  --cal2-shadow-popover: 0 12px 28px rgba(15, 23, 42, 0.18);
+  --cal2-danger-bg: #fef2f2;
+  --cal2-danger-border: #fecaca;
+  --cal2-danger-text: #b91c1c;
+  --cal2-danger-hover-bg: #fef2f2;
+  --cal2-closed-bg: #fee2e2;
+  --cal2-closed-border: #ef4444;
+  --cal2-closed-text: #b91c1c;
+  --cal2-primary-shadow: rgba(0, 82, 217, 0.28);
+  --cal2-toggle-thumb: #ffffff;
 }
 
 .dark .cal2-root {
@@ -36,6 +50,28 @@
   --cal2-border-faint: #2a2a2e;
   --cal2-lunch-tint: rgba(63, 63, 70, 0.4);
   --cal2-event-gloss: rgba(255, 255, 255, 0.04);
+  --cal2-overlay: rgba(0, 0, 0, 0.62);
+  --cal2-shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.55);
+  --cal2-shadow-popover: 0 12px 28px rgba(0, 0, 0, 0.45);
+  --cal2-danger-bg: rgba(239, 68, 68, 0.12);
+  --cal2-danger-border: rgba(239, 68, 68, 0.32);
+  --cal2-danger-text: #fca5a5;
+  --cal2-danger-hover-bg: rgba(239, 68, 68, 0.18);
+  --cal2-closed-bg: rgba(239, 68, 68, 0.15);
+  --cal2-closed-border: rgba(239, 68, 68, 0.45);
+  --cal2-closed-text: #fca5a5;
+  --cal2-primary-shadow: rgba(0, 82, 217, 0.35);
+  --cal2-toggle-thumb: #fafafa;
+}
+
+.cal2-notice-select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+}
+
+.dark .cal2-notice-select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
 }
 
 @keyframes cal2-slide-in {

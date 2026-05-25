@@ -12,4 +12,8 @@ export const DEFAULT_MIN_NOTICE_HOURS = 4;
 
 export const DEFAULT_SLOT_MINUTES = 30;
 
-export const DEFAULT_DAYS_AHEAD = 14;
+/** Rolling window for public slot generation when no end date is configured. */
+export const DEFAULT_DAYS_AHEAD = 90;
+
+/** Previously persisted implicitly by the booking UI before daysAhead was removed. */
+export const LEGACY_IMPLICIT_DAYS_AHEAD = 14;

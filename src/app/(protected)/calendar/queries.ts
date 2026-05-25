@@ -344,7 +344,8 @@ export interface BookingSettings {
   has_on_booking_wa_workflow?: boolean;
   availability: {
     slotMinutes: number;
-    daysAhead: number;
+    /** Omitted from booking personalization saves — server keeps or applies default. */
+    daysAhead?: number;
     /** Minimum lead time in hours before a slot can be booked (default 4). */
     minNoticeHours?: number;
     daySchedules: Record<number, BookingDaySchedule>;
