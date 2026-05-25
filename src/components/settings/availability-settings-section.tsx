@@ -23,7 +23,7 @@ const DEFAULT_CONFIG: LegacyAvailabilityConfig = {
   endHour: 18,
   slotMinutes: 30,
   workingDays: [1, 2, 3, 4, 5],
-  daysAhead: 90,
+  daysAhead: 365,
 };
 
 export function AvailabilitySettingsSection() {

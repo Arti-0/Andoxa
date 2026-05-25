@@ -74,7 +74,7 @@ export function resolveAvailabilityDefaults(
   const storedDaysAhead = availability.daysAhead;
   const daysAhead =
     storedDaysAhead == null ||
-    storedDaysAhead === LEGACY_IMPLICIT_DAYS_AHEAD
+    (LEGACY_IMPLICIT_DAYS_AHEAD as readonly number[]).includes(storedDaysAhead)
       ? DEFAULT_DAYS_AHEAD
       : storedDaysAhead;
   return {

@@ -60,21 +60,10 @@
   text-decoration: none;
   color: inherit;
 }
-.event-landing-root .el-logo-mark {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-}
-.event-landing-root .el-logo-mark img {
-  width: 28px;
-  height: 28px;
+.event-landing-root .el-logo-img {
   display: block;
-}
-.event-landing-root .el-logo-word {
-  font-weight: 700;
-  font-size: 17px;
-  letter-spacing: -0.025em;
+  width: auto;
+  height: 26px;
 }
 .event-landing-root .el-pill {
   font-size: 11px;
