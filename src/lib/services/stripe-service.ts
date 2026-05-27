@@ -99,6 +99,11 @@ export class StripeService {
       billing_address_collection: STRIPE_CONFIG.payment
         .billingAddressCollection as Stripe.Checkout.SessionCreateParams.BillingAddressCollection,
       automatic_tax: { enabled: true },
+      // Persist the billing address/name captured during Checkout back onto
+      // the Customer so Stripe Tax has a region on the next renewal and on
+      // the Billing Portal. Required whenever automatic_tax is on AND we
+      // attach an existing `customer` without an address.
+      customer_update: { address: "auto", name: "auto" },
     };
 
     if (subscriptionData?.trial_period_days) {

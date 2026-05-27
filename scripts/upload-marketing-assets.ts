@@ -86,28 +86,43 @@ async function main(): Promise<void> {
 
     for (const relative of files) {
       const localPath = path.join(localDir, relative);
-      // Forward-slashes for the storage key — Windows separators would
-      // produce weird URLs like `screenshots\\02-…`.
-      const storageKey = `${dirName}/${relative.split(path.sep).join("/")}`;
       const buffer = fs.readFileSync(localPath);
 
-      const { error } = await supabase.storage
-        .from(HOMEPAGE_ASSETS_BUCKET)
-        .upload(storageKey, buffer, {
-          upsert: true,
-          contentType: contentTypeFor(localPath),
-          cacheControl: "31536000",
-        });
+      // Forward-slashes for the storage key — Windows separators would
+      // produce weird URLs like `screenshots\\02-…`.
+      const normalizedRelative = relative.split(path.sep).join("/");
 
-      if (error) {
-        console.error(`  ✗ ${storageKey} — ${error.message}`);
-        failed += 1;
-        continue;
+      // Pricing-comparison logos resolve from `tool.id` (lowercase). On a
+      // case-insensitive FS (Windows/macOS default), `Lemlist.svg` and
+      // `lemlist.svg` are the same inode, so the OS only surfaces one
+      // capitalisation. Push BOTH keys to the bucket — the literal OS name
+      // (for any code that still references it) and the lowercase variant
+      // (so /pricing finds `logos/lemlist.svg`).
+      const storageKeys = new Set<string>([`${dirName}/${normalizedRelative}`]);
+      if (dirName === "logos") {
+        storageKeys.add(`${dirName}/${normalizedRelative.toLowerCase()}`);
       }
-      const publicUrl = `${supabaseUrl}/storage/v1/object/public/${HOMEPAGE_ASSETS_BUCKET}/${storageKey}`;
-      console.log(`  ✓ ${storageKey}`);
-      console.log(`     ${publicUrl}`);
-      uploaded += 1;
+      let entryFailed = false;
+      for (const storageKey of storageKeys) {
+        const { error } = await supabase.storage
+          .from(HOMEPAGE_ASSETS_BUCKET)
+          .upload(storageKey, buffer, {
+            upsert: true,
+            contentType: contentTypeFor(localPath),
+            cacheControl: "31536000",
+          });
+
+        if (error) {
+          console.error(`  ✗ ${storageKey} — ${error.message}`);
+          entryFailed = true;
+          continue;
+        }
+        const publicUrl = `${supabaseUrl}/storage/v1/object/public/${HOMEPAGE_ASSETS_BUCKET}/${storageKey}`;
+        console.log(`  ✓ ${storageKey}`);
+        console.log(`     ${publicUrl}`);
+      }
+      if (entryFailed) failed += 1;
+      else uploaded += 1;
     }
     console.log();
   }

@@ -14,8 +14,6 @@ import { translateAuthError } from '@/lib/utils/translate-auth-error';
 import { resolveClientAppOrigin } from '@/lib/config/app-url';
 import { toast } from '@/lib/toast';
 
-const MIN_PASSWORD_LEN = 8;
-
 type AuthTab = 'login' | 'signup';
 
 function isEmailNotConfirmedError(message: string, code?: string): boolean {
@@ -260,13 +258,6 @@ function EmailPasswordLoginFormInner() {
             toast.error('Veuillez saisir votre adresse e-mail.');
             return;
         }
-        if (password.length < MIN_PASSWORD_LEN) {
-            toast.error(
-                `Le mot de passe doit contenir au moins ${MIN_PASSWORD_LEN} caractères.`
-            );
-            return;
-        }
-
         setLoading(true);
         try {
             if (isSetPasswordMode) {
@@ -400,7 +391,6 @@ function EmailPasswordLoginFormInner() {
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
-                                minLength={MIN_PASSWORD_LEN}
                             />
                         </div>
                         <Button

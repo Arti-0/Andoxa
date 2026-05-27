@@ -54,7 +54,7 @@ export function HeroSideImages() {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+      className="pointer-events-none absolute inset-0 z-0 hidden overflow-hidden md:block"
     >
       {CARDS.map((c, i) => (
         <FloatingCard key={i} card={c} reduce={!!reduce} />

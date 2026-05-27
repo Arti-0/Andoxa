@@ -13,6 +13,17 @@ import {
 import { formatDefaultOrganizationName } from "@/lib/organizations/default-org-name";
 import type { Database } from "@/lib/types/supabase";
 
+function slugifyOrganizationName(input: string): string {
+  const s = input
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return s || "espace";
+}
+
 export type PaiementsCheckoutResult =
   | { ok: true; mode: "stripe"; sessionId: string; url: string | null }
   | { ok: true; mode: "trial"; redirectUrl: string; trialEndsAt: string }
@@ -142,20 +153,44 @@ export async function performPaiementsCheckout(params: {
       const orgName = formatDefaultOrganizationName(
         profile.full_name || profile.email || ""
       );
+      const baseSlug = slugifyOrganizationName(orgName);
+      const fallbackSlug = `${baseSlug}-${user.id.slice(0, 8)}`.slice(0, 48);
+      const now = new Date().toISOString();
 
-      const { data: newOrg, error: createOrgError } = await supabase
+      let { data: newOrg, error: createOrgError } = await supabase
         .from("organizations")
         .insert({
           name: orgName,
+          slug: baseSlug,
           owner_id: user.id,
           plan: planId,
           status: "pending",
           subscription_status: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          created_at: now,
+          updated_at: now,
         })
         .select("id")
         .single();
+
+      // If slug is already taken, retry once with a deterministic suffix.
+      if (createOrgError?.code === "23505") {
+        const retry = await supabase
+          .from("organizations")
+          .insert({
+            name: orgName,
+            slug: fallbackSlug,
+            owner_id: user.id,
+            plan: planId,
+            status: "pending",
+            subscription_status: null,
+            created_at: now,
+            updated_at: now,
+          })
+          .select("id")
+          .single();
+        newOrg = retry.data;
+        createOrgError = retry.error;
+      }
 
       if (createOrgError || !newOrg) {
         console.error("Error creating organization:", createOrgError);
