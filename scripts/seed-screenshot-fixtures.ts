@@ -36,6 +36,7 @@ import {
   buildFunnelInviteRows,
   buildFunnelRdvRows,
   buildProspectSeeds,
+  buildCallSessionProspectRows,
   daysAgo,
   endOfTodayAt,
   funnelClosingProspectIds,
@@ -542,15 +543,20 @@ async function seedCallSessions(
     {
       id: CALL_SESSION_ID,
       title: "Session — ICP Enterprise",
-      status: "running",
+      status: "active" as const,
       script:
         "1. Intro — présenter Andoxa\n2. Qualifier le besoin CRM\n3. Proposer un RDV démo",
+      created_at: daysAgo(15, 12),
+      total_duration_s: 4_200,
     },
     {
       id: CALL_SESSION_2_ID,
       title: "Relance Q2 — PME",
-      status: "completed",
+      status: "completed" as const,
       script: "1. Rappel contexte\n2. Objections\n3. Next steps",
+      created_at: daysAgo(22, 10),
+      ended_at: daysAgo(21, 18),
+      total_duration_s: 7_800,
     },
   ];
 
@@ -563,37 +569,91 @@ async function seedCallSessions(
         title: s.title,
         status: s.status,
         script_template: s.script,
-        created_at: daysAgo(14),
+        created_at: s.created_at,
+        ended_at: "ended_at" in s ? s.ended_at : null,
+        total_duration_s: s.total_duration_s,
       },
       { onConflict: "id" }
     );
     if (sErr) throw new Error(`call session — ${sErr.message}`);
   }
 
-  // Extra sessions for activity volume
-  for (let i = 0; i < 6; i++) {
-    await admin.from("call_sessions").insert({
-      organization_id: SCREENSHOT_ORG_ID,
-      created_by: userId,
-      title: `Session cold call #${i + 1}`,
-      status: i % 2 === 0 ? "completed" : "running",
-      script_template: "Script standard outbound",
-      created_at: daysAgo(20 + i * 4),
-    });
+  // Older completed sessions (each with prospects so cards are not 0/0)
+  const olderPlans = [
+    { title: "Session 30 avr. · MQL T1", daysAgoVal: 28, total: 14, processed: 14, rdv: 4, noanswer: 2, callback: 3, refused: 3, wrong: 2 },
+    { title: "Session 24 avr. · Inbound demos", daysAgoVal: 34, total: 10, processed: 10, rdv: 5, noanswer: 1, callback: 2, refused: 1, wrong: 1 },
+    { title: "Session 18 avr. · Renewals Q2", daysAgoVal: 40, total: 22, processed: 22, rdv: 3, noanswer: 8, callback: 5, refused: 4, wrong: 2 },
+  ] as const;
+
+  let prospectOffset = 40;
+  for (const plan of olderPlans) {
+    const { data: inserted, error: insErr } = await admin
+      .from("call_sessions")
+      .insert({
+        organization_id: SCREENSHOT_ORG_ID,
+        created_by: userId,
+        title: plan.title,
+        status: "completed",
+        script_template: "Script standard outbound",
+        created_at: daysAgo(plan.daysAgoVal, 10),
+        ended_at: daysAgo(plan.daysAgoVal - 1, 17),
+        total_duration_s: 5_400 + plan.total * 120,
+      })
+      .select("id")
+      .single();
+    if (insErr || !inserted) {
+      throw new Error(`call session (older) — ${insErr?.message ?? "no id"}`);
+    }
+    const rows = buildCallSessionProspectRows(
+      inserted.id,
+      prospectIds.slice(prospectOffset, prospectOffset + plan.total),
+      { ...plan, calling: 0 },
+    );
+    prospectOffset += plan.total;
+    const { error: linkErr } = await admin.from("call_session_prospects").insert(rows);
+    if (linkErr) throw new Error(`call session prospects — ${linkErr.message}`);
   }
 
-  const outcomes = ["interested", "callback", "not_interested", "voicemail", "meeting_booked"];
-  const queue = prospectIds.slice(0, 65);
-  await admin.from("call_session_prospects").insert(
-    queue.map((pid, i) => ({
-      call_session_id: i < 35 ? CALL_SESSION_ID : CALL_SESSION_2_ID,
-      prospect_id: pid,
-      status: i === 0 ? "in_progress" : i < 6 ? "pending" : "done",
-      call_duration_s: i >= 6 ? 90 + i * 15 : 0,
-      called_at: i >= 6 ? daysAgo(2 + (i % 20), 9 + (i % 6)) : null,
-      outcome: i >= 6 ? outcomes[i % outcomes.length] : null,
-    }))
+  // Primary running session — mirrors design mock (18 total, 7 processed, 2 RDV, ~71% pickup)
+  const primaryRows = buildCallSessionProspectRows(
+    CALL_SESSION_ID,
+    prospectIds.slice(0, 24),
+    {
+      total: 24,
+      processed: 11,
+      rdv: 3,
+      noanswer: 3,
+      callback: 2,
+      refused: 2,
+      wrong: 1,
+      calling: 1,
+    },
   );
+  const { error: primaryErr } = await admin
+    .from("call_session_prospects")
+    .insert(primaryRows);
+  if (primaryErr) throw new Error(`call session prospects (primary) — ${primaryErr.message}`);
+
+  const completedRows = buildCallSessionProspectRows(
+    CALL_SESSION_2_ID,
+    prospectIds.slice(24, 38),
+    {
+      total: 14,
+      processed: 14,
+      rdv: 4,
+      noanswer: 3,
+      callback: 3,
+      refused: 2,
+      wrong: 2,
+      calling: 0,
+    },
+  );
+  const { error: completedErr } = await admin
+    .from("call_session_prospects")
+    .insert(completedRows);
+  if (completedErr) {
+    throw new Error(`call session prospects (completed) — ${completedErr.message}`);
+  }
 }
 
 async function seedWorkflows(userId: string): Promise<void> {

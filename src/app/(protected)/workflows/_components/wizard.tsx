@@ -16,6 +16,7 @@ import {
 } from "@/lib/workflows";
 import { toastFromApiError } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import { useWhatsappWorkflowGate } from "../_lib/use-whatsapp-gate";
 
 const TRIGGER_ICONS: Record<
   WorkflowTemplateTrigger,
@@ -403,6 +404,7 @@ function Step3({
 
 export function WizardClient() {
   const router = useRouter();
+  const whatsappGate = useWhatsappWorkflowGate();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [template, setTemplate] = useState<WorkflowTemplate | null>(null);
   const [trigger, setTrigger] = useState<WorkflowTemplateTrigger | null>(null);
@@ -469,6 +471,12 @@ export function WizardClient() {
   function handlePrev() {
     if (step > 1) setStep((s) => (s - 1) as 1 | 2 | 3);
     else router.push("/workflows");
+  }
+
+  if (whatsappGate !== "ok") {
+    // Gate fires its own toast + redirect; keep the canvas blank until the
+    // route changes so we don't flash the wizard for a frame.
+    return <div className="flex min-h-0 flex-1 flex-col bg-background" />;
   }
 
   return (

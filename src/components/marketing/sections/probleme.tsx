@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRight, BellOff, CalendarX2, Copy, Database } from "lucide-react";
 import { Container } from "@/components/marketing/ui/container";
@@ -124,31 +125,27 @@ export function MarketingProblemeSection() {
 
 /* ── pain visuals ─────────────────────────────────────────────────────────── */
 
-function LetterTile({ letter, bg }: { letter: string; bg: string }) {
+function LogoTile({ src, alt }: { src: string; alt: string }) {
   return (
-    <div
-      className="relative grid h-10 w-10 place-items-center rounded-lg text-sm font-bold text-white shadow-[0_4px_14px_-8px_rgba(0,0,0,0.35)] ring-1 ring-black/10"
-      style={{ backgroundColor: bg }}
-    >
-      {letter}
+    <div className="relative grid h-10 w-10 place-items-center rounded-lg bg-card shadow-[0_4px_14px_-8px_rgba(0,0,0,0.35)] ring-1 ring-black/5">
+      <Image src={src} alt={alt} width={24} height={24} className="h-6 w-6 object-contain" />
     </div>
   );
 }
 
 function CopyPasteVisual() {
-  // Logo PNGs aren't wired (public/ omitted) — coloured letter tiles stand in.
   const tools = [
-    { name: "LinkedIn", letter: "in", bg: "#0A66C2" },
-    { name: "Notion", letter: "N", bg: "#0F0F0F" },
-    { name: "Calendly", letter: "C", bg: "#006BFF" },
-    { name: "HubSpot", letter: "H", bg: "#FF7A59" },
+    { name: "LinkedIn", src: "/logos/LinkedIn_Symbol_0.svg" },
+    { name: "Notion", src: "/logos/idzPHWF4i2_1779876244153.png" },
+    { name: "Calendly", src: "/logos/id6Wf82SOT_logos.svg" },
+    { name: "HubSpot", src: "/logos/Hubspot_logo.svg" },
   ];
   return (
     <div className="absolute inset-0 flex items-center justify-around px-4">
       {tools.map((t, i) => (
         <React.Fragment key={t.name}>
           <div className="flex flex-col items-center gap-1.5">
-            <LetterTile letter={t.letter} bg={t.bg} />
+            <LogoTile src={t.src} alt={t.name} />
             <span className="font-mono text-[9px] text-muted-foreground">{t.name}</span>
           </div>
           {i < tools.length - 1 && (

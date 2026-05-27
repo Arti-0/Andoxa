@@ -310,6 +310,86 @@ export function funnelClosingProspectIds(prospectIds: string[]): string[] {
   return prospectIds.slice(0, FUNNEL_TIER_COUNTS.closings);
 }
 
+/** Outcomes used by /api/call-sessions list stats and the session UI. */
+export type CallSessionOutcome = "rdv" | "callback" | "noanswer" | "wrong" | "refused";
+
+export type CallSessionProspectSeed = {
+  status: "pending" | "calling" | "completed" | "skipped";
+  outcome: CallSessionOutcome | null;
+  call_duration_s: number;
+  called_at: string | null;
+};
+
+/**
+ * Builds call_session_prospects rows with counts that match the campaigns
+ * session card (processed / meetings / qualifications / pickup rate).
+ */
+export function buildCallSessionProspectRows(
+  sessionId: string,
+  prospectIds: string[],
+  plan: {
+    total: number;
+    processed: number;
+    rdv: number;
+    noanswer: number;
+    callback: number;
+    refused: number;
+    wrong: number;
+    /** Prospect currently on the line (no outcome yet). */
+    calling?: number;
+  },
+): Array<Record<string, unknown>> {
+  const ids = prospectIds.slice(0, plan.total);
+  const rows: CallSessionProspectSeed[] = [];
+
+  const push = (seed: CallSessionProspectSeed) => rows.push(seed);
+
+  const calling = plan.calling ?? 1;
+  for (let i = 0; i < calling; i++) {
+    push({ status: "calling", outcome: null, call_duration_s: 0, called_at: null });
+  }
+
+  const pending = plan.total - plan.processed - calling;
+  for (let i = 0; i < pending; i++) {
+    push({ status: "pending", outcome: null, call_duration_s: 0, called_at: null });
+  }
+
+  const outcomes: CallSessionOutcome[] = [
+    ...Array(plan.rdv).fill("rdv" as const),
+    ...Array(plan.noanswer).fill("noanswer" as const),
+    ...Array(plan.callback).fill("callback" as const),
+    ...Array(plan.refused).fill("refused" as const),
+    ...Array(plan.wrong).fill("wrong" as const),
+  ];
+  if (outcomes.length !== plan.processed) {
+    throw new Error(
+      `call session plan: outcomes (${outcomes.length}) must equal processed (${plan.processed})`,
+    );
+  }
+
+  outcomes.forEach((outcome, i) => {
+    const duration = outcome === "noanswer" ? 0 : 75 + (i % 6) * 22;
+    push({
+      status: "completed",
+      outcome,
+      call_duration_s: duration,
+      called_at: daysAgo(1 + (i % 4), 9 + (i % 7)),
+    });
+  });
+
+  return ids.map((prospect_id, i) => {
+    const row = rows[i]!;
+    return {
+      call_session_id: sessionId,
+      prospect_id,
+      status: row.status,
+      call_duration_s: row.call_duration_s,
+      called_at: row.called_at,
+      outcome: row.outcome,
+    };
+  });
+}
+
 export const CAMPAIGN_JOB_DEFS = [
   { type: "invite_with_note" as const, status: "running" as const, name: "Invitations Q2 — ICP SaaS", total: 420, processed: 312, success: 268, errors: 6, createdDaysAgo: 42, startedDaysAgo: 41 },
   { type: "invite" as const, status: "running" as const, name: "Connect — Dirigeants PME", total: 280, processed: 198, success: 142, errors: 5, createdDaysAgo: 28, startedDaysAgo: 27 },

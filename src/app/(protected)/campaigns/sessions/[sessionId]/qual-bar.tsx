@@ -27,7 +27,7 @@ export function QualificationBar({
   onOpenBooking: () => void;
 }) {
   return (
-    <div className="shrink-0 border-t bg-card">
+    <div className="z-10 shrink-0 border-t bg-card shadow-[0_-4px_16px_rgba(15,23,42,0.06)] dark:shadow-[0_-4px_16px_rgba(0,0,0,0.35)]">
       <div className="flex flex-wrap items-center gap-2 px-5 py-3">
         <Button variant="outline" size="sm" disabled={!hasPrev} onClick={onPrev}>
           <ChevronLeft className="size-3.5" />

@@ -14,7 +14,7 @@ export function MarketingHero() {
   const reduce = useReducedMotion();
 
   return (
-    <BackgroundBeamsWithCollision className="min-h-screen pb-24 pt-32 sm:pt-40">
+    <BackgroundBeamsWithCollision className="min-h-[90vh] pb-24 pt-32 sm:pt-40">
       <div className="pointer-events-none absolute inset-0 opacity-[0.15]">
         <AuroraBackground />
       </div>

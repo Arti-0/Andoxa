@@ -651,9 +651,10 @@ export default function CallSessionPage() {
           </div>
         </aside>
 
-        {/* Right panel — prospect detail */}
-        <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-4 pb-8 md:p-6 lg:p-8">
+        {/* Right panel — prospect detail (scroll) + pinned action footer when running */}
+        <main className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-4 md:p-6 lg:p-8">
             {isSessionCompleted ? (
               <CompletedSessionSummary session={session} />
             ) : allProspectsProcessed && isRunning ? (
@@ -813,47 +814,49 @@ export default function CallSessionPage() {
                     </button>
                   </div>
                 </section>
-
-                {/* Session call controls — only when running */}
-                {isRunning && (
-                  <section className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm">
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <button
-                        type="button"
-                        onClick={() => void nextProspect(activeProspect.id, isLastProspect)}
-                        disabled={stepFlushPending || endSessionMutation.isPending}
-                        className={`inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition-colors disabled:opacity-50 ${
-                          isLastProspect
-                            ? "border-2 border-green-600 bg-green-600 text-white hover:bg-green-700"
-                            : "bg-primary text-primary-foreground hover:bg-primary/90"
-                        }`}
-                      >
-                        {stepFlushPending || endSessionMutation.isPending ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : isLastProspect ? (
-                          <><CheckCircle2 className="h-4 w-4" /> Terminer la session</>
-                        ) : (
-                          <><SkipForward className="h-4 w-4" /> Prospect suivant</>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void pauseSession()}
-                        disabled={stepFlushPending}
-                        className="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium hover:bg-accent disabled:opacity-50"
-                      >
-                        <Pause className="h-4 w-4" />
-                        Pause
-                      </button>
-                    </div>
-                    <p className="text-center text-xs text-muted-foreground">
-                      Raccourcis : ↵ ou → Suivant · P ou Échap Pause
-                    </p>
-                  </section>
-                )}
               </>
             )}
           </div>
+          </div>
+
+          {isRunning && activeProspect && (
+            <footer className="shrink-0 border-t bg-card shadow-[0_-4px_16px_rgba(15,23,42,0.06)] dark:shadow-[0_-4px_16px_rgba(0,0,0,0.35)]">
+              <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-4 py-3 md:px-6 lg:px-8">
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => void nextProspect(activeProspect.id, isLastProspect)}
+                    disabled={stepFlushPending || endSessionMutation.isPending}
+                    className={`inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition-colors disabled:opacity-50 ${
+                      isLastProspect
+                        ? "border-2 border-green-600 bg-green-600 text-white hover:bg-green-700"
+                        : "bg-primary text-primary-foreground hover:bg-primary/90"
+                    }`}
+                  >
+                    {stepFlushPending || endSessionMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : isLastProspect ? (
+                      <><CheckCircle2 className="h-4 w-4" /> Terminer la session</>
+                    ) : (
+                      <><SkipForward className="h-4 w-4" /> Prospect suivant</>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void pauseSession()}
+                    disabled={stepFlushPending}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium hover:bg-accent disabled:opacity-50"
+                  >
+                    <Pause className="h-4 w-4" />
+                    Pause
+                  </button>
+                </div>
+                <p className="text-center text-xs text-muted-foreground">
+                  Raccourcis : ↵ ou → Suivant · P ou Échap Pause
+                </p>
+              </div>
+            </footer>
+          )}
         </main>
       </div>
 

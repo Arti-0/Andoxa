@@ -8,7 +8,6 @@ import { Container } from "@/components/marketing/ui/container";
 import { Eyebrow } from "@/components/marketing/ui/eyebrow";
 import { LinkedinIcon } from "@/components/marketing/icons/brand-icons";
 import { EmbeddedPage } from "@/components/marketing/ui/embedded-page";
-import { ANDOXA_PAGE } from "@/lib/andoxa-pages";
 import { cn } from "@/lib/utils";
 
 type PersonaVisual =
@@ -76,9 +75,10 @@ const PERSONAS: Persona[] = [
     ],
     metric: { value: "1 h/jour", label: "récupérée par SDR sur la prospection téléphonique" },
     visual: {
-      kind: "embed",
-      src: ANDOXA_PAGE.callSession,
+      kind: "image",
+      src: "/screenshots/08-call-session.png",
       alt: "Sessions d'appels Andoxa, queue de prospects prête",
+      objectPosition: "center top",
     },
   },
   {
@@ -102,8 +102,8 @@ const PERSONAS: Persona[] = [
     metric: { value: "0 reporting", label: "manuel, toute la performance équipe en un écran" },
     visual: {
       kind: "image",
-      src: "/screenshots/02-dashboard.png",
-      alt: "Tableau de bord Andoxa avec priorités du jour",
+      src: "/screenshots/05-org-members-management.png",
+      alt: "Pilotage de l'équipe sales dans Andoxa",
       objectPosition: "center top",
     },
   },

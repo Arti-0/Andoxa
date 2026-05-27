@@ -328,7 +328,7 @@ export default function CallSessionPage({ params }: { params: Promise<{ sessionI
 
   if (detail.isPending) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-[#FAFAFB] dark:bg-background">
+      <div className="flex h-full flex-col items-center justify-center gap-4 bg-[#FAFAFB] dark:bg-background">
         <div className="h-12 w-12 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         <p className="text-sm text-muted-foreground">Chargement de la session…</p>
       </div>
@@ -348,7 +348,7 @@ export default function CallSessionPage({ params }: { params: Promise<{ sessionI
 
   if (!current) {
     return (
-      <div className="flex h-screen flex-col bg-[#FAFAFB] dark:bg-background">
+      <div className="flex h-full flex-col bg-[#FAFAFB] dark:bg-background">
         <SessionTopbar
           campaignName={campaignName}
           goal={0}
@@ -369,7 +369,7 @@ export default function CallSessionPage({ params }: { params: Promise<{ sessionI
   }
 
   return (
-    <div className="flex h-screen flex-col bg-[#FAFAFB] dark:bg-background">
+    <div className="flex h-full flex-col bg-[#FAFAFB] dark:bg-background">
       <SessionTopbar
         campaignName={campaignName}
         goal={prospects.length}
@@ -397,7 +397,7 @@ export default function CallSessionPage({ params }: { params: Promise<{ sessionI
           setSearch={setSearch}
           searchRef={searchRef}
         />
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <ProspectFocus
             prospect={current}
             sessionScript={sessionScript}

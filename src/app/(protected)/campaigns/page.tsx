@@ -1,7 +1,7 @@
 ﻿"use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Phone, Plus, RotateCcw, Search, Target, X } from "lucide-react";
 import { toast } from "@/lib/toast";
@@ -88,8 +88,17 @@ function unwrapCreatedEntityId(payload: unknown): string | undefined {
   return p.data?.id ?? p.id;
 }
 
+const TAB_VALUES: readonly Tab[] = ["campaigns", "sessions", "all"] as const;
+
+function parseTab(value: string | null): Tab | null {
+  return value && (TAB_VALUES as readonly string[]).includes(value)
+    ? (value as Tab)
+    : null;
+}
+
 export default function CampaignsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const qc = useQueryClient();
   const { workspaceId } = useWorkspace();
   const { data: orgMembers = [] } = useOrgMembersForCampaigns();
@@ -111,7 +120,17 @@ export default function CampaignsPage() {
   const duplicateJob = useDuplicateJob();
   const bulkJobs = useCampaignJobsBulk();
   const deleteSession = useDeleteSession();
-  const [tab, setTab] = useState<Tab>("campaigns");
+  const [tab, setTab] = useState<Tab>(
+    () => parseTab(searchParams?.get("tab") ?? null) ?? "campaigns",
+  );
+
+  // Keep the tab in sync if the URL changes (e.g. via a breadcrumb click that
+  // navigates from /campaigns/sessions/[id] back to /campaigns?tab=sessions).
+  useEffect(() => {
+    const fromUrl = parseTab(searchParams?.get("tab") ?? null);
+    if (fromUrl && fromUrl !== tab) setTab(fromUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [selected, setSelected] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortBy>({ field: "launchedAt", dir: "desc" });

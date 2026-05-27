@@ -42,6 +42,7 @@ import {
   fetchWorkflowRuns,
   workflowQueryKeys,
 } from "../_lib/queries";
+import { useWhatsappWorkflowGate } from "../_lib/use-whatsapp-gate";
 
 interface Props {
   workflowId: string;
@@ -149,6 +150,38 @@ function stepCanAcceptNewChild(step: WorkflowStep): boolean {
   return !("next_id" in step && step.next_id);
 }
 
+/**
+ * Walk from `entryId` along the linear chain (next_id, or condition's true
+ * branch when both branches are wired) and return the first step that still
+ * has a free outgoing slot. With no selection, "Add step" should extend the
+ * tail rather than splicing into the head and overlapping downstream nodes.
+ */
+function findLeafStepId(
+  steps: WorkflowStep[],
+  entryId: string,
+): string | null {
+  const map = new Map<string, WorkflowStep>();
+  for (const s of steps) map.set(s.id, s);
+  const visited = new Set<string>();
+  let current: string | undefined = entryId;
+  while (current && !visited.has(current)) {
+    visited.add(current);
+    const s = map.get(current);
+    if (!s) return null;
+    if (stepCanAcceptNewChild(s)) return current;
+    if (s.type === "condition") {
+      const cond = s as WorkflowStep & {
+        on_true_id?: string;
+        on_false_id?: string;
+      };
+      current = cond.on_true_id ?? cond.on_false_id;
+      continue;
+    }
+    current = ("next_id" in s ? s.next_id : undefined) as string | undefined;
+  }
+  return current ?? null;
+}
+
 function resolveInitialCanvasPositions(
   def: WorkflowDefinition,
   saved: WorkflowCanvasPositions,
@@ -209,6 +242,7 @@ function hydrateFromWorkflowRow(w: BackendWorkflowRow): {
 export function CanvasClient({ workflowId }: Props) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const whatsappGate = useWhatsappWorkflowGate();
 
   const {
     data: fetchedWorkflow,
@@ -365,41 +399,75 @@ export function CanvasClient({ workflowId }: Props) {
         type,
         config: defaultConfigForType(type),
       } as WorkflowStep;
+      const noSelection = selectedIdRef.current == null;
       const focusId = selectedIdRef.current ?? TRIGGER_NODE_ID;
 
-      setSteps((prev) => {
-        const next = [...prev, newStep];
-        if (focusId === TRIGGER_NODE_ID) {
-          const entry = entryStepIdRef.current;
-          if (!entry) return next;
-          const entryStep = next.find((s) => s.id === entry);
-          if (!entryStep || !stepCanAcceptNewChild(entryStep)) return next;
-          return attachChildToStep(next, entry, newId);
-        }
-        const focusStep = next.find((s) => s.id === focusId);
-        if (!focusStep || !stepCanAcceptNewChild(focusStep)) return next;
-        return attachChildToStep(next, focusId, newId);
-      });
+      const prevSteps = stepsRef.current;
+      const prevEntryId = entryStepIdRef.current;
+      const withNew = [...prevSteps, newStep];
 
-      if (focusId === TRIGGER_NODE_ID && !entryStepIdRef.current) {
-        setEntryStepId(newId);
+      // Resolve the parent we wire `newStep` under.
+      //   • Explicit selection → that node (legacy "splice after focus" path).
+      //   • No selection       → walk from the entry to the leaf of the chain
+      //                          so the new step *extends* the trunk instead
+      //                          of getting spliced after the first node and
+      //                          overlapping whatever sat below it.
+      let attachToId: string | null = null;
+      if (focusId === TRIGGER_NODE_ID) {
+        if (prevEntryId) {
+          attachToId = noSelection
+            ? findLeafStepId(withNew, prevEntryId) ?? prevEntryId
+            : prevEntryId;
+        }
+      } else {
+        attachToId = focusId;
       }
 
-      setCanvasPositions((prev) => {
-        const anchorId =
-          focusId === TRIGGER_NODE_ID
-            ? entryStepIdRef.current ?? TRIGGER_NODE_ID
-            : focusId;
-        const anchor =
-          prev[anchorId] ??
-          (anchorId === TRIGGER_NODE_ID
-            ? triggerCanvasPosition()
-            : { x: -126, y: LAYOUT_TRUNK_START_Y });
-        return {
-          ...prev,
-          [newId]: { x: anchor.x, y: anchor.y + NEW_STEP_Y_OFFSET },
+      let nextSteps = withNew;
+      if (attachToId) {
+        const parent = withNew.find((s) => s.id === attachToId);
+        if (parent && stepCanAcceptNewChild(parent)) {
+          nextSteps = attachChildToStep(withNew, attachToId, newId);
+        }
+      }
+
+      setSteps(nextSteps);
+
+      let nextEntryId = prevEntryId;
+      if (focusId === TRIGGER_NODE_ID && !prevEntryId) {
+        setEntryStepId(newId);
+        nextEntryId = newId;
+      }
+
+      if (noSelection) {
+        // Mandatory alignment: when the user doesn't pick a parent, rebuild
+        // the column from scratch off the graph so the new node lands at the
+        // tail with the correct spacing. The previous "anchor + 140px offset"
+        // shortcut landed the new node on top of whatever already sat one
+        // row below the entry step.
+        const newDef: WorkflowDefinition = {
+          schemaVersion: 1,
+          steps: nextSteps,
+          ...(nextEntryId ? { entry_step_id: nextEntryId } : {}),
         };
-      });
+        setCanvasPositions(computeStraightenedLayout(newDef));
+      } else {
+        setCanvasPositions((prev) => {
+          const anchorId =
+            focusId === TRIGGER_NODE_ID
+              ? nextEntryId ?? TRIGGER_NODE_ID
+              : focusId;
+          const anchor =
+            prev[anchorId] ??
+            (anchorId === TRIGGER_NODE_ID
+              ? triggerCanvasPosition()
+              : { x: -126, y: LAYOUT_TRUNK_START_Y });
+          return {
+            ...prev,
+            [newId]: { x: anchor.x, y: anchor.y + NEW_STEP_Y_OFFSET },
+          };
+        });
+      }
 
       setSelectedId(newId);
     },
@@ -932,6 +1000,18 @@ export function CanvasClient({ workflowId }: Props) {
   }, [selectedId, steps]);
 
   // ── Render ─────────────────────────────────────────────────────────────
+
+  // WhatsApp gate fires its own toast + redirect; we just hold the UI blank
+  // until either the redirect lands or the gate clears. Rendering the builder
+  // for one frame before the redirect would let the user start editing a
+  // workflow they can't save.
+  if (whatsappGate !== "ok") {
+    return (
+      <div className="ws2-root flex h-full min-h-0 items-center justify-center bg-background text-muted-foreground">
+        <Whatsapp2Styles />
+      </div>
+    );
+  }
 
   if (loading) {
     return (

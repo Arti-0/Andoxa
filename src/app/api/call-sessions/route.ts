@@ -4,6 +4,7 @@ import {
     parseBody,
     getPagination,
 } from '../../../lib/api';
+import { isNoAnswerOutcome, isRdvOutcome } from '@/lib/call-sessions/outcomes';
 import { isMockStatsEnabled, mockCallSessionStats } from '@/lib/mock-stats';
 
 /**
@@ -57,14 +58,17 @@ export const GET = createApiHandler(async (req, ctx) => {
                 const list = agg.get(id) ?? [];
                 const total = list.length;
                 const processed = list.filter((r) => r.outcome).length;
-                const meetings = list.filter((r) => r.outcome === 'rdv').length;
-                const qualifications = list.filter((r) => r.outcome && r.outcome !== 'noanswer').length;
+                const meetings = list.filter((r) => isRdvOutcome(r.outcome)).length;
+                const qualifications = list.filter(
+                    (r) => r.outcome && !isNoAnswerOutcome(r.outcome),
+                ).length;
                 const pickup_rate =
                     processed === 0
                         ? null
                         : Math.round(
                               ((processed -
-                                  list.filter((r) => r.outcome === 'noanswer').length) /
+                                  list.filter((r) => isNoAnswerOutcome(r.outcome))
+                                      .length) /
                                   processed) *
                                   100,
                           );

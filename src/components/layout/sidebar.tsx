@@ -560,15 +560,19 @@ export function Sidebar() {
                             : undefined
                     }
                 >
-                    {/* Logo is purely decorative inside the app — no navigation.
-                        Users don't need a route to "home" once they're authed. */}
+                    {/* Logo links to the marketing site so users can jump out
+                        of the app shell to the public homepage. */}
                     {!isCollapsed && (
-                        <span className="sb-logo" aria-hidden="true">
+                        <Link
+                            href="/"
+                            className="sb-logo"
+                            aria-label="Retour à l'accueil Andoxa"
+                        >
                             <LogoDisplay
                                 collapsed={false}
                                 className="h-6 w-auto"
                             />
-                        </span>
+                        </Link>
                     )}
                     {!isCollapsed && (
                         <button
@@ -582,9 +586,13 @@ export function Sidebar() {
                         </button>
                     )}
                     {isCollapsed && (
-                        <span aria-hidden="true" className="inline-flex">
+                        <Link
+                            href="/"
+                            aria-label="Retour à l'accueil Andoxa"
+                            className="inline-flex"
+                        >
                             <LogoDisplay collapsed={true} className="h-8 w-8" />
-                        </span>
+                        </Link>
                     )}
                 </div>
 

@@ -268,8 +268,15 @@ export function HeaderBreadcrumbs() {
 
     for (let i = 1; i < segments.length; i++) {
       const seg = segments[i];
-      const href = "/" + segments.slice(0, i + 1).join("/");
+      let href = "/" + segments.slice(0, i + 1).join("/");
       let resolvedLabel: string | null | undefined;
+
+      // `/campaigns/sessions` is not a real route — the sessions list lives on
+      // the campaigns hub behind a tab. Redirect the middle crumb there so
+      // clicking "Session" lands the user on the right view.
+      if (first === "campaigns" && i === 1 && seg === "sessions") {
+        href = "/campaigns?tab=sessions";
+      }
 
       if (first === "prospect" && i === 1) {
         if (prospectCrumbPending) {

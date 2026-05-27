@@ -12,20 +12,64 @@ import {
 import { Container } from "@/components/marketing/ui/container";
 import { Eyebrow } from "@/components/marketing/ui/eyebrow";
 import { BentoGrid, BentoGridItem } from "@/components/marketing/aceternity/bento-grid";
-import {
-  CalendarMockup,
-  InboxMockup,
-  WorkflowsMockup,
-} from "@/components/marketing/mockups/product-mockups";
 
-function Screenshot({ src, alt }: { src: string; alt: string }) {
+/**
+ * Screenshot frame. Three modes:
+ *
+ *   • cover       — fills the cell, crops what doesn't fit (default)
+ *   • scale-down  — fits the full screenshot, leaves whitespace
+ *   • crop        — zooms into a specific point of the screenshot using a
+ *                   CSS scale transform anchored on `originX% originY%`. The
+ *                   anchor point stays in place; everything else scales away,
+ *                   so passing { zoom: 4, originX: 30, originY: 45 } makes
+ *                   the screenshot 4× larger and shows a window centred on
+ *                   that pixel — the trick that turns full-page mockups into
+ *                   readable detail shots without resizing the cell itself.
+ */
+function Screenshot({
+  src,
+  alt,
+  fit = "cover",
+  crop,
+}: {
+  src: string;
+  alt: string;
+  fit?: "cover" | "scale-down";
+  crop?: { zoom: number; originX: number; originY: number };
+}) {
+  if (crop) {
+    // CSS `transform: scale()` blurs because Next/Image first paints the
+    // source into the cell-sized <img>, and the transform then stretches
+    // that small bitmap. Switching to a CSS background-image lets the
+    // browser rasterise directly from source pixels at the zoomed display
+    // size — no intermediate downscale, so no blur. We trade Next/Image's
+    // srcset optimisation for sharpness on these decorative crops.
+    //
+    // backgroundPosition uses the natural "X% of source aligned with X% of
+    // container" convention, so originX/originY = 0..100 maps directly to
+    // the source: 0 = top/left of the screenshot, 100 = bottom/right,
+    // 50 = centre. Independent of the cell's aspect ratio.
+    return (
+      <div
+        role="img"
+        aria-label={alt}
+        className="absolute inset-0"
+        style={{
+          backgroundImage: `url(${src})`,
+          backgroundSize: `${crop.zoom * 100}%`,
+          backgroundPosition: `${crop.originX}% ${crop.originY}%`,
+          backgroundRepeat: "no-repeat",
+        }}
+      />
+    );
+  }
   return (
     <Image
       src={src}
       alt={alt}
       fill
       sizes="(min-width: 768px) 50vw, 100vw"
-      className="object-cover"
+      className={fit === "scale-down" ? "object-scale-down" : "object-cover"}
       style={{ objectPosition: "center top" }}
     />
   );
@@ -70,32 +114,64 @@ export function MarketingModulesBentoSection() {
             title="Messagerie"
             description="LinkedIn et WhatsApp dans une seule inbox augmentée."
             icon={<Inbox size={16} />}
-            header={<Cell><InboxMockup /></Cell>}
+            header={
+              <Cell>
+                <Screenshot
+                  src="/screenshots/07-messagerie.png"
+                  alt="Messagerie Andoxa"
+                  crop={{ zoom: 2.5, originX: 25, originY: 50 }}
+                />
+              </Cell>
+            }
           />
           <BentoGridItem
             title="Calendrier"
             description="Lien de booking + séquences WhatsApp pré et post-RDV."
             icon={<CalendarCheck size={16} />}
-            header={<Cell><CalendarMockup /></Cell>}
+            header={
+              <Cell>
+                <Screenshot
+                  src="/screenshots/06-calendar.png"
+                  alt="Calendrier Andoxa"
+                  crop={{ zoom: 3, originX: 45, originY: 55 }}
+                />
+              </Cell>
+            }
           />
           <BentoGridItem
             title="CRM"
             description="Pipeline visuel, fiches prospect, listes segmentées."
             icon={<Database size={16} />}
-            header={<Cell><Screenshot src="/screenshots/03-crm.png" alt="CRM Andoxa" /></Cell>}
+            header={
+              <Cell>
+                <Screenshot
+                  src="/screenshots/03-crm-short.png"
+                  alt="CRM Andoxa"
+                  crop={{ zoom: 1.8, originX: 50, originY: 55 }}
+                />
+              </Cell>
+            }
           />
           <BentoGridItem
             title="Campagnes"
             description="Invitations et séquences LinkedIn dans le respect des limites."
             icon={<Megaphone size={16} />}
-            header={<Cell><Screenshot src="/screenshots/04-campagnes.png" alt="Campagnes Andoxa" /></Cell>}
+            header={
+              <Cell>
+                <Screenshot
+                  src="/screenshots/04-campagnes.png"
+                  alt="Campagnes Andoxa"
+                  crop={{ zoom: 1.8, originX: 50, originY: 55 }}
+                />
+              </Cell>
+            }
           />
           <BentoGridItem
             className="md:col-span-3 md:row-span-2"
             title="Workflows"
             description="Automations visuelles type Zapier, pensées pour les sales. Triggers avancés sur silence, no-show, statut."
             icon={<Workflow size={16} />}
-            header={<Cell><WorkflowsMockup /></Cell>}
+            header={<Cell><Screenshot src="/screenshots/09-workflow-builder.png" alt="Workflow builder Andoxa" /></Cell>}
           />
         </BentoGrid>
       </Container>

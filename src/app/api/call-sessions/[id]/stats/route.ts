@@ -1,5 +1,6 @@
 import { createApiHandler, Errors } from "@/lib/api";
 import { NextRequest } from "next/server";
+import { isNoAnswerOutcome, isRdvOutcome } from "@/lib/call-sessions/outcomes";
 import { isMockStatsEnabled, mockCallSessionDetailStats } from "@/lib/mock-stats";
 
 /**
