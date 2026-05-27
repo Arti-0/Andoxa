@@ -6,6 +6,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRight, BellOff, CalendarX2, Copy, Database } from "lucide-react";
 import { Container } from "@/components/marketing/ui/container";
 import { Eyebrow } from "@/components/marketing/ui/eyebrow";
+import { marketingAsset } from "@/lib/marketing/assets";
 import { cn } from "@/lib/utils";
 
 type Pain = {
@@ -135,10 +136,10 @@ function LogoTile({ src, alt }: { src: string; alt: string }) {
 
 function CopyPasteVisual() {
   const tools = [
-    { name: "LinkedIn", src: "/logos/LinkedIn_Symbol_0.svg" },
-    { name: "Notion", src: "/logos/idzPHWF4i2_1779876244153.png" },
-    { name: "Calendly", src: "/logos/id6Wf82SOT_logos.svg" },
-    { name: "HubSpot", src: "/logos/Hubspot_logo.svg" },
+    { name: "LinkedIn", src: marketingAsset("logos/LinkedIn_Symbol_0.svg") },
+    { name: "Notion", src: marketingAsset("logos/idzPHWF4i2_1779876244153.png") },
+    { name: "Calendly", src: marketingAsset("logos/id6Wf82SOT_logos.svg") },
+    { name: "HubSpot", src: marketingAsset("logos/Hubspot_logo.svg") },
   ];
   return (
     <div className="absolute inset-0 flex items-center justify-around px-4">

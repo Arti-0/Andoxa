@@ -8,6 +8,7 @@ import { Container } from "@/components/marketing/ui/container";
 import { Eyebrow } from "@/components/marketing/ui/eyebrow";
 import { LinkedinIcon } from "@/components/marketing/icons/brand-icons";
 import { EmbeddedPage } from "@/components/marketing/ui/embedded-page";
+import { marketingAsset } from "@/lib/marketing/assets";
 import { cn } from "@/lib/utils";
 
 type PersonaVisual =
@@ -49,7 +50,7 @@ const PERSONAS: Persona[] = [
     metric: { value: "×2", label: "prospects contactés par jour, à effort constant" },
     visual: {
       kind: "image",
-      src: "/screenshots/01-extension-linkedin-profil.png",
+      src: marketingAsset("screenshots/01-extension-linkedin-profil.png"),
       alt: "Extension Chrome Andoxa active sur un profil LinkedIn",
       objectPosition: "center top",
     },
@@ -76,7 +77,7 @@ const PERSONAS: Persona[] = [
     metric: { value: "1 h/jour", label: "récupérée par SDR sur la prospection téléphonique" },
     visual: {
       kind: "image",
-      src: "/screenshots/08-call-session.png",
+      src: marketingAsset("screenshots/08-call-session.png"),
       alt: "Sessions d'appels Andoxa, queue de prospects prête",
       objectPosition: "center top",
     },
@@ -102,7 +103,7 @@ const PERSONAS: Persona[] = [
     metric: { value: "0 reporting", label: "manuel, toute la performance équipe en un écran" },
     visual: {
       kind: "image",
-      src: "/screenshots/05-org-members-management.png",
+      src: marketingAsset("screenshots/05-org-members-management.png"),
       alt: "Pilotage de l'équipe sales dans Andoxa",
       objectPosition: "center top",
     },

@@ -6,6 +6,7 @@ import { Eyebrow } from "@/components/marketing/ui/eyebrow";
 import { LinkedinIcon, WhatsappIcon } from "@/components/marketing/icons/brand-icons";
 import Image from "next/image";
 import { ContainerScroll } from "@/components/marketing/aceternity/container-scroll-animation";
+import { marketingAsset } from "@/lib/marketing/assets";
 
 const SOURCES = [
   { icon: LinkedinIcon, label: "LinkedIn", tone: "blue" as const },
@@ -77,7 +78,7 @@ export function MarketingSolutionSection() {
       >
         <div className="relative h-full w-full select-none">
           <Image
-            src="/screenshots/02-dashboard.png"
+            src={marketingAsset("screenshots/02-dashboard.png")}
             alt="Tableau de bord Andoxa"
             fill
             priority

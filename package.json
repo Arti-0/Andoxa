@@ -18,7 +18,8 @@
         "test:e2e:report": "playwright show-report",
         "seed:screenshots": "bun scripts/seed-screenshot-fixtures.ts",
         "images:sync": "bun scripts/generate-screenshots.ts",
-        "images:sync:full": "bun run seed:screenshots && bun run images:sync"
+        "images:sync:full": "bun run seed:screenshots && bun run images:sync",
+        "marketing:upload": "bun scripts/upload-marketing-assets.ts"
     },
     "dependencies": {
         "@dnd-kit/core": "^6.3.1",

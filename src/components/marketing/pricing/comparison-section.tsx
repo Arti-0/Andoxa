@@ -14,6 +14,7 @@ import { Container } from "@/components/marketing/ui/container";
 import { Eyebrow } from "@/components/marketing/ui/eyebrow";
 import { cn } from "@/lib/utils";
 import { PLAN_PRESENTATION } from "@/lib/config/plans-config";
+import { marketingAsset } from "@/lib/marketing/assets";
 
 /**
  * Interactive "your current stack vs Andoxa" savings comparator on /pricing.
@@ -355,7 +356,7 @@ function ToolBadge({
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={`/logos/${tool.id}.${LOGO_EXTENSIONS[extIndex]}`}
+          src={marketingAsset(`logos/${tool.id}.${LOGO_EXTENSIONS[extIndex]}`)}
           alt={tool.name}
           width={size}
           height={size}

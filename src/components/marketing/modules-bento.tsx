@@ -12,6 +12,7 @@ import {
 import { Container } from "@/components/marketing/ui/container";
 import { Eyebrow } from "@/components/marketing/ui/eyebrow";
 import { BentoGrid, BentoGridItem } from "@/components/marketing/aceternity/bento-grid";
+import { marketingAsset } from "@/lib/marketing/assets";
 
 /**
  * Screenshot frame. Three modes:
@@ -108,7 +109,7 @@ export function MarketingModulesBentoSection() {
             title="Tableau de bord"
             description="RDV, taux de réponse, closings : pilotez la performance avec les KPI qui comptent."
             icon={<LayoutDashboard size={16} />}
-            header={<Cell><Screenshot src="/screenshots/02-dashboard.png" alt="Tableau de bord Andoxa" /></Cell>}
+            header={<Cell><Screenshot src={marketingAsset("screenshots/02-dashboard.png")} alt="Tableau de bord Andoxa" /></Cell>}
           />
           <BentoGridItem
             title="Messagerie"
@@ -117,7 +118,7 @@ export function MarketingModulesBentoSection() {
             header={
               <Cell>
                 <Screenshot
-                  src="/screenshots/07-messagerie.png"
+                  src={marketingAsset("screenshots/07-messagerie.png")}
                   alt="Messagerie Andoxa"
                   crop={{ zoom: 2.5, originX: 25, originY: 50 }}
                 />
@@ -131,7 +132,7 @@ export function MarketingModulesBentoSection() {
             header={
               <Cell>
                 <Screenshot
-                  src="/screenshots/06-calendar.png"
+                  src={marketingAsset("screenshots/06-calendar.png")}
                   alt="Calendrier Andoxa"
                   crop={{ zoom: 3, originX: 45, originY: 55 }}
                 />
@@ -145,7 +146,7 @@ export function MarketingModulesBentoSection() {
             header={
               <Cell>
                 <Screenshot
-                  src="/screenshots/03-crm-short.png"
+                  src={marketingAsset("screenshots/03-crm-short.png")}
                   alt="CRM Andoxa"
                   crop={{ zoom: 1.8, originX: 50, originY: 55 }}
                 />
@@ -159,7 +160,7 @@ export function MarketingModulesBentoSection() {
             header={
               <Cell>
                 <Screenshot
-                  src="/screenshots/04-campagnes.png"
+                  src={marketingAsset("screenshots/04-campagnes.png")}
                   alt="Campagnes Andoxa"
                   crop={{ zoom: 1.8, originX: 50, originY: 55 }}
                 />
@@ -171,7 +172,7 @@ export function MarketingModulesBentoSection() {
             title="Workflows"
             description="Automations visuelles type Zapier, pensées pour les sales. Triggers avancés sur silence, no-show, statut."
             icon={<Workflow size={16} />}
-            header={<Cell><Screenshot src="/screenshots/09-workflow-builder.png" alt="Workflow builder Andoxa" /></Cell>}
+            header={<Cell><Screenshot src={marketingAsset("screenshots/09-workflow-builder.png")} alt="Workflow builder Andoxa" /></Cell>}
           />
         </BentoGrid>
       </Container>
