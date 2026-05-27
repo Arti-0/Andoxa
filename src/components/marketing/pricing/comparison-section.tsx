@@ -323,7 +323,31 @@ function ToolToggle({
   );
 }
 
-const LOGO_EXTENSIONS = ["svg", "png", "jpg", "jpeg", "webp"] as const;
+/**
+ * Direct logo lookup. Logos live in the `homepage-assets` Supabase bucket at
+ * `logos/<id>.<ext>` — see scripts/upload-marketing-assets.ts. We resolve the
+ * extension from this static map instead of probing onError, so the browser
+ * makes one request per badge instead of up to four for non-SVG logos.
+ *
+ * Any tool ID missing from the map falls back to the coloured letter tile.
+ */
+const TOOL_LOGO_EXT: Record<string, string> = {
+  hubspot: "svg",
+  pipedrive: "svg",
+  salesforce: "svg",
+  monday: "svg",
+  odoo: "svg",
+  lemlist: "svg",
+  waalaxy: "png",
+  lgm: "jpeg",
+  phantombuster: "svg",
+  apollo: "png",
+  calendly: "svg",
+  calcom: "jpeg",
+  zapier: "jpeg",
+  make: "svg",
+  n8n: "svg",
+};
 
 function ToolBadge({
   tool,
@@ -333,12 +357,11 @@ function ToolBadge({
   size?: number;
 }) {
   const tile = size + 8;
-  // Probe /logos/<id>.<ext> in order; on the final onError, switch to the
-  // letter-tile fallback. Keeps zero-broken-image guarantee for missing assets.
-  const [extIndex, setExtIndex] = React.useState(0);
-  const [exhausted, setExhausted] = React.useState(false);
-
-  const showLetter = exhausted;
+  const ext = TOOL_LOGO_EXT[tool.id];
+  // `errored` keeps the zero-broken-image guarantee: any missing/404 logo
+  // (or one we forgot to add to TOOL_LOGO_EXT) falls back to the letter tile.
+  const [errored, setErrored] = React.useState(false);
+  const showLetter = !ext || errored;
 
   return (
     <span
@@ -356,18 +379,12 @@ function ToolBadge({
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={marketingAsset(`logos/${tool.id}.${LOGO_EXTENSIONS[extIndex]}`)}
+          src={marketingAsset(`logos/${tool.id}.${ext}`)}
           alt={tool.name}
           width={size}
           height={size}
           style={{ width: size, height: size, objectFit: "contain" }}
-          onError={() => {
-            if (extIndex < LOGO_EXTENSIONS.length - 1) {
-              setExtIndex(extIndex + 1);
-            } else {
-              setExhausted(true);
-            }
-          }}
+          onError={() => setErrored(true)}
         />
       )}
     </span>

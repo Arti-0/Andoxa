@@ -351,6 +351,22 @@
   color: #fff;
   font-weight: 600;
 }
+.event-landing-root .el-success .el-retest {
+  display: block;
+  width: 100%;
+  margin-top: 20px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.event-landing-root .el-success .el-retest:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
 
 /* Product reminder */
 .event-landing-root .el-reminder {

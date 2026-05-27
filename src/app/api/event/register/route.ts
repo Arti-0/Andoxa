@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { unipileFetch } from "@/lib/unipile/client";
+import { sendWhatsAppMessage } from "@/lib/unipile/campaign";
 import { normalizePhoneForWhatsApp } from "@/lib/utils/phone";
 import { withRateLimit, checkRateLimit } from "@/lib/rate-limit";
 import { captureRouteError } from "@/lib/sentry/route-error";
@@ -19,6 +19,7 @@ import { captureRouteError } from "@/lib/sentry/route-error";
  * - CONFERENCE_NAME                  Slugified into tags + shown in copy
  * - CONFERENCE_WHATSAPP_MESSAGE      Override the default thank-you. {{name}}, {{first_name}}.
  * - CONFERENCE_WHATSAPP_HOURLY_CAP   Default 30. Hard cap on WA sends per hour to stay below WhatsApp spam thresholds.
+ * - CONFERENCE_DISABLE_RATE_LIMIT    Set to "true" to skip IP + WhatsApp caps (local testing / staging).
  * - TURNSTILE_SECRET_KEY             If set, validates the Cloudflare Turnstile token. If empty, captcha is skipped.
  */
 const DEFAULT_THANK_YOU =
@@ -41,6 +42,11 @@ function slugify(s: string): string {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+function eventRegisterRateLimitsDisabled(): boolean {
+  if (process.env.NODE_ENV === "development") return true;
+  return process.env.CONFERENCE_DISABLE_RATE_LIMIT?.trim().toLowerCase() === "true";
+}
 
 async function verifyTurnstile(
   token: string | undefined,
@@ -77,22 +83,35 @@ export async function POST(req: NextRequest) {
   const route = "api/event/register";
   const remoteIp = ipFromRequest(req);
 
-  // Per-IP throttle: 5 submissions / 10 min.
-  const rl = await withRateLimit(req, `event-register:${remoteIp}`, {
-    name: "event-register",
-    requests: 5,
-    window: "10 m",
-  });
-  if (rl) return rl;
+  // Per-IP throttle: 5 submissions / 10 min (skipped in dev / CONFERENCE_DISABLE_RATE_LIMIT).
+  if (!eventRegisterRateLimitsDisabled()) {
+    const rl = await withRateLimit(req, `event-register:${remoteIp}`, {
+      name: "event-register",
+      requests: 5,
+      window: "10 m",
+    });
+    if (rl) return rl;
+  }
 
   const orgId = process.env.CONFERENCE_ORG_ID?.trim();
   const ownerId = process.env.CONFERENCE_OWNER_USER_ID?.trim();
   const waAccountId = process.env.CONFERENCE_WHATSAPP_ACCOUNT_ID?.trim();
+
   if (!orgId || !ownerId || !waAccountId) {
+    const missing: string[] = [];
+    if (!orgId) missing.push("CONFERENCE_ORG_ID");
+    if (!ownerId) missing.push("CONFERENCE_OWNER_USER_ID");
+    if (!waAccountId) missing.push("CONFERENCE_WHATSAPP_ACCOUNT_ID");
+    if (process.env.NODE_ENV === "development") {
+      console.error("[event/register] Missing env:", missing.join(", "));
+    }
     return NextResponse.json(
       {
         success: false,
         error: "Le formulaire n'est pas configuré. Réessayez plus tard.",
+        ...(process.env.NODE_ENV === "development" && {
+          missingEnv: missing,
+        }),
       },
       { status: 503 }
     );
@@ -186,7 +205,7 @@ export async function POST(req: NextRequest) {
     company,
     phone: normalizedPhone,
     tags,
-    source: "pitch_event",
+    source: "inbound",
     status: "new",
     bdd_id: process.env.CONFERENCE_BDD_ID?.trim() || null,
     metadata: {
@@ -232,23 +251,24 @@ export async function POST(req: NextRequest) {
     );
     const cap = Number.isFinite(hourlyCap) && hourlyCap > 0 ? hourlyCap : 30;
 
-    const globalRl = await checkRateLimit(
-      "global",
-      "event-wa-global",
-      cap,
-      "1 h"
-    );
+    const skipWaCaps = eventRegisterRateLimitsDisabled();
+
+    const globalRl = skipWaCaps
+      ? null
+      : await checkRateLimit("global", "event-wa-global", cap, "1 h");
 
     // Per-phone 24h cap — same scanner shouldn't get pinged twice if they resubmit.
-    const phoneRl = await checkRateLimit(
-      `phone:${normalizedPhone}`,
-      "event-wa-per-phone",
-      1,
-      "24 h"
-    );
+    const phoneRl = skipWaCaps
+      ? null
+      : await checkRateLimit(
+          `phone:${normalizedPhone}`,
+          "event-wa-per-phone",
+          1,
+          "24 h"
+        );
 
-    const globalAllowed = globalRl ? globalRl.success : true;
-    const phoneAllowed = phoneRl ? phoneRl.success : true;
+    const globalAllowed = skipWaCaps || (globalRl ? globalRl.success : true);
+    const phoneAllowed = skipWaCaps || (phoneRl ? phoneRl.success : true);
 
     if (globalAllowed && phoneAllowed) {
       const messageTpl =
@@ -259,13 +279,10 @@ export async function POST(req: NextRequest) {
         .replace(/\{\{first_name\}\}/gi, firstName);
 
       try {
-        const chatRes = await unipileFetch<{ id?: string }>("/chats", {
-          method: "POST",
-          body: JSON.stringify({
-            account_id: waAccountId,
-            attendees_ids: [normalizedPhone],
-            text,
-          }),
+        const chatRes = await sendWhatsAppMessage({
+          accountId: waAccountId,
+          phone: normalizedPhone,
+          text,
         });
 
         const chatId = chatRes?.id;

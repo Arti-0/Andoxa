@@ -28,10 +28,26 @@ declare global {
   }
 }
 
+function apiErrorMessage(error: unknown): string {
+  if (typeof error === "string" && error.trim()) return error;
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof (error as { message?: unknown }).message === "string"
+  ) {
+    return (error as { message: string }).message;
+  }
+  return "Oups, quelque chose a planté. Réessayez.";
+}
+
 export function EventLandingForm({
   turnstileSiteKey,
+  allowRetest = false,
 }: {
   turnstileSiteKey: string | null;
+  /** Show "Tester à nouveau" after success (dev / CONFERENCE_DISABLE_RATE_LIMIT). */
+  allowRetest?: boolean;
 }) {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -138,7 +154,7 @@ export function EventLandingForm({
       };
 
       if (!res.ok || !json.success) {
-        setError(json.error || "Oups, quelque chose a planté. Réessayez.");
+        setError(apiErrorMessage(json.error));
         setStatus("error");
         if (turnstileSiteKey && window.turnstile) {
           window.turnstile.reset(turnstileWidgetIdRef.current ?? undefined);
@@ -188,6 +204,23 @@ export function EventLandingForm({
           <br />
           <b>Sebastian &amp; Andreas.</b>
         </p>
+        {allowRetest ? (
+          <button
+            type="button"
+            className="el-retest"
+            onClick={() => {
+              setStatus("idle");
+              setError(null);
+              setSentWhatsApp(null);
+              turnstileWidgetIdRef.current = null;
+              if (turnstileSiteKey && window.turnstile) {
+                window.turnstile.reset(turnstileWidgetIdRef.current ?? undefined);
+              }
+            }}
+          >
+            Tester à nouveau
+          </button>
+        ) : null}
       </div>
     );
   }

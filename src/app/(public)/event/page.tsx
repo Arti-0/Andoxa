@@ -23,6 +23,9 @@ export const viewport: Viewport = {
 
 export default function EventLandingPage() {
   const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() || null;
+  const allowRetest =
+    process.env.NODE_ENV === "development" ||
+    process.env.CONFERENCE_DISABLE_RATE_LIMIT?.trim().toLowerCase() === "true";
 
   return (
     <div className="event-landing-root">
@@ -68,7 +71,10 @@ export default function EventLandingPage() {
           </p>
         </section>
 
-        <EventLandingForm turnstileSiteKey={turnstileSiteKey} />
+        <EventLandingForm
+          turnstileSiteKey={turnstileSiteKey}
+          allowRetest={allowRetest}
+        />
 
         <section className="el-reminder">
           <div className="el-eyebrow">Andoxa, en deux phrases</div>
