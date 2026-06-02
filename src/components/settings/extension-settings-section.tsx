@@ -90,8 +90,13 @@ export function ExtensionSettingsSection({
     return (
         <IntegrationCard
             logo={
-                <div className="flex size-9 items-center justify-center rounded-[10px] bg-gradient-to-br from-[var(--brand-orange,#FF6700)] to-[var(--brand-blue,#0052D9)] text-white">
-                    <span className="text-[15px] font-bold leading-none">A</span>
+                <div className="flex size-9 items-center justify-center overflow-hidden rounded-[10px] border border-border bg-card">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                        src="/assets/logofiles/logo_mark%202.jpg"
+                        alt="Andoxa"
+                        className="size-9 object-cover"
+                    />
                 </div>
             }
             name="Extension Andoxa"

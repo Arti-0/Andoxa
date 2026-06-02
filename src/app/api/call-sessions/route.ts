@@ -219,41 +219,11 @@ export const POST = createApiHandler(async (req, ctx) => {
         });
     }
 
-    // Check: only one active session per list (bdd_id set)
-    const bddIds = [
-        ...new Set(withPhone.map((p) => p.bdd_id).filter(Boolean)),
-    ] as string[];
-
-    if (bddIds.length > 0) {
-        const { data: activeSessions } = await ctx.supabase
-            .from('call_sessions')
-            .select('id, status')
-            .eq('organization_id', ctx.workspaceId)
-            .neq('status', 'completed');
-
-        if (activeSessions && activeSessions.length > 0) {
-            const activeIds = activeSessions.map((s) => s.id);
-            const { data: linkedProspects } = await ctx.supabase
-                .from('call_session_prospects')
-                .select('prospect_id')
-                .in('call_session_id', activeIds);
-
-            if (linkedProspects && linkedProspects.length > 0) {
-                const linkedPids = linkedProspects.map((lp) => lp.prospect_id);
-                const { data: linkedWithBdd } = await ctx.supabase
-                    .from('prospects')
-                    .select('bdd_id')
-                    .in('id', linkedPids)
-                    .in('bdd_id', bddIds);
-
-                if (linkedWithBdd && linkedWithBdd.length > 0) {
-                    throw Errors.badRequest(
-                        "Une session d'appels est déjà en cours pour une de ces listes. Terminez-la avant d'en créer une nouvelle."
-                    );
-                }
-            }
-        }
-    }
+    // NOTE: the old "only one active session per list" hard block was removed.
+    // Conflicts are now handled by the presence model — a session reads as
+    // "En cours" only while a teammate is actively in it (heartbeat), and
+    // auto-pauses when they leave. Multiple sessions over the same list are
+    // allowed; we'll add smarter de-duplication later if it proves necessary.
 
     const prospectIds = withPhone.map((p) => p.id);
 

@@ -1,11 +1,12 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Phone, Plus, RotateCcw, Search, Target, X } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { useWorkspace } from "@/lib/workspace";
+import { useLinkedInAccount } from "@/hooks/use-linkedin-account";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,7 +26,6 @@ import {
   useCampaignJobsBulk,
   useCancelJob,
   useDeleteSession,
-  useDuplicateJob,
   useLaunchJob,
   useOrgMembersForCampaigns,
   useUpdateJobStatus,
@@ -48,6 +48,70 @@ import {
 } from "./call-session-modal";
 
 type Tab = "campaigns" | "sessions" | "all";
+
+const CAMPAIGN_TYPE_CSV: Record<Campaign["type"], string> = {
+  invitation: "Invitation",
+  message: "Message",
+  invitation_message: "Invitation + Message",
+  whatsapp_message: "Message WhatsApp",
+};
+const CAMPAIGN_STATUS_CSV: Record<Campaign["status"], string> = {
+  running: "En cours",
+  paused: "En pause",
+  completed: "Terminée",
+  failed: "Échouée",
+  draft: "Brouillon",
+  ready: "Prête",
+};
+
+/** Download the given campaigns as a CSV file (client-side, no backend). */
+function exportCampaignsCsv(rows: Campaign[]): void {
+  const headers = [
+    "Campagne",
+    "Canal",
+    "Type",
+    "Statut",
+    "Prospects",
+    "Traités",
+    "Acceptées",
+    "Réponses",
+    "RDV",
+    "Créateur",
+    "Lancée le",
+  ];
+  const esc = (v: string | number) => {
+    const s = String(v ?? "");
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = rows.map((c) =>
+    [
+      c.name,
+      c.channel,
+      CAMPAIGN_TYPE_CSV[c.type] ?? c.type,
+      CAMPAIGN_STATUS_CSV[c.status] ?? c.status,
+      c.total,
+      c.processed,
+      c.accepted,
+      c.replied,
+      c.meetings,
+      c.creatorName,
+      c.launchedAt ? new Date(c.launchedAt).toISOString() : "",
+    ]
+      .map(esc)
+      .join(","),
+  );
+  // BOM so Excel reads UTF-8 accents correctly.
+  const csv = "﻿" + [headers.join(","), ...lines].join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `andoxa-campagnes-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 const PERIOD_MS: Record<string, number> = {
   "7": 7 * 86400000,
@@ -102,6 +166,10 @@ export default function CampaignsPage() {
   const qc = useQueryClient();
   const { workspaceId } = useWorkspace();
   const { data: orgMembers = [] } = useOrgMembersForCampaigns();
+  const { data: linkedInAccount } = useLinkedInAccount();
+  const hasPaidLinkedIn = linkedInAccount?.linkedin_tier
+    ? linkedInAccount.linkedin_tier !== "standard"
+    : (linkedInAccount?.linkedin_is_premium ?? true);
   const {
     data: campaigns = [],
     isPlaceholderData: campaignsPlaceholder,
@@ -117,7 +185,6 @@ export default function CampaignsPage() {
   const updateStatus = useUpdateJobStatus();
   const launchJob = useLaunchJob();
   const cancelJob = useCancelJob();
-  const duplicateJob = useDuplicateJob();
   const bulkJobs = useCampaignJobsBulk();
   const deleteSession = useDeleteSession();
   const [tab, setTab] = useState<Tab>(
@@ -134,8 +201,23 @@ export default function CampaignsPage() {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [selected, setSelected] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortBy>({ field: "launchedAt", dir: "desc" });
-  const [createOpen, setCreateOpen] = useState(false);
-  const [bookingOpen, setBookingOpen] = useState(false);
+  // `?new=campaign&bdd=<id>` / `?new=session&bdd=<id>` deep-links open the
+  // matching creation modal with the list preselected — used by the CRM
+  // "Lancer une campagne" / call-session list actions.
+  const initialNew = searchParams?.get("new");
+  const initialBdd = searchParams?.get("bdd");
+  const [createOpen, setCreateOpen] = useState(initialNew === "campaign");
+  const [bookingOpen, setBookingOpen] = useState(initialNew === "session");
+  const [preselectedBdd] = useState<string | null>(initialBdd ?? null);
+  // Prefill values for the create wizard when duplicating a campaign. Set just
+  // before opening the modal; cleared when the modal closes.
+  const [duplicatePrefill, setDuplicatePrefill] = useState<{
+    type?: LinkedInCampaignType;
+    name?: string;
+    message?: string;
+    invitationNote?: string;
+  } | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [flashedId] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{
     title: string;
@@ -219,6 +301,60 @@ export default function CampaignsPage() {
   };
   const totalCount = campaigns.length + sessions.length;
 
+  // Map a design CampaignType → the wizard's LinkedInCampaignType.
+  const toWizardType = (t: Campaign["type"]): LinkedInCampaignType => {
+    if (t === "invitation") return "invitation_only";
+    if (t === "invitation_message") return "invitation_message";
+    return "message_only";
+  };
+
+  /**
+   * Duplicate = open the creation wizard pre-filled from the source campaign
+   * (type / name / message), with NO prospects and NO stats. The user only
+   * picks a list before launching. We fetch the source job to recover the
+   * message body (the list row doesn't carry it).
+   */
+  // Honour ?duplicate=<id> deep-link (used by the detail page's Dupliquer):
+  // open the prefilled wizard once the campaign is in the list, then strip
+  // the param so it doesn't re-trigger.
+  const duplicateParam = searchParams?.get("duplicate") ?? null;
+  const duplicateHandledRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!duplicateParam || duplicateHandledRef.current === duplicateParam) return;
+    const item = campaigns.find((c) => c.id === duplicateParam);
+    if (!item) return; // wait until the list loads
+    duplicateHandledRef.current = duplicateParam;
+    void openDuplicateModal(item);
+    router.replace("/campaigns");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duplicateParam, campaigns]);
+
+  const openDuplicateModal = async (item: Campaign) => {
+    setDuplicatingId(item.id);
+    let message = "";
+    let invitationNote = "";
+    try {
+      const raw = (await (
+        await fetch(`/api/campaigns/jobs/${item.id}`, { credentials: "include" })
+      ).json()) as { data?: { message_template?: string | null; type?: string } };
+      const job = raw?.data ?? (raw as { message_template?: string | null; type?: string });
+      const tpl = job?.message_template ?? "";
+      // For invitation-only the template holds the note; otherwise it's the message.
+      if (item.type === "invitation") invitationNote = tpl;
+      else message = tpl;
+    } catch {
+      // Non-fatal — open the wizard with whatever we have.
+    }
+    setDuplicatePrefill({
+      type: toWizardType(item.type),
+      name: `${item.name} (copie)`,
+      message: message || undefined,
+      invitationNote: invitationNote || undefined,
+    });
+    setDuplicatingId(null);
+    setCreateOpen(true);
+  };
+
   const handleAction = (action: Action, item: Campaign) => {
     if (action === "pause") {
       updateStatus.mutate(
@@ -235,9 +371,7 @@ export default function CampaignsPage() {
         onSuccess: () => toast.success(`« ${item.name} » lancée`),
       });
     } else if (action === "duplicate") {
-      duplicateJob.mutate(item.id, {
-        onSuccess: () => toast.success(`« ${item.name} » dupliquée`),
-      });
+      void openDuplicateModal(item);
     } else if (action === "delete") {
       setConfirm({
         title: "Supprimer cette campagne ?",
@@ -314,7 +448,18 @@ export default function CampaignsPage() {
       runCampaignBulk(selected.map((id) => ({ op: "duplicate" as const, id }) as CampaignJobBulkOperation));
       return;
     }
-    toast.message("Export bientôt disponible");
+    // Export — CSV of the selected campaigns (or all filtered when none picked).
+    const rows = selected.length
+      ? campaigns.filter((c) => selected.includes(c.id))
+      : filteredCampaigns;
+    if (rows.length === 0) {
+      toast.message("Aucune campagne à exporter");
+      return;
+    }
+    exportCampaignsCsv(rows);
+    toast.success(
+      `${rows.length} campagne${rows.length > 1 ? "s" : ""} exportée${rows.length > 1 ? "s" : ""}`,
+    );
     setSelected([]);
   };
 
@@ -632,15 +777,22 @@ export default function CampaignsPage() {
 
       <CreateCampaignModal
         open={createOpen}
-        onOpenChange={setCreateOpen}
+        onOpenChange={(o) => {
+          setCreateOpen(o);
+          if (!o) setDuplicatePrefill(null);
+        }}
         onCreate={onCreateCampaign}
         onDraft={onDraftCampaign}
+        initialBddId={preselectedBdd}
+        hasPaidLinkedIn={hasPaidLinkedIn}
+        initialValues={duplicatePrefill}
       />
 
       <CallSessionModal
         open={bookingOpen}
         onOpenChange={setBookingOpen}
         onCreate={onCreateSession}
+        initialBddId={preselectedBdd}
       />
 
       <ConfirmDialog

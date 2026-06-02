@@ -31,6 +31,7 @@ import {
 } from '../../lib/organizations/utils-client';
 import { normalizePlanIdForRoutes } from '@/lib/billing/effective-plan';
 import { canAccessRoute, type PlanId } from '@/lib/config/plans-config';
+import { isFeatureEnabled } from '@/lib/config/feature-flags';
 import { useMessagingRealtime } from '@/hooks/use-messaging-realtime';
 import { useLinkedInAccount } from '@/hooks/use-linkedin-account';
 import { isAnyUnipileMessagingConnected } from '@/components/unipile/connection-gate';
@@ -529,8 +530,12 @@ export function Sidebar() {
         workspace?.plan,
         workspace?.subscription_status
     ) as PlanId;
-    const mainNavItems = MAIN_NAV_ITEMS.filter((item) =>
-        canAccessRoute(routePlan, item.href)
+    const workflowsEnabled = isFeatureEnabled('workflows');
+    const mainNavItems = MAIN_NAV_ITEMS.filter(
+        (item) =>
+            canAccessRoute(routePlan, item.href) &&
+            // #FF: workflows — hide the Workflows nav entry until ready.
+            (workflowsEnabled || item.href !== '/workflows')
     );
     const mainNavItemsWithBadges = mainNavItems.map((item) => {
         if (item.href === '/messagerie' && unseenCount > 0) {

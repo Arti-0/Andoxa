@@ -74,11 +74,13 @@ function activityToLabel(
     if (ageDays === 1) return { type: "outbound", label: "Envoyé hier" };
     return { type: "outbound", label: `Envoyé il y a ${ageDays}j` };
   }
-  // Anything else: silence threshold first, then a soft "Activité…" fallback.
+  // Anything else: silence threshold first, then a soft relative-time
+  // fallback. We drop the leading "Activité" word — the relative time alone
+  // ("Aujourd'hui", "Hier", "Il y a 3j") reads cleaner in the column.
   if (ageDays >= 7) return { type: "silence", label: `Silence ${ageDays}j` };
-  if (ageDays === 0) return { type: "system", label: "Activité aujourd’hui" };
-  if (ageDays === 1) return { type: "system", label: "Activité hier" };
-  return { type: "system", label: `Activité il y a ${ageDays}j` };
+  if (ageDays === 0) return { type: "system", label: "Aujourd’hui" };
+  if (ageDays === 1) return { type: "system", label: "Hier" };
+  return { type: "system", label: `Il y a ${ageDays}j` };
 }
 
 function fallbackLabel(p: Prospect): LastActivity {
@@ -163,6 +165,7 @@ export async function enrichProspects(
       .eq("organization_id", workspaceId)
       .in("prospect_id", ids);
     for (const row of chats ?? []) {
+      if (!row.prospect_id) continue;
       const arr = convsByProspect.get(row.prospect_id) ?? [];
       if (!arr.includes("linkedin")) arr.push("linkedin");
       convsByProspect.set(row.prospect_id, arr);

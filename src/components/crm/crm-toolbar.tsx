@@ -39,6 +39,7 @@ import { CampaignModal } from "@/components/campaigns/campaign-modal";
 import type { CampaignConfig } from "@/lib/campaigns/types";
 import type { BddItem, FilterState } from "./crm-table";
 import { useProspectStatuses } from "@/lib/prospects/statuses";
+import { isFeatureEnabled } from "@/lib/config/feature-flags";
 
 export type CrmView = "listes" | "prospects" | "corbeille" | "kanban";
 
@@ -476,39 +477,42 @@ export function CrmToolbar({
                           </div>
                         )}
                       </div>
-                      <div>
-                        <label className="mb-2 block text-xs font-medium text-muted-foreground">Tags</label>
-                        {tags.length === 0 ? (
-                          <p className="text-xs text-muted-foreground">
-                            Aucun tag pour le moment. Créez-en via l&apos;icône
-                            paramètres dans l&apos;onglet Prospects.
-                          </p>
-                        ) : (
-                          <div className="flex flex-wrap gap-1">
-                            {tags.map((tag) => {
-                              const active = filters.tags.includes(tag.id);
-                              return (
-                                <button
-                                  key={tag.id}
-                                  type="button"
-                                  onClick={() => toggleTag(tag.id)}
-                                  className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-                                    active
-                                      ? "bg-primary text-primary-foreground"
-                                      : "bg-muted hover:bg-muted/80"
-                                  }`}
-                                >
-                                  <span
-                                    className="h-1.5 w-1.5 rounded-full ring-1 ring-inset ring-black/10"
-                                    style={{ backgroundColor: tag.color }}
-                                  />
-                                  {tag.name}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
+                      {/* #FF: tags — hidden until tags can be applied to prospects. */}
+                      {isFeatureEnabled("tags") && (
+                        <div>
+                          <label className="mb-2 block text-xs font-medium text-muted-foreground">Tags</label>
+                          {tags.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">
+                              Aucun tag pour le moment. Créez-en via l&apos;icône
+                              paramètres dans l&apos;onglet Prospects.
+                            </p>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {tags.map((tag) => {
+                                const active = filters.tags.includes(tag.id);
+                                return (
+                                  <button
+                                    key={tag.id}
+                                    type="button"
+                                    onClick={() => toggleTag(tag.id)}
+                                    className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                                      active
+                                        ? "bg-primary text-primary-foreground"
+                                        : "bg-muted hover:bg-muted/80"
+                                    }`}
+                                  >
+                                    <span
+                                      className="h-1.5 w-1.5 rounded-full ring-1 ring-inset ring-black/10"
+                                      style={{ backgroundColor: tag.color }}
+                                    />
+                                    {tag.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div>
                         <label className="mb-2 block text-xs font-medium text-muted-foreground">Source</label>
                         <div className="flex flex-wrap gap-1">

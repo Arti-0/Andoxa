@@ -4,13 +4,23 @@ import { useEffect, useMemo, useState } from "react";
 import {
   useBookingSettings,
   useUpdateBookingSettings,
+  useBookingSlug,
+  useUpdateBookingSlug,
   type BookingDaySchedule,
   type BookingException,
   type BookingTimeRange,
 } from "./queries";
 import { DEFAULT_MEETING_MODE } from "@/lib/booking/constants";
+import { normalizeBookingPublicPath } from "@/lib/booking/public-path";
+import { isFeatureEnabled } from "@/lib/config/feature-flags";
 
 type Props = { open: boolean; onClose: () => void };
+
+/** WhatsApp surfaces are gated behind the `whatsapp` #FF. */
+const SHOW_WHATSAPP = isFeatureEnabled("whatsapp");
+
+/** Non-editable host prefix shown before the editable booking path. */
+const BOOKING_HOST = "andoxa.fr/booking/";
 
 // Day order for display: Mon..Sun. `val` matches JS getDay() (0=Sun..6=Sat).
 const DAYS = [
@@ -89,10 +99,13 @@ const DEFAULT_SCHEDULES: Record<number, BookingDaySchedule> = {
 export function BookingModal({ open, onClose }: Props) {
   const { data: settings, isLoading } = useBookingSettings();
   const updateSettings = useUpdateBookingSettings();
+  const { data: slugData } = useBookingSlug();
+  const updateSlug = useUpdateBookingSlug();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [mode, setMode] = useState(DEFAULT_MEETING_MODE);
+  /** Editable public booking path (the part after andoxa.fr/booking/). */
+  const [bookingPath, setBookingPath] = useState("");
   const [slotMinutes, setSlotMinutes] = useState(30);
   /** Lead time before a slot can be booked. Stored as fractional hours,
    *  surfaced to the user as a {value, unit} pair. Default 4 hours. */
@@ -111,7 +124,6 @@ export function BookingModal({ open, onClose }: Props) {
     if (open && settings) {
       setTitle(settings.title);
       setDescription(settings.description);
-      setMode(settings.mode ?? DEFAULT_MEETING_MODE);
       setSlotMinutes(settings.availability.slotMinutes);
       const stored = settings.availability.minNoticeHours ?? 4;
       const { value, unit } = hoursToValueUnit(stored);
@@ -125,6 +137,12 @@ export function BookingModal({ open, onClose }: Props) {
       setError(null);
     }
   }, [open, settings]);
+
+  useEffect(() => {
+    if (open) {
+      setBookingPath(slugData?.booking_public_path ?? slugData?.booking_slug ?? "");
+    }
+  }, [open, slugData]);
 
   if (!open) return null;
 
@@ -229,27 +247,50 @@ export function BookingModal({ open, onClose }: Props) {
 
     const minNoticeHours = Math.max(0, noticeValue) * UNIT_TO_HOURS[noticeUnit];
 
-    updateSettings.mutate(
-      {
-        title: title.trim(),
-        description: description.trim(),
-        mode: mode.trim() || DEFAULT_MEETING_MODE,
-        show_post_booking_wa_notice: showPostBookingWaNotice,
-        availability: {
-          slotMinutes,
-          minNoticeHours,
-          daySchedules: schedules,
-          exceptions,
+    // Validate the booking link before any save so a bad link blocks early.
+    const currentPath =
+      slugData?.booking_public_path ?? slugData?.booking_slug ?? "";
+    const parsedPath = normalizeBookingPublicPath(bookingPath);
+    if (!parsedPath.ok) {
+      setError(parsedPath.message);
+      return;
+    }
+    const pathChanged = parsedPath.path !== currentPath;
+
+    const saveSettings = () =>
+      updateSettings.mutate(
+        {
+          title: title.trim(),
+          description: description.trim(),
+          // The meeting is always a visioconférence — no selector.
+          mode: DEFAULT_MEETING_MODE,
+          show_post_booking_wa_notice: showPostBookingWaNotice,
+          availability: {
+            slotMinutes,
+            minNoticeHours,
+            daySchedules: schedules,
+            exceptions,
+          },
         },
-      },
-      {
-        onSuccess: () => {
-          setSaved(true);
-          setTimeout(() => { onClose(); setSaved(false); }, 1200);
+        {
+          onSuccess: () => {
+            setSaved(true);
+            setTimeout(() => { onClose(); setSaved(false); }, 1200);
+          },
+          onError: (e) => setError(e instanceof Error ? e.message : "Erreur"),
         },
-        onError: (e) => setError(e instanceof Error ? e.message : "Erreur"),
-      },
-    );
+      );
+
+    // Persist the booking link first (if changed), then the settings.
+    if (pathChanged) {
+      updateSlug.mutate(parsedPath.path, {
+        onSuccess: saveSettings,
+        onError: (e) =>
+          setError(e instanceof Error ? e.message : "Lien de réservation invalide"),
+      });
+    } else {
+      saveSettings();
+    }
   };
 
   return (
@@ -289,7 +330,58 @@ export function BookingModal({ open, onClose }: Props) {
                   <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Une courte description, ce que vous proposez, votre disponibilité…" style={{ ...inputStyle, minHeight: 76, resize: "vertical", fontFamily: "inherit" }} />
                 </Field>
 
-                {hasOnBookingWaWorkflow && (
+                <Field label="Lien de réservation" hint="L'adresse publique partagée avec vos invités. 1 ou 2 segments (ex. rdv-marie ou acme/decouverte).">
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "stretch",
+                      border: "1px solid var(--cal2-border-soft)",
+                      borderRadius: 7,
+                      overflow: "hidden",
+                      background: "var(--cal2-surface)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "8px 0 8px 11px",
+                        fontSize: 12.5,
+                        color: "var(--cal2-text-faint)",
+                        fontFamily: "ui-monospace, monospace",
+                        whiteSpace: "nowrap",
+                        userSelect: "none",
+                      }}
+                    >
+                      {BOOKING_HOST}
+                    </span>
+                    <input
+                      type="text"
+                      value={bookingPath}
+                      onChange={(e) =>
+                        setBookingPath(
+                          e.target.value.toLowerCase().replace(/[^a-z0-9/-]/g, ""),
+                        )
+                      }
+                      placeholder="rdv-marie"
+                      spellCheck={false}
+                      autoCapitalize="none"
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        padding: "8px 11px 8px 1px",
+                        border: "none",
+                        outline: "none",
+                        fontSize: 12.5,
+                        color: "var(--cal2-text)",
+                        fontFamily: "ui-monospace, monospace",
+                        background: "transparent",
+                      }}
+                    />
+                  </div>
+                </Field>
+
+                {SHOW_WHATSAPP && hasOnBookingWaWorkflow && (
                   <Field label="WhatsApp post-RDV">
                     <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", padding: "10px 12px", border: "1px solid var(--cal2-border-faint)", borderRadius: 8, background: "var(--cal2-surface)" }}>
                       <span
@@ -309,10 +401,6 @@ export function BookingModal({ open, onClose }: Props) {
                     </label>
                   </Field>
                 )}
-
-                <Field label="Format du rendez-vous" hint="Affiché dans le récapitulatif (ex. Visioconférence, Téléphone…).">
-                  <input type="text" value={mode} onChange={(e) => setMode(e.target.value)} placeholder={DEFAULT_MEETING_MODE} style={inputStyle} />
-                </Field>
               </Section>
 
               <Section label="Réservation" hint="Comment les créneaux sont proposés.">
@@ -422,15 +510,15 @@ export function BookingModal({ open, onClose }: Props) {
           <button onClick={onClose} style={{ background: "transparent", color: "var(--cal2-text-muted)", border: "none", fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", padding: "8px 4px" }}>Annuler</button>
           <button
             onClick={handleSave}
-            disabled={updateSettings.isPending || saved || isLoading}
-            style={{ padding: "9px 18px", background: saved ? "var(--cal2-success)" : "var(--cal2-primary)", color: "var(--cal2-toggle-thumb)", border: "none", borderRadius: 7, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 1px 2px var(--cal2-primary-shadow)", opacity: (updateSettings.isPending || isLoading) ? 0.7 : 1, display: "flex", alignItems: "center", gap: 6, transition: "background 160ms" }}
+            disabled={updateSettings.isPending || updateSlug.isPending || saved || isLoading}
+            style={{ padding: "9px 18px", background: saved ? "var(--cal2-success)" : "var(--cal2-primary)", color: "var(--cal2-toggle-thumb)", border: "none", borderRadius: 7, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 1px 2px var(--cal2-primary-shadow)", opacity: (updateSettings.isPending || updateSlug.isPending || isLoading) ? 0.7 : 1, display: "flex", alignItems: "center", gap: 6, transition: "background 160ms" }}
           >
             {saved ? (
               <>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
                 Enregistré
               </>
-            ) : updateSettings.isPending ? "Enregistrement…" : "Enregistrer"}
+            ) : (updateSettings.isPending || updateSlug.isPending) ? "Enregistrement…" : "Enregistrer"}
           </button>
         </div>
       </div>

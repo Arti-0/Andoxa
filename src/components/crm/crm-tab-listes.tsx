@@ -15,7 +15,7 @@
  * endpoint that is documented in CRM_BACKEND_TODO.md.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -32,10 +32,12 @@ import {
   Users,
   Pencil,
   Download,
-  ArrowUp,
   Layers,
+  Phone,
+  Loader2,
   List as ListIcon,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { toast } from "@/lib/toast";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ProspectImportDialog } from "@/components/crm/prospect-import-dialog";
@@ -47,6 +49,7 @@ import {
   getSourceConfig,
 } from "./crm-shared";
 import type { BddRow } from "./crm-table";
+import { CRM_SOURCE_FILTER_OPTIONS } from "./crm-source-filters";
 
 /* ============================================================
    Types
@@ -70,13 +73,9 @@ interface ListesFilterState {
   dateTo: string | null;
 }
 
-// Mirror of the canonical source list (see docs/TAGS_AUDIT.md §3).
+// Canonical source taxonomy — shared with the Prospects & Pipeline toolbars.
 const SOURCE_FILTER_OPTIONS: { value: string; label: string }[] = [
-  { value: "linkedin_extension", label: "LinkedIn" },
-  { value: "csv", label: "Import CSV" },
-  { value: "xlsx", label: "Import Excel" },
-  { value: "manual", label: "Manuel" },
-  { value: "booking", label: "Booking" },
+  ...CRM_SOURCE_FILTER_OPTIONS,
 ];
 
 interface ListesTabProps {
@@ -136,6 +135,23 @@ function funnelStatsFor(list: BddRow): {
   return { count, contacted, rdv, signed, convRate, delta };
 }
 
+/**
+ * Renders a list's origin mark: the real brand logo (LinkedIn / CSV / Andoxa
+ * for manual …) when the source config provides one, else the lucide fallback.
+ */
+function SourceMark({
+  source,
+  size = 16,
+}: {
+  source: string | null | undefined;
+  size?: number;
+}) {
+  const cfg = getSourceConfig(source);
+  if (cfg.Logo) return <cfg.Logo size={size} className="shrink-0" />;
+  const Icon = cfg.icon;
+  return <Icon className={cfg.iconColor} style={{ width: size, height: size }} />;
+}
+
 /* ============================================================
    Listes tab
    ============================================================ */
@@ -147,7 +163,15 @@ export function ListesTab({
   memberAvatars,
   onSelectList,
 }: ListesTabProps) {
+  const router = useRouter();
   const queryClient = useQueryClient();
+  // Launch a campaign / call session on a list — deep-links to /campaigns with
+  // the list preselected so we reuse the existing creation wizards instead of
+  // duplicating their multi-step submit logic.
+  const launchCampaign = (bddId: string) =>
+    router.push(`/campaigns?new=campaign&bdd=${bddId}`);
+  const launchCallSession = (bddId: string) =>
+    router.push(`/campaigns?tab=sessions&new=session&bdd=${bddId}`);
   const [scope, setScope] = useState<Scope>("all");
   const [search, setSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -156,6 +180,7 @@ export function ListesTab({
   const [menuId, setMenuId] = useState<string | null>(null);
   const [openList, setOpenList] = useState<BddRow | null>(null);
   const [bddToDelete, setBddToDelete] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<BddRow | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [filters, setFilters] = useState<ListesFilterState>({
     source: [],
@@ -165,7 +190,7 @@ export function ListesTab({
   });
 
   /* ---------- queries ---------- */
-  const { data: bddData } = useQuery({
+  const { data: bddData, isFetching: bddFetching } = useQuery({
     queryKey: ["bdd", "listes-v2", workspaceId, search, filters],
     queryFn: async () => {
       const params = new URLSearchParams({ page: "1", pageSize: "100" });
@@ -284,16 +309,7 @@ export function ListesTab({
     toast.success(`${items.length} prospect${items.length > 1 ? "s" : ""} exporté${items.length > 1 ? "s" : ""}`);
   };
 
-  const handleRename = (id: string, current: string) => {
-    const next =
-      typeof window !== "undefined"
-        ? window.prompt("Nouveau nom de la liste", current)
-        : null;
-    if (!next) return;
-    const trimmed = next.trim();
-    if (!trimmed || trimmed === current) return;
-    renameBddMutation.mutate({ id, name: trimmed });
-  };
+  const handleRename = (list: BddRow) => setRenameTarget(list);
 
   /* ---------- derived ---------- */
   const filtered = useMemo(() => {
@@ -345,7 +361,7 @@ export function ListesTab({
           onClick={() => setShowImport(true)}
         >
           <Upload className="h-3.5 w-3.5" />
-          Importer un CSV
+          Importer une liste
         </button>
       </div>
 
@@ -353,7 +369,11 @@ export function ListesTab({
       <div className="mb-3 flex flex-wrap items-center gap-2.5">
         {/* Search */}
         <div className="flex w-full items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5 sm:w-[360px] sm:max-w-full">
-          <Search className="h-3.5 w-3.5 text-muted-foreground" />
+          {bddFetching ? (
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-600" />
+          ) : (
+            <Search className="h-3.5 w-3.5 text-muted-foreground" />
+          )}
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -509,8 +529,10 @@ export function ListesTab({
                 setMenu={setMenuId}
                 onOpen={() => setOpenList(l)}
                 onSelect={() => onSelectList(l.id)}
+                onLaunchCampaign={() => launchCampaign(l.id)}
+                onLaunchCallSession={() => launchCallSession(l.id)}
                 onAskDelete={() => setBddToDelete(l.id)}
-                onRename={() => handleRename(l.id, l.name)}
+                onRename={() => handleRename(l)}
                 onExport={() => void exportListAsCsv(l.id, l.name)}
               />
             ))}
@@ -541,6 +563,14 @@ export function ListesTab({
             setOpenList(null);
             onSelectList(id);
           }}
+          onLaunchCampaign={() => launchCampaign(openList.id)}
+          onLaunchCallSession={() => launchCallSession(openList.id)}
+          onRename={() => {
+            const target = openList;
+            setOpenList(null);
+            handleRename(target);
+          }}
+          onExport={() => void exportListAsCsv(openList.id, openList.name)}
           onAskDelete={() => {
             setBddToDelete(openList.id);
             setOpenList(null);
@@ -574,8 +604,87 @@ export function ListesTab({
           setBddToDelete(null);
         }}
       />
-      <ProspectImportDialog open={showImport} onOpenChange={setShowImport} />
+      {/* Listes view keeps the manual-add path (per product decision). */}
+      <ProspectImportDialog
+        open={showImport}
+        onOpenChange={setShowImport}
+        showManual
+      />
+
+      <RenameListDialog
+        list={renameTarget}
+        onClose={() => setRenameTarget(null)}
+        onConfirm={(id, name) => {
+          renameBddMutation.mutate({ id, name });
+          setRenameTarget(null);
+        }}
+      />
     </div>
+  );
+}
+
+/** Focused rename dialog for lists — replaces window.prompt. */
+function RenameListDialog({
+  list,
+  onClose,
+  onConfirm,
+}: {
+  list: BddRow | null;
+  onClose: () => void;
+  onConfirm: (id: string, name: string) => void;
+}) {
+  const [value, setValue] = useState("");
+  useEffect(() => {
+    if (list) setValue(list.name);
+  }, [list]);
+
+  const submit = () => {
+    const trimmed = value.trim();
+    if (!list || !trimmed || trimmed === list.name) {
+      onClose();
+      return;
+    }
+    onConfirm(list.id, trimmed);
+  };
+
+  if (!list) return null;
+  return (
+    <>
+      <div onClick={onClose} className="fixed inset-0 z-modal bg-black/30" />
+      <div className="fixed left-1/2 top-1/2 z-modal w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-background p-5 shadow-2xl">
+        <div className="text-[15px] font-semibold">Renommer la liste</div>
+        <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+          Choisissez un nouveau nom pour cette liste.
+        </p>
+        <input
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+            if (e.key === "Escape") onClose();
+          }}
+          className="mt-3 w-full rounded-md border border-border bg-background px-3 py-2 text-[14px] outline-none focus:border-blue-500"
+          placeholder="Nom de la liste"
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border px-3 py-1.5 text-[13px] font-medium hover:bg-accent"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-blue-700"
+          >
+            Renommer
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -600,6 +709,8 @@ interface ListRowProps {
   setMenu: (id: string | null) => void;
   onOpen: () => void;
   onSelect: () => void;
+  onLaunchCampaign: () => void;
+  onLaunchCallSession: () => void;
   onAskDelete: () => void;
   onRename: () => void;
   onExport: () => void;
@@ -614,12 +725,13 @@ function ListRow({
   setMenu,
   onOpen,
   onSelect,
+  onLaunchCampaign,
+  onLaunchCallSession,
   onAskDelete,
   onRename,
   onExport,
 }: ListRowProps) {
   const cfg = getSourceConfig(l.source);
-  const SrcIcon = cfg.icon;
   const stats = funnelStatsFor(l);
   const perf =
     stats.convRate > avgConv * 1.1
@@ -662,7 +774,7 @@ function ListRow({
           <div
             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${cfg.tint}`}
           >
-            <SrcIcon className={`h-4 w-4 ${cfg.iconColor}`} />
+            <SourceMark source={l.source} size={18} />
           </div>
           <div className="min-w-0">
             <div className="truncate text-[13.5px] font-semibold">{l.name}</div>
@@ -686,20 +798,16 @@ function ListRow({
         <span
           className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11.5px] font-medium ${cfg.tint} ${cfg.iconColor}`}
         >
-          <SrcIcon className="h-2.5 w-2.5" />
+          <SourceMark source={l.source} size={12} />
           {cfg.short}
         </span>
       </td>
       {/* Volume */}
       <td className="px-3.5 py-3 align-middle">
         <div className="text-[13.5px] font-semibold">{stats.count}</div>
-        {stats.delta ? (
-          <div className="mt-0.5 inline-flex items-center gap-0.5 text-[11px] text-emerald-700 dark:text-emerald-400">
-            <ArrowUp className="h-2 w-2" />+{stats.delta} cette sem.
-          </div>
-        ) : (
-          <div className="mt-0.5 text-[11px] text-muted-foreground">prospects</div>
-        )}
+        <div className="mt-0.5 text-[11px] text-muted-foreground">
+          prospect{stats.count > 1 ? "s" : ""}
+        </div>
       </td>
       {/* Funnel */}
       <td className="px-3.5 py-3 align-middle">
@@ -778,12 +886,23 @@ function ListRow({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onSelect();
+              onLaunchCampaign();
             }}
+            title="Lancer une campagne sur cette liste"
             className="inline-flex items-center gap-1.5 rounded-md border border-primary/35 bg-background px-2.5 py-1.5 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-accent dark:border-primary/45"
           >
             <Megaphone className="h-2.5 w-2.5" />
             Lancer une campagne
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onLaunchCallSession();
+            }}
+            title="Démarrer une session d'appels sur cette liste"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-sm hover:bg-accent"
+          >
+            <Phone className="h-3 w-3" />
           </button>
           <button
             onClick={(e) => {
@@ -875,12 +994,20 @@ function ListDetailPanel({
   onClose,
   memberNames,
   onOpenProspects,
+  onLaunchCampaign,
+  onLaunchCallSession,
+  onRename,
+  onExport,
   onAskDelete,
 }: {
   list: BddRow;
   onClose: () => void;
   memberNames: Map<string, string>;
   onOpenProspects: (id: string) => void;
+  onLaunchCampaign: () => void;
+  onLaunchCallSession: () => void;
+  onRename: () => void;
+  onExport: () => void;
   onAskDelete: () => void;
 }) {
   const cfg = getSourceConfig(list.source);
@@ -913,7 +1040,7 @@ function ListDetailPanel({
             <div
               className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${cfg.tint}`}
             >
-              <SrcIcon className={`h-[18px] w-[18px] ${cfg.iconColor}`} />
+              <SourceMark source={list.source} size={20} />
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-base font-semibold tracking-tight">
@@ -994,7 +1121,7 @@ function ListDetailPanel({
               label="Source"
               value={
                 <>
-                  <SrcIcon className={`h-3 w-3 ${cfg.iconColor}`} /> {cfg.label}
+                  <SourceMark source={list.source} size={13} /> {cfg.label}
                 </>
               }
             />
@@ -1042,18 +1169,29 @@ function ListDetailPanel({
         {/* Footer */}
         <div className="flex flex-col gap-2 border-t border-border bg-card p-4">
           <button
-            onClick={() => onOpenProspects(list.id)}
+            onClick={onLaunchCampaign}
             className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 py-2.5 text-[13.5px] font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
           >
             <Megaphone className="h-3 w-3" />
             Lancer une campagne sur cette liste
           </button>
+          <button
+            onClick={onLaunchCallSession}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3.5 py-2 text-[13px] font-medium text-foreground/80 transition-colors hover:bg-accent"
+          >
+            <Phone className="h-3 w-3" />
+            Démarrer une session d&apos;appels
+          </button>
           <div className="flex gap-1.5">
             <FooterBtn icon={Users} onClick={() => onOpenProspects(list.id)}>
               Voir les prospects
             </FooterBtn>
-            <FooterBtn icon={Pencil}>Renommer</FooterBtn>
-            <FooterBtn icon={Download}>Exporter</FooterBtn>
+            <FooterBtn icon={Pencil} onClick={onRename}>
+              Renommer
+            </FooterBtn>
+            <FooterBtn icon={Download} onClick={onExport}>
+              Exporter
+            </FooterBtn>
           </div>
           <button
             onClick={onAskDelete}

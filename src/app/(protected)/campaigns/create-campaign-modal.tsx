@@ -25,6 +25,7 @@ import {
   ArrowRight,
   Check,
   Linkedin,
+  Lock,
   MessageSquare,
   UserPlus,
   Workflow,
@@ -149,7 +150,16 @@ function insertAtCaret(
 interface BddRow {
   id: string;
   name: string;
+  /** Normalised from the API's `prospects_count`. */
   prospect_count?: number | null;
+  contacted_count?: number | null;
+}
+
+/** Raw shape from /api/bdd (note: `prospects_count`, plural). */
+interface ApiBddRow {
+  id: string;
+  name: string;
+  prospects_count?: number | null;
   contacted_count?: number | null;
 }
 
@@ -163,10 +173,18 @@ function useBddOptions(open: boolean) {
       });
       if (!res.ok) return [] as BddRow[];
       const json = (await res.json()) as {
-        items?: BddRow[];
-        data?: { items?: BddRow[] };
+        items?: ApiBddRow[];
+        data?: { items?: ApiBddRow[] };
       };
-      return json.items ?? json.data?.items ?? [];
+      const items = json.items ?? json.data?.items ?? [];
+      // Map the API's `prospects_count` → `prospect_count` the UI expects.
+      // Mismatch here was why every list showed "0 prospects".
+      return items.map<BddRow>((b) => ({
+        id: b.id,
+        name: b.name,
+        prospect_count: b.prospects_count ?? null,
+        contacted_count: b.contacted_count ?? null,
+      }));
     },
     staleTime: 60_000,
   });
@@ -232,18 +250,40 @@ export function CreateCampaignModal({
   onOpenChange,
   onCreate,
   onDraft,
+  initialBddId = null,
+  hasPaidLinkedIn = true,
+  initialValues = null,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreate: (data: CreateCampaignPayload) => void | Promise<void>;
   onDraft: (data: CreateCampaignPayload) => void | Promise<void>;
+  /** Preselect a list (used by the CRM "Lancer une campagne" list action). */
+  initialBddId?: string | null;
+  /**
+   * Whether the connected LinkedIn account is Premium/Sales Navigator.
+   * Invitation + Message requires a paid account, so the tile is locked when
+   * false. Defaults to true so we never over-restrict on unknown state.
+   */
+  hasPaidLinkedIn?: boolean;
+  /**
+   * Prefill the wizard (used by "Dupliquer"): copies type / name / message /
+   * note from a source campaign. No prospects are copied — the user picks a
+   * list on step 1, which is why we open on step 1 even when prefilled.
+   */
+  initialValues?: {
+    type?: LinkedInCampaignType;
+    name?: string;
+    message?: string;
+    invitationNote?: string;
+  } | null;
 }) {
   const [step, setStep] = useState(1);
   const [maxReached, setMaxReached] = useState(1);
   const [submitting, setSubmitting] = useState<"create" | "draft" | null>(null);
 
   // Step 1
-  const [bddId, setBddId] = useState<string | null>(null);
+  const [bddId, setBddId] = useState<string | null>(initialBddId);
   const [excludeContacted, setExcludeContacted] = useState(false);
   const [onlyWithPhone, setOnlyWithPhone] = useState(false);
   const [excludeActive, setExcludeActive] = useState(true);
@@ -280,6 +320,22 @@ export function CreateCampaignModal({
       const t = setTimeout(reset, 200);
       return () => clearTimeout(t);
     }
+  }, [open]);
+
+  // Seed the wizard from a source campaign when opened in "duplicate" mode.
+  // Runs on open so message/type/name are pre-filled; the list stays empty so
+  // the user only has to pick prospects.
+  useEffect(() => {
+    if (open && initialValues) {
+      if (initialValues.type) setType(initialValues.type);
+      if (initialValues.name) setName(initialValues.name);
+      if (initialValues.message) setMessage(initialValues.message);
+      if (initialValues.invitationNote) {
+        setInvitationNote(initialValues.invitationNote);
+        setHasNote(true);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const selectedBdd = useMemo(
@@ -367,8 +423,6 @@ export function CreateCampaignModal({
               onSelect={setBddId}
               excludeContacted={excludeContacted}
               setExcludeContacted={setExcludeContacted}
-              onlyWithPhone={onlyWithPhone}
-              setOnlyWithPhone={setOnlyWithPhone}
               excludeActive={excludeActive}
               setExcludeActive={setExcludeActive}
             />
@@ -380,6 +434,7 @@ export function CreateCampaignModal({
               name={name}
               setName={setName}
               nameValid={nameValid}
+              hasPaidLinkedIn={hasPaidLinkedIn}
             />
           )}
           {step === 3 && type && (
@@ -399,7 +454,6 @@ export function CreateCampaignModal({
               name={name}
               bdd={selectedBdd}
               excludeContacted={excludeContacted}
-              onlyWithPhone={onlyWithPhone}
               excludeActive={excludeActive}
               hasNote={hasNote}
               invitationNote={invitationNote}
@@ -469,8 +523,6 @@ function Step1Prospects({
   onSelect,
   excludeContacted,
   setExcludeContacted,
-  onlyWithPhone,
-  setOnlyWithPhone,
   excludeActive,
   setExcludeActive,
 }: {
@@ -480,8 +532,6 @@ function Step1Prospects({
   onSelect: (id: string) => void;
   excludeContacted: boolean;
   setExcludeContacted: (v: boolean) => void;
-  onlyWithPhone: boolean;
-  setOnlyWithPhone: (v: boolean) => void;
   excludeActive: boolean;
   setExcludeActive: (v: boolean) => void;
 }) {
@@ -539,12 +589,6 @@ function Step1Prospects({
           onCheckedChange={setExcludeContacted}
         />
         <RefineToggle
-          label="Uniquement avec un numéro de téléphone"
-          hint="Recommandé pour les séquences multicanaux"
-          checked={onlyWithPhone}
-          onCheckedChange={setOnlyWithPhone}
-        />
-        <RefineToggle
           label="Exclure ceux déjà dans une campagne active"
           hint="Évite les chevauchements et la double sollicitation"
           checked={excludeActive}
@@ -586,12 +630,14 @@ function Step2TypeName({
   name,
   setName,
   nameValid,
+  hasPaidLinkedIn,
 }: {
   type: LinkedInCampaignType | null;
   setType: (t: LinkedInCampaignType) => void;
   name: string;
   setName: (n: string) => void;
   nameValid: boolean;
+  hasPaidLinkedIn: boolean;
 }) {
   return (
     <div className="space-y-5">
@@ -599,23 +645,38 @@ function Step2TypeName({
         {TYPES.map((t) => {
           const Icon = t.icon;
           const active = type === t.id;
+          // Invitation + Message requires a paid LinkedIn account.
+          const locked = t.id === "invitation_message" && !hasPaidLinkedIn;
           return (
             <button
               key={t.id}
               type="button"
-              onClick={() => setType(t.id)}
+              disabled={locked}
+              onClick={() => !locked && setType(t.id)}
+              title={
+                locked
+                  ? "Nécessite un compte LinkedIn Premium ou Sales Navigator"
+                  : undefined
+              }
               className={cn(
                 "relative flex flex-col items-start gap-2 rounded-lg border p-3 text-left transition-all",
-                active
-                  ? "border-[var(--brand-blue)] bg-[var(--brand-blue-tint)] shadow-sm"
-                  : "hover:border-[var(--brand-blue)]/40 hover:bg-muted/30",
+                locked
+                  ? "cursor-not-allowed opacity-60"
+                  : active
+                    ? "border-[var(--brand-blue)] bg-[var(--brand-blue-tint)] shadow-sm"
+                    : "hover:border-[var(--brand-blue)]/40 hover:bg-muted/30",
               )}
             >
-              {t.recommended && (
+              {locked ? (
+                <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <Lock className="size-2.5" />
+                  Premium
+                </span>
+              ) : t.recommended ? (
                 <span className="absolute right-2 top-2 rounded-full bg-[var(--brand-orange)]/15 px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-[var(--brand-orange)]">
                   Recommandé
                 </span>
-              )}
+              ) : null}
               <span
                 className={cn(
                   "grid size-8 place-items-center rounded-md",
@@ -868,7 +929,6 @@ function Step4Recap({
   name,
   bdd,
   excludeContacted,
-  onlyWithPhone,
   excludeActive,
   hasNote,
   invitationNote,
@@ -878,7 +938,6 @@ function Step4Recap({
   name: string;
   bdd: BddRow | null;
   excludeContacted: boolean;
-  onlyWithPhone: boolean;
   excludeActive: boolean;
   hasNote: boolean;
   invitationNote: string;
@@ -887,7 +946,6 @@ function Step4Recap({
   const typeLabel = TYPES.find((t) => t.id === type)?.label ?? "—";
   const refines = [
     excludeContacted ? "Déjà contactés exclus" : null,
-    onlyWithPhone ? "Uniquement avec téléphone" : null,
     excludeActive ? "Pas dans une campagne active" : null,
   ].filter(Boolean) as string[];
 

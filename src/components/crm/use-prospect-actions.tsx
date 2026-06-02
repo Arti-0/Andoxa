@@ -17,8 +17,7 @@
  *   {dialogs}        // mounted once at the tab level
  */
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -30,7 +29,11 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { WorkflowEnrollModal } from "@/components/workflows/workflow-enroll-modal";
+import { isFeatureEnabled } from "@/lib/config/feature-flags";
 import type { Prospect } from "@/lib/types/prospects";
+
+/** #FF: workflows — hide the "Ajouter à un parcours" action until ready. */
+const SHOW_WORKFLOWS = isFeatureEnabled("workflows");
 
 export interface ProspectMenuItem {
   label: string;
@@ -40,15 +43,32 @@ export interface ProspectMenuItem {
 }
 
 export function useProspectActions(invalidateKey: string) {
-  const router = useRouter();
   const queryClient = useQueryClient();
 
   const [enrolProspect, setEnrolProspect] = useState<Prospect | null>(null);
   const [pickListProspect, setPickListProspect] = useState<Prospect | null>(
     null,
   );
+  const [renameProspect, setRenameProspect] = useState<Prospect | null>(null);
   const [confirmDeleteProspect, setConfirmDeleteProspect] =
     useState<Prospect | null>(null);
+
+  const renameMutation = useMutation({
+    mutationFn: async (vars: { id: string; name: string }) => {
+      const res = await fetch(`/api/prospects/${vars.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ full_name: vars.name }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [invalidateKey] });
+      toast.success("Prospect renommé");
+    },
+    onError: () => toast.error("Renommage impossible"),
+  });
 
   const inviteMutation = useMutation({
     mutationFn: async (prospect: Prospect) => {
@@ -128,28 +148,13 @@ export function useProspectActions(invalidateKey: string) {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Quick row actions — intentionally minimal: rename + delete. Richer
+  // actions (enrich, invite, add-to-list, enroll) live on the prospect
+  // profile page and the bulk selection bar.
   const menu = (p: Prospect): ProspectMenuItem[] => [
     {
-      label: "Modifier",
-      onClick: () => router.push(`/prospect/${p.id}`),
-    },
-    {
-      label: "Enrichir (LinkedIn)",
-      disabled: !p.linkedin?.trim(),
-      onClick: () => enrichMutation.mutate(p),
-    },
-    {
-      label: "Inviter sur LinkedIn",
-      disabled: !p.linkedin,
-      onClick: () => inviteMutation.mutate(p),
-    },
-    {
-      label: "Ajouter à un parcours",
-      onClick: () => setEnrolProspect(p),
-    },
-    {
-      label: "Ajouter à une liste",
-      onClick: () => setPickListProspect(p),
+      label: "Renommer",
+      onClick: () => setRenameProspect(p),
     },
     {
       label: "Supprimer",
@@ -172,6 +177,9 @@ export function useProspectActions(invalidateKey: string) {
             setPickListProspect(null);
           }
         }}
+        renameProspect={renameProspect}
+        setRenameProspect={setRenameProspect}
+        onRenameConfirmed={(id, name) => renameMutation.mutate({ id, name })}
         confirmDeleteProspect={confirmDeleteProspect}
         setConfirmDeleteProspect={setConfirmDeleteProspect}
         onDeleteConfirmed={(p) => deleteMutation.mutate(p.id)}
@@ -186,6 +194,9 @@ function ProspectActionDialogs({
   pickListProspect,
   setPickListProspect,
   onPickList,
+  renameProspect,
+  setRenameProspect,
+  onRenameConfirmed,
   confirmDeleteProspect,
   setConfirmDeleteProspect,
   onDeleteConfirmed,
@@ -195,6 +206,9 @@ function ProspectActionDialogs({
   pickListProspect: Prospect | null;
   setPickListProspect: (v: Prospect | null) => void;
   onPickList: (bddId: string | null) => void;
+  renameProspect: Prospect | null;
+  setRenameProspect: (v: Prospect | null) => void;
+  onRenameConfirmed: (id: string, name: string) => void;
   confirmDeleteProspect: Prospect | null;
   setConfirmDeleteProspect: (v: Prospect | null) => void;
   onDeleteConfirmed: (p: Prospect) => void;
@@ -215,18 +229,21 @@ function ProspectActionDialogs({
 
   return (
     <>
-      <WorkflowEnrollModal
-        open={!!enrolProspect}
-        onOpenChange={(o) => {
-          if (!o) setEnrolProspect(null);
-        }}
-        prospects={
-          enrolProspect
-            ? [{ id: enrolProspect.id, full_name: enrolProspect.full_name }]
-            : []
-        }
-        onSuccess={() => setEnrolProspect(null)}
-      />
+      {/* #FF: workflows — enroll modal only mounted when workflows are on. */}
+      {SHOW_WORKFLOWS && (
+        <WorkflowEnrollModal
+          open={!!enrolProspect}
+          onOpenChange={(o) => {
+            if (!o) setEnrolProspect(null);
+          }}
+          prospects={
+            enrolProspect
+              ? [{ id: enrolProspect.id, full_name: enrolProspect.full_name }]
+              : []
+          }
+          onSuccess={() => setEnrolProspect(null)}
+        />
+      )}
 
       <Dialog
         open={!!pickListProspect}
@@ -267,6 +284,15 @@ function ProspectActionDialogs({
         </DialogContent>
       </Dialog>
 
+      <RenameProspectDialog
+        prospect={renameProspect}
+        onClose={() => setRenameProspect(null)}
+        onConfirm={(id, name) => {
+          onRenameConfirmed(id, name);
+          setRenameProspect(null);
+        }}
+      />
+
       <ConfirmDialog
         open={!!confirmDeleteProspect}
         onOpenChange={(o) => {
@@ -284,5 +310,70 @@ function ProspectActionDialogs({
         }}
       />
     </>
+  );
+}
+
+/** Focused rename dialog — replaces ad-hoc window.prompt usage. */
+function RenameProspectDialog({
+  prospect,
+  onClose,
+  onConfirm,
+}: {
+  prospect: Prospect | null;
+  onClose: () => void;
+  onConfirm: (id: string, name: string) => void;
+}) {
+  const [value, setValue] = useState("");
+  useEffect(() => {
+    if (prospect) setValue(prospect.full_name ?? "");
+  }, [prospect]);
+
+  const submit = () => {
+    const trimmed = value.trim();
+    if (!prospect || !trimmed || trimmed === prospect.full_name) {
+      onClose();
+      return;
+    }
+    onConfirm(prospect.id, trimmed);
+  };
+
+  return (
+    <Dialog open={!!prospect} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Renommer le prospect</DialogTitle>
+          <DialogDescription>
+            Modifiez le nom affiché de ce prospect.
+          </DialogDescription>
+        </DialogHeader>
+        <input
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+            if (e.key === "Escape") onClose();
+          }}
+          className="w-full rounded-md border border-border bg-background px-3 py-2 text-[14px] outline-none focus:border-blue-500"
+          placeholder="Nom du prospect"
+        />
+        <div className="mt-1 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border px-3 py-1.5 text-[13px] font-medium hover:bg-accent"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-blue-700"
+          >
+            Renommer
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

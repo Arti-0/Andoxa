@@ -1,9 +1,9 @@
 "use client";
 
 import "./styles.css";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { FileText, MessageSquare, Plug } from "lucide-react";
+import { MessageSquare, Plug } from "lucide-react";
 import { ConvList } from "./conv-list";
 import { Thread } from "./thread";
 import { Cockpit } from "./cockpit";
@@ -218,25 +218,19 @@ function readLastChatId(): string | null {
   }
 }
 
-function readArchivedIds(): Set<string> {
-  try {
-    if (typeof window === "undefined") return new Set();
-    return new Set(JSON.parse(localStorage.getItem("m2_archived") ?? "[]"));
-  } catch {
-    return new Set();
-  }
-}
+export type MsgFilter = "all" | "unread" | "relance" | "rdv" | "horscrm";
 
 export default function Messagerie2Page() {
   // Initialise from localStorage so useThread fires immediately on mount,
   // before the conversations list resolves (~4-7s).
   const [activeId, setActiveId] = useState<string | null>(readLastChatId);
-  const [archivedIds, setArchivedIds] = useState<Set<string>>(readArchivedIds);
-  const [filter, setFilter] = useState<"all" | "unread" | "relance" | "rdv">(
-    "all",
-  );
+  const [filter, setFilter] = useState<MsgFilter>("all");
   const [channel, setChannel] = useState<"all" | "li" | "wa">("all");
-  const [view, setView] = useState<"active" | "archived">("active");
+  // Sticky-filter membership: when a filter is active, conversations that
+  // matched when it was entered stay visible for the session (so reading an
+  // unread one, or an RDV passing, doesn't make the row vanish under you).
+  // Keyed by filter; recomputed each time that filter is (re-)selected.
+  const [stickyIds, setStickyIds] = useState<Set<string> | null>(null);
 
   const { data: connections, isLoading: connectionsLoading } =
     useUnipileConnections();
@@ -249,13 +243,37 @@ export default function Messagerie2Page() {
   const markSeen = useMarkChatSeen();
   const togglePin = useToggleChatPin();
 
-  // Visible list — exclude or include archived depending on view.
-  const visibleConvs = (conversations ?? []).filter((c) =>
-    view === "archived" ? archivedIds.has(c.id) : !archivedIds.has(c.id),
-  );
-  const archivedCount = (conversations ?? []).filter((c) =>
-    archivedIds.has(c.id),
-  ).length;
+  const visibleConvs = conversations ?? [];
+
+  // Compute the set of conversations that match a sticky-eligible filter
+  // *right now*. Used to seed `stickyIds` when a filter is (re-)selected.
+  const matchesFilter = useMemo(() => {
+    return (f: MsgFilter, c: (typeof visibleConvs)[number]): boolean => {
+      if (f === "unread") return c.unread > 0;
+      if (f === "relance") return c.silentDays >= 4;
+      if (f === "rdv") return c.stage === "meeting";
+      if (f === "horscrm") return c.prospectId === null;
+      return true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // When the active filter changes, snapshot the matching ids so they remain
+  // visible even after their underlying condition flips (read / RDV passes).
+  // "all" and "horscrm" don't need stickiness ("all" shows everything;
+  // "horscrm" membership doesn't change by reading).
+  useEffect(() => {
+    if (filter === "all" || filter === "horscrm") {
+      setStickyIds(null);
+      return;
+    }
+    const snap = new Set(
+      (conversations ?? []).filter((c) => matchesFilter(filter, c)).map((c) => c.id),
+    );
+    setStickyIds(snap);
+    // Re-snapshot only when the filter itself changes (not on every list tick).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]);
 
   // Effective chat: use persisted/active ID if present; otherwise first
   // visible conversation once the list loads.
@@ -289,65 +307,10 @@ export default function Messagerie2Page() {
     }
   };
 
-  const handleArchive = (chatId: string) => {
-    setArchivedIds((prev) => {
-      const next = new Set(prev);
-      next.add(chatId);
-      try {
-        localStorage.setItem("m2_archived", JSON.stringify([...next]));
-      } catch {}
-      return next;
-    });
-    // If we just archived the active conversation, move to the next one.
-    if (chatId === effectiveId) {
-      const next = visibleConvs.find((c) => c.id !== chatId);
-      if (next) handleSelect(next.id);
-      else setActiveId(null);
-    }
-  };
-
-  const handleRestore = (chatId: string) => {
-    setArchivedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(chatId);
-      try {
-        localStorage.setItem("m2_archived", JSON.stringify([...next]));
-      } catch {}
-      return next;
-    });
-    if (chatId === effectiveId) {
-      // We're still on this chat — it just moved out of the archived list.
-      // Switch back to the active view so it doesn't disappear.
-      setView("active");
-    }
-  };
-
   return (
     <div className="m2-root flex h-full min-w-[1180px] flex-col">
-      {/* Page-scoped action bar */}
-      <div
-        style={{
-          height: 48,
-          borderBottom: "1px solid var(--m2-slate-200)",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          padding: "0 22px",
-          background: "var(--m2-surface-elevated)",
-          flexShrink: 0,
-        }}
-      >
-        <Link
-          href="/messagerie/templates"
-          className="m2-btn"
-          style={{ padding: "6px 11px", textDecoration: "none" }}
-        >
-          <FileText size={14} />
-          Templates
-        </Link>
-      </div>
-
-      {/* 3-column workspace — layout stays stable across loading / empty / loaded. */}
+      {/* 3-column workspace — layout stays stable across loading / empty / loaded.
+          The Templates entry now lives in the conversation-list header. */}
       <div className="flex min-h-0 flex-1">
         {connectionsLoading ? (
           // Connection status still resolving — show full 3-column skeleton.
@@ -372,9 +335,8 @@ export default function Messagerie2Page() {
               setFilter={setFilter}
               channel={channel}
               setChannel={setChannel}
-              view={view}
-              setView={setView}
-              archivedCount={archivedCount}
+              stickyIds={stickyIds}
+              matchesFilter={matchesFilter}
             />
 
             {conv ? (
@@ -382,9 +344,6 @@ export default function Messagerie2Page() {
                 <Thread
                   conv={conv}
                   thread={(thread ?? []) as ThreadEntry[]}
-                  isArchived={view === "archived"}
-                  onArchive={handleArchive}
-                  onRestore={handleRestore}
                 />
                 <Cockpit conv={conv} />
               </>

@@ -24,8 +24,6 @@ import {
   Upload,
   Plus,
   MoreVertical,
-  MessageSquare,
-  Calendar,
   Layers,
   List as ListIcon,
   Play,
@@ -64,6 +62,23 @@ import {
   type ProspectSortKey,
 } from "./crm-prospect-sort";
 import { extractCleanRole } from "@/lib/utils/extract-role";
+import { isFeatureEnabled } from "@/lib/config/feature-flags";
+
+/**
+ * #FF: workflows — the CRM "Workflow" column (and its grid track) is hidden
+ * until workflows are enterprise-ready. Constant resolved once at module load,
+ * so gating costs nothing at render time.
+ */
+const SHOW_WORKFLOWS = isFeatureEnabled("workflows");
+
+/**
+ * Grid column template for the compact prospect rows. The Workflow track
+ * (160px) is only present when the workflows flag is on, keeping the layout
+ * tight when the column is hidden.
+ */
+const COMPACT_GRID_COLS = SHOW_WORKFLOWS
+  ? "grid-cols-[42px_1fr_130px_100px_150px_160px_70px_40px]"
+  : "grid-cols-[42px_1fr_130px_100px_150px_70px_40px]";
 
 /* ============================================================
    Types
@@ -168,7 +183,7 @@ export function ProspectsTab({
     staleTime: 30_000,
   });
 
-  const { data: prospectsData } = useQuery({
+  const { data: prospectsData, isFetching: prospectsFetching } = useQuery({
     queryKey: [
       "prospects-v2",
       workspaceId,
@@ -378,7 +393,7 @@ export function ProspectsTab({
             className="inline-flex items-center gap-2 rounded-lg border border-primary/35 bg-background px-3 py-1.5 text-[13px] font-medium text-primary shadow-sm transition-colors hover:bg-accent dark:border-primary/45"
           >
             <Upload className="h-3.5 w-3.5" />
-            Importer un CSV
+            Importer
           </button>
           <button
             onClick={() => setShowCreate(true)}
@@ -421,6 +436,7 @@ export function ProspectsTab({
         onSourceFilterChange={setSourceFilter}
         sortBy={sortBy}
         onSortByChange={setSortBy}
+        loading={prospectsFetching || search.trim() !== debouncedSearch}
       />
 
       <FloatingSelectionBar
@@ -463,14 +479,6 @@ export function ProspectsTab({
             )}
           </PopoverContent>
         </Popover>
-
-        <button
-          type="button"
-          onClick={() => toast.info("Parcours WhatsApp — bientôt")}
-          className={floatingSelectionToolbarButtonClass(false)}
-        >
-          Ajouter à un parcours WhatsApp
-        </button>
 
         <Popover>
           <PopoverTrigger asChild>
@@ -642,7 +650,7 @@ function TableView({
             <ProTh className="w-[118px]">Statut pipeline</ProTh>
             <ProTh className="w-[108px]">Source</ProTh>
             <ProTh className="w-[132px]">Dernière activité</ProTh>
-            <ProTh className="w-[148px]">Workflow</ProTh>
+            {SHOW_WORKFLOWS && <ProTh className="w-[148px]">Workflow</ProTh>}
             <ProTh className="w-[72px]">Canaux</ProTh>
             <ProTh className="w-[108px]" />
           </tr>
@@ -825,22 +833,24 @@ function ProspectRow({
           </span>
         )}
       </td>
-      <td className="max-w-0 overflow-hidden p-3.5">
-        {p.workflow ? (
-          <span
-            data-stop
-            className="inline-flex max-w-full items-center gap-1.5 truncate rounded-md bg-violet-50 px-2 py-0.5 text-[12px] font-medium text-violet-700 dark:bg-violet-900/20 dark:text-violet-300"
-            title={`${p.workflow.name} · ${p.workflow.step}/${p.workflow.total}`}
-          >
-            <Play className="h-2.5 w-2.5 shrink-0" />
-            <span className="truncate">
-              {p.workflow.name} · {p.workflow.step}/{p.workflow.total}
+      {SHOW_WORKFLOWS && (
+        <td className="max-w-0 overflow-hidden p-3.5">
+          {p.workflow ? (
+            <span
+              data-stop
+              className="inline-flex max-w-full items-center gap-1.5 truncate rounded-md bg-violet-50 px-2 py-0.5 text-[12px] font-medium text-violet-700 dark:bg-violet-900/20 dark:text-violet-300"
+              title={`${p.workflow.name} · ${p.workflow.step}/${p.workflow.total}`}
+            >
+              <Play className="h-2.5 w-2.5 shrink-0" />
+              <span className="truncate">
+                {p.workflow.name} · {p.workflow.step}/{p.workflow.total}
+              </span>
             </span>
-          </span>
-        ) : (
-          <span className="text-xs text-muted-foreground/50">—</span>
-        )}
-      </td>
+          ) : (
+            <span className="text-xs text-muted-foreground/50">—</span>
+          )}
+        </td>
+      )}
       <td className="w-[72px] p-3.5">
         <div data-stop className="flex gap-1">
           {channels.length === 0 ? (
@@ -850,22 +860,8 @@ function ProspectRow({
           )}
         </div>
       </td>
-      <td className="relative w-[108px] overflow-hidden p-3.5 text-right align-middle">
+      <td className="relative w-[108px] p-3.5 text-right align-middle">
         <div data-stop className="inline-flex items-center justify-end gap-0.5">
-          <RowActionBtn
-            title="Démarrer une conversation"
-            className={cn(!(hovered || menuOpen) && "invisible pointer-events-none")}
-            onClick={() => onOpen()}
-          >
-            <MessageSquare className="h-3.5 w-3.5" />
-          </RowActionBtn>
-          <RowActionBtn
-            title="Programmer un RDV"
-            className={cn(!(hovered || menuOpen) && "invisible pointer-events-none")}
-            onClick={() => onOpen()}
-          >
-            <Calendar className="h-3.5 w-3.5" />
-          </RowActionBtn>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -886,33 +882,6 @@ function ProspectRow({
   );
 }
 
-function RowActionBtn({
-  title,
-  onClick,
-  children,
-  className,
-}: {
-  title: string;
-  onClick?: () => void;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <button
-      title={title}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick?.();
-      }}
-      className={cn(
-        "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent",
-        className,
-      )}
-    >
-      {children}
-    </button>
-  );
-}
 
 function RowMenu({
   items,
@@ -963,7 +932,10 @@ function CompactView({
   toggleAll,
   hoverRow: _hoverRow,
   setHoverRow,
+  openMenu,
+  setOpenMenu,
   onOpen,
+  menuItems,
   onSourceClick,
 }: ViewProps) {
   const allSelected =
@@ -975,7 +947,10 @@ function CompactView({
     <div className="overflow-x-auto rounded-xl border bg-card">
       <div className="min-w-[820px]">
       <div
-        className="grid h-[38px] grid-cols-[42px_1fr_130px_100px_150px_160px_70px_40px] items-center gap-3 border-b bg-muted/40 px-3.5 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground"
+        className={cn(
+          "grid h-[38px] items-center gap-3 border-b bg-muted/40 px-3.5 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground",
+          COMPACT_GRID_COLS,
+        )}
       >
         <Checkbox
           checked={
@@ -993,7 +968,7 @@ function CompactView({
         <span>Statut</span>
         <span>Source</span>
         <span>Activité</span>
-        <span>Workflow</span>
+        {SHOW_WORKFLOWS && <span>Workflow</span>}
         <span>Canaux</span>
         <span />
       </div>
@@ -1016,7 +991,8 @@ function CompactView({
               onOpen(p);
             }}
             className={cn(
-              "grid cursor-pointer grid-cols-[42px_1fr_130px_100px_150px_160px_70px_40px] items-center gap-3 px-3.5 py-2 text-[13.5px] transition-colors",
+              "grid cursor-pointer items-center gap-3 px-3.5 py-2 text-[13.5px] transition-colors",
+              COMPACT_GRID_COLS,
               rowEdge && "border-b",
               isSel
                 ? "bg-[#E8F0FD] dark:bg-blue-950/55"
@@ -1059,18 +1035,20 @@ function CompactView({
               {tier && <span className={`h-1 w-1 rounded-full ${tCls.dot}`} />}
               {activityLabel}
             </span>
-            <span
-              className={`truncate text-[11.5px] ${p.workflow ? "font-medium text-violet-700 dark:text-violet-300" : "text-muted-foreground/50"}`}
-              title={
-                p.workflow
+            {SHOW_WORKFLOWS && (
+              <span
+                className={`truncate text-[11.5px] ${p.workflow ? "font-medium text-violet-700 dark:text-violet-300" : "text-muted-foreground/50"}`}
+                title={
+                  p.workflow
+                    ? `${p.workflow.name} · ${p.workflow.step}/${p.workflow.total}`
+                    : undefined
+                }
+              >
+                {p.workflow
                   ? `${p.workflow.name} · ${p.workflow.step}/${p.workflow.total}`
-                  : undefined
-              }
-            >
-              {p.workflow
-                ? `${p.workflow.name} · ${p.workflow.step}/${p.workflow.total}`
-                : "—"}
-            </span>
+                  : "—"}
+              </span>
+            )}
             <div data-stop className="flex gap-0.5">
               {channels.length === 0 ? (
                 <span className="text-[11px] text-muted-foreground/50">—</span>
@@ -1080,7 +1058,25 @@ function CompactView({
                 ))
               )}
             </div>
-            <div className="text-right" />
+            <div data-stop className="relative flex justify-end">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpenMenu(openMenu === p.id ? null : p.id);
+                }}
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-md ${
+                  openMenu === p.id ? "bg-accent" : ""
+                } text-muted-foreground hover:bg-accent`}
+              >
+                <MoreVertical className="h-3.5 w-3.5" />
+              </button>
+              {openMenu === p.id && (
+                <RowMenu
+                  items={menuItems(p)}
+                  close={() => setOpenMenu(null)}
+                />
+              )}
+            </div>
           </div>
         );
       })}

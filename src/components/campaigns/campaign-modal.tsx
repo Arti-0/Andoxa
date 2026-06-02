@@ -2,14 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
-    DialogFooter,
-} from '@/components/ui/dialog';
+import { AppModal } from '@/components/ui/app-modal';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -91,12 +84,6 @@ const LINKEDIN_OPTIONS: LinkedInActionOption[] = [
         label: 'Invitation',
         description: 'Demande de connexion sans note',
         premiumOnly: false,
-    },
-    {
-        value: 'invite_with_note',
-        label: 'Invitation + note',
-        description: 'Demande avec message personnalisé (300 car.)',
-        premiumOnly: true,
     },
     {
         value: 'invite_then_message',
@@ -218,7 +205,9 @@ export function CampaignModal({
         if (!open || !config) return;
         if (config.channel === 'linkedin') {
             let next: LinkedInAction = config.linkedInAction ?? 'contact';
-            if (!hasPaidLinkedIn && next === 'invite_with_note') next = 'invite';
+            // "Invitation + note" was retired — fall back to the invite-then-
+            // message flow so a duplicated campaign still maps to a visible option.
+            if (next === 'invite_with_note') next = 'invite_then_message';
             setLinkedInAction(next);
         }
     }, [open, config, hasPaidLinkedIn]);
@@ -505,59 +494,108 @@ export function CampaignModal({
               ? ' — Champs manquants'
               : '';
 
-    return (
-        <Dialog open={open} onOpenChange={handleClose}>
-            <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-xl">
-                <DialogHeader>
-                    <div className="flex flex-wrap items-center gap-2">
-                        {isWhatsApp ? (
-                            <MessageCircle className="h-5 w-5 text-[#25D366]" />
-                        ) : isInviteAction(effectiveConfig) ? (
-                            <UserPlus className="h-5 w-5" />
-                        ) : (
-                            <MessageSquare className="h-5 w-5" />
-                        )}
-                        <DialogTitle>
-                            {label}
-                            {titleSuffix}
-                        </DialogTitle>
-                        {isLinkedIn && requiresPremium(effectiveConfig) ? (
-                            <LinkedInPremiumBadge size="sm" />
-                        ) : null}
-                    </div>
-                    {step === 'compose' && isWhatsApp ? (
-                        <DialogDescription>
-                            Le message est obligatoire. Vous pouvez réutiliser
-                            n&apos;importe quel template (LinkedIn ou WhatsApp).
-                            Enregistrez en brouillon, puis lancez la campagne
-                            depuis la liste.
-                        </DialogDescription>
-                    ) : step === 'compose' && isLinkedIn && isInvitePlain ? (
-                        <DialogDescription>
-                            Invitations LinkedIn sans note personnalisée.
-                            Enregistrez en brouillon, puis lancez la campagne
-                            depuis la liste.
-                        </DialogDescription>
-                    ) : step === 'compose' && isLinkedIn && isInviteWithNote ? (
-                        <DialogDescription>
-                            {hasPaidLinkedIn
-                                ? `Note d'invitation — jusqu'à ${maxChars} caractères (compte Premium ou Sales Navigator).`
-                                : `Note d'invitation — jusqu'à ${maxChars} caractères.`}
-                        </DialogDescription>
-                    ) : step === 'compose' && isLinkedIn ? (
-                        <DialogDescription>
-                            Message pour connexions existantes. Sauvegarde en
-                            brouillon, lancement depuis la liste des campagnes.
-                        </DialogDescription>
+    const headerDescription: string | undefined =
+        step === 'compose' && isWhatsApp
+            ? "Le message est obligatoire. Vous pouvez réutiliser n'importe quel template (LinkedIn ou WhatsApp). Enregistrez en brouillon, puis lancez la campagne depuis la liste."
+            : step === 'compose' && isLinkedIn && isInvitePlain
+              ? 'Invitations LinkedIn sans note personnalisée. Enregistrez en brouillon, puis lancez la campagne depuis la liste.'
+              : step === 'compose' && isLinkedIn
+                ? 'Message pour connexions existantes. Sauvegarde en brouillon, lancement depuis la liste des campagnes.'
+                : undefined;
+
+    const headerTitle = (
+        <span className="flex flex-wrap items-center gap-2">
+            {isWhatsApp ? (
+                <MessageCircle className="h-5 w-5 text-[#25D366]" />
+            ) : isInviteAction(effectiveConfig) ? (
+                <UserPlus className="h-5 w-5" />
+            ) : (
+                <MessageSquare className="h-5 w-5" />
+            )}
+            <span>
+                {label}
+                {titleSuffix}
+            </span>
+            {isLinkedIn && requiresPremium(effectiveConfig) ? (
+                <LinkedInPremiumBadge size="sm" />
+            ) : null}
+        </span>
+    );
+
+    const footer =
+        step === 'name' ? (
+            <>
+                <Button variant="outline" onClick={() => handleClose(false)}>
+                    Annuler
+                </Button>
+                <Button
+                    onClick={() => setStep('compose')}
+                    disabled={!campaignName.trim()}
+                >
+                    Suivant
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+            </>
+        ) : step === 'compose' ? (
+            <>
+                <Button
+                    variant="outline"
+                    onClick={() => handleClose(false)}
+                    disabled={sending}
+                >
+                    Annuler
+                </Button>
+                <Button onClick={handleComposeNext} disabled={count === 0}>
+                    {incompleteProspects.length > 0 ? 'Suite' : 'Aperçu'}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+            </>
+        ) : step === 'gaps' ? (
+            <>
+                <Button variant="outline" onClick={handleBack} disabled={sending}>
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Retour
+                </Button>
+                <Button onClick={handleGapsNext} disabled={count === 0}>
+                    Aperçu
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+            </>
+        ) : (
+            <>
+                <Button variant="outline" onClick={handleBack} disabled={sending}>
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Retour
+                </Button>
+                <Button
+                    variant="outline"
+                    onClick={() => void handleSave(false)}
+                    disabled={sending}
+                >
+                    Enregistrer en brouillon
+                </Button>
+                <Button
+                    onClick={() => void handleSave(true)}
+                    disabled={sending}
+                >
+                    {sending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                        <DialogDescription className="sr-only">
-                            {step === 'gaps' &&
-                                'Complétez le texte pour les prospects sans donnée CRM pour certaines variables.'}
-                            {step === 'preview' &&
-                                'Vérifiez le résumé avant sauvegarde.'}
-                        </DialogDescription>
+                        'Créer et lancer'
                     )}
-                </DialogHeader>
+                </Button>
+            </>
+        );
+
+    return (
+        <AppModal
+            open={open}
+            onOpenChange={handleClose}
+            size="lg"
+            title={headerTitle}
+            description={headerDescription}
+            footer={footer}
+        >
 
                 {step === 'name' && (
                     <div className="flex flex-col gap-4 py-4">
@@ -879,91 +917,6 @@ export function CampaignModal({
                     </div>
                 )}
 
-                <DialogFooter className="shrink-0 border-t pt-4">
-                    {step === 'name' ? (
-                        <>
-                            <Button
-                                variant="outline"
-                                onClick={() => handleClose(false)}
-                            >
-                                Annuler
-                            </Button>
-                            <Button
-                                onClick={() => setStep('compose')}
-                                disabled={!campaignName.trim()}
-                            >
-                                Suivant
-                                <ArrowRight className="ml-2 h-4 w-4" />
-                            </Button>
-                        </>
-                    ) : step === 'compose' ? (
-                        <>
-                            <Button
-                                variant="outline"
-                                onClick={() => handleClose(false)}
-                                disabled={sending}
-                            >
-                                Annuler
-                            </Button>
-                            <Button
-                                onClick={handleComposeNext}
-                                disabled={count === 0}
-                            >
-                                {incompleteProspects.length > 0
-                                    ? 'Suite'
-                                    : 'Aperçu'}
-                                <ArrowRight className="ml-2 h-4 w-4" />
-                            </Button>
-                        </>
-                    ) : step === 'gaps' ? (
-                        <>
-                            <Button
-                                variant="outline"
-                                onClick={handleBack}
-                                disabled={sending}
-                            >
-                                <ArrowLeft className="mr-2 h-4 w-4" />
-                                Retour
-                            </Button>
-                            <Button
-                                onClick={handleGapsNext}
-                                disabled={count === 0}
-                            >
-                                Aperçu
-                                <ArrowRight className="ml-2 h-4 w-4" />
-                            </Button>
-                        </>
-                    ) : (
-                        <>
-                            <Button
-                                variant="outline"
-                                onClick={handleBack}
-                                disabled={sending}
-                            >
-                                <ArrowLeft className="mr-2 h-4 w-4" />
-                                Retour
-                            </Button>
-                            <Button
-                                variant="outline"
-                                onClick={() => void handleSave(false)}
-                                disabled={sending}
-                            >
-                                Enregistrer en brouillon
-                            </Button>
-                            <Button
-                                onClick={() => void handleSave(true)}
-                                disabled={sending}
-                            >
-                                {sending ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    'Créer et lancer'
-                                )}
-                            </Button>
-                        </>
-                    )}
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+        </AppModal>
     );
 }

@@ -59,52 +59,28 @@ function LinkedInDailyActivitySection({
         unipileMe?.linkedin_tier ?? "standard"
     );
 
-    if (isLoading || !usage) {
-        return (
-            <div className="flex flex-col gap-3 border-t border-border pt-4">
-                <div className="flex items-end justify-between">
-                    <div>
-                        <h4 className="text-[13.5px] font-semibold tracking-[-0.005em]">
-                            Activité du jour
-                        </h4>
-                        <p className="mt-px text-xs text-muted-foreground">
-                            Chargement…
-                        </p>
-                    </div>
-                </div>
-                <div className="space-y-3">
-                    {[0, 1, 2].map((i) => (
-                        <div key={i} className="space-y-2">
-                            <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
-                            <div className="h-1.5 w-full animate-pulse rounded-full bg-muted" />
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
-    }
-
+    // The card structure renders immediately; only the *used* counts load.
     const rows: {
         label: string;
-        used: number;
+        used: number | null;
         max: number;
         note?: ReactNode;
     }[] = [
         {
             label: "Invitations",
-            used: usage.invitations_sent,
+            used: usage?.invitations_sent ?? null,
             max: DAILY_QUOTAS.invitations,
             note: "envoyées",
         },
         {
             label: "Messages",
-            used: usage.messages_sent,
+            used: usage?.messages_sent ?? null,
             max: DAILY_QUOTAS.messages,
             note: "envoyés",
         },
         {
             label: "Vues profil",
-            used: usage.profile_views,
+            used: usage?.profile_views ?? null,
             max: DAILY_QUOTAS.profile_views,
             note: "effectuées",
         },
@@ -130,9 +106,10 @@ function LinkedInDailyActivitySection({
 
             <div className="flex flex-col gap-3.5">
                 {rows.map((row, index) => {
+                    const used = row.used;
                     const widthPct =
-                        row.max > 0
-                            ? Math.min((row.used / row.max) * 100, 100)
+                        used != null && row.max > 0
+                            ? Math.min((used / row.max) * 100, 100)
                             : 0;
                     const stagger = index * 0.1;
 
@@ -145,11 +122,17 @@ function LinkedInDailyActivitySection({
                                 <span
                                     className={cn(
                                         "font-mono text-xs",
-                                        getQuotaColor(row.used, row.max)
+                                        used != null
+                                            ? getQuotaColor(used, row.max)
+                                            : "text-muted-foreground"
                                     )}
                                 >
                                     <span className="text-foreground">
-                                        {row.used}
+                                        {used != null ? (
+                                            used
+                                        ) : (
+                                            <span className="inline-block h-3 w-5 animate-pulse rounded bg-muted align-middle" />
+                                        )}
                                     </span>
                                     <span className="text-muted-foreground">
                                         {" "}
@@ -158,27 +141,31 @@ function LinkedInDailyActivitySection({
                                 </span>
                             </div>
                             <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                                <motion.div
-                                    className={cn(
-                                        "h-full rounded-full",
-                                        getQuotaBarColor(row.used, row.max)
-                                    )}
-                                    initial={
-                                        reduceMotion
-                                            ? { width: `${widthPct}%` }
-                                            : { width: 0 }
-                                    }
-                                    animate={{ width: `${widthPct}%` }}
-                                    transition={
-                                        reduceMotion
-                                            ? { duration: 0 }
-                                            : {
-                                                  duration: 0.8,
-                                                  ease: "easeOut",
-                                                  delay: stagger,
-                                              }
-                                    }
-                                />
+                                {used == null ? (
+                                    <div className="h-full w-1/3 animate-pulse rounded-full bg-muted-foreground/25" />
+                                ) : (
+                                    <motion.div
+                                        className={cn(
+                                            "h-full rounded-full",
+                                            getQuotaBarColor(used, row.max)
+                                        )}
+                                        initial={
+                                            reduceMotion
+                                                ? { width: `${widthPct}%` }
+                                                : { width: 0 }
+                                        }
+                                        animate={{ width: `${widthPct}%` }}
+                                        transition={
+                                            reduceMotion
+                                                ? { duration: 0 }
+                                                : {
+                                                      duration: 0.8,
+                                                      ease: "easeOut",
+                                                      delay: stagger,
+                                                  }
+                                        }
+                                    />
+                                )}
                             </div>
                         </div>
                     );
@@ -208,10 +195,10 @@ function LinkedInDailyActivitySection({
                     </strong>{" "}
                     Les actions sont espacées aléatoirement (3–8 min) pour
                     mimer un usage humain et éviter la détection. Cette
-                    semaine : {usage.invitations_week} / {weeklyCap}{" "}
-                    invitations (réinitialisation lundi). Dépasser ces limites
-                    peut entraîner une restriction temporaire du compte
-                    LinkedIn.
+                    semaine : {usage ? usage.invitations_week : "…"} /{" "}
+                    {weeklyCap} invitations (réinitialisation lundi). Dépasser
+                    ces limites peut entraîner une restriction temporaire du
+                    compte LinkedIn.
                 </div>
             ) : null}
         </div>

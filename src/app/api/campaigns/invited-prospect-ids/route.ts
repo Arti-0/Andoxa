@@ -62,7 +62,9 @@ export const GET = createApiHandler(async (req, ctx) => {
   }
 
   const connectedViaChat = new Set(
-    (chatRows ?? []).map((r) => r.prospect_id).filter(Boolean)
+    (chatRows ?? [])
+      .map((r) => r.prospect_id)
+      .filter((id): id is string => Boolean(id))
   );
 
   const all = new Set<string>([...invitedViaJobs, ...connectedViaChat]);

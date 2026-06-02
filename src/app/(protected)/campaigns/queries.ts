@@ -1,6 +1,7 @@
 ﻿"use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import { useWorkspace } from "@/lib/workspace";
 import type {
@@ -11,6 +12,7 @@ import {
   campaignLabel,
   configFromJobType,
 } from "@/lib/campaigns/types";
+import { resolveSessionLiveStatus } from "@/lib/call-sessions/presence";
 import type {
   Campaign,
   CallSession,
@@ -89,6 +91,7 @@ export function useOrgMembersForCampaigns() {
         name: m.name,
         initials: memberInitials(m.name),
         color: memberColorFor(m.id),
+        avatarUrl: m.avatar_url ?? null,
       }));
     },
     staleTime: FIVE_MIN * 6,
@@ -227,7 +230,13 @@ export function useCampaignJobDetail(jobId: string | undefined) {
     queryKey: ["campaigns", "job", workspaceId, jobId] as const,
     queryFn: async () => {
       if (!workspaceId || !jobId) return null;
-      const res = await fetch(`/api/campaigns/jobs/${jobId}`, { credentials: "include" });
+      // Fetch the job detail and the per-job stats in parallel rather than
+      // sequentially — the stats request used to wait for the (already
+      // 3-query) detail fetch to finish, roughly doubling the wall-clock load.
+      const [res, stats] = await Promise.all([
+        fetch(`/api/campaigns/jobs/${jobId}`, { credentials: "include" }),
+        fetchJobStats(workspaceId),
+      ]);
       if (res.status === 404) return null;
       if (!res.ok) {
         const json = (await res.json().catch(() => ({}))) as {
@@ -240,15 +249,21 @@ export function useCampaignJobDetail(jobId: string | undefined) {
       };
       const raw = json.data ?? (json as unknown as ApiCampaignJob & { prospects: CampaignJobProspectRow[] });
       const { prospects = [], ...jobRow } = raw;
-      const stats = await fetchJobStats(workspaceId);
       const memberMap = new Map((members.data ?? []).map((m) => [m.id, m]));
       return {
         campaign: mapJob(jobRow as ApiCampaignJob, memberMap, stats),
         prospects,
         apiStatus: jobRow.status,
+        // Extra raw fields the detail-page redesign needs but the design type
+        // (Campaign) doesn't carry.
+        messageTemplate: jobRow.message_template ?? null,
+        startedAt: jobRow.started_at ?? null,
       };
     },
-    enabled: !!workspaceId && !!jobId && !members.isLoading,
+    // Don't block the whole detail load on the org-members query — member
+    // names are a cosmetic chip; the query re-derives the creator name when
+    // members arrive. Only gate on the essentials.
+    enabled: !!workspaceId && !!jobId,
     staleTime: 15 * 1000,
     // Real-time-ish progression: while the job is actively being dispatched
     // (status running/pending), poll every 8 s so the progress bar, prospect
@@ -265,6 +280,55 @@ export function useCampaignJobDetail(jobId: string | undefined) {
   });
 }
 
+// ─── Campaign timeline (detail page chart + activity feed) ───────────────────
+
+export interface CampaignTimelineSeriesPoint {
+  date: string;
+  sent: number;
+  accepted: number;
+  replied: number;
+  refused: number;
+}
+export interface CampaignTimelineEvent {
+  id: string;
+  kind: string;
+  dir?: "sent" | "received";
+  at: string;
+  title: string;
+  body: string;
+  prospect_name: string | null;
+}
+export interface CampaignTimelinePayload {
+  period: string;
+  series: CampaignTimelineSeriesPoint[];
+  events: CampaignTimelineEvent[];
+}
+
+/**
+ * Campaign detail time-series + activity feed for a given period
+ * (7 / 30 / 90 / all — the campaigns-section period keys). Soft-refreshes
+ * every 15s while the job is live so the chart and feed tick up on their own.
+ */
+export function useCampaignTimeline(
+  jobId: string | undefined,
+  period: string,
+  isLive: boolean,
+) {
+  const { workspaceId } = useWorkspace();
+  return useQuery({
+    queryKey: ["campaigns", "timeline", workspaceId, jobId, period] as const,
+    queryFn: () =>
+      getJson<CampaignTimelinePayload>(
+        `/api/campaigns/jobs/${jobId}/timeline?period=${encodeURIComponent(period)}`,
+      ),
+    enabled: !!workspaceId && !!jobId,
+    staleTime: 15 * 1000,
+    placeholderData: keepPreviousData,
+    refetchInterval: isLive ? 15 * 1000 : false,
+    refetchIntervalInBackground: false,
+  });
+}
+
 // ─── Call sessions ───────────────────────────────────────────────────────────
 
 interface ApiCallSession {
@@ -275,6 +339,9 @@ interface ApiCallSession {
   created_at: string;
   ended_at: string | null;
   created_by: string | null;
+  // Presence (migration 20260601130000): who is live + last heartbeat.
+  active_user_id?: string | null;
+  active_heartbeat_at?: string | null;
   // Optional once the list endpoint returns inline stats (see BACKEND.md §2).
   total_count?: number;
   processed?: number;
@@ -306,15 +373,25 @@ function sessionStatusToDesign(s: string): CampaignStatus {
 
 function mapSession(s: ApiCallSession, members: Map<string, Creator>): CallSession {
   const creator = s.created_by ? members.get(s.created_by) : undefined;
+  const processed = s.processed ?? 0;
+  const liveStatus = resolveSessionLiveStatus({
+    status: s.status,
+    activeHeartbeatAt: s.active_heartbeat_at ?? null,
+    endedAt: s.ended_at ?? null,
+    hasProgress: processed > 0,
+  });
+  const activeUser = s.active_user_id ? members.get(s.active_user_id) : undefined;
   return {
     id: s.id,
     kind: "session",
     name: s.title?.trim() || "Session d'appels",
     channel: "phone",
     status: sessionStatusToDesign(s.status),
+    liveStatus,
+    activeUserName: liveStatus === "in_progress" ? (activeUser?.name ?? null) : null,
     date: s.created_at,
     total: s.total_count ?? 0,
-    processed: s.processed ?? 0,
+    processed,
     meetings: s.meetings ?? 0,
     qualifications: s.qualifications ?? 0,
     pickupRate: s.pickup_rate ?? null,
@@ -336,9 +413,46 @@ export function useCallSessions() {
       return (data.items ?? []).map((s) => mapSession(s, memberMap));
     },
     enabled: !!workspaceId && !members.isLoading,
-    staleTime: 30 * 1000,
+    staleTime: 20 * 1000,
+    // Poll so a colleague starting/ending a session elsewhere reflects on this
+    // screen without a manual refresh (presence is heartbeat-derived). 20s is
+    // well under the 60s stale window, so "En cours → En pause" lands promptly.
+    refetchInterval: 20 * 1000,
+    refetchIntervalInBackground: false,
     placeholderData: [],
   });
+}
+
+/**
+ * Keep the current user marked as "present" in a session while the live call
+ * interface is mounted. Pings every 25s (well under the 60s stale window) and
+ * clears presence on unmount. Drives the presence-derived "En cours" tag.
+ */
+export function useSessionHeartbeat(sessionId: string | undefined, active: boolean) {
+  useEffect(() => {
+    if (!sessionId || !active) return;
+    let cancelled = false;
+    const ping = () => {
+      void fetch(`/api/call-sessions/${sessionId}/heartbeat`, {
+        method: "POST",
+        credentials: "include",
+      }).catch(() => {});
+    };
+    ping();
+    const interval = setInterval(() => {
+      if (!cancelled) ping();
+    }, 25_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      // Best-effort "I left" so the card flips to paused promptly.
+      void fetch(`/api/call-sessions/${sessionId}/heartbeat`, {
+        method: "DELETE",
+        credentials: "include",
+        keepalive: true,
+      }).catch(() => {});
+    };
+  }, [sessionId, active]);
 }
 
 export function useCallSessionDetail(sessionId: string | undefined) {
@@ -383,6 +497,9 @@ export function useCampaignKpis(period: Period, creators: string[]) {
       return getJson<KpiSet>(`/api/campaigns/kpis?${qs.toString()}`);
     },
     enabled: !!workspaceId,
+    // Keep the previous period's cards on screen while the new period loads,
+    // so switching periods never flashes skeletons or shifts the layout.
+    placeholderData: keepPreviousData,
     // Campaign batches and webhook deliveries (invite accepted, inbound reply)
     // land in prospect_activity over time. A 5-minute stale window felt like
     // the KPI bar was broken — users launched a batch, saw the campaigns

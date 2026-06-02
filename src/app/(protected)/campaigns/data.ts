@@ -40,6 +40,10 @@ export interface CallSession {
   name: string;
   channel: "phone";
   status: CampaignStatus;
+  /** Presence-derived live state (not_started / in_progress / paused / ended). */
+  liveStatus: "not_started" | "in_progress" | "paused" | "ended";
+  /** Display name of the teammate currently in the session (when in_progress). */
+  activeUserName: string | null;
   date: string;
   total: number;
   processed: number;
@@ -57,6 +61,8 @@ export interface Creator {
   name: string;
   initials: string;
   color: string;
+  /** Profile picture URL when the member has one. */
+  avatarUrl?: string | null;
 }
 
 export const CREATORS: Creator[] = [
@@ -95,12 +101,12 @@ export const INITIAL_CAMPAIGNS: Campaign[] = [
 ];
 
 export const INITIAL_SESSIONS: CallSession[] = [
-  { id: "s1", kind: "session", name: "Session 6 mai · Leads chauds", channel: "phone", status: "ready", date: daysAgo(0), total: 12, processed: 0, meetings: 0, qualifications: 0, pickupRate: null, creator: "sb", creatorName: "Sebastian Bodin" },
-  { id: "s2", kind: "session", name: "Session 5 mai · Trial expiring", channel: "phone", status: "running", date: daysAgo(1), total: 18, processed: 7, meetings: 2, qualifications: 4, pickupRate: 71, creator: "sb", creatorName: "Sebastian Bodin" },
-  { id: "s3", kind: "session", name: "Session 30 avr. · MQL T1", channel: "phone", status: "completed", date: daysAgo(6), total: 14, processed: 14, meetings: 4, qualifications: 9, pickupRate: 79, creator: "an", creatorName: "Andréas Bodin" },
-  { id: "s4", kind: "session", name: "Session 24 avr. · Inbound demos", channel: "phone", status: "completed", date: daysAgo(12), total: 10, processed: 10, meetings: 5, qualifications: 8, pickupRate: 90, creator: "sb", creatorName: "Sebastian Bodin" },
-  { id: "s5", kind: "session", name: "Session 18 avr. · Renewals Q2", channel: "phone", status: "completed", date: daysAgo(18), total: 22, processed: 22, meetings: 3, qualifications: 11, pickupRate: 55, creator: "sb", creatorName: "Sebastian Bodin" },
-  { id: "s6", kind: "session", name: "Session 11 avr. · Cold call CTO", channel: "phone", status: "completed", date: daysAgo(25), total: 30, processed: 30, meetings: 2, qualifications: 7, pickupRate: 43, creator: "an", creatorName: "Andréas Bodin" },
+  { id: "s1", kind: "session", name: "Session 6 mai · Leads chauds", channel: "phone", status: "ready", liveStatus: "not_started", activeUserName: null, date: daysAgo(0), total: 12, processed: 0, meetings: 0, qualifications: 0, pickupRate: null, creator: "sb", creatorName: "Sebastian Bodin" },
+  { id: "s2", kind: "session", name: "Session 5 mai · Trial expiring", channel: "phone", status: "running", liveStatus: "in_progress", activeUserName: "Sebastian Bodin", date: daysAgo(1), total: 18, processed: 7, meetings: 2, qualifications: 4, pickupRate: 71, creator: "sb", creatorName: "Sebastian Bodin" },
+  { id: "s3", kind: "session", name: "Session 30 avr. · MQL T1", channel: "phone", status: "completed", liveStatus: "ended", activeUserName: null, date: daysAgo(6), total: 14, processed: 14, meetings: 4, qualifications: 9, pickupRate: 79, creator: "an", creatorName: "Andréas Bodin" },
+  { id: "s4", kind: "session", name: "Session 24 avr. · Inbound demos", channel: "phone", status: "completed", liveStatus: "ended", activeUserName: null, date: daysAgo(12), total: 10, processed: 10, meetings: 5, qualifications: 8, pickupRate: 90, creator: "sb", creatorName: "Sebastian Bodin" },
+  { id: "s5", kind: "session", name: "Session 18 avr. · Renewals Q2", channel: "phone", status: "completed", liveStatus: "ended", activeUserName: null, date: daysAgo(18), total: 22, processed: 22, meetings: 3, qualifications: 11, pickupRate: 55, creator: "sb", creatorName: "Sebastian Bodin" },
+  { id: "s6", kind: "session", name: "Session 11 avr. · Cold call CTO", channel: "phone", status: "completed", liveStatus: "ended", activeUserName: null, date: daysAgo(25), total: 30, processed: 30, meetings: 2, qualifications: 7, pickupRate: 43, creator: "an", creatorName: "Andréas Bodin" },
 ];
 
 export type Period = "7" | "30" | "90" | "all";
@@ -230,12 +236,14 @@ export const PERF_COLORS: Record<PerfTier, { fg: string; bg: string }> = {
 export function formatRelativeDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
-  const now = new Date("2026-05-06T12:00:00");
-  const diffMs = now.getTime() - d.getTime();
+  if (Number.isNaN(d.getTime())) return "—";
+  const diffMs = Date.now() - d.getTime();
+  const diffMin = diffMs / (1000 * 60);
   const diffH = diffMs / (1000 * 60 * 60);
   const diffD = Math.floor(diffH / 24);
-  if (diffH < 1) return "à l'instant";
-  if (diffH < 24) return `il y a ${Math.floor(diffH)}h`;
+  // "à l'instant" = strictly less than 30 minutes ago.
+  if (diffMin < 30) return "à l'instant";
+  if (diffH < 24) return `il y a ${Math.max(1, Math.floor(diffH))}h`;
   if (diffD === 1) return "hier";
   if (diffD < 7) return `il y a ${diffD}j`;
   const months = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];

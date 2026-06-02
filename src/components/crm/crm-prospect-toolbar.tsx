@@ -8,6 +8,7 @@ import {
   X,
   Check,
   Settings2,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CRM_SOURCE_FILTER_OPTIONS } from "./crm-source-filters";
@@ -35,6 +36,8 @@ interface CrmProspectToolbarProps {
   onSourceFilterChange: (values: string[]) => void;
   sortBy: ProspectSortKey;
   onSortByChange: (key: ProspectSortKey) => void;
+  /** True while a search/filter query is in flight — shows an inline spinner. */
+  loading?: boolean;
   className?: string;
 }
 
@@ -50,6 +53,7 @@ export function CrmProspectToolbar({
   onSourceFilterChange,
   sortBy,
   onSortByChange,
+  loading = false,
   className,
 }: CrmProspectToolbarProps) {
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -122,7 +126,11 @@ export function CrmProspectToolbar({
       {/* Search + source filters + sort */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5">
-          <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          {loading ? (
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-600" />
+          ) : (
+            <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          )}
           <input
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}

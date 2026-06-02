@@ -132,8 +132,13 @@ export function GoogleCalendarSettingsSection() {
     return (
         <IntegrationCard
             logo={
-                <div className="flex size-9 items-center justify-center rounded-[10px] border border-border bg-card">
-                    <GoogleLogo className="size-5" />
+                <div className="flex size-9 items-center justify-center overflow-hidden rounded-[10px] border border-border bg-card">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                        src="/logos/google-calendar.svg"
+                        alt="Google Calendar"
+                        className="size-5"
+                    />
                 </div>
             }
             name="Google Calendar"

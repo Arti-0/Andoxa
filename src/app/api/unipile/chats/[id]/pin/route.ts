@@ -25,7 +25,12 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
 
   const body = await parseBody<{ pinned?: boolean }>(req);
   const pinned = body.pinned === true;
+  const pinnedAt = pinned ? new Date().toISOString() : null;
 
+  // Pin is a plain boolean that must persist for ANY conversation. If the chat
+  // already has a linkage row, update it; otherwise create a prospect-less row
+  // that exists purely to carry `pinned_at` (the chat→prospect mapping ignores
+  // rows with a null prospect_id, so this stays "hors CRM").
   const { data: row, error: findErr } = await ctx.supabase
     .from("unipile_chat_prospects")
     .select("id")
@@ -33,16 +38,25 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
     .eq("unipile_chat_id", chatId)
     .maybeSingle();
 
-  if (findErr || !row) throw Errors.notFound("Conversation CRM");
+  if (findErr) throw Errors.internal(findErr.message);
 
-  const { error } = await ctx.supabase
-    .from("unipile_chat_prospects")
-    .update({
-      pinned_at: pinned ? new Date().toISOString() : null,
-    })
-    .eq("id", row.id);
-
-  if (error) throw Errors.internal(error.message);
+  if (row) {
+    const { error } = await ctx.supabase
+      .from("unipile_chat_prospects")
+      .update({ pinned_at: pinnedAt })
+      .eq("id", row.id);
+    if (error) throw Errors.internal(error.message);
+  } else {
+    const { error } = await ctx.supabase
+      .from("unipile_chat_prospects")
+      .insert({
+        organization_id: ctx.workspaceId,
+        unipile_chat_id: chatId,
+        prospect_id: null,
+        pinned_at: pinnedAt,
+      });
+    if (error) throw Errors.internal(error.message);
+  }
 
   return { ok: true as const, pinned };
 });

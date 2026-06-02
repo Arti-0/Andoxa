@@ -20,6 +20,7 @@ export interface TopDealRow {
   last_activity_label: string;
   last_activity_at: string;
   initials: string;
+  avatar_url: string | null;
   href: string;
 }
 
@@ -79,7 +80,7 @@ export async function getTopDeals(
   const { data, error } = await ctx.supabase
     .from("prospects")
     .select(
-      "id, full_name, company, status, last_contact, updated_at, created_at",
+      "id, full_name, company, status, last_contact, updated_at, created_at, enrichment_metadata",
     )
     .eq("organization_id", ctx.workspaceId)
     .is("deleted_at", null)
@@ -110,17 +111,23 @@ export async function getTopDeals(
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
 
-  return scored.map(({ prospect, status, lastActivityIso }) => ({
-    prospect_id: prospect.id,
-    name: prospect.full_name ?? "Sans nom",
-    company: prospect.company,
-    stage: status,
-    stage_label: labelByKey.get(status) ?? status,
-    last_activity_label: relativeFr(lastActivityIso, lastActivityIso),
-    last_activity_at: lastActivityIso,
-    initials: computeInitials(prospect.full_name),
-    href: `/prospect/${prospect.id}`,
-  }));
+  return scored.map(({ prospect, status, lastActivityIso }) => {
+    const enrichment = prospect.enrichment_metadata as
+      | { profile_picture_url?: string | null }
+      | null;
+    return {
+      prospect_id: prospect.id,
+      name: prospect.full_name ?? "Sans nom",
+      company: prospect.company,
+      stage: status,
+      stage_label: labelByKey.get(status) ?? status,
+      last_activity_label: relativeFr(lastActivityIso, lastActivityIso),
+      last_activity_at: lastActivityIso,
+      initials: computeInitials(prospect.full_name),
+      avatar_url: enrichment?.profile_picture_url ?? null,
+      href: `/prospect/${prospect.id}`,
+    };
+  });
 }
 
 export const GET = createApiHandler(async (req, ctx) => {

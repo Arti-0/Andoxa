@@ -2,22 +2,28 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { use, useMemo, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { use, useState } from "react";
+import { ArrowLeft, Check, Copy } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { CampaignJobStatus } from "@/lib/campaigns/types";
-import { computePerf, formatRelativeDate } from "../data";
+import { formatRelativeDate } from "../data";
 import {
-  Avatar,
   ChannelPill,
-  ProgressBar,
   StatusBadge,
   TypeBadge,
 } from "../primitives";
 import {
+  CampaignKpiFunnel,
+  CampaignChart,
+  CampaignMessageCard,
+  CampaignProspectsTable,
+  CampaignActivity,
+} from "./detail-sections";
+import {
   useCampaignJobDetail,
+  useCampaignTimeline,
   useCancelJob,
   useDuplicateJob,
   useLaunchJob,
@@ -25,17 +31,13 @@ import {
   useUpdateJobStatus,
 } from "../queries";
 
-function formatProspectProcessedAt(iso: string | null): string {
-  if (!iso) return "—";
-  try {
-    return new Intl.DateTimeFormat("fr-FR", {
-      dateStyle: "short",
-      timeStyle: "short",
-    }).format(new Date(iso));
-  } catch {
-    return "—";
-  }
-}
+type CampaignPeriod = "7" | "30" | "90" | "all";
+const PERIOD_OPTIONS: { id: CampaignPeriod; label: string }[] = [
+  { id: "7", label: "7 jours" },
+  { id: "30", label: "30 jours" },
+  { id: "90", label: "90 jours" },
+  { id: "all", label: "Tout" },
+];
 
 export default function Campaign2DetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -52,13 +54,12 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
     onConfirm: () => void;
   } | null>(null);
 
-  const creatorChip = useMemo(() => {
-    const cId = detail.data?.campaign.creator;
-    if (!cId) return undefined;
-    return members.data?.find((m) => m.id === cId);
-  }, [detail.data?.campaign.creator, members.data]);
+  // Timeline period — same keys as the campaigns-section KPI bar (7/30/90/all).
+  const [timelinePeriod, setTimelinePeriod] = useState<CampaignPeriod>("30");
+  const apiStatusNow = detail.data?.apiStatus;
+  const timelineLive = apiStatusNow === "running" || apiStatusNow === "pending";
+  const timeline = useCampaignTimeline(id, timelinePeriod, timelineLive);
 
-  const perf = detail.data?.campaign ? computePerf(detail.data.campaign) : null;
   const busy =
     duplicateJob.isPending ||
     updateStatus.isPending ||
@@ -136,16 +137,14 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
     });
   };
 
-  const onDuplicate = async () => {
-    if (busy) return;
-    try {
-      const raw = await duplicateJob.mutateAsync(id);
-      const nid = (raw as { data?: { id?: string } })?.data?.id;
-      toast.success(`« ${campaign.name} » dupliquée`);
-      if (nid) router.push(`/campaigns/${nid}`);
-    } catch {
-      /* toast in hook */
-    }
+  // Duplicate = open the creation wizard prefilled (handled on the list page),
+  // not a direct row create. We route there with ?duplicate=<id>; the lock /
+  // "Dupliqué ✓" state below gives immediate feedback before the nav.
+  const [duplicated, setDuplicated] = useState(false);
+  const onDuplicate = () => {
+    if (busy || duplicated) return;
+    setDuplicated(true);
+    router.push(`/campaigns?duplicate=${id}`);
   };
 
   return (
@@ -182,8 +181,22 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
               Reprendre
             </Button>
           )}
-          <Button variant="outline" disabled={busy} onClick={onDuplicate}>
-            Dupliquer
+          <Button
+            variant="outline"
+            disabled={busy || duplicated}
+            onClick={onDuplicate}
+          >
+            {duplicated ? (
+              <>
+                <Check className="size-3.5" />
+                Dupliqué
+              </>
+            ) : (
+              <>
+                <Copy className="size-3.5" />
+                Dupliquer
+              </>
+            )}
           </Button>
           <Button
             variant="destructive"
@@ -207,83 +220,50 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card label="Prospects ciblés" value={campaign.total} sub="dans la liste" />
-        <Card
-          label="Traités"
-          value={`${campaign.processed}/${campaign.total}`}
-          sub={`${Math.round((campaign.processed / Math.max(1, campaign.total)) * 100)}% complété`}
-        />
-        <Card
-          label="Performance"
-          value={perf ? `${perf.rate.toFixed(0)}%` : "—"}
-          sub={perf ? perf.label : "en attente"}
-        />
-      </div>
-
-      <div className="rounded-xl border bg-card p-5">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          Progression
-        </h2>
-        <ProgressBar value={campaign.processed} max={Math.max(1, campaign.total)} height={8} />
-        <div className="mt-2 flex justify-between text-[12.5px] text-muted-foreground tabular-nums">
-          <span>{campaign.processed} traités</span>
-          <span>{Math.max(0, campaign.total - campaign.processed)} restants</span>
+      {/* Period selector — scopes the chart + activity feed below. */}
+      <div className="flex items-center justify-end">
+        <div className="inline-flex rounded-lg border bg-card p-0.5">
+          {PERIOD_OPTIONS.map((o) => (
+            <button
+              key={o.id}
+              onClick={() => setTimelinePeriod(o.id)}
+              className={`rounded-md px-2.5 py-1 text-[12.5px] font-medium transition-colors ${
+                timelinePeriod === o.id
+                  ? "bg-[#E8F0FD] text-[#003EA3]"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="rounded-xl border bg-card p-5">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          Créateur
-        </h2>
-        <div className="flex items-center gap-3">
-          <Avatar creator={creatorChip} size={32} />
-          <div>
-            <div className="text-[14px] font-semibold">{campaign.creatorName}</div>
-            <div className="text-[12px] text-muted-foreground">Auteur de la campagne</div>
-          </div>
-        </div>
-      </div>
+      <CampaignKpiFunnel campaign={campaign} isLive={apiStatus === "running" || apiStatus === "pending"} />
 
-      <div className="rounded-xl border bg-card p-5 overflow-x-auto">
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          Prospects
-        </h2>
-        {prospects.length === 0 ? (
+      <CampaignChart
+        type={campaign.type}
+        series={timeline.data?.series ?? []}
+        loading={timeline.isPending}
+      />
+
+      <CampaignMessageCard type={campaign.type} template={detail.data.messageTemplate} />
+
+      {prospects.length === 0 ? (
+        <div className="rounded-xl border bg-card p-5">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            Prospects
+          </h2>
           <p className="text-[13px] text-muted-foreground">Aucun prospect dans cette campagne.</p>
-        ) : (
-          <table className="w-full min-w-[480px] text-left text-[13px]">
-            <thead>
-              <tr className="border-b text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                <th className="pb-3 pr-3 font-semibold">Prospect</th>
-                <th className="pb-3 pr-3 font-semibold">Statut</th>
-                <th className="pb-3 pr-3 font-semibold">Traitée le</th>
-                <th className="pb-3 font-semibold">Erreur</th>
-              </tr>
-            </thead>
-            <tbody>
-              {prospects.map((p) => (
-                <tr key={p.id} className="border-b border-border/60 last:border-0">
-                  <td className="py-3 pr-3 align-top font-medium">{p.prospect_name}</td>
-                  <td className="py-3 pr-3 align-top capitalize text-muted-foreground">{p.status}</td>
-                  <td className="py-3 pr-3 align-top tabular-nums text-muted-foreground">
-                    {formatProspectProcessedAt(p.processed_at)}
-                  </td>
-                  <td className="py-3 align-top text-destructive">
-                    {p.error ? (
-                      <span className="line-clamp-2" title={p.error}>
-                        {p.error}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+        </div>
+      ) : (
+        <CampaignProspectsTable rows={prospects} campaignName={campaign.name} />
+      )}
+
+      <CampaignActivity
+        events={timeline.data?.events ?? []}
+        loading={timeline.isPending}
+      />
 
       <ConfirmDialog
         open={!!confirm}
@@ -322,18 +302,6 @@ function BackLink() {
       <ArrowLeft className="size-3.5" />
       Retour aux campagnes
     </Link>
-  );
-}
-
-function Card({ label, value, sub }: { label: string; value: React.ReactNode; sub: string }) {
-  return (
-    <div className="rounded-xl border bg-card p-4">
-      <div className="text-[11.5px] font-medium uppercase tracking-wider text-muted-foreground">
-        {label}
-      </div>
-      <div className="mt-1.5 text-2xl font-semibold tabular-nums tracking-tight">{value}</div>
-      <div className="mt-0.5 text-[12px] text-muted-foreground">{sub}</div>
-    </div>
   );
 }
 

@@ -143,13 +143,109 @@ export function ProfileSettingsSection({
         linkedinData?.avatar_url ??
         null;
 
+    const headerName = displayName || name || "Votre profil";
+    const initials =
+        headerName
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((s) => s[0]?.toUpperCase())
+            .join("") || "?";
+    const linkedinHref = linkedinData?.linkedin_url
+        ? linkedinData.linkedin_url.startsWith("http")
+            ? linkedinData.linkedin_url
+            : `https://www.linkedin.com/in/${linkedinData.linkedin_url
+                  .replace(/^.*\/in\//i, "")
+                  .replace(/\/?$/, "")}`
+        : null;
+
     return (
         <SettingsCard
             title="Profil"
             description="Informations de connexion et profil public"
             icon={<User />}
         >
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-5">
+                {/* Identity header — avatar + name + headline, mirroring the
+                    organisation Identity card for a consistent look. */}
+                <div className="flex items-start gap-4">
+                    <div className="relative shrink-0">
+                        {linkedinLoading ? (
+                            <div className="size-[72px] animate-pulse rounded-full bg-muted" />
+                        ) : displayAvatar ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                                src={displayAvatar}
+                                alt=""
+                                className="size-[72px] rounded-full border border-border object-cover"
+                            />
+                        ) : (
+                            <div className="flex size-[72px] items-center justify-center rounded-full bg-primary/10 text-xl font-bold tracking-[-0.02em] text-primary">
+                                {initials}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                        {linkedinLoading ? (
+                            <div className="space-y-2 pt-1">
+                                <div className="h-4 w-40 animate-pulse rounded bg-muted" />
+                                <div className="h-3 w-56 animate-pulse rounded bg-muted" />
+                            </div>
+                        ) : (
+                            <>
+                                <p className="truncate text-[15px] font-semibold tracking-[-0.01em] text-foreground">
+                                    {headerName}
+                                </p>
+                                {displayHeadline ? (
+                                    <p className="mt-0.5 line-clamp-2 text-[13px] leading-[1.45] text-muted-foreground">
+                                        {displayHeadline}
+                                    </p>
+                                ) : (
+                                    <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
+                                        {email ?? ""}
+                                    </p>
+                                )}
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    {linkedinHref ? (
+                                        <a
+                                            href={linkedinHref}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 text-[13px] font-medium text-foreground underline-offset-4 hover:underline"
+                                        >
+                                            <Linkedin className="size-3.5" />
+                                            Voir mon profil LinkedIn
+                                            <ExternalLink className="size-3" />
+                                        </a>
+                                    ) : null}
+                                    {linkedinData?.linkedin_url ||
+                                    linkedinData?.enriched ? (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-7 gap-1.5 px-2.5"
+                                            onClick={handleEnrich}
+                                            disabled={enriching}
+                                        >
+                                            {enriching ? (
+                                                <Loader2 className="size-3.5 animate-spin" />
+                                            ) : (
+                                                <Sparkles className="size-3.5" />
+                                            )}
+                                            Actualiser
+                                        </Button>
+                                    ) : null}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                <div className="h-px bg-border" />
+
+                {/* Editable fields */}
                 <div className="space-y-2">
                     <Label htmlFor="full_name" className={settingsLabelClass}>
                         Nom complet
@@ -174,80 +270,10 @@ export function ProfileSettingsSection({
                             "cursor-not-allowed opacity-70"
                         )}
                     />
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    <p className="text-xs text-muted-foreground">
                         L&apos;e-mail est lié à votre compte et ne peut pas être
                         modifié ici.
                     </p>
-                </div>
-
-                <div className="space-y-3 border-t border-zinc-200 pt-4 dark:border-white/10">
-                    {linkedinLoading ? (
-                        <div className="flex items-center gap-2 py-2 text-sm text-zinc-500 dark:text-zinc-400">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Chargement du profil…
-                        </div>
-                    ) : linkedinData?.linkedin_url || linkedinData?.enriched ? (
-                        <div className="flex flex-col gap-3 pt-1">
-                            <div className="flex items-start gap-3 rounded-lg border border-zinc-200 p-3 dark:border-white/10">
-                                {displayAvatar ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                        src={displayAvatar}
-                                        alt=""
-                                        className="h-12 w-12 rounded-full object-cover"
-                                    />
-                                ) : (
-                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
-                                        <Linkedin className="h-6 w-6 text-zinc-400" />
-                                    </div>
-                                )}
-                                <div className="min-w-0 flex-1">
-                                    {displayName && (
-                                        <p className="font-medium text-zinc-900 dark:text-white">
-                                            {displayName}
-                                        </p>
-                                    )}
-                                    {displayHeadline && (
-                                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                                            {displayHeadline}
-                                        </p>
-                                    )}
-                                    {linkedinData?.linkedin_url && (
-                                        <a
-                                            href={
-                                                linkedinData.linkedin_url.startsWith(
-                                                    "http"
-                                                )
-                                                    ? linkedinData.linkedin_url
-                                                    : `https://www.linkedin.com/in/${linkedinData.linkedin_url.replace(/^.*\/in\//i, "").replace(/\/?$/, "")}`
-                                            }
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-zinc-900 underline-offset-4 hover:underline dark:text-white"
-                                        >
-                                            Voir mon profil LinkedIn
-                                            <ExternalLink className="h-3 w-3" />
-                                        </a>
-                                    )}
-                                </div>
-                            </div>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="w-fit gap-2 border-zinc-200 bg-transparent dark:border-white/10"
-                                onClick={handleEnrich}
-                                disabled={enriching}
-                            >
-                                {enriching ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    <Sparkles className="h-4 w-4" />
-                                )}
-                                Actualiser le profil
-                            </Button>
-                        </div>
-                    ) : null}
                 </div>
 
                 {error && (

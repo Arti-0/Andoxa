@@ -316,3 +316,30 @@ export function useDuplicateTemplate() {
     },
   });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Booking URL — the user's public booking link, set on the Calendar page.
+// Used by the template editor preview so {lien_booking} renders the real link
+// instead of a placeholder.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function useBookingUrl(): string | null {
+  const { data } = useQuery({
+    queryKey: ["booking-slug"],
+    queryFn: async () => {
+      const res = await fetch("/api/booking/slug", { credentials: "include" });
+      if (!res.ok) return null;
+      const json = await res.json();
+      return (json.data ?? json) as {
+        booking_slug: string | null;
+        booking_public_path: string | null;
+      };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const path = data?.booking_public_path ?? null;
+  if (!path) return null;
+  const origin =
+    typeof window !== "undefined" ? window.location.origin : "https://andoxa.fr";
+  return `${origin}/booking/${path.replace(/^\/+|\/+$/g, "")}`;
+}

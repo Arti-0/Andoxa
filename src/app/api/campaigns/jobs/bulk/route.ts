@@ -97,7 +97,17 @@ export const POST = createApiHandler(async (req, ctx) => {
           throw new Error("Statut invalide");
         }
         const updates: CampaignJobUpdate = { status: op.status };
-        if (op.status === "running") updates.started_at = new Date().toISOString();
+        // Only stamp started_at on the first run — resuming must not reset the
+        // campaign's launch date (see jobs/[id] PATCH for rationale).
+        if (op.status === "running") {
+          const { data: existing } = await supabase
+            .from("campaign_jobs")
+            .select("started_at")
+            .eq("id", op.id)
+            .eq("organization_id", ws)
+            .single();
+          if (!existing?.started_at) updates.started_at = new Date().toISOString();
+        }
         const { data, error } = await supabase
           .from("campaign_jobs")
           .update(updates)
@@ -120,7 +130,7 @@ export const POST = createApiHandler(async (req, ctx) => {
         }
         const { error } = await supabase
           .from("campaign_jobs")
-          .update({ status: "failed" })
+          .update({ deleted_at: new Date().toISOString() } as CampaignJobUpdate)
           .eq("id", op.id)
           .eq("organization_id", ws);
         if (error) throw new Error("Suppression impossible");

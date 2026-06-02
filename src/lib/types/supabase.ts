@@ -899,7 +899,7 @@ export interface Database {
             unipile_chat_prospects: {
                 Row: {
                     id: string;
-                    prospect_id: string;
+                    prospect_id: string | null;
                     unipile_chat_id: string;
                     organization_id: string;
                     created_at: string | null;
@@ -908,7 +908,7 @@ export interface Database {
                 };
                 Insert: {
                     id?: string;
-                    prospect_id: string;
+                    prospect_id?: string | null;
                     unipile_chat_id: string;
                     organization_id: string;
                     created_at?: string | null;
@@ -917,7 +917,7 @@ export interface Database {
                 };
                 Update: {
                     id?: string;
-                    prospect_id?: string;
+                    prospect_id?: string | null;
                     unipile_chat_id?: string;
                     organization_id?: string;
                     created_at?: string | null;

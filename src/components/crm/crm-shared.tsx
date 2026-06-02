@@ -21,6 +21,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
+  LinkedInLogo,
+  WhatsAppLogo,
+  CalendarLogo,
+  CsvLogo,
+  AndoxaLogo,
+} from "./brand-logos";
+import type { ComponentType } from "react";
+import {
   PROSPECT_STATUS_LABELS,
   type Prospect,
   type ProspectStatus,
@@ -144,10 +152,15 @@ export function useDynamicStatusConfig(): {
    as tolerated extras with their own pill.
    ============================================================ */
 
+/** Inline brand-logo component signature (see brand-logos.tsx). */
+type BrandLogo = ComponentType<{ size?: number; className?: string }>;
+
 export interface SourceConfig {
   label: string;
   short: string;
   icon: LucideIcon;
+  /** Real brand/provider mark rendered in pills & list rows. */
+  Logo?: BrandLogo;
   /** Tailwind text color for the icon */
   iconColor: string;
   /** Tailwind bg for the pill tint */
@@ -159,6 +172,7 @@ const SOURCE_CONFIG: Record<string, SourceConfig> = {
     label: "LinkedIn · Extension",
     short: "LinkedIn",
     icon: Globe,
+    Logo: LinkedInLogo,
     iconColor: "text-[#0a66c2]",
     tint: "bg-[#e8f1fa] dark:bg-[#0a66c2]/15",
   },
@@ -166,6 +180,7 @@ const SOURCE_CONFIG: Record<string, SourceConfig> = {
     label: "LinkedIn",
     short: "LinkedIn",
     icon: Globe,
+    Logo: LinkedInLogo,
     iconColor: "text-[#0a66c2]",
     tint: "bg-[#e8f1fa] dark:bg-[#0a66c2]/15",
   },
@@ -173,6 +188,7 @@ const SOURCE_CONFIG: Record<string, SourceConfig> = {
     label: "WhatsApp",
     short: "WhatsApp",
     icon: MessageCircle,
+    Logo: WhatsAppLogo,
     iconColor: "text-emerald-600",
     tint: "bg-emerald-50 dark:bg-emerald-900/20",
   },
@@ -180,6 +196,7 @@ const SOURCE_CONFIG: Record<string, SourceConfig> = {
     label: "Booking",
     short: "Booking",
     icon: Calendar,
+    Logo: CalendarLogo,
     iconColor: "text-violet-600",
     tint: "bg-violet-50 dark:bg-violet-900/20",
   },
@@ -194,20 +211,31 @@ const SOURCE_CONFIG: Record<string, SourceConfig> = {
     label: "Import CSV",
     short: "CSV",
     icon: Upload,
-    iconColor: "text-slate-600",
-    tint: "bg-slate-100 dark:bg-slate-800/60",
+    Logo: CsvLogo,
+    iconColor: "text-emerald-600",
+    tint: "bg-emerald-50 dark:bg-emerald-900/20",
+  },
+  xlsx: {
+    label: "Import Excel",
+    short: "Excel",
+    icon: Upload,
+    Logo: CsvLogo,
+    iconColor: "text-emerald-600",
+    tint: "bg-emerald-50 dark:bg-emerald-900/20",
   },
   import: {
     label: "Import",
     short: "Import",
     icon: Upload,
-    iconColor: "text-slate-600",
-    tint: "bg-slate-100 dark:bg-slate-800/60",
+    Logo: CsvLogo,
+    iconColor: "text-emerald-600",
+    tint: "bg-emerald-50 dark:bg-emerald-900/20",
   },
   manual: {
     label: "Manuel",
     short: "Manuel",
     icon: Edit,
+    Logo: AndoxaLogo,
     iconColor: "text-slate-600",
     tint: "bg-slate-100 dark:bg-slate-800/60",
   },
@@ -221,10 +249,11 @@ const SOURCE_CONFIG: Record<string, SourceConfig> = {
 };
 
 const FALLBACK_SOURCE: SourceConfig = {
-  label: "Source",
-  short: "Source",
-  icon: MessageSquare,
-  iconColor: "text-slate-500",
+  label: "Manuel",
+  short: "Manuel",
+  icon: Edit,
+  Logo: AndoxaLogo,
+  iconColor: "text-slate-600",
   tint: "bg-slate-100 dark:bg-slate-800/60",
 };
 
@@ -298,6 +327,8 @@ export function SourcePill({
   const [hover, setHover] = useState(false);
   const cfg = getSourceConfig(source);
   const Icon = cfg.icon;
+  const Logo = cfg.Logo;
+  const logoPx = size === "lg" ? 14 : 12;
   const tooltip = list
     ? `Importé${importedAt ? " le " + importedAt : ""} dans la liste « ${list} »`
     : null;
@@ -318,7 +349,11 @@ export function SourcePill({
           size === "lg" ? "px-2.5 py-1 text-xs" : "px-1.5 py-0.5 text-[11px]"
         } ${onClick ? "cursor-pointer hover:border-foreground/30" : ""}`}
       >
-        <Icon className={`h-3 w-3 ${cfg.iconColor}`} />
+        {Logo ? (
+          <Logo size={logoPx} className="shrink-0" />
+        ) : (
+          <Icon className={`h-3 w-3 ${cfg.iconColor}`} />
+        )}
         {size === "lg" ? cfg.label : cfg.short}
       </span>
       {hover && tooltip && (
@@ -344,29 +379,33 @@ export function ChannelDot({
   kind: string;
   size?: number;
 }) {
-  const cfg = getSourceConfig(kind);
-  const letter =
-    kind === "whatsapp"
-      ? "W"
-      : kind === "linkedin" ||
-          kind === "linkedin_extension" ||
-          kind === "linkedin_manual"
-        ? "in"
-        : kind === "booking"
-          ? "B"
-          : "M";
+  // Normalise the channel kind to a source config key so LinkedIn variants
+  // all resolve to the LinkedIn mark.
+  const normalized =
+    kind === "linkedin_extension" || kind === "linkedin_manual"
+      ? "linkedin"
+      : kind;
+  const cfg = getSourceConfig(normalized);
+  const Logo = cfg.Logo;
   return (
     <span
       title={cfg.label}
-      className={`inline-flex items-center justify-center rounded-md font-bold leading-none ${cfg.tint} ${cfg.iconColor}`}
-      style={{
-        width: size,
-        height: size,
-        fontSize: Math.max(10, Math.round(size * 0.6)),
-        letterSpacing: "-0.02em",
-      }}
+      className={`inline-flex items-center justify-center rounded-md ${cfg.tint}`}
+      style={{ width: size, height: size }}
     >
-      {letter}
+      {Logo ? (
+        <Logo size={Math.round(size * 0.62)} className="shrink-0" />
+      ) : (
+        <span
+          className={`font-bold leading-none ${cfg.iconColor}`}
+          style={{
+            fontSize: Math.max(10, Math.round(size * 0.5)),
+            letterSpacing: "-0.02em",
+          }}
+        >
+          {cfg.short.charAt(0)}
+        </span>
+      )}
     </span>
   );
 }
@@ -493,10 +532,36 @@ export function initials(name: string): string {
     .join("");
 }
 
+/**
+ * LinkedIn serves a generic grey "ghost" silhouette for profiles without a
+ * real photo. Those URLs get stored during enrichment and load successfully,
+ * so the avatar renders as a filled grey square instead of falling back to
+ * initials. Detect the known placeholder shapes and treat them as "no photo".
+ *
+ * Real photos come from `media.licdn.com/dms/image/...`; ghost/default assets
+ * come from `static.licdn.com/...` or carry a `ghost`/`default` marker.
+ */
+export function isPlaceholderAvatarUrl(url: string | null | undefined): boolean {
+  if (!url) return true;
+  const u = url.toLowerCase();
+  return (
+    u.includes("static.licdn.com") ||
+    u.includes("/ghost") ||
+    u.includes("ghost_person") ||
+    u.includes("default-") ||
+    u.includes("anonymous")
+  );
+}
+
+/** Resolve a usable photo URL, filtering out provider placeholder images. */
+export function resolveAvatarPhoto(url: string | null | undefined): string | null {
+  return url && !isPlaceholderAvatarUrl(url) ? url : null;
+}
+
 export function prospectPhotoFromEnrichment(
   p: Pick<Prospect, "enrichment_metadata">,
 ): string | null {
-  return p.enrichment_metadata?.profile_picture_url ?? null;
+  return resolveAvatarPhoto(p.enrichment_metadata?.profile_picture_url ?? null);
 }
 
 export function NameAvatar({
@@ -510,20 +575,38 @@ export function NameAvatar({
 }) {
   const safe = name?.trim() || "?";
   const bg = avatarColor(safe);
+  // Track load failures so an expired/blocked photo URL (LinkedIn CDN links
+  // expire) cleanly falls back to the coloured initials instead of a broken
+  // image. We render a real <img> rather than a CSS background-image because
+  // provider URLs frequently contain characters (commas, parentheses) that
+  // silently break an unquoted CSS url() — which is why some enriched
+  // prospects showed no photo at all.
+  const [failed, setFailed] = useState(false);
+  const showPhoto = !!photo && !failed;
   return (
     <div
-      className="flex shrink-0 items-center justify-center rounded-full font-semibold leading-none text-white select-none"
+      className="relative flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold leading-none text-white select-none"
       style={{
         width: size,
         height: size,
-        backgroundColor: photo ? "#e5e7eb" : bg,
+        backgroundColor: bg,
         fontSize: Math.round(size * 0.36),
-        backgroundImage: photo ? `url(${photo})` : "none",
-        backgroundSize: "cover",
-        backgroundPosition: "center",
       }}
     >
-      {!photo && initials(safe)}
+      {showPhoto ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={photo!}
+          alt={safe}
+          width={size}
+          height={size}
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        initials(safe)
+      )}
     </div>
   );
 }

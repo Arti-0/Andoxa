@@ -21,6 +21,7 @@ export interface AtRiskRow {
   silence_days: number;
   severity: "high" | "med" | "low";
   initials: string;
+  avatar_url: string | null;
   href: string;
 }
 
@@ -68,7 +69,9 @@ export async function getAtRisk(
 
   const { data, error } = await ctx.supabase
     .from("prospects")
-    .select("id, full_name, company, status, last_contact, updated_at")
+    .select(
+      "id, full_name, company, status, last_contact, updated_at, enrichment_metadata",
+    )
     .eq("organization_id", ctx.workspaceId)
     .is("deleted_at", null)
     .in("status", activeKeys.length > 0 ? activeKeys : ["contacted"])
@@ -92,17 +95,23 @@ export async function getAtRisk(
     .sort((a, b) => b.silence - a.silence)
     .slice(0, limit);
 
-  return rows.map(({ p, status, silence, severity }) => ({
-    prospect_id: p.id,
-    name: p.full_name ?? "Sans nom",
-    company: p.company,
-    stage: status,
-    stage_label: labelByKey.get(status) ?? status,
-    silence_days: silence,
-    severity,
-    initials: computeInitials(p.full_name),
-    href: `/prospect/${p.id}`,
-  }));
+  return rows.map(({ p, status, silence, severity }) => {
+    const enrichment = p.enrichment_metadata as
+      | { profile_picture_url?: string | null }
+      | null;
+    return {
+      prospect_id: p.id,
+      name: p.full_name ?? "Sans nom",
+      company: p.company,
+      stage: status,
+      stage_label: labelByKey.get(status) ?? status,
+      silence_days: silence,
+      severity,
+      initials: computeInitials(p.full_name),
+      avatar_url: enrichment?.profile_picture_url ?? null,
+      href: `/prospect/${p.id}`,
+    };
+  });
 }
 
 export const GET = createApiHandler(async (req, ctx) => {

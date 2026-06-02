@@ -125,10 +125,23 @@ export function KpiBar({
       ? memberDirectory.find((c) => c.id === creators[0])?.name
       : `${creators.length} créateurs`;
 
+  // Header line (horizon + creator scope) stays mounted across loads so
+  // changing the period doesn't unmount it and shift the cards up/down.
+  const headerLine = (
+    <div className="flex items-center gap-2 text-[11.5px] font-medium text-muted-foreground">
+      <span className="inline-flex items-center gap-1.5">
+        <CalendarDays className="size-3" />
+        Indicateurs <strong className="font-semibold text-foreground">{labels.horizon}</strong>
+      </span>
+      <span className="opacity-50">·</span>
+      <span>{creatorScope}</span>
+    </div>
+  );
+
   if (isLoading) {
     return (
       <div className="flex flex-col gap-2">
-        <Skeleton className="h-4 w-64" />
+        {headerLine}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-[108px] rounded-xl" />
@@ -157,14 +170,7 @@ export function KpiBar({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 text-[11.5px] font-medium text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5">
-          <CalendarDays className="size-3" />
-          Indicateurs <strong className="font-semibold text-foreground">{labels.horizon}</strong>
-        </span>
-        <span className="opacity-50">·</span>
-        <span>{creatorScope}</span>
-      </div>
+      {headerLine}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
         <KpiCard label="Invitations LinkedIn" value={kpis.invitations.value} delta={kpis.invitations.delta} spark={kpis.invitations.spark} color="#0A66C2" vsLabel={labels.vsLabel} tooltip={`Invitations LinkedIn envoyées ${labels.horizon}`} />
         <KpiCard label="Taux d'acceptation" value={kpis.acceptanceRate.value} unit="%" delta={kpis.acceptanceRate.delta} spark={kpis.acceptanceRate.spark} color="#0E7A3A" vsLabel={labels.vsLabel} tooltip={`% d'invitations acceptées ${labels.horizon}`} />

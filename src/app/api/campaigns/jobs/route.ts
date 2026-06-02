@@ -285,6 +285,8 @@ export const GET = createApiHandler(async (req, ctx) => {
     .from("campaign_jobs")
     .select("*", { count: "exact" })
     .eq("organization_id", ctx.workspaceId)
+    // Exclude soft-deleted campaigns (deleted_at stamped by DELETE / bulk).
+    .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .range(offset, offset + pageSize - 1);
 

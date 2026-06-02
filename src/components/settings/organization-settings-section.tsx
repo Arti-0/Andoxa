@@ -15,10 +15,6 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-    getUserOrganizations,
-    type Organization,
-} from "@/lib/organizations/utils-client";
-import {
     Loader2,
     UserMinus,
     Shield,
@@ -26,7 +22,6 @@ import {
     Crown,
     Mail,
     Building2,
-    Camera,
     Users,
     Plus,
     MoreHorizontal,
@@ -37,7 +32,6 @@ import {
     CheckCircle2,
     Upload,
     ChevronDown,
-    User as UserIcon,
 } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { settingsLabelClass, SettingsCard } from "./settings-card";
@@ -101,14 +95,6 @@ const ROLE_META: Record<
     },
 };
 
-const PLAN_LABELS: Record<string, string> = {
-    trial: "Essai gratuit",
-    solo: "Solo",
-    team: "Team",
-    custom: "Custom",
-    demo: "Démo",
-};
-
 const ORG_COLORS = [
     "#0052D9",
     "#FF6700",
@@ -143,24 +129,15 @@ function timeAgo(iso: string): string {
     return `il y a ${days} jours`;
 }
 
-export function OrganizationSettingsSection({
-    onSwitch,
-}: {
-    onSwitch?: () => void;
-}) {
+export function OrganizationSettingsSection() {
     const {
         user,
         workspace,
         workspaceId,
         isOwner,
-        switchWorkspace,
         patchWorkspace,
         refresh,
     } = useWorkspace();
-
-    const [orgs, setOrgs] = useState<Organization[]>([]);
-    const [loadingOrgs, setLoadingOrgs] = useState(false);
-    const [orgsError, setOrgsError] = useState<string | null>(null);
 
     const [orgNameInput, setOrgNameInput] = useState("");
     const [orgNameSaving, setOrgNameSaving] = useState(false);
@@ -236,20 +213,6 @@ export function OrganizationSettingsSection({
         }
     };
 
-    const loadOrgs = useCallback(async () => {
-        if (!user?.id) return;
-        setLoadingOrgs(true);
-        setOrgsError(null);
-        try {
-            const list = await getUserOrganizations(user.id);
-            setOrgs(list);
-        } catch {
-            setOrgsError("Impossible de charger les organisations");
-        } finally {
-            setLoadingOrgs(false);
-        }
-    }, [user?.id]);
-
     const loadMembers = useCallback(async () => {
         if (!workspaceId) return;
         setLoadingMembers(true);
@@ -291,10 +254,6 @@ export function OrganizationSettingsSection({
             setLoadingInvitations(false);
         }
     }, [workspaceId, callerIsAdmin]);
-
-    useEffect(() => {
-        loadOrgs();
-    }, [loadOrgs]);
 
     useEffect(() => {
         loadMembers();
@@ -341,11 +300,6 @@ export function OrganizationSettingsSection({
                 throw new Error(data.error ?? "Erreur");
             }
             patchWorkspace({ logo_url: logoUrl });
-            setOrgs((prev) =>
-                prev.map((o) =>
-                    o.id === workspaceId ? { ...o, logo_url: logoUrl } : o
-                )
-            );
             toast.success("Logo mis à jour");
             void refresh();
         } catch (err) {
@@ -498,16 +452,6 @@ export function OrganizationSettingsSection({
             role: inv.role as "admin" | "member",
             message: "",
         });
-    };
-
-    const handleSwitch = async (orgId: string) => {
-        try {
-            await switchWorkspace(orgId);
-            refresh?.();
-            onSwitch?.();
-        } catch (err) {
-            console.error("Switch organization error:", err);
-        }
     };
 
     const handleChangeRole = async (userId: string, newRole: string) => {
@@ -1132,72 +1076,13 @@ export function OrganizationSettingsSection({
                 </SettingsCard>
             )}
 
-            {/* ── Org switcher card ─────────────────────────────────── */}
-            <SettingsCard
-                title="Changer d'organisation"
-                description="Basculez vers une autre organisation à laquelle vous appartenez"
-                icon={<UserIcon />}
-            >
-                {loadingOrgs && orgs.length === 0 ? null : orgsError ? (
-                    <p className="text-sm text-destructive">{orgsError}</p>
-                ) : orgs.length === 0 && !loadingOrgs ? (
-                    <p className="text-sm text-muted-foreground">
-                        Aucune organisation
-                    </p>
-                ) : (
-                    <div className="flex flex-col gap-2">
-                        {orgs.map((org) => {
-                            const isActive = org.id === workspaceId;
-                            const isDeleted = org.status === "deleted";
-                            return (
-                                <div
-                                    key={org.id}
-                                    className="flex flex-col gap-3 rounded-[10px] border border-border p-3 sm:flex-row sm:items-center sm:justify-between"
-                                >
-                                    <div className="min-w-0">
-                                        <p className="truncate font-medium">
-                                            {org.name}
-                                            {isDeleted ? (
-                                                <span className="ml-2 text-xs text-muted-foreground">
-                                                    (supprimée)
-                                                </span>
-                                            ) : null}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground">
-                                            {isActive
-                                                ? "Actif"
-                                                : (PLAN_LABELS[
-                                                      (org.plan ?? "trial").toLowerCase()
-                                                  ] ??
-                                                  org.plan ??
-                                                  "Essai")}
-                                        </p>
-                                    </div>
-                                    {!isActive && (
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() =>
-                                                void handleSwitch(org.id)
-                                            }
-                                        >
-                                            Activer
-                                        </Button>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-            </SettingsCard>
-
             {/* ── Subscription card ─────────────────────────────────── */}
             <SettingsCard
                 title="Abonnement"
                 description="Gérez votre plan et votre facturation"
                 icon={<Zap />}
             >
-                <div className="grid grid-cols-1 gap-4 rounded-[11px] border bg-[color-mix(in_oklab,var(--primary)_4%,var(--card))] p-4 sm:grid-cols-2"
+                <div className="grid grid-cols-1 gap-4 rounded-[11px] border bg-[color-mix(in_oklab,var(--primary)_4%,var(--card))] p-4"
                      style={{
                          borderColor:
                              "color-mix(in oklab, var(--primary) 16%, var(--border))",
@@ -1222,17 +1107,6 @@ export function OrganizationSettingsSection({
                         <div className="mt-1 text-[12.5px] text-muted-foreground">
                             {members.length} siège
                             {members.length > 1 ? "s" : ""}
-                        </div>
-                    </div>
-                    <div>
-                        <div className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                            Crédits restants
-                        </div>
-                        <div className="mt-1.5 text-base font-medium tracking-[-0.01em]">
-                            {workspace?.credits ?? 0}
-                        </div>
-                        <div className="mt-1 text-[12.5px] text-muted-foreground">
-                            Utilisés pour l&apos;enrichissement
                         </div>
                     </div>
                 </div>

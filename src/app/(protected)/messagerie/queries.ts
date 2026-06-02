@@ -15,6 +15,7 @@ import { useMessagingRealtime } from "@/hooks/use-messaging-realtime";
 import type { UnipileChat, UnipileMessage } from "@/lib/unipile/types";
 import type { Prospect } from "@/lib/types/prospects";
 import { createClient } from "@/lib/supabase/client";
+import { resolveAvatarPhoto } from "@/components/crm/crm-shared";
 import { toast } from "@/lib/toast";
 import {
   accountTypeToChannel,
@@ -192,8 +193,13 @@ function mergeConversations(
           : null,
       unread: c.unread_count ?? 0,
       silentDays: silentDaysFrom(c.timestamp),
-      // Prefer enriched profile picture; fall back to Unipile attendee picture.
-      pictureUrl: enrichedPicture ?? c.picture_url ?? null,
+      // Prefer enriched profile picture; fall back to the Unipile attendee
+      // picture. Filter LinkedIn ghost/placeholder URLs (they load fine but
+      // render a grey silhouette) so those fall back to coloured initials.
+      pictureUrl:
+        resolveAvatarPhoto(enrichedPicture) ??
+        resolveAvatarPhoto(c.picture_url ?? null) ??
+        null,
     }];
   });
 
@@ -229,14 +235,38 @@ export function useToggleChatPin() {
         throw new Error(msg);
       }
     },
-    onSuccess: (_data, vars) => {
-      void qc.invalidateQueries({ queryKey: messagerieKeys.chats() });
-      toast.success(
-        vars.pinned ? "Conversation épinglée" : "Conversation désépinglée",
-      );
+    // Optimistic + instant: flip the pin in cache immediately and re-sort, so
+    // the row jumps without waiting on the round-trip. No success toast (the
+    // visual state change is the feedback).
+    onMutate: async (vars) => {
+      await qc.cancelQueries({ queryKey: messagerieKeys.chats() });
+      const previous = qc.getQueryData<Conversation[]>(messagerieKeys.chats());
+      qc.setQueryData<Conversation[]>(messagerieKeys.chats(), (prev) => {
+        if (!prev) return prev;
+        const nowIso = new Date().toISOString();
+        const next = prev.map((c) =>
+          c.id === vars.chatId
+            ? { ...c, pinnedAt: vars.pinned ? nowIso : null }
+            : c,
+        );
+        next.sort((a, b) => {
+          const ap = a.pinnedAt ? 1 : 0;
+          const bp = b.pinnedAt ? 1 : 0;
+          if (ap !== bp) return bp - ap;
+          const ta = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+          const tb = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+          return tb - ta;
+        });
+        return next;
+      });
+      return { previous };
     },
-    onError: (e: Error) => {
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.previous) qc.setQueryData(messagerieKeys.chats(), ctx.previous);
       toast.error(e.message);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: messagerieKeys.chats() });
     },
   });
 }

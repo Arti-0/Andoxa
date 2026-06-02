@@ -24,12 +24,12 @@ import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     Search,
+    Loader2,
     Filter,
     ArrowDown,
     ArrowUp,
     ChevronDown,
     Layers,
-    List as ListIcon,
     Plus,
     X,
     Check,
@@ -40,7 +40,15 @@ import {
     Play,
 } from 'lucide-react';
 import { toast } from '@/lib/toast';
+import { isFeatureEnabled } from '@/lib/config/feature-flags';
 import { ProspectCreateDialog } from '@/components/crm/prospect-create-dialog';
+
+/**
+ * #FF: workflows — the pipeline "Workflow" column (header + cell + its
+ * colgroup track) is hidden until workflows are enterprise-ready. Resolved
+ * once at module load, so gating costs nothing at render time.
+ */
+const SHOW_WORKFLOWS = isFeatureEnabled('workflows');
 import {
     useProspectActions,
     type ProspectMenuItem,
@@ -105,7 +113,6 @@ interface PipelineTabProps {
     initialStatusFilter?: string | null;
 }
 
-type GroupMode = 'grouped' | 'list';
 
 function lastActivityLabel(p: Prospect): string {
     return p.last_activity?.label ?? '—';
@@ -132,7 +139,6 @@ export function PipelineTab({
             : null;
 
     const [search, setSearch] = useState('');
-    const [groupMode, setGroupMode] = useState<GroupMode>('grouped');
     const [filtersOpen, setFiltersOpen] = useState(false);
     const [pipelineSourceFilter, setPipelineSourceFilter] = useState<string[]>(
         []
@@ -156,7 +162,7 @@ export function PipelineTab({
     const rowActions = useProspectActions('prospects-pipeline');
 
     /* ---------- queries ---------- */
-    const { data: prospectsData } = useQuery({
+    const { data: prospectsData, isFetching: prospectsFetching } = useQuery({
         queryKey: [
             'prospects-pipeline',
             workspaceId,
@@ -263,11 +269,6 @@ export function PipelineTab({
         if (cycles.length === 0) return null;
         return Math.round(cycles.reduce((s, v) => s + v, 0) / cycles.length);
     }, [funnelData]);
-
-    const sortedFiltered = useMemo(
-        () => sortProspects(filtered, sortBy),
-        [filtered, sortBy],
-    );
 
     const onFunnelClick = (id: string) => {
         if (funnelFilter === id) {
@@ -395,7 +396,11 @@ export function PipelineTab({
             {/* Action bar */}
             <div className="mb-3.5 flex flex-wrap items-center gap-2.5">
                 <div className="flex w-[320px] max-w-full items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5">
-                    <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                    {prospectsFetching ? (
+                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-600" />
+                    ) : (
+                        <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                    )}
                     <input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
@@ -538,30 +543,9 @@ export function PipelineTab({
                     )}
                 </div>
                 <div className="flex-1" />
-                <div className="inline-flex gap-0.5 rounded-lg border border-border bg-card p-0.5">
-                    {(
-                        [
-                            ['grouped', 'Groupé', Layers],
-                            ['list', 'Liste', ListIcon],
-                        ] as const
-                    ).map(([id, label, Icon]) => {
-                        const active = groupMode === id;
-                        return (
-                            <button
-                                key={id}
-                                onClick={() => setGroupMode(id)}
-                                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12.5px] font-medium ${
-                                    active
-                                        ? 'bg-blue-600 text-white'
-                                        : 'text-muted-foreground'
-                                }`}
-                            >
-                                <Icon className="h-3 w-3" />
-                                {label}
-                            </button>
-                        );
-                    })}
-                </div>
+                {/* The list/group toggle was removed: the flat "Liste" display
+                    duplicated the Prospects + Listes views. Pipeline is always
+                    grouped by stage, which is its distinctive value. */}
                 <button
                     onClick={() => setShowCreate(true)}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-blue-700 max-md:order-last max-md:w-full max-md:justify-center"
@@ -571,8 +555,8 @@ export function PipelineTab({
                 </button>
             </div>
 
-            {/* Body */}
-            {groupMode === 'grouped' ? (
+            {/* Body — always grouped by stage. */}
+            {(
                 <div className="flex flex-col gap-2.5">
                     {pipelineOrder.map((stageId) => {
                         if (funnelFilter && funnelFilter !== stageId)
@@ -612,21 +596,6 @@ export function PipelineTab({
                         );
                     })}
                 </div>
-            ) : (
-                <ContinuousList
-                    rows={sortedFiltered}
-                    onOpenProspect={(p) => router.push(`/prospect/${p.id}`)}
-                    onMove={moveProspect}
-                    rowMenuItems={rowActions.menu}
-                    pillMenu={pillMenu}
-                    setPillMenu={setPillMenu}
-                    rowMenu={rowMenu}
-                    setRowMenu={setRowMenu}
-                    hoverRow={hoverRow}
-                    setHoverRow={setHoverRow}
-                    selected={selected}
-                    toggleSelect={toggleSelect}
-                />
             )}
 
             {filtered.length === 0 && (
@@ -742,7 +711,7 @@ function PipelineSection(p: SectionProps) {
                             <col className="w-[130px]" />
                             <col className="w-[110px]" />
                             <col className="w-[150px]" />
-                            <col className="w-[140px]" />
+                            {SHOW_WORKFLOWS && <col className="w-[140px]" />}
                             <col className="w-[90px]" />
                             <col className="w-[110px]" />
                         </colgroup>
@@ -753,7 +722,7 @@ function PipelineSection(p: SectionProps) {
                                 <Th>Étape</Th>
                                 <Th>Source</Th>
                                 <Th>Activité</Th>
-                                <Th>Workflow</Th>
+                                {SHOW_WORKFLOWS && <Th>Workflow</Th>}
                                 <Th>Canaux</Th>
                                 <Th />
                             </tr>
@@ -784,57 +753,6 @@ function PipelineSection(p: SectionProps) {
     );
 }
 
-function ContinuousList({
-    rows,
-    ...rest
-}: {
-    rows: Prospect[];
-    onOpenProspect: (p: Prospect) => void;
-    onMove: (id: string, status: string) => void;
-    rowMenuItems: (p: Prospect) => ProspectMenuItem[];
-    pillMenu: string | null;
-    setPillMenu: (id: string | null) => void;
-    rowMenu: string | null;
-    setRowMenu: (id: string | null) => void;
-    hoverRow: string | null;
-    setHoverRow: (id: string | null) => void;
-    selected: Set<string>;
-    toggleSelect: (id: string) => void;
-}) {
-    return (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
-            <table className="w-full min-w-[860px] table-fixed border-collapse">
-                <colgroup>
-                    <col className="w-9" />
-                    <col />
-                    <col className="w-[130px]" />
-                    <col className="w-[110px]" />
-                    <col className="w-[150px]" />
-                    <col className="w-[140px]" />
-                    <col className="w-[90px]" />
-                    <col className="w-[110px]" />
-                </colgroup>
-                <thead>
-                    <tr className="border-b border-border bg-muted/40">
-                        <Th />
-                        <Th>Prospect</Th>
-                        <Th>Étape</Th>
-                        <Th>Source</Th>
-                        <Th>Activité</Th>
-                        <Th>Workflow</Th>
-                        <Th>Canaux</Th>
-                        <Th />
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows.map((p) => (
-                        <PipelineRow key={p.id} p={p} {...rest} />
-                    ))}
-                </tbody>
-            </table>
-        </div>
-    );
-}
 
 function Th({ children }: { children?: React.ReactNode }) {
     return (
@@ -1003,24 +921,26 @@ function PipelineRow({
                     </span>
                 )}
             </td>
-            <td className="px-3 py-2.5 align-middle">
-                {p.workflow ? (
-                    <div className="flex items-center gap-1.5">
-                        <Play className="h-2.5 w-2.5 text-violet-700 dark:text-violet-300" />
-                        <span
-                            className="min-w-0 truncate text-[11.5px] text-foreground/80"
-                            title={p.workflow.name}
-                        >
-                            {p.workflow.name}
-                        </span>
-                        <span className="shrink-0 text-[11px] font-semibold text-violet-700 dark:text-violet-300">
-                            {p.workflow.step}/{p.workflow.total}
-                        </span>
-                    </div>
-                ) : (
-                    <span className="text-xs text-muted-foreground/50">—</span>
-                )}
-            </td>
+            {SHOW_WORKFLOWS && (
+                <td className="px-3 py-2.5 align-middle">
+                    {p.workflow ? (
+                        <div className="flex items-center gap-1.5">
+                            <Play className="h-2.5 w-2.5 text-violet-700 dark:text-violet-300" />
+                            <span
+                                className="min-w-0 truncate text-[11.5px] text-foreground/80"
+                                title={p.workflow.name}
+                            >
+                                {p.workflow.name}
+                            </span>
+                            <span className="shrink-0 text-[11px] font-semibold text-violet-700 dark:text-violet-300">
+                                {p.workflow.step}/{p.workflow.total}
+                            </span>
+                        </div>
+                    ) : (
+                        <span className="text-xs text-muted-foreground/50">—</span>
+                    )}
+                </td>
+            )}
             <td className="px-3 py-2.5 align-middle">
                 <div data-stop className="flex gap-0.5">
                     {channels.length === 0 ? (

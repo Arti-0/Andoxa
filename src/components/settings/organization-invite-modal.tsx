@@ -2,14 +2,7 @@
 
 import { useState } from "react";
 import { Mail, Send, Loader2, ShieldCheck, User as UserIcon } from "lucide-react";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
-    DialogFooter,
-} from "@/components/ui/dialog";
+import { AppModal } from "@/components/ui/app-modal";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -81,17 +74,41 @@ export function OrganizationInviteModal({
     };
 
     return (
-        <Dialog open={open} onOpenChange={(o) => !o && close()}>
-            <DialogContent className="sm:max-w-[520px]">
-                <DialogHeader>
-                    <DialogTitle>Inviter un membre</DialogTitle>
-                    <DialogDescription>
-                        Envoyez une invitation par e-mail pour rejoindre
-                        {organizationName ? ` ${organizationName}` : " votre organisation"}.
-                    </DialogDescription>
-                </DialogHeader>
-
-                <div className="flex flex-col gap-3.5 py-2">
+        <AppModal
+            open={open}
+            onOpenChange={(o) => !o && close()}
+            title="Inviter un membre"
+            description={
+                <>
+                    Envoyez une invitation par e-mail pour rejoindre
+                    {organizationName
+                        ? ` ${organizationName}`
+                        : " votre organisation"}
+                    .
+                </>
+            }
+            size="lg"
+            footer={
+                <>
+                    <Button variant="ghost" onClick={close} disabled={sending}>
+                        Annuler
+                    </Button>
+                    <Button
+                        onClick={() => void send()}
+                        disabled={!valid || sending}
+                        className="gap-1.5"
+                    >
+                        {sending ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                            <Send className="size-3.5" />
+                        )}
+                        {sending ? "Envoi…" : "Envoyer l'invitation"}
+                    </Button>
+                </>
+            }
+        >
+            <div className="flex flex-col gap-3.5">
                     <div>
                         <Label htmlFor="invite-email">Adresse e-mail</Label>
                         <div className="relative mt-1.5">
@@ -185,29 +202,6 @@ export function OrganizationInviteModal({
                         </div>
                     </div>
                 </div>
-
-                <DialogFooter>
-                    <Button
-                        variant="ghost"
-                        onClick={close}
-                        disabled={sending}
-                    >
-                        Annuler
-                    </Button>
-                    <Button
-                        onClick={() => void send()}
-                        disabled={!valid || sending}
-                        className="gap-1.5"
-                    >
-                        {sending ? (
-                            <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                            <Send className="size-3.5" />
-                        )}
-                        {sending ? "Envoi…" : "Envoyer l'invitation"}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+        </AppModal>
     );
 }

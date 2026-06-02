@@ -56,7 +56,7 @@ function SettingsPageInner() {
         </TabsContent>
 
         <TabsContent value="organization">
-          <OrganizationSettingsTab onSwitch={refresh} />
+          <OrganizationSettingsTab />
         </TabsContent>
       </Tabs>
     </div>

@@ -24,13 +24,7 @@ import {
   Zap,
 } from "lucide-react";
 import { toast } from "@/lib/toast";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { AppModal } from "@/components/ui/app-modal";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -275,27 +269,69 @@ export function ProspectRdvModal({
   const slotMissingEmail = withMeet && !prospect.email;
 
   return (
-    <Dialog
+    <AppModal
       open={open}
       onOpenChange={(o) => {
         onOpenChange(o);
         if (!o) reset();
       }}
-    >
-      <DialogContent className="max-h-[88vh] gap-0 overflow-hidden p-0 sm:max-w-2xl">
-        <DialogHeader className="px-6 pt-5 pb-3">
-          <DialogTitle className="flex items-center gap-2">
-            <CalendarIcon className="size-4 text-[var(--brand-blue)]" />
-            Réserver un RDV
-            {prospect.full_name && (
-              <span className="text-sm font-normal text-muted-foreground">
-                avec {prospect.full_name}
+      size="lg"
+      title={
+        <span className="flex items-center gap-2">
+          <CalendarIcon className="size-4 text-[var(--brand-blue)]" />
+          Réserver un RDV
+          {prospect.full_name && (
+            <span className="text-sm font-normal text-muted-foreground">
+              avec {prospect.full_name}
+            </span>
+          )}
+        </span>
+      }
+      footer={
+        <div className="flex w-full items-center justify-between gap-2">
+          <div className="text-[11.5px] text-muted-foreground">
+            {selectedDay && selectedSlot ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Clock className="size-3" />
+                {selectedDay.toLocaleDateString("fr-FR", {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                })}{" "}
+                · {String(selectedSlot.h).padStart(2, "0")}:
+                {String(selectedSlot.m).padStart(2, "0")} · {duration} min
               </span>
+            ) : (
+              "Sélectionnez une date et une heure"
             )}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="max-h-[60vh] overflow-y-auto px-6 py-4">
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={create.isPending}
+            >
+              <X className="size-3.5" />
+              Annuler
+            </Button>
+            <Button
+              onClick={submit}
+              disabled={!selectedDay || !selectedSlot || create.isPending}
+            >
+              {create.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : withMeet ? (
+                <Video className="size-3.5" />
+              ) : (
+                <CalendarDays className="size-3.5" />
+              )}
+              {create.isPending ? "Création…" : "Réserver"}
+            </Button>
+          </div>
+        </div>
+      }
+    >
+        <div>
           <div className="grid gap-6 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             {/* LEFT: mini calendar */}
             <div>
@@ -516,49 +552,6 @@ export function ProspectRdvModal({
             </div>
           </div>
         </div>
-
-        <DialogFooter className="flex flex-row items-center justify-between gap-2 border-t bg-muted/30 px-6 py-3">
-          <div className="text-[11.5px] text-muted-foreground">
-            {selectedDay && selectedSlot ? (
-              <span className="inline-flex items-center gap-1.5">
-                <Clock className="size-3" />
-                {selectedDay.toLocaleDateString("fr-FR", {
-                  weekday: "short",
-                  day: "numeric",
-                  month: "short",
-                })}{" "}
-                · {String(selectedSlot.h).padStart(2, "0")}:
-                {String(selectedSlot.m).padStart(2, "0")} · {duration} min
-              </span>
-            ) : (
-              "Sélectionnez une date et une heure"
-            )}
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={create.isPending}
-            >
-              <X className="size-3.5" />
-              Annuler
-            </Button>
-            <Button
-              onClick={submit}
-              disabled={!selectedDay || !selectedSlot || create.isPending}
-            >
-              {create.isPending ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : withMeet ? (
-                <Video className="size-3.5" />
-              ) : (
-                <CalendarDays className="size-3.5" />
-              )}
-              {create.isPending ? "Création…" : "Réserver"}
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </AppModal>
   );
 }

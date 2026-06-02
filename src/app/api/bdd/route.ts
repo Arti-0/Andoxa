@@ -143,7 +143,9 @@ export const POST = createApiHandler(async (req, ctx) => {
       name,
       organization_id: ctx.workspaceId,
       proprietaire: ctx.userId,
-      source: "linkedin_extension",
+      // Lists created through the app UI are manual; the extension and CSV
+      // import paths set their own source ("linkedin_extension" / "csv").
+      source: "manual",
       query,
       csv_url: null,
       csv_hash: null,

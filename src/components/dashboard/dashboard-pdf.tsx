@@ -1,556 +1,361 @@
 "use client";
 
+/**
+ * Dashboard PDF export.
+ *
+ * Generates a multi-page PDF from the live dashboard data using
+ * @react-pdf/renderer. Triggered from the dashboard header's export menu,
+ * which offers both a vertical (portrait) and horizontal (landscape) layout,
+ * each scoped to the chosen period.
+ *
+ * Branding:
+ *   • The Andoxa logo (PNG mark) is rendered in the header.
+ *   • The organisation's own logo/avatar is shown alongside its name.
+ *   • Images are pre-fetched to data URLs so a broken/remote image can never
+ *     throw mid-render and abort the whole export.
+ *
+ * @react-pdf/renderer cannot rasterise SVG, so we use a PNG brand mark
+ * rather than the SVG wordmark assets.
+ */
+
 import {
   Document,
   Page,
-  Text,
   View,
+  Text,
   Image,
   StyleSheet,
   pdf,
 } from "@react-pdf/renderer";
 
-// Données minimales nécessaires au PDF (sous-ensemble des types existants).
-export interface DashboardPdfData {
-  periodLabel: string;
-  exportedAt: Date;
-  firstName: string;
-  stats: {
-    pipeline: { active_total: number; by_stage: { rdv: number; proposal: number; qualified: number }; trend_pts: number };
-    rdv: { booked_count: number; target: number; realisation_pct: number; trend_pts: number };
-    linkedin: {
-      messages_sent: number;
-      invitations_sent: number;
-      responses_received: number;
-      response_rate_pct: number;
-      acceptance_rate_pct: number;
-      trend_pts: number;
-    };
-    closings: { won_count: number; target: number; progress_pct: number; trend_pts: number };
-  };
-  funnel: {
-    steps: Array<{ key: string; label: string; count: number; conversion_pct_from_prev: number | null }>;
-    global_rate_pct: number;
-    avg_cycle_days: number | null;
-  };
-  topDeals: Array<{
-    name: string;
-    company: string | null;
-    stage_label: string;
-    last_activity_label: string;
-  }>;
+import type { ApiPeriod } from "./dashboard-content";
+
+export type PdfOrientation = "portrait" | "landscape";
+
+/** Public PNG brand mark. SVG assets are not supported by react-pdf. */
+const ANDOXA_MARK_PATH = "/assets/logofiles/logo_mark%201.png";
+
+/* ============================================================
+   TYPES (subset of the dashboard API payloads we need)
+   ============================================================ */
+
+interface ExportStats {
+  pipeline: { active_total: number; trend_pts: number };
+  rdv: { booked_count: number; trend_pts: number };
+  linkedin: { response_rate_pct: number; trend_pts: number };
+  closings: { won_count: number; trend_pts: number };
 }
 
-const ANDOXA_BLUE = "#0052D9";
-const TEXT = "#0F172A";
-const TEXT_SOFT = "#334155";
-const MUTED = "#64748B";
-const FAINT = "#94A3B8";
-const BORDER = "#E2E8F0";
-const TINT = "#EEF4FE";
+interface ExportPayload {
+  generatedAt: string;
+  period: string;
+  orientation: PdfOrientation;
+  /** Andoxa PNG mark as a data URL (null if it could not be loaded). */
+  brandMark: string | null;
+  /** Organisation logo/avatar as a data URL (null when unavailable). */
+  orgLogo: string | null;
+  orgName: string | null;
+  stats: ExportStats | null;
+  funnel: { steps: { label: string; count: number }[] } | null;
+  topDeals: { name: string; company: string | null; stage_label: string }[];
+  quotas: { label: string; used: number; max: number }[] | null;
+}
+
+/* ============================================================
+   STYLES
+   ============================================================ */
+
+const COLORS = {
+  brand: "#0052D9",
+  brandSoft: "#E8F0FD",
+  ink: "#0f172a",
+  muted: "#64748b",
+  faint: "#94a3b8",
+  line: "#e2e8f0",
+  lineSoft: "#f1f5f9",
+};
 
 const styles = StyleSheet.create({
   page: {
-    paddingHorizontal: 28,
-    paddingTop: 24,
-    paddingBottom: 30,
-    fontSize: 10,
-    color: TEXT,
-    backgroundColor: "#FFFFFF",
+    paddingTop: 32,
+    paddingHorizontal: 32,
+    paddingBottom: 56,
     fontFamily: "Helvetica",
+    fontSize: 10,
+    color: COLORS.ink,
+    backgroundColor: "#ffffff",
   },
-  // Header
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 14,
-    paddingBottom: 11,
-    borderBottom: `1px solid ${BORDER}`,
-  },
-  headerLeft: {
-    flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottom: `2 solid ${COLORS.brand}`,
   },
-  logo: {
-    width: 95,
-    height: 27,
-    objectFit: "contain",
+  brandRow: { flexDirection: "row", alignItems: "center" },
+  brandMark: { width: 28, height: 28, borderRadius: 6, marginRight: 9 },
+  brandWordmark: { fontSize: 20, fontFamily: "Helvetica-Bold", color: COLORS.brand },
+  subtitle: { fontSize: 9, color: COLORS.muted, marginTop: 2 },
+  headerRight: { flexDirection: "row", alignItems: "center" },
+  orgBlock: { flexDirection: "row", alignItems: "center", marginRight: 12 },
+  orgLogo: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    marginRight: 7,
+    objectFit: "cover",
   },
-  headerDivider: {
-    width: 1,
-    height: 32,
-    backgroundColor: BORDER,
-    marginHorizontal: 4,
-  },
-  title: {
-    fontSize: 15,
+  orgInitial: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    marginRight: 7,
+    backgroundColor: COLORS.brandSoft,
+    color: COLORS.brand,
+    fontSize: 11,
     fontFamily: "Helvetica-Bold",
-    color: TEXT,
+    textAlign: "center",
+    paddingTop: 6,
   },
-  subtitle: {
-    marginTop: 2,
-    fontSize: 9.5,
-    color: MUTED,
-  },
-  metaRight: {
-    alignItems: "flex-end",
-  },
-  metaPeriod: {
-    fontSize: 10.5,
-    fontFamily: "Helvetica-Bold",
-    color: ANDOXA_BLUE,
-    marginBottom: 2,
-  },
-  metaLine: {
-    fontSize: 8.5,
-    color: MUTED,
-  },
-  // KPI grid (2x2)
-  kpiRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 8,
-  },
-  kpiCard: {
-    flex: 1,
-    border: `1px solid ${BORDER}`,
-    borderRadius: 6,
-    padding: 11,
-  },
-  kpiHeadRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  kpiLabel: {
-    fontSize: 7.5,
-    color: MUTED,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    fontFamily: "Helvetica-Bold",
-  },
-  kpiValue: {
-    fontSize: 22,
-    fontFamily: "Helvetica-Bold",
-    color: TEXT,
-  },
-  kpiSub: {
-    marginTop: 3,
+  orgName: { fontSize: 10, fontFamily: "Helvetica-Bold", color: COLORS.ink },
+  periodTag: {
     fontSize: 9,
-    color: MUTED,
+    color: COLORS.brand,
+    backgroundColor: COLORS.brandSoft,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 4,
   },
-  kpiSide: {
-    marginTop: 6,
-    paddingTop: 5,
-    borderTop: `1px solid ${BORDER}`,
-    fontSize: 8,
-    color: FAINT,
-  },
-  trendUp: {
-    color: "#059669",
-    fontSize: 9,
-    fontFamily: "Helvetica-Bold",
-  },
-  trendDown: {
-    color: "#DC2626",
-    fontSize: 9,
-    fontFamily: "Helvetica-Bold",
-  },
-  trendFlat: {
-    color: FAINT,
-    fontSize: 9,
-  },
-  // Section
-  sectionCard: {
-    marginTop: 10,
-    border: `1px solid ${BORDER}`,
-    borderRadius: 6,
-    padding: 11,
-  },
-  sectionHead: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "baseline",
-  },
+  section: { marginTop: 18 },
   sectionTitle: {
-    fontSize: 11.5,
-    fontFamily: "Helvetica-Bold",
-    color: TEXT,
-  },
-  sectionSubtitle: {
-    fontSize: 8.5,
-    color: MUTED,
-    marginTop: 1.5,
-  },
-  // Funnel
-  funnelStep: {
-    marginTop: 7,
-  },
-  funnelStepHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 3,
-  },
-  funnelStepLabel: {
-    fontSize: 9.5,
-    color: TEXT,
-    fontFamily: "Helvetica-Bold",
-  },
-  funnelStepConversion: {
-    fontSize: 8,
-    color: ANDOXA_BLUE,
-    fontFamily: "Helvetica-Bold",
-  },
-  funnelStepCount: {
-    fontSize: 10.5,
-    color: TEXT,
-    fontFamily: "Helvetica-Bold",
-  },
-  funnelBarTrack: {
-    height: 11,
-    borderRadius: 3,
-    backgroundColor: TINT,
-    overflow: "hidden",
-  },
-  funnelBarFill: {
-    height: 11,
-    borderRadius: 3,
-    backgroundColor: ANDOXA_BLUE,
-  },
-  funnelStats: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 11,
-    paddingTop: 8,
-    borderTop: `1px solid ${BORDER}`,
-  },
-  funnelStat: {
-    flex: 1,
-  },
-  funnelStatLabel: {
-    fontSize: 7.5,
-    color: MUTED,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    fontFamily: "Helvetica-Bold",
-  },
-  funnelStatValue: {
-    marginTop: 2,
     fontSize: 13,
     fontFamily: "Helvetica-Bold",
-    color: TEXT,
+    marginBottom: 10,
+    color: COLORS.ink,
   },
-  // Top deals table
-  dealHeader: {
-    flexDirection: "row",
-    paddingVertical: 5.5,
-    borderBottom: `1px solid ${BORDER}`,
+  kpiGrid: { flexDirection: "row", flexWrap: "wrap" },
+  kpiCard: {
+    border: `1 solid ${COLORS.line}`,
+    borderRadius: 6,
+    padding: 12,
+    margin: "0 1% 10 0",
   },
-  dealHeaderCell: {
-    fontSize: 7.5,
-    color: MUTED,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    fontFamily: "Helvetica-Bold",
-  },
-  dealRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 6.5,
-    borderBottom: `1px solid ${BORDER}`,
-  },
-  dealRowLast: {
-    borderBottom: 0,
-  },
-  dealName: {
-    flex: 2,
-    fontSize: 10,
-    fontFamily: "Helvetica-Bold",
-    color: TEXT,
-  },
-  dealCompany: {
-    flex: 2,
-    fontSize: 9,
-    color: TEXT_SOFT,
-  },
-  dealStage: {
-    flex: 1.2,
-    fontSize: 8.5,
-    color: ANDOXA_BLUE,
-    fontFamily: "Helvetica-Bold",
-  },
-  dealActivity: {
-    flex: 1.5,
-    fontSize: 8.5,
-    color: MUTED,
-    textAlign: "right",
-  },
-  dealEmpty: {
-    fontSize: 9,
-    color: MUTED,
-    fontStyle: "italic",
-    paddingVertical: 12,
-    textAlign: "center",
-  },
-  // Footer
-  footer: {
-    position: "absolute",
-    bottom: 16,
-    left: 28,
-    right: 28,
+  kpiLabel: { fontSize: 9, color: COLORS.muted, marginBottom: 4 },
+  kpiValue: { fontSize: 22, fontFamily: "Helvetica-Bold", color: COLORS.ink },
+  row: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingTop: 7,
-    borderTop: `1px solid ${BORDER}`,
+    paddingVertical: 6,
+    borderBottom: `1 solid ${COLORS.lineSoft}`,
   },
-  footerText: {
-    fontSize: 7.5,
-    color: FAINT,
+  rowStrong: { fontFamily: "Helvetica-Bold" },
+  quotaRow: { marginBottom: 8 },
+  quotaHead: { flexDirection: "row", justifyContent: "space-between" },
+  quotaBarBg: {
+    height: 6,
+    backgroundColor: COLORS.lineSoft,
+    borderRadius: 3,
+    marginTop: 3,
+  },
+  quotaBarFill: { height: 6, backgroundColor: COLORS.brand, borderRadius: 3 },
+  muted: { color: COLORS.muted },
+  footer: {
+    position: "absolute",
+    bottom: 24,
+    left: 32,
+    right: 32,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    fontSize: 8,
+    color: COLORS.faint,
+    borderTop: `1 solid ${COLORS.line}`,
+    paddingTop: 8,
   },
 });
 
-function formatTrend(delta: number) {
-  if (delta === 0) return { label: "— pts", style: styles.trendFlat };
-  const sign = delta > 0 ? "+" : "";
-  return {
-    label: `${sign}${delta} pts`,
-    style: delta > 0 ? styles.trendUp : styles.trendDown,
-  };
+/* ============================================================
+   DOCUMENT
+   ============================================================ */
+
+function Header({ data }: { data: ExportPayload }) {
+  return (
+    <View style={styles.header}>
+      <View>
+        <View style={styles.brandRow}>
+          {data.brandMark ? (
+            <Image style={styles.brandMark} src={data.brandMark} />
+          ) : null}
+          <Text style={styles.brandWordmark}>Andoxa</Text>
+        </View>
+        <Text style={styles.subtitle}>Tableau de bord commercial</Text>
+      </View>
+      <View style={styles.headerRight}>
+        {(data.orgName || data.orgLogo) && (
+          <View style={styles.orgBlock}>
+            {data.orgLogo ? (
+              <Image style={styles.orgLogo} src={data.orgLogo} />
+            ) : (
+              <Text style={styles.orgInitial}>
+                {(data.orgName ?? "?").charAt(0).toUpperCase()}
+              </Text>
+            )}
+            {data.orgName ? (
+              <Text style={styles.orgName}>{data.orgName}</Text>
+            ) : null}
+          </View>
+        )}
+        <Text style={styles.periodTag}>{data.period}</Text>
+      </View>
+    </View>
+  );
 }
 
-function formatExportDate(d: Date): string {
-  return d.toLocaleDateString("fr-FR", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+function Footer() {
+  return (
+    <View style={styles.footer} fixed>
+      <Text>Généré par Andoxa · andoxa.fr</Text>
+      <Text
+        render={({ pageNumber, totalPages }) =>
+          `Page ${pageNumber} / ${totalPages}`
+        }
+      />
+    </View>
+  );
 }
 
 function KpiBlock({
   label,
   value,
-  sub,
-  side,
-  trend,
+  width,
 }: {
   label: string;
-  value: string;
-  sub: string;
-  side: string;
-  trend: number;
+  value: string | number;
+  width: string;
 }) {
-  const t = formatTrend(trend);
   return (
-    <View style={styles.kpiCard}>
-      <View style={styles.kpiHeadRow}>
-        <Text style={styles.kpiLabel}>{label}</Text>
-        <Text style={t.style}>{t.label}</Text>
-      </View>
-      <Text style={styles.kpiValue}>{value}</Text>
-      <Text style={styles.kpiSub}>{sub}</Text>
-      {side ? <Text style={styles.kpiSide}>{side}</Text> : null}
+    <View style={[styles.kpiCard, { width }]}>
+      <Text style={styles.kpiLabel}>{label}</Text>
+      <Text style={styles.kpiValue}>{String(value)}</Text>
     </View>
   );
 }
 
-function DashboardPdfDoc({ data, logoUrl }: { data: DashboardPdfData; logoUrl: string | null }) {
-  const { stats, funnel, topDeals, periodLabel, exportedAt, firstName } = data;
-  const firstStepCount = funnel.steps[0]?.count ?? 0;
-  const MIN_W = 14;
+function DashboardPdfDocument({ data }: { data: ExportPayload }) {
+  // Landscape fits 4 KPI cards across; portrait fits 2.
+  const kpiWidth = data.orientation === "landscape" ? "24%" : "49%";
 
   return (
     <Document
-      title={`Andoxa Dashboard — ${periodLabel}`}
+      title={`Andoxa — Tableau de bord (${data.period})`}
       author="Andoxa"
-      subject={`Tableau de bord — ${periodLabel}`}
     >
-      <Page size="A4" style={styles.page}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            {logoUrl && <Image src={logoUrl} style={styles.logo} />}
-            <View style={styles.headerDivider} />
-            <View>
-              <Text style={styles.title}>Tableau de bord</Text>
-              <Text style={styles.subtitle}>
-                {firstName ? `Bonjour ${firstName}` : "Synthèse commerciale"}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.metaRight}>
-            <Text style={styles.metaPeriod}>{periodLabel}</Text>
-            <Text style={styles.metaLine}>Exporté le {formatExportDate(exportedAt)}</Text>
-          </View>
-        </View>
+      <Page size="A4" orientation={data.orientation} style={styles.page}>
+        <Header data={data} />
 
-        {/* KPI grid 2x2 */}
-        <View style={styles.kpiRow}>
-          <KpiBlock
-            label="Pipeline actif"
-            value={String(stats.pipeline.active_total)}
-            sub="prospects en cours"
-            side={`${stats.pipeline.by_stage.proposal} en proposition · ${stats.pipeline.by_stage.qualified} qualifiés · ${stats.pipeline.by_stage.rdv} en RDV`}
-            trend={stats.pipeline.trend_pts}
-          />
-          <KpiBlock
-            label="RDV bookés"
-            value={String(stats.rdv.booked_count)}
-            sub="rendez-vous planifiés"
-            side=""
-            trend={stats.rdv.trend_pts}
-          />
-        </View>
-        <View style={styles.kpiRow}>
-          <KpiBlock
-            label="Taux de réponse LinkedIn"
-            value={`${stats.linkedin.response_rate_pct}%`}
-            sub={`${stats.linkedin.responses_received} réponse${stats.linkedin.responses_received > 1 ? "s" : ""} · ${stats.linkedin.invitations_sent} invitation${stats.linkedin.invitations_sent > 1 ? "s" : ""}`}
-            side={`Acceptation ${stats.linkedin.acceptance_rate_pct}%`}
-            trend={stats.linkedin.trend_pts}
-          />
-          <KpiBlock
-            label="Closings"
-            value={String(stats.closings.won_count)}
-            sub="deals gagnés sur la période"
-            side=""
-            trend={stats.closings.trend_pts}
-          />
+        {/* KPIs */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Indicateurs clés</Text>
+          <View style={styles.kpiGrid}>
+            <KpiBlock
+              label="Pipeline actif"
+              value={data.stats?.pipeline.active_total ?? 0}
+              width={kpiWidth}
+            />
+            <KpiBlock
+              label="RDV bookés"
+              value={data.stats?.rdv.booked_count ?? 0}
+              width={kpiWidth}
+            />
+            <KpiBlock
+              label="Taux réponse LinkedIn"
+              value={`${data.stats?.linkedin.response_rate_pct ?? 0}%`}
+              width={kpiWidth}
+            />
+            <KpiBlock
+              label="Closings"
+              value={data.stats?.closings.won_count ?? 0}
+              width={kpiWidth}
+            />
+          </View>
         </View>
 
         {/* Funnel */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHead}>
-            <View>
-              <Text style={styles.sectionTitle}>Funnel de conversion</Text>
-              <Text style={styles.sectionSubtitle}>Du premier contact au closing</Text>
-            </View>
-          </View>
-
-          {funnel.steps.map((s, i) => {
-            const raw = firstStepCount > 0 ? (s.count / firstStepCount) * 100 : 0;
-            const widthPct = firstStepCount > 0 ? MIN_W + (raw / 100) * (100 - MIN_W) : MIN_W;
-            return (
-              <View key={s.key} style={styles.funnelStep}>
-                <View style={styles.funnelStepHead}>
-                  <View style={{ flexDirection: "row", alignItems: "baseline", gap: 6 }}>
-                    <Text style={styles.funnelStepLabel}>
-                      {i + 1}. {s.label}
-                    </Text>
-                    {s.conversion_pct_from_prev != null && (
-                      <Text style={styles.funnelStepConversion}>
-                        {s.conversion_pct_from_prev}%
-                      </Text>
-                    )}
-                  </View>
-                  <Text style={styles.funnelStepCount}>{s.count}</Text>
-                </View>
-                <View style={styles.funnelBarTrack}>
-                  <View style={{ ...styles.funnelBarFill, width: `${widthPct}%` }} />
-                </View>
+        {data.funnel && data.funnel.steps.length > 0 && (
+          <View style={styles.section} wrap={false}>
+            <Text style={styles.sectionTitle}>Funnel de conversion</Text>
+            {data.funnel.steps.map((s, i) => (
+              <View key={i} style={styles.row}>
+                <Text>{s.label}</Text>
+                <Text style={styles.rowStrong}>{s.count}</Text>
               </View>
-            );
-          })}
-
-          <View style={styles.funnelStats}>
-            <View style={styles.funnelStat}>
-              <Text style={styles.funnelStatLabel}>Taux global</Text>
-              <Text style={styles.funnelStatValue}>{funnel.global_rate_pct}%</Text>
-            </View>
-            <View style={styles.funnelStat}>
-              <Text style={styles.funnelStatLabel}>Cycle moyen</Text>
-              <Text style={styles.funnelStatValue}>
-                {funnel.avg_cycle_days != null ? `${funnel.avg_cycle_days} j` : "—"}
-              </Text>
-            </View>
-            <View style={styles.funnelStat}>
-              <Text style={styles.funnelStatLabel}>Étapes</Text>
-              <Text style={styles.funnelStatValue}>{funnel.steps.length}</Text>
-            </View>
+            ))}
           </View>
-        </View>
+        )}
 
         {/* Top deals */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHead}>
-            <View>
-              <Text style={styles.sectionTitle}>Top deals en cours</Text>
-              <Text style={styles.sectionSubtitle}>5 prospects les plus chauds</Text>
-            </View>
+        {data.topDeals.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Top deals en cours</Text>
+            {data.topDeals.map((d, i) => (
+              <View key={i} style={styles.row} wrap={false}>
+                <Text>
+                  {d.name}
+                  {d.company ? ` · ${d.company}` : ""}
+                </Text>
+                <Text style={styles.muted}>{d.stage_label}</Text>
+              </View>
+            ))}
           </View>
+        )}
 
-          <View style={{ marginTop: 6 }}>
-            {topDeals.length === 0 ? (
-              <Text style={styles.dealEmpty}>Aucun deal actif pour cette période.</Text>
-            ) : (
-              <>
-                <View style={styles.dealHeader}>
-                  <Text style={[styles.dealHeaderCell, { flex: 2 }]}>Prospect</Text>
-                  <Text style={[styles.dealHeaderCell, { flex: 2 }]}>Entreprise</Text>
-                  <Text style={[styles.dealHeaderCell, { flex: 1.2 }]}>Stage</Text>
-                  <Text style={[styles.dealHeaderCell, { flex: 1.5, textAlign: "right" }]}>Activité</Text>
-                </View>
-                {topDeals.slice(0, 5).map((d, i, arr) => (
-                  <View
-                    key={`${d.name}-${i}`}
-                    style={[
-                      styles.dealRow,
-                      i === arr.length - 1 ? styles.dealRowLast : {},
-                    ]}
-                  >
-                    <Text style={styles.dealName}>{d.name}</Text>
-                    <Text style={styles.dealCompany}>{d.company ?? "—"}</Text>
-                    <Text style={styles.dealStage}>{d.stage_label}</Text>
-                    <Text style={styles.dealActivity}>{d.last_activity_label}</Text>
+        {/* Quotas */}
+        {data.quotas && data.quotas.length > 0 && (
+          <View style={styles.section} wrap={false}>
+            <Text style={styles.sectionTitle}>Quotas LinkedIn</Text>
+            {data.quotas.map((q, i) => {
+              const pct = q.max ? Math.min((q.used / q.max) * 100, 100) : 0;
+              return (
+                <View key={i} style={styles.quotaRow}>
+                  <View style={styles.quotaHead}>
+                    <Text>{q.label}</Text>
+                    <Text style={styles.muted}>
+                      {q.used} / {q.max}
+                    </Text>
                   </View>
-                ))}
-              </>
-            )}
+                  <View style={styles.quotaBarBg}>
+                    <View style={[styles.quotaBarFill, { width: `${pct}%` }]} />
+                  </View>
+                </View>
+              );
+            })}
           </View>
-        </View>
+        )}
 
-        {/* Footer */}
-        <View style={styles.footer} fixed>
-          <Text style={styles.footerText}>Généré par Andoxa · andoxa.com</Text>
-          <Text style={styles.footerText}>Document confidentiel</Text>
-        </View>
+        <Footer />
       </Page>
     </Document>
   );
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
+/* ============================================================
+   DATA FETCH + EXPORT
+   ============================================================ */
 
-function slugifyPeriod(label: string): string {
-  return label
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
-
-function isoDate(d: Date): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-// Charge le logo en data URI pour qu'il soit embarqué dans le PDF (évite les
-// soucis CORS / chargements asynchrones côté react-pdf).
-async function loadLogoDataUrl(): Promise<string | null> {
+/**
+ * Fetch an image and convert it to a data URL. Returns null on any failure so
+ * the caller can render a fallback instead of crashing the PDF pipeline.
+ */
+async function toDataUrl(url: string | null | undefined): Promise<string | null> {
+  if (!url) return null;
   try {
-    const res = await fetch("/assets/logofiles/logo_1.png");
+    const res = await fetch(url, { credentials: "omit" });
     if (!res.ok) return null;
     const blob = await res.blob();
-    return await new Promise<string>((resolve, reject) => {
+    return await new Promise<string | null>((resolve) => {
       const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
+      reader.onloadend = () => resolve((reader.result as string) ?? null);
+      reader.onerror = () => resolve(null);
       reader.readAsDataURL(blob);
     });
   } catch {
@@ -558,16 +363,103 @@ async function loadLogoDataUrl(): Promise<string | null> {
   }
 }
 
-export async function exportDashboardPDF(data: DashboardPdfData): Promise<void> {
-  const logoUrl = await loadLogoDataUrl();
-  const blob = await pdf(<DashboardPdfDoc data={data} logoUrl={logoUrl} />).toBlob();
+async function fetchExportData(
+  apiPeriod: ApiPeriod,
+  periodLabel: string,
+  orientation: PdfOrientation,
+  org: { name: string | null; logoUrl: string | null },
+): Promise<ExportPayload> {
+  const [statsRes, funnelRes, dealsRes, usageRes, brandMark, orgLogo] =
+    await Promise.all([
+      fetch(`/api/dashboard/stats?period=${apiPeriod}`, {
+        credentials: "include",
+      }),
+      fetch(`/api/dashboard/funnel?period=${apiPeriod}`, {
+        credentials: "include",
+      }),
+      fetch(`/api/dashboard/top-deals?limit=5`, { credentials: "include" }),
+      fetch(`/api/dashboard/linkedin-usage`, { credentials: "include" }),
+      toDataUrl(ANDOXA_MARK_PATH),
+      toDataUrl(org.logoUrl),
+    ]);
+
+  const statsJson = statsRes.ok ? await statsRes.json() : null;
+  const funnelJson = funnelRes.ok ? await funnelRes.json() : null;
+  const dealsJson = dealsRes.ok ? await dealsRes.json() : null;
+  const usageJson = usageRes.ok ? await usageRes.json() : null;
+
+  const stats = statsJson?.data ?? statsJson ?? null;
+  const funnelRaw = funnelJson?.data ?? funnelJson ?? null;
+  const deals = dealsJson?.data ?? dealsJson ?? [];
+  const usage = usageJson?.data ?? usageJson ?? null;
+
+  // The funnel API returns { steps: [{ label, count }] }.
+  const funnel =
+    funnelRaw && Array.isArray(funnelRaw.steps)
+      ? {
+          steps: funnelRaw.steps.map(
+            (s: { label: string; count: number }) => ({
+              label: s.label,
+              count: s.count,
+            }),
+          ),
+        }
+      : null;
+
+  const quotas = usage
+    ? [
+        {
+          label: "Invitations",
+          used: usage.invitations_sent ?? 0,
+          max: usage.invitations_max ?? 100,
+        },
+        {
+          label: "Messages",
+          used: usage.messages_sent ?? 0,
+          max: usage.messages_max ?? 100,
+        },
+      ]
+    : null;
+
+  return {
+    generatedAt: new Date().toLocaleString("fr-FR"),
+    period: periodLabel,
+    orientation,
+    brandMark,
+    orgLogo,
+    orgName: org.name,
+    stats,
+    funnel,
+    topDeals: deals,
+    quotas,
+  };
+}
+
+export async function exportDashboardPdf({
+  period,
+  apiPeriod,
+  orientation = "portrait",
+  orgName = null,
+  orgLogoUrl = null,
+}: {
+  period: string;
+  apiPeriod: ApiPeriod;
+  orientation?: PdfOrientation;
+  orgName?: string | null;
+  orgLogoUrl?: string | null;
+}) {
+  const data = await fetchExportData(apiPeriod, period, orientation, {
+    name: orgName,
+    logoUrl: orgLogoUrl,
+  });
+  const blob = await pdf(<DashboardPdfDocument data={data} />).toBlob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `andoxa-dashboard-${slugifyPeriod(data.periodLabel)}-${isoDate(data.exportedAt)}.pdf`;
+  const orient = orientation === "landscape" ? "paysage" : "portrait";
+  a.download = `andoxa-dashboard-${apiPeriod}-${orient}.pdf`;
   document.body.appendChild(a);
   a.click();
-  document.body.removeChild(a);
-  // Libère le blob après quelques secondes pour laisser le navigateur télécharger.
+  a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }

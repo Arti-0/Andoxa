@@ -6,9 +6,6 @@ import {
   Zap,
   MoreHorizontal,
   Mail,
-  Archive,
-  ArchiveRestore,
-  Trash2,
   X,
   Send,
   FileText,
@@ -375,16 +372,10 @@ function ContextMenu({
   open,
   onClose,
   onMarkUnread,
-  onArchive,
-  onRestore,
-  isArchived,
 }: {
   open: boolean;
   onClose: () => void;
   onMarkUnread: () => void;
-  onArchive: () => void;
-  onRestore: () => void;
-  isArchived: boolean;
 }) {
   if (!open) return null;
 
@@ -392,42 +383,18 @@ function ContextMenu({
     | { kind?: undefined; Icon: React.ComponentType<{ size?: number }>; label: string; action: () => void; danger?: boolean }
     | { kind: "sep" };
 
-  const items: Item[] = isArchived
-    ? [
-        {
-          Icon: ArchiveRestore,
-          label: "Restaurer la conversation",
-          action: () => {
-            onRestore();
-            onClose();
-          },
-        },
-      ]
-    : [
-        {
-          Icon: Mail,
-          label: "Marquer comme non lu",
-          action: () => {
-            onMarkUnread();
-            onClose();
-          },
-        },
-        {
-          Icon: Archive,
-          label: "Archiver la conversation",
-          action: () => {
-            onArchive();
-            onClose();
-          },
-        },
-        { kind: "sep" },
-        {
-          Icon: Trash2,
-          label: "Supprimer la conversation",
-          action: onClose, // placeholder — no delete endpoint yet
-          danger: true,
-        },
-      ];
+  // Archive was removed — conversations are never hidden away. Mark-unread is
+  // the one quick action; delete stays a placeholder (no endpoint yet).
+  const items: Item[] = [
+    {
+      Icon: Mail,
+      label: "Marquer comme non lu",
+      action: () => {
+        onMarkUnread();
+        onClose();
+      },
+    },
+  ];
 
   return (
     <>
@@ -520,7 +487,7 @@ function QuickInsertModal({
     both: { bg: "#F1F5F9", fg: "#475569", label: "Les deux" },
   };
 
-  const { data: templates } = useTemplates();
+  const { data: templates, isPending: templatesLoading } = useTemplates();
   const { data: categories } = useTemplateCategories();
 
   // "All" + "Mine" are sentinels; the rest come from the per-org category
@@ -633,7 +600,23 @@ function QuickInsertModal({
           </div>
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "4px 8px 8px" }}>
-          {list.map((t) => {
+          {templatesLoading && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                padding: "28px 16px",
+                fontSize: 12.5,
+                color: "var(--m2-slate-500)",
+              }}
+            >
+              <Loader2 size={14} className="animate-spin" />
+              Chargement des templates…
+            </div>
+          )}
+          {!templatesLoading && list.map((t) => {
             const ch = channelMeta[t.channel];
             return (
               <button
@@ -704,7 +687,7 @@ function QuickInsertModal({
               </button>
             );
           })}
-          {list.length === 0 && (
+          {!templatesLoading && list.length === 0 && (
             <div
               style={{
                 padding: "24px 16px",
@@ -751,15 +734,9 @@ function QuickInsertModal({
 export function Thread({
   conv,
   thread,
-  onArchive,
-  onRestore,
-  isArchived,
 }: {
   conv: Conversation;
   thread: ThreadEntry[];
-  onArchive: (chatId: string) => void;
-  onRestore: (chatId: string) => void;
-  isArchived: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -966,9 +943,6 @@ export function Thread({
             open={menuOpen}
             onClose={() => setMenuOpen(false)}
             onMarkUnread={() => markUnread.mutate(conv.id)}
-            onArchive={() => onArchive(conv.id)}
-            onRestore={() => onRestore(conv.id)}
-            isArchived={isArchived}
           />
         </div>
       </div>

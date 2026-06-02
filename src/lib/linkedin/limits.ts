@@ -36,9 +36,9 @@ export const LINKEDIN_INVITE_WEEKLY_USAGE_CAP: Record<
   LinkedInAccountTier,
   number
 > = {
-  standard: 15,
+  standard: 200,
   premium: 200,
-  sales_navigator: 280,
+  sales_navigator: 200,
 } as const;
 
 export function getInviteMaxChars(tier: LinkedInAccountTier): number {

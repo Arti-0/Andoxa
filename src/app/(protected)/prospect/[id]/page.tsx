@@ -65,7 +65,6 @@ export default function ProspectProfilePage() {
         prospect={overview.prospect}
         linkedChatId={linkedChatId}
         timelineEvents={overview.events.events}
-        engagement={overview.engagement}
       />
     </div>
   );

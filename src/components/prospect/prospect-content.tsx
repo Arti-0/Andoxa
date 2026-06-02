@@ -21,7 +21,7 @@
  * workflow runs) are stubbed with TODO markers.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -63,6 +63,7 @@ import {
   Surface,
   SectionTitle,
   useDynamicStatusConfig,
+  prospectPhotoFromEnrichment,
   type StatusConfig,
 } from "@/components/crm/crm-shared";
 import {
@@ -72,7 +73,11 @@ import {
 } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { isProspectAutomationExcluded } from "@/lib/prospects/automation-opt-out";
+import { isFeatureEnabled } from "@/lib/config/feature-flags";
 import type { Prospect } from "@/lib/types/prospects";
+
+/** #FF: workflows — hide workflow card, enroll action & timeline tag. */
+const SHOW_WORKFLOWS = isFeatureEnabled("workflows");
 
 const STATUS_FALLBACK: StatusConfig = {
   label: "—",
@@ -88,13 +93,6 @@ interface ProspectContentProps {
    *  When omitted (e.g. another caller still using the old contract),
    *  TimelineSection falls back to its own /events fetch. */
   timelineEvents?: TimelineApiResponse["events"];
-  /** Pre-fetched engagement counters from /overview. SyntheseCard falls
-   *  back to its own fetch when undefined. */
-  engagement?: {
-    messages_total: number;
-    rdv_total: number;
-    no_show_total: number;
-  };
 }
 
 const FR_DATE = (ts: string | null | undefined) =>
@@ -117,7 +115,6 @@ export function ProspectContent({
   prospect,
   linkedChatId,
   timelineEvents,
-  engagement,
 }: ProspectContentProps) {
   const [enrollOpen, setEnrollOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -182,9 +179,7 @@ export function ProspectContent({
         <NextActionCard
           prospect={prospect}
           linkedChatId={linkedChatId ?? null}
-          onEnrol={() => setEnrollOpen(true)}
         />
-        <SyntheseCard prospect={prospect} engagement={engagement} />
         <DocumentsCard />
       </div>
     </div>
@@ -273,33 +268,12 @@ function HeaderBanner({
     ? daysSince(prospect.enriched_at)
     : null;
 
+  const hasConversation = !!(linkedChatId || prospect.linked_chat_id);
   const chatHref = linkedChatId
     ? `/messagerie?chat=${encodeURIComponent(linkedChatId)}`
-    : "/messagerie";
-
-  const inviteMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/unipile/prospects/invite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ prospect_id: prospect.id }),
-      });
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(
-          (json as { error?: { message?: string } })?.error?.message ??
-            `Erreur ${res.status}`,
-        );
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["prospect", prospect.id] });
-      queryClient.invalidateQueries({ queryKey: ["prospect-overview", prospect.id] });
-      toast.success("Invitation LinkedIn envoyée");
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
+    : prospect.linked_chat_id
+      ? `/messagerie?chat=${encodeURIComponent(prospect.linked_chat_id)}`
+      : `/messagerie?prospect_id=${prospect.id}`;
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -324,13 +298,7 @@ function HeaderBanner({
             <NameAvatar
               name={prospect.full_name ?? "?"}
               size={72}
-              photo={
-                (
-                  prospect.enrichment_metadata as
-                    | { profile_picture_url?: string }
-                    | null
-                )?.profile_picture_url ?? null
-              }
+              photo={prospectPhotoFromEnrichment(prospect)}
             />
             <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
@@ -425,8 +393,12 @@ function HeaderBanner({
             className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-[13px] font-medium text-white hover:bg-blue-700 sm:w-auto"
           >
             <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-            <span className="sm:hidden">Conversation</span>
-            <span className="hidden sm:inline">Démarrer conversation</span>
+            <span className="sm:hidden">
+              {hasConversation ? "Conversation" : "Message"}
+            </span>
+            <span className="hidden sm:inline">
+              {hasConversation ? "Voir la conversation" : "Envoyer un message"}
+            </span>
           </Link>
           <button
             type="button"
@@ -438,13 +410,16 @@ function HeaderBanner({
             <span className="hidden sm:inline">Programmer un RDV</span>
           </button>
           <div className="flex w-full gap-2 sm:w-auto">
-            <button
-              onClick={() => setEnrollOpen(true)}
-              className="inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-card px-3 py-2 text-[13px] font-medium text-blue-700 hover:bg-blue-50 sm:flex-none sm:px-3.5"
-            >
-              <Play className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">Parcours</span>
-            </button>
+            {/* #FF: workflows — enroll-in-parcours hidden until ready. */}
+            {SHOW_WORKFLOWS && (
+              <button
+                onClick={() => setEnrollOpen(true)}
+                className="inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-card px-3 py-2 text-[13px] font-medium text-blue-700 hover:bg-blue-50 sm:flex-none sm:px-3.5"
+              >
+                <Play className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">Parcours</span>
+              </button>
+            )}
             <button
               onClick={() => setMenuOpen((o) => !o)}
               className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-foreground/70 hover:bg-accent sm:h-9 sm:w-9 ${
@@ -465,23 +440,6 @@ function HeaderBanner({
                 }}
               >
                 {enriching ? "Enrichissement…" : "Enrichir via LinkedIn"}
-              </MenuRow>
-              <MenuRow
-                disabled={!prospect.linkedin}
-                onClick={() => {
-                  setMenuOpen(false);
-                  inviteMutation.mutate();
-                }}
-              >
-                Inviter sur LinkedIn
-              </MenuRow>
-              <MenuRow
-                onClick={() => {
-                  setMenuOpen(false);
-                  router.push(`/call-sessions?prospect_id=${prospect.id}`);
-                }}
-              >
-                Session d’appels
               </MenuRow>
               {prospect.linkedin && (
                 <MenuRow
@@ -509,18 +467,20 @@ function HeaderBanner({
         </div>
       </div>
 
-      <WorkflowEnrollModal
-        open={enrollOpen}
-        onOpenChange={setEnrollOpen}
-        prospects={[{ id: prospect.id, full_name: prospect.full_name }]}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["prospect", prospect.id] });
-      queryClient.invalidateQueries({ queryKey: ["prospect-overview", prospect.id] });
-          queryClient.invalidateQueries({
-            queryKey: ["prospect-events", prospect.id],
-          });
-        }}
-      />
+      {SHOW_WORKFLOWS && (
+        <WorkflowEnrollModal
+          open={enrollOpen}
+          onOpenChange={setEnrollOpen}
+          prospects={[{ id: prospect.id, full_name: prospect.full_name }]}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["prospect", prospect.id] });
+            queryClient.invalidateQueries({ queryKey: ["prospect-overview", prospect.id] });
+            queryClient.invalidateQueries({
+              queryKey: ["prospect-events", prospect.id],
+            });
+          }}
+        />
+      )}
       <ConfirmDialog
         open={confirmDelete}
         onOpenChange={(open) => {
@@ -598,13 +558,17 @@ function PipelineWorkflowSection({
   return (
     <Surface padding="p-4 sm:p-5">
       <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="m-0 text-sm font-semibold">Pipeline & Workflow</h3>
+        {/* #FF: workflows — section is "Pipeline" only while workflows are off. */}
+        <h3 className="m-0 text-sm font-semibold">
+          {SHOW_WORKFLOWS ? "Pipeline & Workflow" : "Pipeline"}
+        </h3>
         <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           Dans le pipeline depuis {inDays}j
         </span>
       </div>
       <Stepper status={prospect.status} />
 
+      {SHOW_WORKFLOWS && (
       <div className="mt-3 rounded-xl border border-violet-200/60 bg-gradient-to-br from-violet-50 to-violet-100/40 p-3.5 dark:border-violet-900/40 dark:from-violet-950/30 dark:to-violet-900/20">
         {wf ? (
           <>
@@ -656,6 +620,7 @@ function PipelineWorkflowSection({
           </div>
         )}
       </div>
+      )}
     </Surface>
   );
 }
@@ -835,6 +800,11 @@ function TimelineSection({
   const [filter, setFilter] = useState<
     "tous" | "conv" | "pipe" | "wf" | "note"
   >("tous");
+  // Show at most 6 rows at once; "Voir plus" reveals the next batch. Keeping a
+  // count (rather than a boolean) lets long histories expand progressively
+  // without a layout jump — the list just grows downward in place.
+  const PAGE = 6;
+  const [visibleCount, setVisibleCount] = useState(PAGE);
 
   const { data } = useQuery({
     queryKey: ["prospect-events", prospect.id],
@@ -864,6 +834,8 @@ function TimelineSection({
   }, [data]);
 
   const filtered = events.filter((e) => {
+    // #FF: workflows — drop workflow rows entirely while disabled.
+    if (!SHOW_WORKFLOWS && e.type === "workflow") return false;
     if (filter === "tous") return true;
     if (filter === "conv") return e.type === "linkedin" || e.type === "whatsapp";
     if (filter === "pipe") return e.type === "pipeline" || e.type === "rdv";
@@ -885,11 +857,16 @@ function TimelineSection({
       label: "Pipeline",
       n: events.filter((e) => e.type === "pipeline" || e.type === "rdv").length,
     },
-    {
-      id: "wf",
-      label: "Workflows",
-      n: events.filter((e) => e.type === "workflow").length,
-    },
+    // #FF: workflows — hide the Workflows filter chip while disabled.
+    ...(SHOW_WORKFLOWS
+      ? [
+          {
+            id: "wf" as typeof filter,
+            label: "Workflows",
+            n: events.filter((e) => e.type === "workflow").length,
+          },
+        ]
+      : []),
     {
       id: "note",
       label: "Notes",
@@ -900,14 +877,17 @@ function TimelineSection({
   return (
     <Surface padding="p-4 sm:p-5">
       <div className="mb-3.5 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="m-0 shrink-0 text-sm font-semibold">Timeline d’activité</h3>
+        <h3 className="m-0 shrink-0 text-sm font-semibold">Historique d’activité</h3>
         <div className="-mx-1 flex gap-1 overflow-x-auto overscroll-x-contain px-1 pb-0.5 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
           {filters.map((f) => {
             const active = f.id === filter;
             return (
               <button
                 key={f.id}
-                onClick={() => setFilter(f.id)}
+                onClick={() => {
+                  setFilter(f.id);
+                  setVisibleCount(PAGE);
+                }}
                 className={`shrink-0 rounded-md border px-2 py-1 text-[11.5px] font-medium whitespace-nowrap ${
                   active
                     ? "border-blue-600 bg-blue-50 text-blue-700"
@@ -929,7 +909,7 @@ function TimelineSection({
             Aucun événement à afficher.
           </div>
         )}
-        {filtered.map((e) => {
+        {filtered.slice(0, visibleCount).map((e) => {
           const cfg = TIMELINE_TYPE_CFG[e.type];
           return (
             <div key={e.id} className="relative pb-4">
@@ -968,6 +948,27 @@ function TimelineSection({
             </div>
           );
         })}
+        {filtered.length > visibleCount && (
+          <button
+            type="button"
+            onClick={() => setVisibleCount((c) => c + PAGE)}
+            className="mt-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+          >
+            Voir plus
+            <span className="text-muted-foreground">
+              ({filtered.length - visibleCount})
+            </span>
+          </button>
+        )}
+        {visibleCount > PAGE && filtered.length <= visibleCount && (
+          <button
+            type="button"
+            onClick={() => setVisibleCount(PAGE)}
+            className="mt-1 inline-flex items-center rounded-md px-2 py-1 text-[12px] font-medium text-muted-foreground hover:bg-muted/60"
+          >
+            Voir moins
+          </button>
+        )}
       </div>
     </Surface>
   );
@@ -1006,7 +1007,7 @@ function ConversationsSection({
           className="inline-flex items-center gap-1.5 self-start rounded-md px-2 py-1 text-xs font-medium text-blue-700 hover:underline"
         >
           <MessageSquare className="h-3 w-3 shrink-0" />
-          Démarrer une conversation
+          {items.length > 0 ? "Voir la conversation" : "Envoyer un message"}
         </Link>
       </div>
       <div className="flex flex-col gap-2">
@@ -1054,7 +1055,26 @@ function ConversationsSection({
 
 function NotesSection({ prospect }: { prospect: Prospect }) {
   const queryClient = useQueryClient();
-  const [val, setVal] = useState("");
+  const savedNotes = prospect.notes ?? "";
+  // `draft` is the full, freely-editable note body — the source of truth the
+  // user can rewrite however they like. `addition` is the quick "append a new
+  // note" box, which adds a fresh paragraph (separated by a blank line) without
+  // touching the rest. We keep the draft in sync when the server value changes
+  // but don't clobber in-progress edits.
+  const [draft, setDraft] = useState(savedNotes);
+  const [addition, setAddition] = useState("");
+  const dirty = draft !== savedNotes;
+  const savedNotesRef = useRef(savedNotes);
+
+  // Re-sync the editor only when the server value changes *and* the user has no
+  // pending edits, so a background refetch never wipes what they're typing.
+  useEffect(() => {
+    setDraft((current) =>
+      current === savedNotesRef.current ? savedNotes : current,
+    );
+    savedNotesRef.current = savedNotes;
+  }, [savedNotes]);
+
   const mutation = useMutation({
     mutationFn: async (notes: string) => {
       const res = await fetch(`/api/prospects/${prospect.id}`, {
@@ -1065,41 +1085,75 @@ function NotesSection({ prospect }: { prospect: Prospect }) {
       });
       if (!res.ok) throw new Error(String(res.status));
     },
-    onSuccess: () => {
+    onSuccess: (_d, notes) => {
       queryClient.invalidateQueries({ queryKey: ["prospect", prospect.id] });
       queryClient.invalidateQueries({ queryKey: ["prospect-overview", prospect.id] });
-      setVal("");
-      toast.success("Note ajoutée");
+      savedNotesRef.current = notes;
+      setDraft(notes);
     },
     onError: () => toast.error("Impossible d’enregistrer la note"),
   });
 
+  const saveEdits = () => {
+    if (!dirty) return;
+    mutation.mutate(draft.trim(), {
+      onSuccess: () => toast.success("Notes mises à jour"),
+    });
+  };
+
+  const appendNote = () => {
+    const add = addition.trim();
+    if (!add) return;
+    // New session → new paragraph. We append to whatever is currently saved,
+    // separated by a blank line, even if it's the same day.
+    const base = draft.trim();
+    const next = base ? `${base}\n\n${add}` : add;
+    setAddition("");
+    setDraft(next);
+    mutation.mutate(next, {
+      onSuccess: () => toast.success("Note ajoutée"),
+    });
+  };
+
   return (
     <Surface padding="p-4 sm:p-5">
-      <h3 className="mb-3.5 m-0 text-sm font-semibold">Notes</h3>
-      <div className="flex flex-col gap-2.5">
-        {prospect.notes && prospect.notes.trim() ? (
-          <div className="rounded-md border-l-[3px] border-amber-500 bg-amber-50 p-3 text-[13px] leading-relaxed dark:bg-amber-900/20">
-            {prospect.notes}
-          </div>
-        ) : (
-          <div className="rounded-lg border border-dashed border-border bg-muted/20 p-4 text-center text-[12.5px] text-muted-foreground">
-            Aucune note.
-          </div>
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="m-0 text-sm font-semibold">Notes</h3>
+        {dirty && (
+          <button
+            onClick={saveEdits}
+            disabled={mutation.isPending}
+            className="inline-flex items-center rounded-md bg-blue-600 px-2.5 py-1 text-[12px] font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+          >
+            {mutation.isPending ? "Enregistrement…" : "Enregistrer"}
+          </button>
         )}
       </div>
-      <div className="mt-3 flex flex-col gap-2 rounded-xl border border-border bg-card p-2 sm:flex-row sm:items-end sm:gap-1 sm:p-1">
+
+      {/* Full editable body — the user can modify or rewrite freely. */}
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder="Aucune note. Écrivez ici…"
+        className="min-h-[120px] w-full resize-y rounded-lg border border-border bg-card px-3 py-2.5 text-[13px] leading-relaxed outline-none focus:border-blue-500"
+      />
+
+      {/* Quick add — appends a new paragraph without overriding edits above. */}
+      <div className="mt-3 flex flex-col gap-2 rounded-xl border border-border bg-muted/20 p-2 sm:flex-row sm:items-end sm:gap-1 sm:p-1.5">
         <textarea
-          value={val}
-          onChange={(e) => setVal(e.target.value)}
-          placeholder="Ajouter une note pour l'équipe…"
-          className="min-h-[60px] w-full flex-1 resize-none border-none bg-transparent px-3 py-2.5 text-[13px] outline-none placeholder:text-muted-foreground"
+          value={addition}
+          onChange={(e) => setAddition(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) appendNote();
+          }}
+          placeholder="Ajouter une note (nouveau paragraphe)…"
+          className="min-h-[44px] w-full flex-1 resize-none border-none bg-transparent px-2.5 py-2 text-[13px] outline-none placeholder:text-muted-foreground"
         />
         <button
-          disabled={!val.trim() || mutation.isPending}
-          onClick={() => mutation.mutate(val.trim())}
-          className={`inline-flex w-full shrink-0 items-center justify-center rounded-md px-3 py-2 text-xs font-medium sm:m-1.5 sm:w-auto sm:py-1.5 ${
-            val.trim()
+          disabled={!addition.trim() || mutation.isPending}
+          onClick={appendNote}
+          className={`inline-flex w-full shrink-0 items-center justify-center rounded-md px-3 py-2 text-xs font-medium sm:m-1 sm:w-auto sm:py-1.5 ${
+            addition.trim()
               ? "bg-blue-600 text-white hover:bg-blue-700"
               : "bg-muted text-muted-foreground"
           }`}
@@ -1407,8 +1461,8 @@ function nextActionFor(prospect: Prospect): {
     return {
       title: `Silence ${silentDays} jours`,
       body:
-        "Sans réponse depuis plus d’une dizaine de jours, programmez une relance directe pour conserver l’opportunité.",
-      ctaLabel: "Programmer une relance",
+        "Sans réponse depuis plus d’une dizaine de jours, un message direct peut conserver l’opportunité.",
+      ctaLabel: "Envoyer un message",
       tone: "warning",
     };
   }
@@ -1416,8 +1470,8 @@ function nextActionFor(prospect: Prospect): {
     return {
       title: `Silence ${silentDays} jours`,
       body:
-        "Le prospect n’a pas répondu cette semaine — un message court de relance peut suffire à relancer la conversation.",
-      ctaLabel: "Programmer une relance",
+        "Le prospect n’a pas répondu cette semaine — un message court peut relancer la conversation.",
+      ctaLabel: "Envoyer un message",
       tone: "warning",
     };
   }
@@ -1460,11 +1514,9 @@ function nextActionFor(prospect: Prospect): {
 function NextActionCard({
   prospect,
   linkedChatId,
-  onEnrol,
 }: {
   prospect: Prospect;
   linkedChatId: string | null;
-  onEnrol: () => void;
 }) {
   const router = useRouter();
   const action = nextActionFor(prospect);
@@ -1501,10 +1553,14 @@ function NextActionCard({
       );
       return;
     }
-    // proposal, qualified, contacted, lost-with-old-silence → suggest a relance
-    // Today the cleanest "programmer une relance" entry point is enrolling
-    // the prospect in a workflow the user has already designed.
-    onEnrol();
+    // Silence / relance / generic → open the conversation so the user can
+    // send a message directly (replaces the old "enroll in a workflow" path,
+    // which is gated off and was a poor fit for "envoyer un message").
+    router.push(
+      linkedChatId
+        ? `/messagerie?chat=${encodeURIComponent(linkedChatId)}`
+        : `/messagerie?prospect_id=${prospect.id}`,
+    );
   };
 
   return (
@@ -1530,99 +1586,6 @@ function NextActionCard({
         </button>
       </div>
     </div>
-  );
-}
-
-function SyntheseCard({
-  prospect,
-  engagement: preFetched,
-}: {
-  prospect: Prospect;
-  /** Pre-fetched engagement counters from the parent overview query. */
-  engagement?: {
-    messages_total: number;
-    rdv_total: number;
-    no_show_total: number;
-  };
-}) {
-  const days = daysSince(prospect.created_at);
-  const { data: engagement } = useQuery({
-    queryKey: ["prospect-engagement", prospect.id],
-    queryFn: async () => {
-      const res = await fetch(`/api/prospects/${prospect.id}/engagement`, {
-        credentials: "include",
-      });
-      if (!res.ok) return null;
-      const json = await res.json();
-      return (json.data ?? json) as {
-        messages_total: number;
-        rdv_total: number;
-        no_show_total: number;
-      };
-    },
-    staleTime: 60_000,
-    enabled: !preFetched,
-    initialData: preFetched ?? undefined,
-  });
-  return (
-    <Surface padding="p-4">
-      <div className="mb-3.5 flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Synthèse
-        </span>
-        <StatusPill status={prospect.status} size="lg" />
-      </div>
-      <div className="mb-3.5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <div className="text-[11px] font-medium text-muted-foreground">
-            Dans le pipeline
-          </div>
-          <div className="mt-0.5 text-lg font-semibold">{days} jours</div>
-        </div>
-        <div>
-          <div className="text-[11px] font-medium text-muted-foreground">
-            Entré le
-          </div>
-          <div className="mt-1 text-[13.5px] font-medium">
-            {FR_DATE(prospect.created_at)}
-          </div>
-        </div>
-      </div>
-      <div className="border-t border-border pt-3.5">
-        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Engagement
-        </div>
-        <div className="flex flex-col gap-2 text-[12.5px]">
-          {[
-            {
-              icon: MessageSquare,
-              label: "Messages échangés",
-              value: engagement ? String(engagement.messages_total) : "—",
-            },
-            {
-              icon: Calendar,
-              label: "RDV bookés",
-              value: engagement ? String(engagement.rdv_total) : "—",
-            },
-            {
-              icon: Check,
-              label: "No-show",
-              value: engagement ? String(engagement.no_show_total) : "—",
-            },
-          ].map((s) => {
-            const Icon = s.icon;
-            return (
-              <div key={s.label} className="flex items-center gap-2.5">
-                <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="text-foreground/80">{s.label}</span>
-                <div className="flex-1" />
-                <span className="font-semibold">{s.value}</span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </Surface>
   );
 }
 

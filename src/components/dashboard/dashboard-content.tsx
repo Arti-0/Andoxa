@@ -26,6 +26,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { toast as sonnerToast } from "sonner";
 import {
   Activity,
   AlertTriangle,
@@ -60,6 +61,15 @@ import {
 import { getLinkedInInviteWeeklyUsageCap } from "@/lib/linkedin/limits";
 import { DAILY_QUOTAS } from "@/lib/linkedin/quotas";
 import { MiniLineChart } from "@/components/ui/mini-line-chart";
+import { isFeatureEnabled } from "@/lib/config/feature-flags";
+
+/**
+ * #FF flags resolved once at module load (zero render cost):
+ *  - dashboardAvatarGreeting: profile picture next to "Bonjour <name>".
+ *  - dashboardDealCards: "Top deals en cours" + "Deals à risque" cards.
+ */
+const SHOW_AVATAR_GREETING = isFeatureEnabled("dashboardAvatarGreeting");
+const SHOW_DEAL_CARDS = isFeatureEnabled("dashboardDealCards");
 
 /* ============================================================
    API TYPES
@@ -154,6 +164,8 @@ interface TopDealRow {
   stage_label: string;
   last_activity_label: string;
   initials: string;
+  /** Enriched profile picture, when the prospect has been enriched. */
+  avatar_url?: string | null;
   href: string;
 }
 
@@ -166,6 +178,8 @@ interface AtRiskRow {
   silence_days: number;
   severity: "high" | "med" | "low";
   initials: string;
+  /** Enriched profile picture, when the prospect has been enriched. */
+  avatar_url?: string | null;
   href: string;
 }
 
@@ -318,11 +332,27 @@ function Avatar({
   initials,
   size = 32,
   color,
+  photo,
 }: {
   initials: string;
   size?: number;
   color?: string;
+  /** Enriched profile picture; falls back to coloured initials when absent. */
+  photo?: string | null;
 }) {
+  if (photo) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={photo}
+        alt={initials}
+        width={size}
+        height={size}
+        className="rounded-full object-cover flex-shrink-0"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
   return (
     <div
       className="rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0"
@@ -433,9 +463,9 @@ const PERIODS = [
   "Ce mois",
   "30 jours",
 ] as const;
-type Period = (typeof PERIODS)[number];
+export type Period = (typeof PERIODS)[number];
 
-type ApiPeriod = "today" | "week" | "month" | "30d";
+export type ApiPeriod = "today" | "week" | "month" | "30d";
 
 const PERIOD_TO_API: Record<Period, ApiPeriod> = {
   "Aujourd'hui": "today",
@@ -443,6 +473,51 @@ const PERIOD_TO_API: Record<Period, ApiPeriod> = {
   "Ce mois": "month",
   "30 jours": "30d",
 };
+
+export type PdfOrientation = "portrait" | "landscape";
+
+/* ============================================================
+   PDF EXPORT — background runner
+   ============================================================ */
+
+/**
+ * The PDF export runs as a detached, module-level job rather than component
+ * state. Generation can take a few seconds (data fetch + @react-pdf raster),
+ * and the previous version disabled the button and tied progress to the
+ * dashboard component — so navigating away looked like it "stopped".
+ *
+ * Now: the work and its toast feedback live at module scope, so the export
+ * keeps running and auto-downloads even if the user leaves the dashboard. A
+ * module guard prevents overlapping exports without locking the button.
+ */
+let dashboardExportInFlight = false;
+
+async function runDashboardExport(opts: {
+  period: Period;
+  apiPeriod: ApiPeriod;
+  orientation: PdfOrientation;
+  orgName: string | null;
+  orgLogoUrl: string | null;
+}): Promise<void> {
+  if (dashboardExportInFlight) {
+    sonnerToast.info("Un export est déjà en cours…");
+    return;
+  }
+  dashboardExportInFlight = true;
+  const toastId = sonnerToast.loading("Génération du PDF…");
+  try {
+    const { exportDashboardPdf } = await import("./dashboard-pdf");
+    await exportDashboardPdf(opts);
+    sonnerToast.success("Export PDF téléchargé", { id: toastId });
+  } catch (e) {
+    console.error("Dashboard PDF export failed", e);
+    sonnerToast.error("L'export a échoué. Réessaie dans un instant.", {
+      id: toastId,
+    });
+  } finally {
+    dashboardExportInFlight = false;
+  }
+}
 
 /* ============================================================
    PAGE HEADER
@@ -473,19 +548,21 @@ function getISOWeek(date: Date): number {
 
 function PageHeader({
   firstName,
+  avatarUrl,
   period,
   setPeriod,
   onExport,
-  exporting,
 }: {
   firstName: string;
+  avatarUrl?: string | null;
   period: Period;
   setPeriod: (p: Period) => void;
-  onExport: (p: Period) => void;
-  exporting: boolean;
+  onExport: (p: Period, orientation: PdfOrientation) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [exportOrientation, setExportOrientation] =
+    useState<PdfOrientation>("portrait");
   const ref = useRef<HTMLDivElement | null>(null);
   const exportRef = useRef<HTMLDivElement | null>(null);
   const today = useMemo(() => new Date(), []);
@@ -503,7 +580,21 @@ function PageHeader({
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6 mb-5 sm:mb-6">
-      <div className="min-w-0">
+      <div className="flex min-w-0 items-center gap-3">
+        {/* #FF: dashboardAvatarGreeting — profile picture before the greeting. */}
+        {SHOW_AVATAR_GREETING &&
+          (avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={avatarUrl}
+              alt={firstName}
+              className="h-11 w-11 shrink-0 rounded-full object-cover ring-1 ring-slate-200 dark:ring-zinc-800"
+            />
+          ) : (
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[15px] font-semibold text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">
+              {(firstName || "?").charAt(0).toUpperCase()}
+            </span>
+          ))}
         <h1 className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[22px] font-semibold leading-tight tracking-tight text-slate-900 dark:text-zinc-100 sm:text-[28px]">
           <span>
             Bonjour{" "}
@@ -563,20 +654,43 @@ function PageHeader({
         <div className="relative" ref={exportRef}>
           <button
             type="button"
-            onClick={() => !exporting && setExportOpen((o) => !o)}
-            disabled={exporting}
-            className="h-9 px-3 sm:px-3.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-800 rounded-md bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            onClick={() => setExportOpen((o) => !o)}
+            className="h-9 px-3 sm:px-3.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-800 rounded-md bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
             title="Exporter le tableau de bord en PDF"
           >
             <Download size={14} />
-            <span className="hidden sm:inline">{exporting ? "Génération…" : "Exporter"}</span>
+            <span className="hidden sm:inline">Exporter</span>
             <ChevronDown
               size={13}
               className={`text-slate-400 dark:text-zinc-500 transition-transform ${exportOpen ? "rotate-180" : ""}`}
             />
           </button>
-          {exportOpen && !exporting && (
-            <div className="absolute right-0 mt-1.5 w-52 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-md shadow-lg p-1 z-30">
+          {exportOpen && (
+            <div className="absolute right-0 mt-1.5 w-56 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-md shadow-lg p-1 z-30">
+              <div className="px-2.5 py-1.5 text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500 dark:text-zinc-400">
+                Orientation
+              </div>
+              <div className="flex gap-1 px-1.5 pb-1.5">
+                {(
+                  [
+                    { key: "portrait", label: "Vertical" },
+                    { key: "landscape", label: "Horizontal" },
+                  ] as const
+                ).map((o) => (
+                  <button
+                    key={o.key}
+                    onClick={() => setExportOrientation(o.key)}
+                    className={`flex-1 px-2 py-1 text-[12px] rounded transition-colors ${
+                      exportOrientation === o.key
+                        ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 font-medium"
+                        : "text-slate-600 hover:bg-slate-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+              <div className="my-1 border-t border-slate-100 dark:border-zinc-800" />
               <div className="px-2.5 py-1.5 text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500 dark:text-zinc-400">
                 Choisir la période
               </div>
@@ -585,7 +699,7 @@ function PageHeader({
                   key={p}
                   onClick={() => {
                     setExportOpen(false);
-                    onExport(p);
+                    onExport(p, exportOrientation);
                   }}
                   className="w-full text-left px-2.5 py-1.5 text-[12.5px] rounded transition-colors flex items-center justify-between text-slate-700 hover:bg-slate-50 dark:text-zinc-300 dark:hover:bg-zinc-800"
                 >
@@ -885,12 +999,6 @@ function FunnelCard({
             Du premier contact au closing
           </div>
         </div>
-        <a
-          href="/crm"
-          className="text-[12px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300"
-        >
-          Détails →
-        </a>
       </div>
       <div className="mt-4 sm:mt-5 space-y-2.5">
         {(isLoading && steps.length === 0
@@ -1135,7 +1243,7 @@ function TopDealsCard({
           </div>
         </div>
         <a
-          href="/crm"
+          href="/crm?view=pipeline"
           className="text-[12px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300"
         >
           Tout le pipeline →
@@ -1165,7 +1273,7 @@ function TopDealsCard({
                   href={d.href}
                   className="flex items-center gap-3 py-2.5 hover:bg-slate-50/60 dark:hover:bg-zinc-800/60 -mx-2 px-2 rounded transition-colors"
                 >
-                  <Avatar initials={d.initials} size={32} />
+                  <Avatar initials={d.initials} size={32} photo={d.avatar_url} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 sm:gap-2">
                       <span className="text-[12.5px] sm:text-[13px] font-medium text-slate-900 dark:text-zinc-100 truncate">
@@ -1262,7 +1370,7 @@ function AtRiskCard({
                   href={d.href}
                   className="flex items-center gap-3 py-2.5 hover:bg-slate-50/60 dark:hover:bg-zinc-800/60 -mx-2 px-2 rounded transition-colors"
                 >
-                  <Avatar initials={d.initials} size={32} />
+                  <Avatar initials={d.initials} size={32} photo={d.avatar_url} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 sm:gap-2">
                       <span className="text-[12.5px] sm:text-[13px] font-medium text-slate-900 dark:text-zinc-100 truncate">
@@ -1419,12 +1527,6 @@ function LinkedInQuotasCard({
             </div>
           </div>
         </div>
-        <a
-          href="/settings"
-          className="text-[11.5px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300"
-        >
-          Détails →
-        </a>
       </div>
       <div className="space-y-3">
         {rows.map((q) => {
@@ -1512,7 +1614,7 @@ function ActiveCampaignsCard({
           </div>
         </div>
         <Link
-          href="/workflows"
+          href="/campaigns"
           className="text-[11.5px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300"
         >
           Toutes →
@@ -1571,7 +1673,7 @@ function ActiveCampaignsCard({
               })}
       </div>
       <Link
-        href="/workflows"
+        href="/campaigns"
         className="mt-4 w-full block text-center text-[12px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 py-1.5 rounded-md transition-colors"
       >
         + Nouvelle campagne
@@ -1835,7 +1937,6 @@ function RecentActivityCard({
 export function DashboardContent() {
   const { workspace, user, profile } = useWorkspace();
   const [period, setPeriod] = useState<Period>("Ce mois");
-  const [exporting, setExporting] = useState(false);
   const apiPeriod = PERIOD_TO_API[period];
 
   // One request → one auth pass → parallel fan-out on the server. Was
@@ -1861,31 +1962,19 @@ export function DashboardContent() {
     return "";
   }, [profile?.full_name, user?.email]);
 
-  const handleExport = async (chosenPeriod: Period) => {
-    if (exporting) return;
-    setExporting(true);
-    try {
-      const { exportDashboardPDF } = await import("./dashboard-pdf");
-      const apiP = PERIOD_TO_API[chosenPeriod];
-      const [exportStats, exportFunnel, exportTopDeals] = await Promise.all([
-        fetchDashboardStats(apiP),
-        fetchFunnel(apiP),
-        fetchTopDeals(),
-      ]);
-      await exportDashboardPDF({
-        periodLabel: chosenPeriod,
-        exportedAt: new Date(),
-        firstName,
-        stats: exportStats,
-        funnel: exportFunnel,
-        topDeals: exportTopDeals,
-      });
-    } catch (e) {
-      console.error("Dashboard PDF export failed", e);
-      alert("L'export a échoué. Réessaie dans un instant.");
-    } finally {
-      setExporting(false);
-    }
+  // #FF: dashboardAvatarGreeting — user profile picture for the greeting.
+  const avatarUrl = profile?.avatar_url ?? null;
+
+  // Fire-and-forget: the export runs as a detached module-level job with its
+  // own toast feedback, so it survives navigation and never disables the button.
+  const handleExport = (chosenPeriod: Period, orientation: PdfOrientation) => {
+    void runDashboardExport({
+      period: chosenPeriod,
+      apiPeriod: PERIOD_TO_API[chosenPeriod],
+      orientation,
+      orgName: workspace?.name ?? null,
+      orgLogoUrl: workspace?.logo_url ?? null,
+    });
   };
 
   return (
@@ -1899,10 +1988,10 @@ export function DashboardContent() {
       <div className="max-w-[1480px] mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-7">
         <PageHeader
           firstName={firstName || "vous"}
+          avatarUrl={avatarUrl}
           period={period}
           setPeriod={setPeriod}
           onExport={handleExport}
-          exporting={exporting}
         />
         <PrioritiesBand data={overview?.priorities} isLoading={isLoading} />
         <KpiGrid stats={stats} isLoading={statsLoading} />
@@ -1912,10 +2001,13 @@ export function DashboardContent() {
           <ActivityVolumeCard stats={stats} />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-5 sm:mb-6">
-          <TopDealsCard data={overview?.topDeals} isLoading={isLoading} />
-          <AtRiskCard data={overview?.atRisk} isLoading={isLoading} />
-        </div>
+        {/* #FF: dashboardDealCards — Top deals + Deals à risque (hidden for now). */}
+        {SHOW_DEAL_CARDS && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-5 sm:mb-6">
+            <TopDealsCard data={overview?.topDeals} isLoading={isLoading} />
+            <AtRiskCard data={overview?.atRisk} isLoading={isLoading} />
+          </div>
+        )}
 
         <div className="grid gap-3 sm:gap-4 mb-5 sm:mb-6 grid-cols-1 lg:[grid-template-columns:minmax(0,1fr)_minmax(0,360px)]">
           <RecentActivityCard

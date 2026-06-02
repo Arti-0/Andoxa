@@ -21,6 +21,10 @@
   --m2-cream: #fff6e8;
   --m2-cream-border: #f2e4c7;
 
+  /* Outgoing message bubble — desaturated brand blue. */
+  --m2-out-bubble: #eef3fb;
+  --m2-out-bubble-border: #dbe6f5;
+
   /* Surface tokens — keep names so dark overrides only need to swap below */
   --m2-surface: #f7f8fa;
   --m2-surface-elevated: #ffffff;
@@ -58,6 +62,10 @@
 
   --m2-cream: rgba(251, 191, 36, 0.10);
   --m2-cream-border: rgba(251, 191, 36, 0.28);
+
+  /* Outgoing bubble — desaturated brand blue, dark-mode tuned. */
+  --m2-out-bubble: rgba(59, 130, 246, 0.16);
+  --m2-out-bubble-border: rgba(59, 130, 246, 0.30);
 
   --m2-surface: #0a0a0a;
   --m2-surface-elevated: #18181b;
@@ -333,8 +341,10 @@
 }
 
 .m2-bubble-out {
-  background: var(--m2-cream);
-  border: 1px solid var(--m2-cream-border);
+  /* Desaturated light blue derived from the brand blue (#0052D9) — replaces
+     the old cream/yellow. Kept low-saturation so long threads stay calm. */
+  background: var(--m2-out-bubble, #eef3fb);
+  border: 1px solid var(--m2-out-bubble-border, #dbe6f5);
 }
 .m2-bubble-in {
   background: var(--m2-surface-elevated);

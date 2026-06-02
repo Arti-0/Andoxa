@@ -17,20 +17,22 @@ export const GET = createApiHandler(async (req, ctx) => {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
   const id = extractJobId(req);
 
-  const { data: job, error } = await ctx.supabase
-    .from("campaign_jobs")
-    .select("*")
-    .eq("id", id)
-    .eq("organization_id", ctx.workspaceId)
-    .single();
+  // The job row and its prospect rows are independent — fetch in parallel.
+  const [{ data: job, error }, { data: jobProspects }] = await Promise.all([
+    ctx.supabase
+      .from("campaign_jobs")
+      .select("*")
+      .eq("id", id)
+      .eq("organization_id", ctx.workspaceId)
+      .single(),
+    ctx.supabase
+      .from("campaign_job_prospects")
+      .select("id, prospect_id, status, error, processed_at")
+      .eq("job_id", id)
+      .order("processed_at", { ascending: true, nullsFirst: false }),
+  ]);
 
   if (error || !job) throw Errors.notFound("Campaign job");
-
-  const { data: jobProspects } = await ctx.supabase
-    .from("campaign_job_prospects")
-    .select("id, prospect_id, status, error, processed_at")
-    .eq("job_id", id)
-    .order("processed_at", { ascending: true, nullsFirst: false });
 
   const prospectIds = (jobProspects ?? []).map((p) => p.prospect_id);
   let prospectNames: Record<string, string> = {};
@@ -70,7 +72,20 @@ export const PATCH = createApiHandler(async (req, ctx) => {
       throw Errors.validation({ status: "Must be 'paused', 'running', or 'failed'" });
     }
     updates.status = body.status;
-    if (body.status === "running") updates.started_at = new Date().toISOString();
+    // `started_at` is the campaign's launch time. Only stamp it the first time
+    // the job actually starts running — resuming from pause must NOT reset it,
+    // otherwise the "Lancée" column would jump to the resume time.
+    if (body.status === "running") {
+      const { data: existing } = await ctx.supabase
+        .from("campaign_jobs")
+        .select("started_at")
+        .eq("id", id)
+        .eq("organization_id", ctx.workspaceId)
+        .single();
+      if (!existing?.started_at) {
+        updates.started_at = new Date().toISOString();
+      }
+    }
   }
 
   if (body.name !== undefined) {
@@ -114,9 +129,9 @@ export const PATCH = createApiHandler(async (req, ctx) => {
  * delete bar. Owner-only (the existing RLS policies already restrict to org
  * members + `created_by`).
  *
- * Implementation: set status='failed' AND clear the metadata-name so it
- * doesn't pollute lists. A real `deleted_at` column will land alongside the
- * bulk endpoint — see BACKEND.md §1.3 / §1.6.
+ * Implementation: stamp `deleted_at` (real soft-delete). The list query
+ * filters `deleted_at IS NULL`, so the row disappears and `status` keeps its
+ * true meaning (a genuinely failed job stays visible as "Échouée").
  */
 export const DELETE = createApiHandler(async (req, ctx) => {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
@@ -135,7 +150,7 @@ export const DELETE = createApiHandler(async (req, ctx) => {
 
   const { error } = await ctx.supabase
     .from("campaign_jobs")
-    .update({ status: "failed" })
+    .update({ deleted_at: new Date().toISOString() } as CampaignJobUpdate)
     .eq("id", id)
     .eq("organization_id", ctx.workspaceId);
   if (error) throw Errors.internal("Failed to delete campaign job");

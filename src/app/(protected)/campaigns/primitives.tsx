@@ -61,6 +61,20 @@ export function ChannelPill({ channel }: { channel: Channel }) {
 
 export function Avatar({ creator, size = 22 }: { creator: Creator | undefined; size?: number }) {
   if (!creator) return null;
+  if (creator.avatarUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={creator.avatarUrl}
+        alt={creator.name}
+        width={size}
+        height={size}
+        referrerPolicy="no-referrer"
+        className="shrink-0 rounded-full object-cover"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
   return (
     <span
       className="inline-flex items-center justify-center rounded-full font-bold text-white shrink-0"

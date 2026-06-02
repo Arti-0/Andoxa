@@ -1,12 +1,19 @@
 "use client";
 
 import { useMemo } from "react";
-import { Archive, ArrowLeft, Pin } from "lucide-react";
+import Link from "next/link";
+import { FileText, Pin } from "lucide-react";
 import type { Conversation, Channel } from "./data";
 import { Avatar, ChannelMark, StagePill } from "./components";
+import { isFeatureEnabled } from "@/lib/config/feature-flags";
+import type { MsgFilter } from "./page";
 
-type Filter = "all" | "unread" | "relance" | "rdv";
 type ChannelFilter = "all" | Channel;
+
+// #FF: whatsapp — channel segment hidden until WhatsApp ships.
+const SHOW_WHATSAPP = isFeatureEnabled("whatsapp");
+// #FF: messagerieHorsCrm — "Hors CRM" filter chip.
+const SHOW_HORS_CRM = isFeatureEnabled("messagerieHorsCrm");
 
 export function ConvList({
   conversations,
@@ -17,23 +24,22 @@ export function ConvList({
   setFilter,
   channel,
   setChannel,
-  view,
-  setView,
-  archivedCount,
+  stickyIds,
+  matchesFilter,
 }: {
   conversations: Conversation[];
   activeId: string;
   onSelect: (id: string) => void;
   onTogglePin?: (chatId: string, pinned: boolean) => void;
-  filter: Filter;
-  setFilter: (f: Filter) => void;
+  filter: MsgFilter;
+  setFilter: (f: MsgFilter) => void;
   channel: ChannelFilter;
   setChannel: (c: ChannelFilter) => void;
-  view: "active" | "archived";
-  setView: (v: "active" | "archived") => void;
-  archivedCount: number;
+  /** Session-sticky membership for the active filter (null = no stickiness). */
+  stickyIds: Set<string> | null;
+  matchesFilter: (f: MsgFilter, c: Conversation) => boolean;
 }) {
-  const STATUS: { id: Filter; label: string; count: number }[] = [
+  const STATUS: { id: MsgFilter; label: string; count: number }[] = [
     { id: "all", label: "Tous", count: conversations.length },
     {
       id: "unread",
@@ -50,16 +56,30 @@ export function ConvList({
       label: "RDV à venir",
       count: conversations.filter((c) => c.stage === "meeting").length,
     },
+    ...(SHOW_HORS_CRM
+      ? [
+          {
+            id: "horscrm" as MsgFilter,
+            label: "Hors CRM",
+            count: conversations.filter((c) => c.prospectId === null).length,
+          },
+        ]
+      : []),
   ];
 
   const filtered = useMemo(() => {
     let list = conversations;
     if (channel !== "all") list = list.filter((c) => c.channel === channel);
-    if (filter === "unread") list = list.filter((c) => c.unread > 0);
-    if (filter === "relance") list = list.filter((c) => c.silentDays >= 4);
-    if (filter === "rdv") list = list.filter((c) => c.stage === "meeting");
+    if (filter !== "all") {
+      // Sticky: a row stays visible if it matches now OR matched when the
+      // filter was entered (so reading an unread one / an RDV passing doesn't
+      // make it vanish mid-session).
+      list = list.filter(
+        (c) => matchesFilter(filter, c) || (stickyIds?.has(c.id) ?? false),
+      );
+    }
     return list;
-  }, [conversations, filter, channel]);
+  }, [conversations, filter, channel, stickyIds, matchesFilter]);
 
   return (
     <div
@@ -73,99 +93,99 @@ export function ConvList({
         flexShrink: 0,
       }}
     >
-      {/* Niveau 1 — canal */}
+      {/* Header — title + Templates entry (integrated, not a floating bar). */}
       <div
         style={{
-          padding: "14px 16px 10px",
+          padding: "12px 16px 10px",
           borderBottom: "1px solid var(--m2-slate-150)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
         }}
       >
-        <div className="m2-seg" style={{ width: "100%" }}>
-          <button
-            className={channel === "all" ? "active" : ""}
-            onClick={() => setChannel("all")}
-            style={{ flex: 1, justifyContent: "center" }}
-          >
-            Tous
-          </button>
-          <button
-            className={channel === "li" ? "active" : ""}
-            onClick={() => setChannel("li")}
-            style={{ flex: 1, justifyContent: "center" }}
-          >
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 2,
-                background: "#0A66C2",
-              }}
-            />
-            LinkedIn
-          </button>
-          <button
-            className={channel === "wa" ? "active" : ""}
-            onClick={() => setChannel("wa")}
-            style={{ flex: 1, justifyContent: "center" }}
-          >
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 2,
-                background: "#25D366",
-              }}
-            />
-            WhatsApp
-          </button>
-        </div>
-      </div>
-
-      {/* Niveau 2 — statut */}
-      {view === "active" ? (
-        <div
+        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--m2-slate-900)" }}>
+          Conversations
+        </span>
+        <Link
+          href="/messagerie/templates"
+          className="m2-icon-btn"
+          title="Templates de messages"
+          aria-label="Templates de messages"
           style={{
-            padding: "10px 14px",
-            borderBottom: "1px solid var(--m2-slate-150)",
-            display: "flex",
-            gap: 4,
-            overflowX: "auto",
-          }}
-        >
-          {STATUS.map((f) => (
-            <button
-              key={f.id}
-              className={"m2-filter-chip" + (filter === f.id ? " active" : "")}
-              onClick={() => setFilter(f.id)}
-            >
-              {f.label}
-              <span className="count">{f.count}</span>
-            </button>
-          ))}
-        </div>
-      ) : (
-        <button
-          onClick={() => setView("active")}
-          style={{
-            display: "flex",
+            display: "inline-flex",
             alignItems: "center",
             gap: 6,
-            padding: "10px 14px",
-            borderBottom: "1px solid var(--m2-slate-150)",
-            background: "var(--m2-slate-50, #f8fafc)",
-            color: "var(--m2-slate-600)",
+            padding: "5px 9px",
+            width: "auto",
             fontSize: 12,
             fontWeight: 500,
-            border: 0,
-            borderRadius: 0,
-            cursor: "pointer",
-            textAlign: "left",
+            color: "var(--m2-slate-700)",
+            textDecoration: "none",
           }}
         >
-          <ArrowLeft size={13} />
-          Retour aux conversations actives
-        </button>
+          <FileText size={13} />
+          Templates
+        </Link>
+      </div>
+
+      {/* Niveau 1 — canal (WhatsApp segment gated behind #FF). */}
+      {SHOW_WHATSAPP && (
+        <div
+          style={{
+            padding: "14px 16px 10px",
+            borderBottom: "1px solid var(--m2-slate-150)",
+          }}
+        >
+          <div className="m2-seg" style={{ width: "100%" }}>
+            <button
+              className={channel === "all" ? "active" : ""}
+              onClick={() => setChannel("all")}
+              style={{ flex: 1, justifyContent: "center" }}
+            >
+              Tous
+            </button>
+            <button
+              className={channel === "li" ? "active" : ""}
+              onClick={() => setChannel("li")}
+              style={{ flex: 1, justifyContent: "center" }}
+            >
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: "#0A66C2" }} />
+              LinkedIn
+            </button>
+            <button
+              className={channel === "wa" ? "active" : ""}
+              onClick={() => setChannel("wa")}
+              style={{ flex: 1, justifyContent: "center" }}
+            >
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: "#25D366" }} />
+              WhatsApp
+            </button>
+          </div>
+        </div>
       )}
+
+      {/* Niveau 2 — statut */}
+      <div
+        style={{
+          padding: "10px 14px",
+          borderBottom: "1px solid var(--m2-slate-150)",
+          display: "flex",
+          gap: 4,
+          overflowX: "auto",
+        }}
+      >
+        {STATUS.map((f) => (
+          <button
+            key={f.id}
+            className={"m2-filter-chip" + (filter === f.id ? " active" : "")}
+            onClick={() => setFilter(f.id)}
+          >
+            {f.label}
+            <span className="count">{f.count}</span>
+          </button>
+        ))}
+      </div>
 
       {/* Cards */}
       <div style={{ flex: 1, overflowY: "auto" }}>
@@ -276,10 +296,14 @@ export function ConvList({
                   <Pin
                     size={14}
                     strokeWidth={2}
+                    // Simple boolean: pinned → filled mark in the strongest
+                    // foreground (black in light, white in dark); not pinned →
+                    // clean outline.
                     fill={c.pinnedAt ? "currentColor" : "none"}
                     style={{
-                      color: c.pinnedAt ? "#0052D9" : "var(--m2-slate-500)",
-                      opacity: c.pinnedAt ? 1 : 0.5,
+                      color: c.pinnedAt
+                        ? "var(--m2-slate-900)"
+                        : "var(--m2-slate-500)",
                     }}
                   />
                 </button>
@@ -307,7 +331,7 @@ export function ConvList({
             </div>
           );
         })}
-        {filtered.length === 0 && view === "archived" && (
+        {filtered.length === 0 && (
           <div
             style={{
               padding: "32px 16px",
@@ -316,49 +340,10 @@ export function ConvList({
               color: "var(--m2-slate-500)",
             }}
           >
-            Aucune conversation archivée.
+            Aucune conversation.
           </div>
         )}
       </div>
-
-      {view === "active" && (
-        <button
-          onClick={() => setView("archived")}
-          disabled={archivedCount === 0}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
-            padding: "10px 14px",
-            borderTop: "1px solid var(--m2-slate-150)",
-            background: "var(--m2-surface-elevated)",
-            color: archivedCount === 0
-              ? "var(--m2-slate-400)"
-              : "var(--m2-slate-700)",
-            fontSize: 12,
-            fontWeight: 500,
-            border: 0,
-            borderRadius: 0,
-            cursor: archivedCount === 0 ? "not-allowed" : "pointer",
-            textAlign: "left",
-          }}
-        >
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <Archive size={13} />
-            Archives
-          </span>
-          <span
-            style={{
-              fontSize: 11,
-              color: "var(--m2-slate-500)",
-              tabularNums: "nums",
-            } as React.CSSProperties}
-          >
-            {archivedCount}
-          </span>
-        </button>
-      )}
     </div>
   );
 }

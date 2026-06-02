@@ -24,6 +24,7 @@ import {
   useRenameTemplateCategory,
   useSaveTemplate,
   useTemplateCategories,
+  useBookingUrl,
   type AdminTemplate,
 } from "./queries";
 
@@ -414,17 +415,20 @@ type EditingTemplate = Partial<Template> & {
   content: string;
 };
 
-function EditModal({ tpl, onClose, onSave, onDelete, categories }: {
+function EditModal({ tpl, onClose, onSave, onDelete, categories, bookingUrl }: {
   tpl: EditingTemplate;
   onClose: () => void;
   onSave: (t: EditingTemplate) => void;
   onDelete: (id: string) => void;
   categories: CategoryEntry[];
+  bookingUrl: string | null;
 }) {
   const isNew = !tpl.id;
   const [name, setName] = useState(tpl.name || "");
   const [tags, setTags] = useState<string[]>(tpl.tags ?? []);
-  const [channel, setChannel] = useState<ChannelId>(tpl.channel || "both");
+  // Channel is retained on the record (defaults to "both") but is no longer a
+  // user-facing choice — "Canal préféré" was removed from the editor.
+  const channel: ChannelId = tpl.channel || "both";
   const [content, setContent] = useState(tpl.content || "");
   const [previewOpen, setPreviewOpen] = useState(true);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -439,8 +443,13 @@ function EditModal({ tpl, onClose, onSave, onDelete, categories }: {
   };
 
   const renderedPreview = useMemo(
-    () => applyTemplatePreview(content),
-    [content]
+    // Use the real booking link (from Calendar settings) when available so the
+    // {lien_booking} preview matches what prospects actually receive.
+    () =>
+      bookingUrl
+        ? applyTemplatePreview(content, bookingUrl)
+        : applyTemplatePreview(content),
+    [content, bookingUrl]
   );
 
   const charCount = content.length;
@@ -460,19 +469,9 @@ function EditModal({ tpl, onClose, onSave, onDelete, categories }: {
             <input className="m2-form-input" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Premier contact LinkedIn — Founder B2B" />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <label className="m2-form-label">Tags</label>
-              <TagSelect selected={tags} onChange={setTags} options={categories} />
-            </div>
-            <div>
-              <label className="m2-form-label">Canal préféré</label>
-              <div className="m2-seg" style={{ width: "100%" }}>
-                <button className={channel === "li" ? "active" : ""} onClick={() => setChannel("li")} style={{ flex: 1, justifyContent: "center" }}>LinkedIn</button>
-                <button className={channel === "wa" ? "active" : ""} onClick={() => setChannel("wa")} style={{ flex: 1, justifyContent: "center" }}>WhatsApp</button>
-                <button className={channel === "both" ? "active" : ""} onClick={() => setChannel("both")} style={{ flex: 1, justifyContent: "center" }}>Les deux</button>
-              </div>
-            </div>
+          <div>
+            <label className="m2-form-label">Tags</label>
+            <TagSelect selected={tags} onChange={setTags} options={categories} />
           </div>
 
           <div>
@@ -557,6 +556,7 @@ export default function TemplatesPage() {
   // local emoji-by-id map so the UI looks the same, but the source of truth
   // for category existence + name is /api/template-categories.
   const { data: serverCats } = useTemplateCategories();
+  const bookingUrl = useBookingUrl();
   const createCategoryMutation = useCreateTemplateCategory();
   const renameCategoryMutation = useRenameTemplateCategory();
   const deleteCategoryMutation = useDeleteTemplateCategory();
@@ -595,8 +595,8 @@ export default function TemplatesPage() {
 
   const [activeCat, setActiveCat] = useState<string>("all");
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<"used" | "recent" | "alpha">("used");
-  const [view, setView] = useState<"compact" | "detail">("detail");
+  const [sort, setSort] = useState<"used" | "alpha">("used");
+  const [view, setView] = useState<"compact" | "detail">("compact");
   const [editing, setEditing] = useState<EditingTemplate | null>(null);
 
   const handleNewCategory = (cat: CategoryEntry) => {
@@ -694,11 +694,10 @@ export default function TemplatesPage() {
                     <Search size={13} style={{ color: "var(--m2-slate-500)" }} />
                     <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher dans vos templates…" />
                   </div>
-                  <select className="m2-form-select" style={{ width: "auto" }} value={sort} onChange={(e) => setSort(e.target.value as "used" | "recent" | "alpha")}>
-                    <option value="used">Plus utilisés</option>
-                    <option value="recent">Plus récents</option>
-                    <option value="alpha">Alphabétique</option>
-                  </select>
+                  <div className="m2-seg" title="Trier les templates">
+                    <button className={sort === "used" ? "active" : ""} onClick={() => setSort("used")}>Plus utilisés</button>
+                    <button className={sort === "alpha" ? "active" : ""} onClick={() => setSort("alpha")}>A → Z</button>
+                  </div>
                   <div className="m2-seg">
                     <button className={view === "compact" ? "active" : ""} onClick={() => setView("compact")}>Compact</button>
                     <button className={view === "detail" ? "active" : ""} onClick={() => setView("detail")}>Détaillé</button>
@@ -719,7 +718,7 @@ export default function TemplatesPage() {
       </div>
 
       {editing && (
-        <EditModal tpl={editing} onClose={() => setEditing(null)} onSave={save} onDelete={del} categories={categories} />
+        <EditModal tpl={editing} onClose={() => setEditing(null)} onSave={save} onDelete={del} categories={categories} bookingUrl={bookingUrl} />
       )}
       {newCatOpen && (
         <NewCategoryModal onClose={() => setNewCatOpen(false)} onSave={handleNewCategory} />

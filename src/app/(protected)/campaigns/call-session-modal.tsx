@@ -24,20 +24,18 @@ import {
   Phone,
   Zap,
 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { AppModal } from "@/components/ui/app-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { isFeatureEnabled } from "@/lib/config/feature-flags";
+
+// #FF: whatsapp — the post-call WhatsApp follow-up sequence is hidden until
+// WhatsApp ships.
+const SHOW_WHATSAPP = isFeatureEnabled("whatsapp");
 
 export type CallOrder = "list" | "random" | "priority";
 export type ScheduleMode = "now" | "later";
@@ -157,17 +155,20 @@ export function CallSessionModal({
   open,
   onOpenChange,
   onCreate,
+  initialBddId = null,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreate: (data: CreateSessionPayload) => void | Promise<void>;
+  /** Preselect a list (used by the CRM call-session list action). */
+  initialBddId?: string | null;
 }) {
   const [step, setStep] = useState(1);
   const [maxReached, setMaxReached] = useState(1);
   const [submitting, setSubmitting] = useState(false);
 
   // Step 1
-  const [bddId, setBddId] = useState<string | null>(null);
+  const [bddId, setBddId] = useState<string | null>(initialBddId);
   const [excludeContacted, setExcludeContacted] = useState(false);
   const [excludeActive, setExcludeActive] = useState(true);
 
@@ -266,25 +267,69 @@ export function CallSessionModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[88vh] gap-0 overflow-hidden p-0 sm:max-w-2xl">
-        <DialogHeader className="px-6 pt-5 pb-3">
-          <DialogTitle className="flex items-center gap-2">
-            <span className="inline-flex size-7 items-center justify-center rounded-md bg-[#FF6700] text-white">
-              <Phone className="size-4" />
-            </span>
-            Nouvelle session d&apos;appels
-          </DialogTitle>
-          <DialogDescription>
-            {step === 1
-              ? "Choisissez la liste de prospects à appeler. Vous pourrez démarrer maintenant ou planifier ensuite."
-              : "Donnez un nom à la session et choisissez quand elle démarre."}
-          </DialogDescription>
-        </DialogHeader>
-
+    <AppModal
+      open={open}
+      onOpenChange={onOpenChange}
+      size="lg"
+      title={
+        <span className="flex items-center gap-2">
+          <span className="inline-flex size-7 items-center justify-center rounded-md bg-[#FF6700] text-white">
+            <Phone className="size-4" />
+          </span>
+          Nouvelle session d&apos;appels
+        </span>
+      }
+      description={
+        step === 1
+          ? "Choisissez la liste de prospects à appeler. Vous pourrez démarrer maintenant ou planifier ensuite."
+          : "Donnez un nom à la session et choisissez quand elle démarre."
+      }
+      footer={
+        <div className="flex w-full items-center justify-between gap-2">
+          <div className="text-xs text-muted-foreground">
+            Étape <strong className="text-foreground">{step}</strong> sur 2
+          </div>
+          <div className="flex gap-2">
+            {step === 2 && (
+              <Button variant="outline" onClick={goPrev} disabled={submitting}>
+                <ArrowLeft className="size-3.5" />
+                Précédent
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={submitting}
+            >
+              Annuler
+            </Button>
+            {step === 1 && (
+              <Button onClick={goNext} disabled={!step1Valid}>
+                Continuer
+                <ArrowRight className="size-3.5" />
+              </Button>
+            )}
+            {step === 2 && (
+              <Button onClick={() => void submit()} disabled={!step2Valid || submitting}>
+                {mode === "now" ? (
+                  <Zap className="size-3.5" />
+                ) : (
+                  <CalendarDays className="size-3.5" />
+                )}
+                {submitting
+                  ? "Création…"
+                  : mode === "now"
+                    ? "Créer et démarrer"
+                    : "Créer la session"}
+              </Button>
+            )}
+          </div>
+        </div>
+      }
+    >
         <Stepper step={step} maxReached={maxReached} onJump={(n) => setStep(n)} />
 
-        <div className="max-h-[60vh] overflow-y-auto px-6 py-5">
+        <div className="pt-4">
           {step === 1 && (
             <Step1SessionProspects
               bdds={bdds}
@@ -325,49 +370,7 @@ export function CallSessionModal({
             />
           )}
         </div>
-
-        <DialogFooter className="flex flex-row items-center justify-between gap-2 border-t bg-muted/30 px-6 py-3">
-          <div className="text-xs text-muted-foreground">
-            Étape <strong className="text-foreground">{step}</strong> sur 2
-          </div>
-          <div className="flex gap-2">
-            {step === 2 && (
-              <Button variant="outline" onClick={goPrev} disabled={submitting}>
-                <ArrowLeft className="size-3.5" />
-                Précédent
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={submitting}
-            >
-              Annuler
-            </Button>
-            {step === 1 && (
-              <Button onClick={goNext} disabled={!step1Valid}>
-                Continuer
-                <ArrowRight className="size-3.5" />
-              </Button>
-            )}
-            {step === 2 && (
-              <Button onClick={() => void submit()} disabled={!step2Valid || submitting}>
-                {mode === "now" ? (
-                  <Zap className="size-3.5" />
-                ) : (
-                  <CalendarDays className="size-3.5" />
-                )}
-                {submitting
-                  ? "Création…"
-                  : mode === "now"
-                    ? "Créer et démarrer"
-                    : "Créer la session"}
-              </Button>
-            )}
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </AppModal>
   );
 }
 
@@ -434,7 +437,7 @@ function Step1SessionProspects({
       <div className="space-y-2">
         <Label className="mb-1 block">Affinages</Label>
         <div className="rounded-md border bg-muted/30 p-3 text-[12px] text-muted-foreground">
-          ✓ <strong className="text-foreground">Uniquement les prospects avec un numéro de téléphone</strong> (forcé — une session sans téléphone n&apos;est pas appelable).
+          ✓ <strong className="text-foreground">Uniquement les prospects avec un numéro de téléphone</strong>
         </div>
         <RefineToggle
           label="Exclure les prospects déjà contactés"
@@ -682,12 +685,14 @@ function Step2SessionConfig({
           Avancé
         </summary>
         <div className="space-y-3 border-t p-3">
-          <RefineToggle
-            label="Séquence WhatsApp automatique"
-            hint="Envoie un message WhatsApp après un appel sans réponse"
-            checked={waFollowup}
-            onCheckedChange={setWaFollowup}
-          />
+          {SHOW_WHATSAPP && (
+            <RefineToggle
+              label="Séquence WhatsApp automatique"
+              hint="Envoie un message WhatsApp après un appel sans réponse"
+              checked={waFollowup}
+              onCheckedChange={setWaFollowup}
+            />
+          )}
           <RefineToggle
             label="Notifier l'équipe"
             hint="Envoie une notification à l'équipe au démarrage"

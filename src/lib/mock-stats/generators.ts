@@ -204,6 +204,7 @@ export function mockDashboardTopDeals(limit: number) {
       i === 0 ? "Réponse aujourd'hui" : i === 1 ? "Réponse hier" : `Activité il y a ${i + 1}j`,
     last_activity_at: new Date(Date.now() - i * 86400000).toISOString(),
     initials: d.name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase(),
+    avatar_url: null,
     href: `/prospect/${mockUuid(i + 1)}`,
   }));
 }
@@ -218,6 +219,7 @@ export function mockDashboardAtRisk(limit: number) {
     silence_days: randInt(7, 18) + i,
     severity: (i === 0 ? "high" : i < 3 ? "med" : "low") as "high" | "med" | "low",
     initials: d.name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase(),
+    avatar_url: null,
     href: `/prospect/${mockUuid(100 + i)}`,
   }));
 }

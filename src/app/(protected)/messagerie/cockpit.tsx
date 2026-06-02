@@ -11,35 +11,38 @@ import {
   X,
   Eye,
 } from "lucide-react";
-import type { Conversation, TimelineEvent, Stage } from "./data";
-import { PIPELINE_ORDER, STAGES } from "./data";
-import { Avatar, StagePill } from "./components";
-import { useProspectTimeline, useUpdateProspectStatus } from "./queries";
+import type { Conversation, TimelineEvent } from "./data";
+import { Avatar } from "./components";
+import { useProspect, useProspectTimeline, useUpdateProspectStatus } from "./queries";
+import {
+  useDynamicStatusConfig,
+  StatusPill,
+  type StatusConfig,
+} from "@/components/crm/crm-shared";
 import { toast } from "@/lib/toast";
-
-// Inverse of statusToStage — maps design stage back to the DB status enum value.
-const STAGE_TO_STATUS: Partial<Record<Stage, string>> = {
-  contacted: "contacted",
-  replied: "qualified",
-  meeting: "rdv",
-  proposal: "proposal",
-  closing: "won",
-  noshow: "lost",
-};
 
 const sectionStyle: React.CSSProperties = {
   padding: "22px 20px",
   borderBottom: "1px solid var(--m2-slate-150)",
 };
 
+/**
+ * Pipeline stepper driven by the per-org custom statuses (same source as the
+ * CRM). Clicking a status sets the prospect to that status key. Falls back to
+ * a flat row when statuses are still loading.
+ */
 function MiniStepper({
-  stage,
-  onStageClick,
+  order,
+  cfgByKey,
+  currentKey,
+  onStatusClick,
 }: {
-  stage: Stage;
-  onStageClick?: (s: Stage) => void;
+  order: string[];
+  cfgByKey: Map<string, StatusConfig>;
+  currentKey: string | null;
+  onStatusClick?: (key: string) => void;
 }) {
-  const idx = PIPELINE_ORDER.indexOf(stage);
+  const idx = currentKey ? order.indexOf(currentKey) : -1;
   return (
     <div
       style={{
@@ -47,14 +50,17 @@ function MiniStepper({
         alignItems: "flex-start",
         gap: 0,
         marginTop: 4,
+        overflowX: "auto",
       }}
     >
-      {PIPELINE_ORDER.map((k, i) => {
-        const isPast = i < idx;
+      {order.map((key, i) => {
+        const isPast = idx >= 0 && i < idx;
         const isActive = i === idx;
-        const s = STAGES[k];
+        const cfg = cfgByKey.get(key);
+        const label = cfg?.label ?? key;
+        const hex = cfg?.hex ?? "#0052D9";
         return (
-          <Fragment key={k}>
+          <Fragment key={key}>
             <div
               style={{
                 display: "flex",
@@ -67,28 +73,14 @@ function MiniStepper({
             >
               <div
                 className="m2-stepper-dot"
-                onClick={() => onStageClick?.(k)}
-                title={`Passer à : ${s.label}`}
+                onClick={() => onStatusClick?.(key)}
+                title={`Passer à : ${label}`}
                 style={{
-                  background: isActive
-                    ? "var(--m2-blue)"
-                    : isPast
-                      ? "var(--m2-blue-100)"
-                      : "transparent",
-                  color: isActive
-                    ? "white"
-                    : isPast
-                      ? "var(--m2-blue)"
-                      : "var(--m2-slate-500)",
-                  border: isActive
-                    ? "2px solid var(--m2-blue)"
-                    : isPast
-                      ? "2px solid var(--m2-blue-100)"
-                      : "2px solid var(--m2-slate-200)",
-                  boxShadow: isActive
-                    ? "0 0 0 4px rgba(0,82,217,0.12)"
-                    : "none",
-                  cursor: onStageClick && !isActive ? "pointer" : "default",
+                  background: isActive ? hex : isPast ? `${hex}22` : "transparent",
+                  color: isActive ? "white" : isPast ? hex : "var(--m2-slate-500)",
+                  border: `2px solid ${isActive || isPast ? hex : "var(--m2-slate-200)"}`,
+                  boxShadow: isActive ? `0 0 0 4px ${hex}1f` : "none",
+                  cursor: onStatusClick && !isActive ? "pointer" : "default",
                 }}
               >
                 {isPast ? <Check size={11} /> : i + 1}
@@ -99,17 +91,20 @@ function MiniStepper({
                   fontWeight: isActive ? 600 : 500,
                   color: isActive ? "var(--m2-slate-900)" : "var(--m2-slate-500)",
                   whiteSpace: "nowrap",
+                  maxWidth: 48,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
                 }}
+                title={label}
               >
-                {s.label.split(" ")[0]}
+                {label}
               </span>
             </div>
-            {i < PIPELINE_ORDER.length - 1 && (
+            {i < order.length - 1 && (
               <div
                 className="m2-stepper-line"
                 style={{
-                  background:
-                    i < idx ? "var(--m2-blue-100)" : "var(--m2-slate-200)",
+                  background: i < idx ? `${hex}55` : "var(--m2-slate-200)",
                   margin: "11px -2px 0 -2px",
                 }}
               />
@@ -189,21 +184,27 @@ function ActivityRow({
 }
 
 export function Cockpit({ conv }: { conv: Conversation }) {
-  const stage = STAGES[conv.stage];
-  const stageIdx = PIPELINE_ORDER.indexOf(conv.stage);
-  const total = PIPELINE_ORDER.length;
   const { data: timelineData } = useProspectTimeline(conv.prospectId);
   const timeline: TimelineEvent[] = timelineData ?? [];
   const updateStatus = useUpdateProspectStatus();
 
-  const handleStageClick = (s: Stage) => {
-    if (!conv.prospectId || s === conv.stage) return;
-    const dbStatus = STAGE_TO_STATUS[s];
-    if (!dbStatus) return;
+  // Per-org custom statuses (same source as the CRM pipeline). The prospect's
+  // real status key lives on the cached prospect row hydrated by the chats
+  // query; the cockpit reads it to highlight the active step.
+  const { pipelineOrder, cfgByKey } = useDynamicStatusConfig();
+  const { data: prospect } = useProspect(conv.prospectId);
+  const currentKey = prospect?.status ?? null;
+  const currentCfg = currentKey ? cfgByKey.get(currentKey) : undefined;
+  const stageIdx = currentKey ? pipelineOrder.indexOf(currentKey) : -1;
+  const total = pipelineOrder.length;
+
+  const handleStatusClick = (key: string) => {
+    if (!conv.prospectId || key === currentKey) return;
     updateStatus.mutate(
-      { prospectId: conv.prospectId, status: dbStatus },
+      { prospectId: conv.prospectId, status: key },
       {
-        onSuccess: () => toast.success(`Statut mis à jour : ${STAGES[s].label}`),
+        onSuccess: () =>
+          toast.success(`Statut mis à jour : ${cfgByKey.get(key)?.label ?? key}`),
         onError: () => toast.error("Impossible de mettre à jour le statut"),
       },
     );
@@ -256,7 +257,7 @@ export function Cockpit({ conv }: { conv: Conversation }) {
         <div
           style={{ display: "flex", justifyContent: "center", marginTop: 12 }}
         >
-          <StagePill stage={conv.stage} />
+          {currentKey ? <StatusPill status={currentKey} size="lg" /> : null}
         </div>
         {conv.prospectId ? (
           <Link
@@ -292,26 +293,32 @@ export function Cockpit({ conv }: { conv: Conversation }) {
         )}
       </div>
 
-      {/* Section 2 — Pipeline */}
-      <div style={sectionStyle}>
-        <MiniStepper
-          stage={conv.stage}
-          onStageClick={conv.prospectId ? handleStageClick : undefined}
-        />
-        <div
-          style={{
-            fontSize: 11,
-            color: "var(--m2-slate-500)",
-            marginTop: 14,
-            textAlign: "center",
-          }}
-        >
-          Étape {stageIdx + 1}/{total} —{" "}
-          <span style={{ color: "var(--m2-slate-700)", fontWeight: 500 }}>
-            {stage.label}
-          </span>
+      {/* Section 2 — Pipeline (custom statuses) */}
+      {conv.prospectId && pipelineOrder.length > 0 && (
+        <div style={sectionStyle}>
+          <MiniStepper
+            order={pipelineOrder}
+            cfgByKey={cfgByKey}
+            currentKey={currentKey}
+            onStatusClick={handleStatusClick}
+          />
+          {stageIdx >= 0 && (
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--m2-slate-500)",
+                marginTop: 14,
+                textAlign: "center",
+              }}
+            >
+              Étape {stageIdx + 1}/{total} —{" "}
+              <span style={{ color: "var(--m2-slate-700)", fontWeight: 500 }}>
+                {currentCfg?.label ?? currentKey}
+              </span>
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
       {/* Section 3 — Activité clé */}
       <div style={sectionStyle}>

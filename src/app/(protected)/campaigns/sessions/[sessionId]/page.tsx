@@ -22,6 +22,7 @@ import {
   postCallSessionNote,
   useCallSessionDetail,
   useOrgMembersForCampaigns,
+  useSessionHeartbeat,
 } from "../../queries";
 import { SessionTopbar } from "./topbar";
 import { QueueRail } from "./queue-rail";
@@ -71,6 +72,12 @@ export default function CallSessionPage({ params }: { params: Promise<{ sessionI
   const members = useOrgMembersForCampaigns();
 
   const sessionRow = detail.data ?? null;
+
+  // Mark the user present while the live call interface is open — this is what
+  // makes the session read as "En cours" for teammates, and auto-pauses it
+  // (heartbeat goes stale) once they leave. Stops once the session has ended.
+  const sessionEnded = sessionRow?.status === "completed" || !!sessionRow?.ended_at;
+  useSessionHeartbeat(sessionId, !!sessionRow && !sessionEnded);
 
   const prospects = useMemo(() => {
     const raw = sessionRow?.prospects;
