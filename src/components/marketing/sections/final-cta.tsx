@@ -13,7 +13,7 @@ export function MarketingFinalCtaSection() {
   return (
     <section className="relative isolate overflow-hidden bg-[var(--brand-blue-dark)] py-28 sm:py-36">
       <div aria-hidden="true" className="absolute inset-0 -z-10">
-        <BackgroundGradientAnimation containerClassName="!h-full !w-full" size="80%" blendingValue="screen" />
+        <BackgroundGradientAnimation containerClassName="!h-full !w-full" size="80%" />
       </div>
 
       <svg
@@ -52,7 +52,7 @@ export function MarketingFinalCtaSection() {
           </h2>
 
           <p className="mx-auto mt-6 max-w-xl text-base leading-7 text-white/75 sm:text-lg">
-            Centralisez LinkedIn, WhatsApp, le booking et votre CRM en quinze minutes.
+            Centralisez LinkedIn, le booking et votre CRM en quinze minutes.
             Voyez la différence sur le pipeline dans la semaine.
           </p>
 
@@ -63,7 +63,7 @@ export function MarketingFinalCtaSection() {
                 size="lg"
                 className="bg-white !text-[var(--brand-blue-dark)] shadow-[0_8px_30px_-12px_rgba(0,0,0,0.45)] hover:bg-white/95"
               >
-                Commencer maintenant
+                Essai gratuit de 14 jours
                 <ArrowRight size={16} />
               </Button>
             </Magnetic>

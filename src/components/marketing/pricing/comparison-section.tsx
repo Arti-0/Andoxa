@@ -461,18 +461,24 @@ function BarChart({
                   />
                 </div>
                 <div className="mt-5 flex h-9 items-center justify-center">
-                  <span
-                    aria-label={item.name}
-                    className="grid place-items-center rounded-md font-display font-semibold leading-none text-white"
-                    style={{
-                      width: 28,
-                      height: 28,
-                      backgroundColor: item.bg,
-                      fontSize: 14,
-                    }}
-                  >
-                    {item.letter}
-                  </span>
+                  {isAndoxa ? (
+                    <span
+                      aria-label={item.name}
+                      className="grid place-items-center overflow-hidden rounded-md ring-1 ring-black/5"
+                      style={{ height: 28, width: 28, backgroundColor: "#0052D9" }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src="/logos/andoxa.svg"
+                        alt="Andoxa"
+                        width={22}
+                        height={22}
+                        style={{ width: 22, height: 22, objectFit: "contain" }}
+                      />
+                    </span>
+                  ) : (
+                    <ToolBadge tool={item} size={20} />
+                  )}
                 </div>
               </motion.div>
             );

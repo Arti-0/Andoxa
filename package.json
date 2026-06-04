@@ -19,6 +19,7 @@
         "seed:screenshots": "bun scripts/seed-screenshot-fixtures.ts",
         "images:sync": "bun scripts/generate-screenshots.ts",
         "images:sync:full": "bun run seed:screenshots && bun run images:sync",
+        "images:section": "bun scripts/capture-section.ts",
         "marketing:upload": "bun scripts/upload-marketing-assets.ts"
     },
     "dependencies": {

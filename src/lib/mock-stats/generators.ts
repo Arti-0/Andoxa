@@ -1,85 +1,77 @@
 import type { DashboardPeriod } from "@/lib/dashboard/period";
 import { mockCalendarKpiBundle } from "./calendar-events";
-import { funnelCounts, mockUuid, randInt, randPct, randSpark, randTrend } from "./random";
+import { mockUuid, randInt, randPct, randSpark, randTrend } from "./random";
 
 export function mockDashboardStats(period: DashboardPeriod) {
-  const pipelineTotal = randInt(142, 218);
-  const rdvBooked = randInt(28, 52);
-  const rdvTarget = randInt(40, 56);
-  const won = randInt(8, 16);
-  const wonTarget = randInt(12, 18);
-  const invSent = randInt(120, 210);
-  const msgSent = randInt(85, 165);
-  const responses = randInt(38, 92);
-  const acceptances = randInt(52, 118);
-
+  // Demo-screenshot values — deterministic so the captured dashboard is stable.
   return {
-    prospects: randInt(186, 248),
-    campaignsThisMonth: randInt(6, 14),
-    rdvEffectues: randInt(22, 48),
-    conversionRate: randPct(14, 32),
+    prospects: 47,
+    campaignsThisMonth: 9,
+    rdvEffectues: 12,
+    conversionRate: 34,
     kpis: {
-      messagesEnvoyes: randInt(340, 620),
-      prospectsQualifies: randInt(48, 86),
-      dealsEnCours: randInt(32, 64),
+      messagesEnvoyes: 124,
+      prospectsQualifies: 21,
+      dealsEnCours: 8,
     },
     charts: {
       prospectsOverTime: [
-        { date: "Jan 2026", count: randInt(18, 42) },
-        { date: "Fév 2026", count: randInt(24, 48) },
-        { date: "Mar 2026", count: randInt(32, 58) },
-        { date: "Avr 2026", count: randInt(38, 72) },
-        { date: "Mai 2026", count: randInt(44, 88) },
-        { date: "Jun 2026", count: randInt(12, 28) },
+        { date: "Jan 2026", count: 22 },
+        { date: "Fév 2026", count: 28 },
+        { date: "Mar 2026", count: 33 },
+        { date: "Avr 2026", count: 39 },
+        { date: "Mai 2026", count: 44 },
+        { date: "Jun 2026", count: 47 },
       ],
-      activityVolume: Array.from({ length: 8 }, (_, i) => ({
-        week: `Sem. ${i + 1}`,
-        calls: randInt(8, 28),
-        messages: randInt(42, 128),
-        bookings: randInt(3, 14),
-      })),
+      activityVolume: [
+        { week: "Sem. 1", calls: 12, messages: 64, bookings: 5 },
+        { week: "Sem. 2", calls: 15, messages: 72, bookings: 7 },
+        { week: "Sem. 3", calls: 18, messages: 81, bookings: 8 },
+        { week: "Sem. 4", calls: 21, messages: 96, bookings: 12 },
+      ],
     },
     period,
     pipeline: {
-      active_total: pipelineTotal,
-      by_stage: {
-        rdv: randInt(22, 38),
-        proposal: randInt(18, 32),
-        qualified: randInt(48, 72),
-      },
-      sparkline: randSpark(12, pipelineTotal, 18),
-      trend_pts: randTrend(),
+      active_total: 47,
+      by_stage: { rdv: 6, proposal: 8, qualified: 21 },
+      sparkline: [30, 33, 35, 38, 40, 42, 44, 47],
+      trend_pts: 14,
     },
     rdv: {
-      booked_count: rdvBooked,
-      target: rdvTarget,
-      realisation_pct: Math.round((rdvBooked / rdvTarget) * 100),
-      sparkline: randSpark(12, rdvBooked, 6),
-      trend_pts: randTrend(),
+      booked_count: 12,
+      target: 14,
+      realisation_pct: 86,
+      sparkline: [6, 7, 8, 9, 10, 11, 12, 12],
+      trend_pts: 9,
     },
     linkedin: {
-      messages_sent: msgSent,
-      invitations_sent: invSent,
-      responses_received: responses,
-      acceptances_received: acceptances,
-      response_rate_pct: Math.round((responses / msgSent) * 100),
-      acceptance_rate_pct: Math.round((acceptances / invSent) * 100),
-      sparkline: randSpark(12, randPct(22, 48), 8),
-      trend_pts: randTrend(-8, 18),
+      messages_sent: 124,
+      invitations_sent: 124,
+      responses_received: 42,
+      acceptances_received: 72,
+      response_rate_pct: 34,
+      acceptance_rate_pct: 58,
+      sparkline: [26, 28, 30, 31, 32, 33, 34, 34],
+      trend_pts: 6,
     },
     closings: {
-      won_count: won,
-      target: wonTarget,
-      progress_pct: Math.round((won / wonTarget) * 100),
-      sparkline: randSpark(12, won, 3),
-      trend_pts: randTrend(),
+      won_count: 5,
+      target: 6,
+      progress_pct: 83,
+      sparkline: [2, 3, 3, 4, 4, 5, 5, 5],
+      trend_pts: 2,
     },
     week_labels: Array.from({ length: 12 }, (_, i) => `S${i + 1}`),
   };
 }
 
 export function mockDashboardFunnel(period: DashboardPeriod) {
-  const [inv, acc, conv, rdv, close] = funnelCounts(5, 165, 210);
+  // Demo-screenshot values — deterministic.
+  const inv = 124;
+  const acc = 72;
+  const conv = 38;
+  const rdv = 12;
+  const close = 5;
   const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : null);
 
   return {
@@ -89,50 +81,50 @@ export function mockDashboardFunnel(period: DashboardPeriod) {
         label: "Invitations envoyées",
         count: inv,
         conversion_pct_from_prev: null,
-        trend_pts: randTrend(),
+        trend_pts: 6,
       },
       {
         key: "accepted" as const,
         label: "Acceptées",
         count: acc,
         conversion_pct_from_prev: pct(acc, inv),
-        trend_pts: randTrend(),
+        trend_pts: 6,
       },
       {
         key: "conversations" as const,
         label: "Conversations",
         count: conv,
         conversion_pct_from_prev: pct(conv, acc),
-        trend_pts: randTrend(),
+        trend_pts: 5,
       },
       {
         key: "rdvs" as const,
         label: "RDV bookés",
         count: rdv,
         conversion_pct_from_prev: pct(rdv, conv),
-        trend_pts: randTrend(),
+        trend_pts: 9,
       },
       {
         key: "closings" as const,
         label: "Closings",
         count: close,
         conversion_pct_from_prev: pct(close, rdv),
-        trend_pts: randTrend(),
+        trend_pts: 2,
       },
     ],
     global_rate_pct: Math.round((close / inv) * 1000) / 10,
-    avg_cycle_days: randInt(11, 24),
-    pipeline_target_closings: randInt(12, 18),
+    avg_cycle_days: 14,
+    pipeline_target_closings: 6,
     period,
   };
 }
 
 export function mockDashboardPriorities() {
-  const rdv = randInt(3, 8);
-  const stale = randInt(12, 28);
-  const unread = randInt(8, 22);
-  const proposals = randInt(6, 18);
-  const workflows = randInt(4, 11);
+  // Demo-screenshot values — deterministic.
+  const rdv = 3;
+  const stale = 7;
+  const unread = 5;
+  const proposals = 4;
 
   return {
     generated_at: new Date().toISOString(),
@@ -141,7 +133,7 @@ export function mockDashboardPriorities() {
         key: "rdv_today" as const,
         count: rdv,
         label: "RDV aujourd'hui",
-        sub: rdv > 0 ? `Prochain à ${randInt(9, 16)}h${String(randInt(0, 45)).padStart(2, "0")}` : "Aucun RDV prévu",
+        sub: rdv > 0 ? "Prochain à 14h30" : "Aucun RDV prévu",
         href: "/calendar",
       },
       {
@@ -165,24 +157,17 @@ export function mockDashboardPriorities() {
         sub: "Dernière activité > 2j",
         href: "/crm?status=proposal",
       },
-      {
-        key: "pending_workflows" as const,
-        count: workflows,
-        label: "Workflow en attente",
-        sub: `${workflows} parcours en pause`,
-        href: "/workflows",
-      },
     ],
   };
 }
 
 const MOCK_DEALS = [
-  { name: "Sophie Martin", company: "NovaTech", stage: "proposal" as const },
-  { name: "Thomas Leroy", company: "DataFlow", stage: "rdv" as const },
-  { name: "Camille Bernard", company: "ScaleUp", stage: "qualified" as const },
-  { name: "Marc Dubois", company: "FinEdge", stage: "proposal" as const },
-  { name: "Laura Moreau", company: "SaaSify", stage: "rdv" as const },
-  { name: "Nicolas Blanc", company: "RevOps", stage: "qualified" as const },
+  { name: "Sophie Martin", company: "Welkin", stage: "proposal" as const },
+  { name: "Thomas Leroy", company: "Fintexa", stage: "rdv" as const },
+  { name: "Camille Bernard", company: "Scalio", stage: "qualified" as const },
+  { name: "Marc Dubois", company: "Datora", stage: "proposal" as const },
+  { name: "Laura Moreau", company: "Venturis", stage: "rdv" as const },
+  { name: "Nicolas Blanc", company: "Cloudis", stage: "qualified" as const },
 ];
 
 const STAGE_LABELS: Record<string, string> = {
@@ -224,9 +209,9 @@ export function mockDashboardAtRisk(limit: number) {
 
 export function mockDashboardActiveCampaigns() {
   const names = [
-    "Invitations Q2 — ICP SaaS",
+    "Invitations Q2 : ICP SaaS",
     "Relance décideurs",
-    "Post-RDV WhatsApp",
+    "Connect : Dirigeants PME",
     "Séquence inbound webinar",
   ];
   return names.map((name, i) => {
@@ -235,11 +220,11 @@ export function mockDashboardActiveCampaigns() {
     return {
       workflow_id: mockUuid(200 + i),
       name,
-      channel: (["linkedin", "whatsapp", "linkedin+whatsapp", "linkedin"] as const)[i]!,
+      channel: (["linkedin", "linkedin", "linkedin", "linkedin"] as const)[i]!,
       state: (["running", "running", "paused", "running"] as const)[i]!,
       done,
       total,
-      href: `/workflows/${mockUuid(200 + i)}`,
+      href: "/campaigns",
     };
   });
 }
@@ -251,7 +236,7 @@ export function mockDashboardActivity() {
     "RDV planifié",
     "Statut mis à jour",
     "Campagne lancée",
-    "Message WhatsApp envoyé",
+    "Appel de prospection passé",
   ];
   return titles.map((title, i) => ({
     id: `mock-act-${i}`,

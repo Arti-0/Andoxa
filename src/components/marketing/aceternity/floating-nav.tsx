@@ -9,16 +9,44 @@ import {
   useMotionValueEvent,
   useReducedMotion,
 } from "framer-motion";
-import { ChevronDown, Menu, X } from "lucide-react";
+import { ArrowRight, BookOpen, Calculator, ChevronDown, GitCompare, Menu, Newspaper, X } from "lucide-react";
 import { Button } from "@/components/marketing/ui/button";
 import { ThemeToggle } from "@/components/marketing/ui/theme-toggle";
 import { AndoxaWordmark } from "@/components/marketing/icons/brand-icons";
 import { cn } from "@/lib/utils";
 
+/** Icons are referenced by string key so nav data stays serializable when
+ *  passed from a Server Component to this Client Component (function refs are
+ *  not serializable across that boundary). */
+const NAV_ICONS = {
+  guide: BookOpen,
+  calculator: Calculator,
+  blog: Newspaper,
+  compare: GitCompare,
+} as const;
+export type NavIconKey = keyof typeof NAV_ICONS;
+
+export type NavColumnItem = {
+  name: string;
+  href: string;
+  description?: string;
+  icon?: NavIconKey;
+};
+
+export type NavColumn = {
+  title: string;
+  items: NavColumnItem[];
+  footer?: { name: string; href: string };
+  /** Render this column's items across N sub-columns (default 1). */
+  cols?: 1 | 2;
+};
+
 export type NavItem = {
   name: string;
   href: string;
   children?: { name: string; href: string; description?: string }[];
+  /** When set, the dropdown renders as a two-column mega-menu. */
+  columns?: NavColumn[];
 };
 
 /** Sticky nav that hides on scroll-down, reveals on scroll-up. */
@@ -66,7 +94,7 @@ export function FloatingNav({
 
           <nav className="hidden items-center gap-1 md:flex">
             {navItems.map((item) =>
-              item.children && item.children.length > 0 ? (
+              item.columns?.length || (item.children && item.children.length > 0) ? (
                 <NavDropdown key={item.name} item={item} />
               ) : (
                 <Link
@@ -197,7 +225,7 @@ function MobileMenuSheet({
 
             <nav className="p-2">
               {navItems.map((item) =>
-                item.children && item.children.length > 0 ? (
+                item.columns?.length || (item.children && item.children.length > 0) ? (
                   <MobileNavGroup key={item.name} item={item} onSelect={onClose} />
                 ) : (
                   <Link
@@ -268,26 +296,79 @@ function MobileNavGroup({ item, onSelect }: { item: NavItem; onSelect: () => voi
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden"
           >
-            <ul className="my-1 ml-3 space-y-0.5 border-l border-[var(--border)] pl-2">
-              {item.children!.map((child) => (
-                <li key={child.href}>
-                  <Link
-                    href={child.href}
-                    onClick={onSelect}
-                    className="block rounded-md px-3 py-2.5"
-                  >
-                    <span className="block text-[0.95rem] font-medium text-foreground">
-                      {child.name}
-                    </span>
-                    {child.description && (
-                      <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                        {child.description}
+            {item.columns ? (
+              <div className="my-1 ml-3 space-y-3 border-l border-[var(--border)] pl-2">
+                {item.columns.map((col) => (
+                  <div key={col.title}>
+                    <p className="px-3 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {col.title}
+                    </p>
+                    <ul className="space-y-0.5">
+                      {col.items.map((it) => {
+                        const Icon = it.icon ? NAV_ICONS[it.icon] : undefined;
+                        return (
+                          <li key={it.href}>
+                            <Link
+                              href={it.href}
+                              onClick={onSelect}
+                              className="flex items-start gap-3 rounded-md px-3 py-2.5"
+                            >
+                              {Icon && (
+                                <span className="mt-0.5 shrink-0 text-muted-foreground">
+                                  <Icon size={16} />
+                                </span>
+                              )}
+                              <span className="min-w-0">
+                                <span className="block text-[0.95rem] font-medium text-foreground">
+                                  {it.name}
+                                </span>
+                                {it.description && (
+                                  <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                                    {it.description}
+                                  </span>
+                                )}
+                              </span>
+                            </Link>
+                          </li>
+                        );
+                      })}
+                      {col.footer && (
+                        <li>
+                          <Link
+                            href={col.footer.href}
+                            onClick={onSelect}
+                            className="block px-3 py-2 text-xs font-medium text-[var(--brand-blue)]"
+                          >
+                            {col.footer.name}
+                          </Link>
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <ul className="my-1 ml-3 space-y-0.5 border-l border-[var(--border)] pl-2">
+                {item.children!.map((child) => (
+                  <li key={child.href}>
+                    <Link
+                      href={child.href}
+                      onClick={onSelect}
+                      className="block rounded-md px-3 py-2.5"
+                    >
+                      <span className="block text-[0.95rem] font-medium text-foreground">
+                        {child.name}
                       </span>
-                    )}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+                      {child.description && (
+                        <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                          {child.description}
+                        </span>
+                      )}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -295,9 +376,66 @@ function MobileNavGroup({ item, onSelect }: { item: NavItem; onSelect: () => voi
   );
 }
 
+function MegaColumn({ col, onSelect }: { col: NavColumn; onSelect: () => void }) {
+  const cols = col.cols ?? 1;
+  return (
+    <div style={{ gridColumn: `span ${cols} / span ${cols}` }}>
+      <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+        {col.title}
+      </p>
+      <ul className={cn(cols === 2 && "grid grid-cols-2 gap-x-1 gap-y-1.5")}>
+        {col.items.map((it) => {
+          const Icon = it.icon ? NAV_ICONS[it.icon] : undefined;
+          return (
+            <li key={it.href}>
+              <Link
+                href={it.href}
+                role="menuitem"
+                onClick={onSelect}
+                className="group flex items-start gap-2.5 rounded-lg px-2.5 py-2.5 transition-colors hover:bg-[var(--neutral-50)]/80"
+              >
+                {Icon && (
+                  <Icon
+                    size={15}
+                    className="mt-0.5 shrink-0 text-muted-foreground transition-colors group-hover:text-[var(--brand-blue)]"
+                  />
+                )}
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-foreground transition-colors group-hover:text-[var(--brand-blue)]">
+                    {it.name}
+                  </span>
+                  {it.description && (
+                    <span className="block text-xs leading-5 text-muted-foreground">
+                      {it.description}
+                    </span>
+                  )}
+                </span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+      {col.footer && (
+        <Link
+          href={col.footer.href}
+          role="menuitem"
+          onClick={onSelect}
+          className="mt-0.5 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium text-[var(--brand-blue)] transition-colors hover:underline"
+        >
+          {col.footer.name}
+          <ArrowRight size={13} />
+        </Link>
+      )}
+    </div>
+  );
+}
+
 function NavDropdown({ item }: { item: NavItem }) {
   const [open, setOpen] = React.useState(false);
   const wrapRef = React.useRef<HTMLDivElement>(null);
+  const megaCols = item.columns
+    ? item.columns.reduce((sum, c) => sum + (c.cols ?? 1), 0)
+    : 0;
 
   React.useEffect(() => {
     if (!open) return;
@@ -345,26 +483,42 @@ function NavDropdown({ item }: { item: NavItem }) {
             exit={{ opacity: 0, y: 4, scale: 0.98 }}
             transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             role="menu"
-            className="absolute left-1/2 top-[calc(100%+12px)] z-50 w-72 -translate-x-1/2 overflow-hidden rounded-2xl border border-[var(--border)] bg-card p-1.5 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.22),_0_8px_18px_-8px_rgba(0,82,217,0.12)]"
+            className={cn(
+              "absolute left-1/2 top-[calc(100%+12px)] z-50 -translate-x-1/2 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--popover)] shadow-[0_24px_60px_-20px_rgba(0,0,0,0.22),_0_8px_18px_-8px_rgba(0,82,217,0.12)]",
+              item.columns
+                ? cn("max-w-[calc(100vw-2rem)] p-2", megaCols >= 3 ? "w-[760px]" : "w-[460px]")
+                : "w-72 p-1.5",
+            )}
           >
-            {item.children!.map((child) => (
-              <Link
-                key={child.href}
-                href={child.href}
-                role="menuitem"
-                onClick={() => setOpen(false)}
-                className="group flex flex-col gap-0.5 rounded-xl px-3 py-2.5 transition-colors hover:bg-[var(--neutral-50)]/80"
+            {item.columns ? (
+              <div
+                className="grid gap-1"
+                style={{ gridTemplateColumns: `repeat(${megaCols}, minmax(0, 1fr))` }}
               >
-                <span className="text-sm font-medium text-foreground transition-colors group-hover:text-[var(--brand-blue)]">
-                  {child.name}
-                </span>
-                {child.description && (
-                  <span className="text-xs leading-5 text-muted-foreground">
-                    {child.description}
+                {item.columns.map((col) => (
+                  <MegaColumn key={col.title} col={col} onSelect={() => setOpen(false)} />
+                ))}
+              </div>
+            ) : (
+              item.children!.map((child) => (
+                <Link
+                  key={child.href}
+                  href={child.href}
+                  role="menuitem"
+                  onClick={() => setOpen(false)}
+                  className="group flex flex-col gap-0.5 rounded-xl px-3 py-2.5 transition-colors hover:bg-[var(--neutral-50)]/80"
+                >
+                  <span className="text-sm font-medium text-foreground transition-colors group-hover:text-[var(--brand-blue)]">
+                    {child.name}
                   </span>
-                )}
-              </Link>
-            ))}
+                  {child.description && (
+                    <span className="text-xs leading-5 text-muted-foreground">
+                      {child.description}
+                    </span>
+                  )}
+                </Link>
+              ))
+            )}
           </motion.div>
         )}
       </AnimatePresence>

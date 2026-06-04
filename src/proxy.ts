@@ -26,6 +26,8 @@ const PUBLIC_ROUTES = [
     '/auth/invite',
     
     '/pricing',
+    '/comparatif',
+    '/resources',
     '/about',
     '/help',
     '/privacy',

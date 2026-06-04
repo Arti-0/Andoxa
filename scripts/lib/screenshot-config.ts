@@ -41,9 +41,7 @@ export type ScreenshotTarget = {
     | "campaigns"
     | "callSession"
     | "messagerie"
-    | "calendar"
-    | "workflowsList"
-    | "workflowsCanvas";
+    | "calendar";
   /** Static path (no auth). */
   route?: string;
   /** Full viewport including collapsed sidebar (default). */
@@ -102,20 +100,6 @@ export const SCREENSHOT_TARGETS: ScreenshotTarget[] = [
     framing: "app",
     waitSelector: '[data-screenshot-ready="true"]',
   },
-  {
-    id: "08-workflows",
-    filename: "08-workflows.png",
-    routeKey: "workflowsList",
-    framing: "app",
-    waitSelector: '[data-screenshot-ready="true"]',
-  },
-  {
-    id: "09-workflow-canvas",
-    filename: "09-workflow-canvas.png",
-    routeKey: "workflowsCanvas",
-    framing: "main",
-    waitSelector: '[data-screenshot-ready="true"]',
-  },
 ];
 
 export type ScreenshotState = {
@@ -129,8 +113,6 @@ export type ScreenshotState = {
     callSession: string;
     messagerie: string;
     calendar: string;
-    workflowsList: string;
-    workflowsCanvas: string;
   };
   updatedAt: string;
 };

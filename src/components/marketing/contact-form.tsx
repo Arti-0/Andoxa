@@ -22,7 +22,7 @@ const TOPICS: {
   label: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
 }[] = [
-  { value: "sales", label: "Acheter Andoxa", icon: ShoppingBag },
+  { value: "sales", label: "Souscrire à Andoxa", icon: ShoppingBag },
   { value: "demo", label: "Réserver une démo", icon: CalendarCheck },
   { value: "support", label: "Support technique", icon: LifeBuoy },
   { value: "partnership", label: "Partenariat", icon: Handshake },

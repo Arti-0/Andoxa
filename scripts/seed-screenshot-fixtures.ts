@@ -26,8 +26,6 @@ import { MOCK_PROSPECT_ID } from "./lib/messagerie-mocks";
 import {
   CAMPAIGN_JOB_DEFS,
   COLLEAGUE_USERS,
-  WORKFLOW_LINKEDIN_ID,
-  WORKFLOW_RELANCES_ID,
   avatarUrl,
   buildBddLists,
   buildBulkActivityRows,
@@ -60,59 +58,8 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-const CANVAS_WORKFLOW_ID = "c1111111-1111-4111-8111-111111111111";
 const CALL_SESSION_ID = "d1111111-1111-4111-8111-111111111111";
 const CALL_SESSION_2_ID = "d2222222-2222-4222-8222-222222222222";
-/** Must match `TRIGGER_NODE_ID` in workflows/_components/xy-canvas.tsx */
-const TRIGGER_NODE_ID = "__trigger__";
-
-const WORKFLOW_DEF_SNAPSHOT = {
-  schemaVersion: 1 as const,
-  steps: [
-    {
-      id: "wa_confirm",
-      type: "whatsapp_message",
-      config: { messageTemplate: "Bonjour {{prenom}}, merci pour votre RDV !" },
-      next_id: "wait_1",
-    },
-    {
-      id: "wait_1",
-      type: "wait",
-      config: { durationHours: 24, onlyIfNoReply: false },
-      next_id: "wa_followup",
-    },
-    {
-      id: "wa_followup",
-      type: "whatsapp_message",
-      config: { messageTemplate: "Comment s'est passé notre échange ?" },
-      next_id: "crm_1",
-    },
-    {
-      id: "crm_1",
-      type: "crm",
-      config: { field: "status", value: "qualified", notifyOwner: true },
-    },
-  ],
-};
-
-function buildCanvasWorkflowDefinition() {
-  return WORKFLOW_DEF_SNAPSHOT;
-}
-
-function buildCanvasMetadata() {
-  return {
-    icon: "Workflow",
-    color: "emerald",
-    trigger: "on_booking",
-    canvas: {
-      [TRIGGER_NODE_ID]: { x: 80, y: 220 },
-      wa_confirm: { x: 320, y: 180 },
-      wait_1: { x: 560, y: 220 },
-      wa_followup: { x: 800, y: 180 },
-      crm_1: { x: 1040, y: 220 },
-    },
-  };
-}
 
 async function ensureUser(
   email: string,
@@ -185,26 +132,6 @@ async function ensureColleagues(): Promise<string[]> {
 }
 
 async function wipeOrgData(orgId: string): Promise<void> {
-  const { data: runs } = await admin
-    .from("workflow_runs")
-    .select("id")
-    .eq("organization_id", orgId);
-  const runIds = (runs ?? []).map((r) => r.id);
-  if (runIds.length) {
-    await admin.from("workflow_step_executions").delete().in("run_id", runIds);
-  }
-  await admin.from("workflow_runs").delete().eq("organization_id", orgId);
-
-  const { data: wfs } = await admin
-    .from("workflows")
-    .select("id")
-    .eq("organization_id", orgId);
-  const wfIds = (wfs ?? []).map((w) => w.id);
-  if (wfIds.length) {
-    await admin.from("workflow_versions").delete().in("workflow_id", wfIds);
-  }
-  await admin.from("workflows").delete().eq("organization_id", orgId);
-
   const { data: sessions } = await admin
     .from("call_sessions")
     .select("id")
@@ -330,9 +257,9 @@ async function seedProspects(
     user_id: userId,
     organization_id: SCREENSHOT_ORG_ID,
     full_name: "Sophie Martin",
-    company: "NovaTech",
+    company: "Welkin",
     job_title: "Directrice Marketing",
-    email: "sophie.martin@novatech.fr",
+    email: "sophie.martin@welkin.fr",
     phone: "+33601020304",
     linkedin: "https://linkedin.com/in/sophiemartin",
     status: "qualified",
@@ -412,38 +339,6 @@ async function seedFunnelClosings(prospectIds: string[]): Promise<void> {
       })
       .eq("id", ids[i]!);
     if (error) throw new Error(`funnel closing prospect — ${error.message}`);
-  }
-}
-
-async function seedWorkflowRuns(
-  userId: string,
-  prospectIds: string[]
-): Promise<void> {
-  const seeds = buildProspectSeeds(220);
-  const runs: Array<Record<string, unknown>> = [];
-
-  prospectIds.forEach((pid, i) => {
-    const seed = seeds[i];
-    if (!seed?.inWorkflow) return;
-    const wfId =
-      seed.inWorkflow === "paused" ? WORKFLOW_RELANCES_ID : CANVAS_WORKFLOW_ID;
-    runs.push({
-      organization_id: SCREENSHOT_ORG_ID,
-      workflow_id: wfId,
-      prospect_id: pid,
-      started_by: userId,
-      status: seed.inWorkflow,
-      current_step_index: (seed.workflowStep ?? 1) - 1,
-      definition_snapshot: WORKFLOW_DEF_SNAPSHOT,
-      context: {},
-      has_outbound_step: true,
-      created_at: daysAgo(3 + (i % 10)),
-    });
-  });
-
-  if (runs.length) {
-    const { error } = await admin.from("workflow_runs").insert(runs);
-    if (error) throw new Error(`workflow runs — ${error.message}`);
   }
 }
 
@@ -656,129 +551,6 @@ async function seedCallSessions(
   }
 }
 
-async function seedWorkflows(userId: string): Promise<void> {
-  const canvasDef = buildCanvasWorkflowDefinition();
-  const canvasMeta = buildCanvasMetadata();
-
-  const { error: canvasErr } = await admin.from("workflows").upsert(
-    {
-      id: CANVAS_WORKFLOW_ID,
-      organization_id: SCREENSHOT_ORG_ID,
-      name: "Post-RDV WhatsApp",
-      description: "Confirmation, rappel et suivi après chaque rendez-vous.",
-      created_by: userId,
-      is_active: true,
-      is_template: false,
-      draft_definition: canvasDef,
-      published_definition: canvasDef,
-      metadata: canvasMeta,
-      trigger_kind: "on_booking",
-      run_mode: "terminating",
-    },
-    { onConflict: "id" }
-  );
-  if (canvasErr) throw new Error(`canvas workflow — ${canvasErr.message}`);
-
-  const relanceDef = {
-    schemaVersion: 1,
-    steps: [
-      {
-        id: "wa_1",
-        type: "whatsapp_message",
-        config: { messageTemplate: "Bonjour {{prenom}} !" },
-        next_id: "wait_1",
-      },
-      { id: "wait_1", type: "wait", config: { durationHours: 48 } },
-    ],
-  };
-
-  const linkedinDef = {
-    schemaVersion: 1,
-    steps: [
-      {
-        id: "li_1",
-        type: "linkedin_message",
-        config: { messageTemplate: "Ravi de vous connecter {{prenom}} !" },
-      },
-    ],
-  };
-
-  const fixedWorkflows = [
-    {
-      id: WORKFLOW_RELANCES_ID,
-      name: "Relance 48 h sans réponse",
-      description: "WhatsApp automatique si pas de réponse sous 48 h.",
-      is_active: true,
-      trigger_kind: "manual",
-      tags: ["WhatsApp"],
-      color: "emerald",
-      def: relanceDef,
-    },
-    {
-      id: WORKFLOW_LINKEDIN_ID,
-      name: "LinkedIn → Bienvenue",
-      description: "Message de bienvenue après acceptation.",
-      is_active: true,
-      trigger_kind: "manual",
-      tags: ["LinkedIn"],
-      color: "indigo",
-      def: linkedinDef,
-    },
-  ];
-
-  for (const wf of fixedWorkflows) {
-    await admin.from("workflows").upsert(
-      {
-        id: wf.id,
-        organization_id: SCREENSHOT_ORG_ID,
-        name: wf.name,
-        description: wf.description,
-        created_by: userId,
-        is_active: wf.is_active,
-        draft_definition: wf.def,
-        published_definition: wf.def,
-        metadata: { icon: "Workflow", color: wf.color, trigger: wf.trigger_kind },
-        trigger_kind: wf.trigger_kind,
-      },
-      { onConflict: "id" }
-    );
-  }
-
-  const listWorkflows = [
-    {
-      name: "No-show recovery",
-      description: "Relance après absence au RDV.",
-      is_active: false,
-      trigger_kind: "manual",
-      tags: ["WhatsApp", "CRM"],
-      color: "amber",
-    },
-    {
-      name: "Onboarding liste inbound",
-      description: "Brouillon — séquence pour leads entrants.",
-      is_active: false,
-      trigger_kind: "on_list_add",
-      tags: ["CRM"],
-      color: "slate",
-    },
-  ];
-
-  for (const wf of listWorkflows) {
-    const def = relanceDef;
-    await admin.from("workflows").insert({
-      organization_id: SCREENSHOT_ORG_ID,
-      name: wf.name,
-      description: wf.description,
-      created_by: userId,
-      is_active: wf.is_active,
-      draft_definition: def,
-      published_definition: wf.is_active ? def : null,
-      metadata: { icon: "Workflow", color: wf.color, trigger: wf.trigger_kind },
-      trigger_kind: wf.trigger_kind,
-    });
-  }
-}
-
 async function seedCalendarEvents(
   userId: string,
   colleagueIds: string[],
@@ -851,8 +623,6 @@ function writeState(userId: string): void {
       callSession: `/campaigns/sessions/${CALL_SESSION_ID}`,
       messagerie: "/messagerie",
       calendar: "/calendar",
-      workflowsList: "/workflows",
-      workflowsCanvas: `/workflows/${CANVAS_WORKFLOW_ID}`,
     },
     updatedAt: new Date().toISOString(),
   };
@@ -876,8 +646,6 @@ async function main(): Promise<void> {
   const prospectIds = await seedProspects(userId, bddMap);
   await seedFunnelClosings(prospectIds);
   await seedUnipileChats(prospectIds);
-  await seedWorkflows(userId);
-  await seedWorkflowRuns(userId, prospectIds);
   const jobIds = await seedCampaigns(userId, prospectIds);
   await seedAllActivity(userId, prospectIds, jobIds);
   await seedFunnelRdvs(userId, prospectIds);

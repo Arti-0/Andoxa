@@ -30,9 +30,8 @@ type Card = {
 };
 
 const CARDS: Card[] = [
-  { src: marketingAsset("screenshots/07-messagerie.png"),       alt: "Messagerie Andoxa",       side: "left",  topPct: 0.06, width: 450, rotate: -9, delay: 0.55, bob: 8 },
-  { src: marketingAsset("screenshots/09-workflow-builder.png"), alt: "Workflow builder Andoxa", side: "left",  topPct: 0.42, width: 525, rotate: -3, delay: 0.7,  bob: 6 },
-  { src: marketingAsset("screenshots/08-call-session.png"),     alt: "Session d'appels Andoxa", side: "left",  topPct: 0.78, width: 425, rotate: 7,  delay: 0.85, bob: 10 },
+  { src: marketingAsset("screenshots/07-messagerie.png"),   alt: "Messagerie Andoxa",       side: "left",  topPct: 0.10, width: 450, rotate: -9, delay: 0.55, bob: 8 },
+  { src: marketingAsset("screenshots/08-call-session.png"), alt: "Session d'appels Andoxa", side: "left",  topPct: 0.52, width: 460, rotate: 5,  delay: 0.7,  bob: 9 },
   { src: marketingAsset("screenshots/03-crm.png"),          alt: "CRM Andoxa",              side: "right", topPct: 0.08, width: 525, rotate: 7,  delay: 0.6,  bob: 7 },
   { src: marketingAsset("screenshots/06-calendar.png"),     alt: "Calendrier Andoxa",       side: "right", topPct: 0.46, width: 450, rotate: -4, delay: 0.75, bob: 9 },
   { src: marketingAsset("screenshots/08-call-session.png"), alt: "Session d'appels Andoxa", side: "right", topPct: 0.80, width: 475, rotate: 5,  delay: 0.9,  bob: 6 },

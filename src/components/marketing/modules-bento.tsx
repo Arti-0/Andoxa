@@ -7,80 +7,57 @@ import {
   Inbox,
   LayoutDashboard,
   Megaphone,
-  Workflow,
 } from "lucide-react";
 import { Container } from "@/components/marketing/ui/container";
 import { Eyebrow } from "@/components/marketing/ui/eyebrow";
 import { BentoGrid, BentoGridItem } from "@/components/marketing/aceternity/bento-grid";
-import { marketingAsset } from "@/lib/marketing/assets";
+import { MessagerieRelief } from "@/components/marketing/mockups/relief/messagerie-relief";
 
 /**
- * Screenshot frame. Three modes:
- *
- *   • cover       — fills the cell, crops what doesn't fit (default)
- *   • scale-down  — fits the full screenshot, leaves whitespace
- *   • crop        — zooms into a specific point of the screenshot using a
- *                   CSS scale transform anchored on `originX% originY%`. The
- *                   anchor point stays in place; everything else scales away,
- *                   so passing { zoom: 4, originX: 30, originY: 45 } makes
- *                   the screenshot 4× larger and shows a window centred on
- *                   that pixel — the trick that turns full-page mockups into
- *                   readable detail shots without resizing the cell itself.
+ * "Tout votre système commercial, en cinq modules" bento. Cells use the clean
+ * /public captures (same Sharp pipeline as the hero, served unoptimized) where
+ * one exists. Messagerie has no capture, so it reuses the flow's MessagerieRelief
+ * mock (flat, vector). Never the (removed) workflow builder.
  */
-function Screenshot({
-  src,
-  alt,
-  fit = "cover",
-  crop,
-}: {
-  src: string;
-  alt: string;
-  fit?: "cover" | "scale-down";
-  crop?: { zoom: number; originX: number; originY: number };
-}) {
-  if (crop) {
-    // CSS `transform: scale()` blurs because Next/Image first paints the
-    // source into the cell-sized <img>, and the transform then stretches
-    // that small bitmap. Switching to a CSS background-image lets the
-    // browser rasterise directly from source pixels at the zoomed display
-    // size — no intermediate downscale, so no blur. We trade Next/Image's
-    // srcset optimisation for sharpness on these decorative crops.
-    //
-    // backgroundPosition uses the natural "X% of source aligned with X% of
-    // container" convention, so originX/originY = 0..100 maps directly to
-    // the source: 0 = top/left of the screenshot, 100 = bottom/right,
-    // 50 = centre. Independent of the cell's aspect ratio.
+function Screenshot({ src, srcDark, alt }: { src: string; srcDark?: string; alt: string }) {
+  if (!srcDark) {
     return (
-      <div
-        role="img"
-        aria-label={alt}
-        className="absolute inset-0"
-        style={{
-          backgroundImage: `url(${src})`,
-          backgroundSize: `${crop.zoom * 100}%`,
-          backgroundPosition: `${crop.originX}% ${crop.originY}%`,
-          backgroundRepeat: "no-repeat",
-        }}
+      <Image
+        src={src}
+        alt={alt}
+        fill
+        unoptimized
+        sizes="(min-width: 768px) 50vw, 100vw"
+        className="object-cover"
+        style={{ objectPosition: "center top" }}
       />
     );
   }
+  // Light capture in light mode, dark capture in dark mode (one shows at a time).
   return (
-    <Image
-      src={src}
-      alt={alt}
-      fill
-      sizes="(min-width: 768px) 50vw, 100vw"
-      className={fit === "scale-down" ? "object-scale-down" : "object-cover"}
-      style={{ objectPosition: "center top" }}
-    />
+    <>
+      <Image
+        src={src}
+        alt={alt}
+        fill
+        unoptimized
+        sizes="(min-width: 768px) 50vw, 100vw"
+        className="object-cover dark:hidden"
+        style={{ objectPosition: "center top" }}
+      />
+      <Image
+        src={srcDark}
+        alt={alt}
+        fill
+        unoptimized
+        sizes="(min-width: 768px) 50vw, 100vw"
+        className="hidden object-cover dark:block"
+        style={{ objectPosition: "center top" }}
+      />
+    </>
   );
 }
 
-/**
- * "Six modules, une seule interface" bento. Cells host the realistic product
- * mockups for now — a dedicated abstract illustration kit is on the roadmap
- * (see todo list) once the visual direction is locked.
- */
 export function MarketingModulesBentoSection() {
   return (
     <section className="relative overflow-hidden border-t border-[var(--border)] bg-gradient-to-b from-background via-[var(--neutral-50)]/60 to-background py-24 sm:py-32">
@@ -96,10 +73,10 @@ export function MarketingModulesBentoSection() {
         <div className="mx-auto mb-14 max-w-2xl text-center">
           <Eyebrow className="justify-center">La plateforme</Eyebrow>
           <h2 className="font-display mt-4 text-4xl text-foreground sm:text-5xl">
-            Six modules, une seule interface.
+            Tout votre système commercial, en cinq modules.
           </h2>
           <p className="mt-4 text-lg leading-7 text-muted-foreground">
-            Tout ce dont vos commerciaux ont besoin, sans jongler avec dix outils.
+            Cinq modules alignés sur votre cycle commercial, dans une seule interface.
           </p>
         </div>
 
@@ -107,72 +84,39 @@ export function MarketingModulesBentoSection() {
           <BentoGridItem
             className="md:col-span-2"
             title="Tableau de bord"
-            description="RDV, taux de réponse, closings : pilotez la performance avec les KPI qui comptent."
+            description="Invitations, taux de réponse, RDV, closings, performance par commercial."
             icon={<LayoutDashboard size={16} />}
-            header={<Cell><Screenshot src={marketingAsset("screenshots/02-dashboard.png")} alt="Tableau de bord Andoxa" /></Cell>}
+            header={<Cell><Screenshot src="/dashboard-hero.png" srcDark="/dashboard-dark.png" alt="Tableau de bord Andoxa" /></Cell>}
           />
           <BentoGridItem
             title="Messagerie"
-            description="LinkedIn et WhatsApp dans une seule inbox augmentée."
+            description="Toutes vos conversations LinkedIn dans une inbox unifiée, avec le contexte commercial de chaque échange."
             icon={<Inbox size={16} />}
             header={
               <Cell>
-                <Screenshot
-                  src={marketingAsset("screenshots/07-messagerie.png")}
-                  alt="Messagerie Andoxa"
-                  crop={{ zoom: 2.5, originX: 25, originY: 50 }}
-                />
+                <div className="absolute inset-0 flex items-start justify-center bg-[var(--neutral-50)] p-3">
+                  <MessagerieRelief />
+                </div>
               </Cell>
             }
           />
           <BentoGridItem
-            title="Calendrier"
-            description="Lien de booking + séquences WhatsApp pré et post-RDV."
-            icon={<CalendarCheck size={16} />}
-            header={
-              <Cell>
-                <Screenshot
-                  src={marketingAsset("screenshots/06-calendar.png")}
-                  alt="Calendrier Andoxa"
-                  crop={{ zoom: 3, originX: 45, originY: 55 }}
-                />
-              </Cell>
-            }
-          />
-          <BentoGridItem
-            title="CRM"
-            description="Pipeline visuel, fiches prospect, listes segmentées."
-            icon={<Database size={16} />}
-            header={
-              <Cell>
-                <Screenshot
-                  src={marketingAsset("screenshots/03-crm-short.png")}
-                  alt="CRM Andoxa"
-                  crop={{ zoom: 1.8, originX: 50, originY: 55 }}
-                />
-              </Cell>
-            }
-          />
-          <BentoGridItem
-            title="Campagnes"
-            description="Invitations et séquences LinkedIn dans le respect des limites."
+            title="Campagnes & Appels"
+            description="Campagnes LinkedIn (invitation + premier message) et sessions d'appels, depuis un seul endroit."
             icon={<Megaphone size={16} />}
-            header={
-              <Cell>
-                <Screenshot
-                  src={marketingAsset("screenshots/04-campagnes.png")}
-                  alt="Campagnes Andoxa"
-                  crop={{ zoom: 1.8, originX: 50, originY: 55 }}
-                />
-              </Cell>
-            }
+            header={<Cell><Screenshot src="/campagnes-section.png" srcDark="/campagnes-dark.png" alt="Campagnes et appels Andoxa" /></Cell>}
           />
           <BentoGridItem
-            className="md:col-span-3 md:row-span-2"
-            title="Workflows"
-            description="Automations visuelles type Zapier, pensées pour les sales. Triggers avancés sur silence, no-show, statut."
-            icon={<Workflow size={16} />}
-            header={<Cell><Screenshot src={marketingAsset("screenshots/09-workflow-builder.png")} alt="Workflow builder Andoxa" /></Cell>}
+            title="CRM & pipeline"
+            description="Chaque prospect, son statut, son historique, le pipeline en kanban."
+            icon={<Database size={16} />}
+            header={<Cell><Screenshot src="/crm-section.png" srcDark="/crm-dark.png" alt="CRM et pipeline Andoxa" /></Cell>}
+          />
+          <BentoGridItem
+            title="Calendrier & booking"
+            description="Un lien de réservation, les RDV dans un calendrier unifié, synchro Google."
+            icon={<CalendarCheck size={16} />}
+            header={<Cell><Screenshot src="/calendrier-section.png" srcDark="/calendrier-dark.png" alt="Calendrier et booking Andoxa" /></Cell>}
           />
         </BentoGrid>
       </Container>
