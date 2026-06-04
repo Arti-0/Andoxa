@@ -74,7 +74,7 @@ export function MarketingPricingSection({
         <div className="mx-auto mb-10 max-w-2xl text-center">
           <Eyebrow className="justify-center">Tarifs</Eyebrow>
           <h2 className="font-display mt-4 text-4xl text-foreground sm:text-5xl">
-            Un tarif par profil. <span className="text-[var(--brand-blue)]">Pas de surprise</span>.
+            Un prix par siège, <span className="text-[var(--brand-blue)]">pas par outil</span>.
           </h2>
           <p className="mt-4 text-lg leading-7 text-muted-foreground">
             Du commercial solo à l&apos;équipe entreprise, le prix s&apos;adapte à votre

@@ -1,0 +1,74 @@
+/* Mockup "Connecter son compte LinkedIn". À plat (pas de 3D) pour une netteté
+   maximale, cohérent avec les visuels du Flow. Tokens projet; les couleurs
+   LinkedIn sont isolées en vars locales --li-*, l'accent succès aussi. */
+
+.scene {
+  --li-blue: #0a66c2;
+  --li-tint: #e8f1fb;
+  --success: #16a34a;
+  --success-bg: #eaf7ef;
+
+  position: relative;
+  width: 100%;
+  aspect-ratio: 900 / 470;
+  font-family: var(--font-geist-sans, "Geist", -apple-system, sans-serif);
+}
+:global(.dark) .scene {
+  --card: #18181b;
+  --accent: #1f1f23;
+  --li-blue: #4a9eea;
+  --li-tint: #0f2a45;
+  --success: #22c55e;
+  --success-bg: #102219;
+}
+
+.fit { position: absolute; top: 0; left: 0; width: 900px; height: 470px; transform: scale(var(--rs, 0.6)); transform-origin: top left; }
+.stage { position: relative; height: 470px; }
+.layer { position: absolute; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-xl); overflow: hidden; }
+
+/* Panneau "Intégrations" (profondeur) */
+.winBack { top: 30px; left: 250px; width: 540px; height: 372px; opacity: 0.6; box-shadow: 0 16px 32px -20px rgba(2, 16, 48, 0.16); }
+:global(.dark) .winBack { opacity: 1; background: var(--background); box-shadow: 0 16px 32px -20px rgba(0, 0, 0, 0.5); }
+.igBar { height: 46px; display: flex; align-items: center; gap: 9px; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--card); }
+.igBar .ttl { color: var(--foreground); font-weight: 600; font-size: 14px; }
+.igMark { display: grid; place-items: center; }
+.igList { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.igRow { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); }
+.igRow.hl { border-color: var(--brand-blue); background: var(--brand-blue-tint); }
+.igIco { width: 30px; height: 30px; border-radius: var(--radius-sm); flex: none; display: grid; place-items: center; }
+.igIco svg { width: 16px; height: 16px; }
+.igName { color: var(--foreground); font-weight: 500; font-size: 13px; }
+.igStatus { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.igStatus.ok { color: var(--success); background: var(--success-bg); }
+.igStatus.todo { color: var(--brand-blue); background: var(--card); border: 1px solid var(--brand-blue); }
+.igStatus svg { width: 12px; height: 12px; }
+.igIn { color: #fff; font-weight: 700; font-size: 15px; line-height: 1; }
+
+/* Carte héros : connexion */
+.connectCard { top: 78px; left: 168px; width: 420px; box-shadow: 0 30px 60px -28px rgba(2, 16, 48, 0.22); padding: 28px; }
+:global(.dark) .connectCard { box-shadow: 0 30px 60px -28px rgba(0, 0, 0, 0.6); }
+.ccTop { display: flex; align-items: center; gap: 9px; margin-bottom: 24px; }
+.ccTop .nm { color: var(--foreground); font-weight: 600; font-size: 14px; }
+.ccTop .tag { margin-left: auto; padding: 3px 9px; border-radius: 999px; background: var(--accent); border: 1px solid var(--border); color: var(--muted-foreground); font-size: 12px; }
+.ccLink { display: flex; align-items: center; justify-content: center; margin: 4px 0 22px; }
+.ccNode { width: 60px; height: 60px; border-radius: var(--radius-lg); display: grid; place-items: center; }
+.ccNode.li { background: var(--li-blue); }
+.ccNode.li .in { color: #fff; font-weight: 700; font-size: 26px; line-height: 1; letter-spacing: -0.04em; }
+.ccWire { position: relative; width: 70px; height: 2px; background: repeating-linear-gradient(90deg, var(--border) 0 6px, transparent 6px 12px); }
+.ccPlug { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 30px; height: 30px; border-radius: 999px; background: var(--brand-blue); display: grid; place-items: center; animation: plugPulse 2.4s ease-out infinite; }
+.ccPlug svg { width: 15px; height: 15px; color: #fff; }
+.ccTitle { color: var(--foreground); text-align: center; margin: 0 0 8px; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+.ccSub { color: var(--muted-foreground); text-align: center; margin: 0 auto 22px; max-width: 300px; font-size: 13px; line-height: 1.5; }
+.ccCta { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 15px 16px; background: var(--brand-blue); color: #fff; border: none; border-radius: var(--radius-lg); font-weight: 600; font-size: 15px; }
+.ccCta .in { font-weight: 700; font-size: 17px; line-height: 1; }
+.ccReassure { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 14px; color: var(--muted-foreground); font-size: 12px; }
+.ccReassure svg { width: 13px; height: 13px; flex: none; }
+
+@keyframes plugPulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand-blue) 45%, transparent); }
+  70% { box-shadow: 0 0 0 11px color-mix(in srgb, var(--brand-blue) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand-blue) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ccPlug { animation: none; }
+}

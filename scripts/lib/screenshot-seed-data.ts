@@ -12,9 +12,6 @@ export const COLLEAGUE_USERS = [
   { id: "e9999999-9999-4999-8999-999999999999", email: "romain.faure@andoxa.dev", name: "Romain Faure" },
 ] as const;
 
-export const WORKFLOW_RELANCES_ID = "c2222222-2222-4222-8222-222222222222";
-export const WORKFLOW_LINKEDIN_ID = "c3333333-3333-4333-8333-333333333333";
-
 const BDD_NAMES = [
   "ICP SaaS Q2",
   "Décideurs Enterprise",
@@ -30,7 +27,7 @@ const BDD_NAMES = [
   "Upsell clients actifs",
   "Salon BigData Paris",
   "Cold email — PME",
-  "WhatsApp chauds",
+  "Leads chauds",
   "Formulaire site",
   "Referrals clients",
   "Expansion Benelux",
@@ -57,8 +54,6 @@ export type ProspectSeed = {
   hasLinkedin?: boolean;
   hasWhatsapp?: boolean;
   hasBooking?: boolean;
-  inWorkflow?: "running" | "paused";
-  workflowStep?: number;
 };
 
 const FIRST = [
@@ -86,26 +81,30 @@ const LAST = [
   "Masson", "Noel", "Renard", "Morin", "Chevalier", "Barre", "Leclerc", "Gallet",
 ];
 
+// Prospects d'une agence B2B : scale-ups SaaS / fintech + quelques cabinets de
+// services. Noms fictifs crédibles, sans ponctuation (les emails de seed dérivent
+// du nom de société, cf. seed-screenshot-fixtures.ts).
 const COMPANIES = [
-  "NovaTech", "DataFlow", "ScaleUp", "CloudNine", "GrowthLab", "FinEdge", "SaaSify",
-  "RevOps", "Inbound", "Pipeline", "Outbound", "B2B Pro", "TechVenture", "MetricHub",
-  "LeadGen", "SalesForce Pro", "DataSync", "CloudStack", "FinTech Plus", "AgileCRM",
-  "SmartLead", "ProScale", "VentureLab", "OpsFlow", "MarketPulse", "NextGen SaaS",
-  "RevBoost", "DataBridge", "SalesPilot", "GrowthForge", "LeadWave", "CloudMetrics",
-  "ScaleForce", "PipelinePro", "InboundLab", "RevStream", "TechPulse", "DataPeak",
-  "GrowthStack", "SaaSBridge", "OutboundPro", "MetricFlow", "SalesCraft", "CloudVenture",
-  "LeadForge", "RevEngine", "DataNest", "GrowthNest", "ScaleNest", "PipelineNest",
+  "Welkin", "Novexa", "Tivara", "Brightside", "Kledos", "Voltys", "Lemane",
+  "Penrose", "Orveo", "Cobane", "Lumira", "Vexel", "Nordia", "Hexane",
+  "Quantia", "Solina", "Maestrio", "Ceveno", "Datora", "Cloudis", "Fintexa",
+  "Scalio", "Venturis", "Metrika", "Pulsea", "Forgea", "Bridgewall", "Nestor Group",
+  "Craftel", "Pivota", "Northbound", "Velora", "Cadensa", "Brevio", "Marketis",
+  "Opsia", "Polaire", "Kairos Conseil", "Helvio", "Lumio", "Talentance", "Audiora",
+  "Greenlock", "Westfield Labs", "Aximo", "Belcore", "Drivio", "Sentolia",
 ];
 
+// Décideurs qu'une agence B2B prospecte (achat de growth / lead gen / recrutement).
 const JOB_TITLES = [
-  "CEO", "CMO", "VP Sales", "Head of Growth", "Directeur Commercial", "Sales Manager",
-  "Account Executive", "SDR", "Business Developer", "RevOps Lead", "Founder",
-  "Marketing Director", "Customer Success Lead", "Enterprise AE", "Regional Director",
-  "Head of Marketing", "VP Business", "SDR Manager", "Sales Ops", "Head of Partnerships",
+  "CEO", "Fondateur", "Co-fondatrice", "Directeur Commercial", "Directrice Marketing",
+  "VP Sales", "Head of Growth", "Responsable acquisition", "Chief Revenue Officer",
+  "Directeur Général", "Head of Sales", "CMO", "Sales Manager", "Responsable partenariats",
+  "Talent Acquisition Manager", "Directrice des Opérations", "RevOps Manager",
+  "Business Developer", "Account Executive", "Responsable Développement",
 ];
 
 const SOURCES = [
-  "manual", "csv", "linkedin_extension", "booking", "inbound", "website", "whatsapp",
+  "manual", "csv", "linkedin_extension", "booking", "inbound", "website",
 ] as const;
 
 /** Weighted status distribution ≈ 220 active pipeline prospects for a 10-person team. */
@@ -148,8 +147,6 @@ export function buildProspectSeeds(count = 220): ProspectSeed[] {
       hasLinkedin: i % 4 !== 3,
       hasWhatsapp: i % 3 !== 2,
       hasBooking: status === "rdv" || status === "proposal" || i % 5 === 0,
-      inWorkflow: i % 6 === 0 ? "running" : i % 9 === 0 ? "paused" : undefined,
-      workflowStep: (i % 4) + 1,
     });
   }
   return seeds;
@@ -395,13 +392,13 @@ export const CAMPAIGN_JOB_DEFS = [
   { type: "invite" as const, status: "running" as const, name: "Connect — Dirigeants PME", total: 280, processed: 198, success: 142, errors: 5, createdDaysAgo: 28, startedDaysAgo: 27 },
   { type: "contact" as const, status: "paused" as const, name: "Relance décideurs", total: 156, processed: 112, success: 68, errors: 3, createdDaysAgo: 21, startedDaysAgo: 20 },
   { type: "contact" as const, status: "completed" as const, name: "Messages post-acceptation", total: 124, processed: 124, success: 82, errors: 2, createdDaysAgo: 55, startedDaysAgo: 54 },
-  { type: "whatsapp" as const, status: "completed" as const, name: "Post-RDV WhatsApp", total: 96, processed: 96, success: 88, errors: 1, createdDaysAgo: 35, startedDaysAgo: 34 },
+  { type: "contact" as const, status: "completed" as const, name: "Relance post-RDV", total: 96, processed: 96, success: 88, errors: 1, createdDaysAgo: 35, startedDaysAgo: 34 },
   { type: "invite_with_note" as const, status: "completed" as const, name: "Salon VivaTech — follow-up", total: 186, processed: 186, success: 128, errors: 6, createdDaysAgo: 68, startedDaysAgo: 67 },
   { type: "contact" as const, status: "running" as const, name: "Séquence inbound webinar", total: 142, processed: 86, success: 54, errors: 2, createdDaysAgo: 12, startedDaysAgo: 11 },
   { type: "invite" as const, status: "paused" as const, name: "Expansion Nord", total: 240, processed: 118, success: 76, errors: 7, createdDaysAgo: 18, startedDaysAgo: 17 },
   { type: "invite_with_note" as const, status: "completed" as const, name: "CMO SaaS — Paris", total: 168, processed: 168, success: 112, errors: 4, createdDaysAgo: 45, startedDaysAgo: 44 },
   { type: "contact" as const, status: "running" as const, name: "Relance proposition Q2", total: 88, processed: 52, success: 31, errors: 1, createdDaysAgo: 8, startedDaysAgo: 7 },
-  { type: "whatsapp" as const, status: "running" as const, name: "WhatsApp — leads chauds", total: 64, processed: 38, success: 34, errors: 0, createdDaysAgo: 5, startedDaysAgo: 4 },
+  { type: "contact" as const, status: "running" as const, name: "Relance leads chauds", total: 64, processed: 38, success: 34, errors: 0, createdDaysAgo: 5, startedDaysAgo: 4 },
   { type: "invite" as const, status: "completed" as const, name: "LinkedIn ABM FinTech", total: 132, processed: 132, success: 89, errors: 3, createdDaysAgo: 72, startedDaysAgo: 71 },
 ];
 
@@ -472,19 +469,7 @@ export function buildBulkActivityRows(
     });
   }
 
-  // WhatsApp
-  for (let i = 0; i < 80; i++) {
-    const pid = prospectIds[(i + 40) % prospectIds.length]!;
-    rows.push({
-      organization_id: orgId,
-      prospect_id: pid,
-      actor_id: userId,
-      action: i % 3 === 0 ? "whatsapp_message_inbound" : "whatsapp_message_outbound",
-      created_at: daysAgo(i % 20, 11 + (i % 8)),
-    });
-  }
-
-  // RDV scheduled (activity feed — separate from funnel events)
+  // RDV scheduled (activity feed, separate from funnel events)
   for (let i = 0; i < 48; i++) {
     rows.push({
       organization_id: orgId,
@@ -535,11 +520,11 @@ export function buildEventSlots(
 
   // Today — 5 RDVs
   const todayMeetings = [
-    "Démo Andoxa — NovaTech",
-    "Discovery — DataFlow",
-    "Closing FinEdge",
-    "Point ScaleUp",
-    "Relance CloudNine",
+    "Démo Andoxa : Welkin",
+    "Discovery : Fintexa",
+    "Closing Datora",
+    "Point Scalio",
+    "Relance Cloudis",
   ];
   todayMeetings.forEach((title, i) => {
     slots.push({

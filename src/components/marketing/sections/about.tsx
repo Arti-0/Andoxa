@@ -195,7 +195,6 @@ export function AProposCta() {
         <BackgroundGradientAnimation
           containerClassName="!h-full !w-full"
           size="80%"
-          blendingValue="screen"
         />
       </div>
       <svg

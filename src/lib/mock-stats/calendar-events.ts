@@ -53,20 +53,20 @@ const MEETING_TYPES = [
 ];
 
 const COMPANIES = [
-  "NovaTech",
-  "DataFlow",
-  "FinEdge",
-  "ScaleUp",
-  "CloudNine",
-  "RevOps",
-  "SaaSify",
-  "GrowthLab",
-  "Paystack FR",
+  "Welkin",
+  "Fintexa",
+  "Datora",
+  "Scalio",
+  "Cloudis",
+  "Venturis",
+  "Nordia",
+  "Lumira",
   "MediCore",
   "LogiTrans",
   "GreenLedger",
   "TalentHub",
   "CyberShield",
+  "Brightside",
 ];
 
 const PROSPECTS = [
@@ -83,7 +83,7 @@ const PROSPECTS = [
   "Sarah Cohen",
   "Malik Bensaïd",
   "Lucile Mercier",
-  "Andréas Bodin",
+  "Romain Faure",
 ];
 
 const INTERNAL_TITLES = [

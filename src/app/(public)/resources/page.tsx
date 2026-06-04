@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, BookOpen, Calculator, GraduationCap, Layers, Newspaper } from "lucide-react";
+import { ArrowRight, BookOpen, Calculator, GraduationCap, Layers } from "lucide-react";
 import { FloatingNav } from "@/components/marketing/aceternity/floating-nav";
 import { SITE_NAV } from "@/components/marketing/legal-page-layout";
 import { Footer } from "@/components/marketing/footer";
@@ -9,9 +9,9 @@ import { Eyebrow } from "@/components/marketing/ui/eyebrow";
 import { Button } from "@/components/marketing/ui/button";
 
 export const metadata: Metadata = {
-  title: "Ressources Andoxa — guides, calculateur de ROI, blog",
+  title: "Ressources Andoxa : guides et calculateur de ROI",
   description:
-    "Guide détaillé d'Andoxa, calculateur de ROI pour votre équipe, blog outbound — toutes nos ressources pour structurer votre prospection B2B.",
+    "Guide détaillé d'Andoxa et calculateur de ROI pour votre équipe : toutes nos ressources pour structurer votre prospection B2B.",
 };
 
 const CATEGORIES = [
@@ -31,15 +31,6 @@ const CATEGORIES = [
       "Combien Andoxa peut faire gagner à votre équipe ? Personnalisez le calcul avec vos chiffres, voyez le CA additionnel en direct.",
     href: "/resources/roi-calculator",
     cta: "Estimer le ROI",
-    live: true,
-  },
-  {
-    icon: Newspaper,
-    title: "Blog",
-    description:
-      "Notre regard sur la prospection B2B : ce qui marche, ce qui change, ce que pensent les équipes commerciales sur le terrain.",
-    href: "/resources/blog",
-    cta: "Voir le blog",
     live: true,
   },
   {

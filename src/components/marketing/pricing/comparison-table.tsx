@@ -5,6 +5,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Check, Minus } from "lucide-react";
 import { Container } from "@/components/marketing/ui/container";
 import { Eyebrow } from "@/components/marketing/ui/eyebrow";
+import { AndoxaWordmark } from "@/components/marketing/icons/brand-icons";
 
 /**
  * Feature matrix — Andoxa vs the canonical competitor archetypes.
@@ -17,14 +18,13 @@ const ROWS: { group: string; features: { label: string; crm: boolean; outreach: 
     features: [
       { label: "Extension Chrome LinkedIn 1-clic", crm: false, outreach: true, andoxa: true },
       { label: "Séquences LinkedIn dans les limites", crm: false, outreach: true, andoxa: true },
-      { label: "Séquences WhatsApp", crm: false, outreach: false, andoxa: true },
       { label: "Sessions d'appels téléphoniques", crm: false, outreach: false, andoxa: true },
     ],
   },
   {
     group: "Inbox & conversation",
     features: [
-      { label: "Inbox LinkedIn + WhatsApp unifiée", crm: false, outreach: false, andoxa: true },
+      { label: "Inbox LinkedIn unifiée", crm: false, outreach: false, andoxa: true },
       { label: "Templates de messages + variables", crm: true, outreach: true, andoxa: true },
       { label: "Contexte CRM dans la conversation", crm: true, outreach: false, andoxa: true },
     ],
@@ -33,8 +33,7 @@ const ROWS: { group: string; features: { label: string; crm: boolean; outreach: 
     group: "Calendrier & booking",
     features: [
       { label: "Lien de booking partageable", crm: false, outreach: false, andoxa: true },
-      { label: "Séquences WhatsApp pré-RDV (J-1, H-1)", crm: false, outreach: false, andoxa: true },
-      { label: "Récupération no-show automatique", crm: false, outreach: false, andoxa: true },
+      { label: "Calendrier unifié (équipe & individuel)", crm: false, outreach: false, andoxa: true },
       { label: "Sync bidirectionnelle Google Calendar", crm: true, outreach: false, andoxa: true },
     ],
   },
@@ -48,11 +47,11 @@ const ROWS: { group: string; features: { label: string; crm: boolean; outreach: 
     ],
   },
   {
-    group: "Automatisation",
+    group: "IA & priorisation",
     features: [
-      { label: "Workflows visuels (triggers + actions)", crm: false, outreach: false, andoxa: true },
-      { label: "Conditions if/else et délais", crm: false, outreach: false, andoxa: true },
-      { label: "Multi-canal LinkedIn + WhatsApp", crm: false, outreach: false, andoxa: true },
+      { label: "Priorisation des conversations par l'IA", crm: false, outreach: false, andoxa: true },
+      { label: "Prochaine action suggérée par prospect", crm: false, outreach: false, andoxa: true },
+      { label: "Estimation du niveau d'intention", crm: false, outreach: false, andoxa: true },
     ],
   },
 ];
@@ -107,8 +106,8 @@ export function ComparisonTable() {
                 <th className="px-3 py-4 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground sm:px-4">
                   LinkedIn outreach
                 </th>
-                <th className="bg-[var(--brand-blue-tint)]/60 px-3 py-4 text-center text-xs font-semibold uppercase tracking-wider text-[var(--brand-blue-dark)] sm:px-4">
-                  Andoxa
+                <th className="bg-[var(--brand-blue-tint)]/60 px-3 py-4 text-center sm:px-4">
+                  <AndoxaWordmark height={18} className="justify-center" />
                 </th>
               </tr>
             </thead>
