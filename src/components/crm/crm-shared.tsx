@@ -18,8 +18,12 @@ import {
   Calendar,
   Upload,
   Edit,
+  Filter,
+  ChevronDown,
+  Check,
   type LucideIcon,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   LinkedInLogo,
   WhatsAppLogo,
@@ -27,6 +31,7 @@ import {
   CsvLogo,
   AndoxaLogo,
 } from "./brand-logos";
+import { CRM_SOURCE_FILTER_OPTIONS } from "./crm-source-filters";
 import type { ComponentType } from "react";
 import {
   PROSPECT_STATUS_LABELS,
@@ -638,6 +643,181 @@ export function Surface({
       className={`rounded-xl border border-border bg-card ${padding} ${className}`}
     >
       {children}
+    </div>
+  );
+}
+
+/**
+ * Campaign-style filter pill used across the CRM toolbars (Prospects, Listes,
+ * Pipeline): "[icon] Label : value ▾", blue-tint when active.
+ */
+export function CrmFilterButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex h-[34px] items-center gap-2 rounded-lg border px-2.5 text-[13px] font-medium transition-colors ${
+        active
+          ? "border-[#0052D9] bg-[#E8F0FD] text-[#003EA3]"
+          : "border-input bg-background hover:bg-accent"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * The unclickable "Filtres" label that opens every CRM filter bar (Prospects,
+ * Listes, Pipeline). Followed by per-category dropdown pills.
+ */
+export function CrmFiltersLabel() {
+  return (
+    <span className="ml-0.5 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground">
+      <Filter className="size-3.5" />
+      Filtres
+    </span>
+  );
+}
+
+/**
+ * Shared "Source" multi-select dropdown over CRM_SOURCE_FILTER_OPTIONS.
+ * Campaign-style: checkbox rows in a rounded-xl popover, blue #0052D9 accents.
+ * Open state is controlled by the parent (so only one CRM dropdown is open at
+ * a time via a single `openFilter` state).
+ */
+export function CrmSourceDropdown({
+  selected,
+  onChange,
+  open,
+  onToggle,
+}: {
+  selected: string[];
+  onChange: (next: string[]) => void;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const summary =
+    selected.length === 0
+      ? "Toutes"
+      : selected.length === 1
+        ? (CRM_SOURCE_FILTER_OPTIONS.find((o) => o.value === selected[0])
+            ?.label ?? "1 sélectionnée")
+        : `${selected.length} sélectionnées`;
+  const toggle = (value: string) =>
+    onChange(
+      selected.includes(value)
+        ? selected.filter((v) => v !== value)
+        : [...selected, value],
+    );
+  return (
+    <div className="relative">
+      <CrmFilterButton active={selected.length > 0} onClick={onToggle}>
+        <span>Source</span>
+        <span className="text-xs font-medium text-muted-foreground">
+          : {summary}
+        </span>
+        <ChevronDown className="size-3 opacity-60" />
+      </CrmFilterButton>
+      {open && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute left-0 top-[calc(100%+4px)] z-30 min-w-[220px] rounded-xl border bg-popover p-1 shadow-lg"
+        >
+          {CRM_SOURCE_FILTER_OPTIONS.map((opt) => {
+            const active = selected.includes(opt.value);
+            return (
+              <div
+                key={opt.value}
+                onClick={() => toggle(opt.value)}
+                className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] hover:bg-accent"
+              >
+                <Checkbox checked={active} />
+                <span>{opt.label}</span>
+              </div>
+            );
+          })}
+          {selected.length > 0 && (
+            <>
+              <div className="my-1 h-px bg-border" />
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                className="w-full rounded-md px-2.5 py-1.5 text-left text-[12.5px] font-medium text-[#0052D9] hover:bg-accent"
+              >
+                Tout effacer
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Shared "Trier" single-select dropdown. Generic over the sort-key type so each
+ * view passes its own option list (prospects/pipeline share PROSPECT_SORT_OPTIONS,
+ * Listes has its own). Campaign-style: active row = font-semibold #0052D9 + check.
+ */
+export function CrmSortDropdown<T extends string>({
+  options,
+  value,
+  onChange,
+  open,
+  onToggle,
+  currentLabel,
+}: {
+  options: readonly { id: T; label: string }[];
+  value: T;
+  onChange: (id: T) => void;
+  open: boolean;
+  onToggle: () => void;
+  /** Overrides the pill's displayed value. Use when `value` can be a key that
+   *  isn't in `options` (e.g. prospects sort-by-column sets status/source). */
+  currentLabel?: string;
+}) {
+  const current =
+    currentLabel ??
+    options.find((o) => o.id === value)?.label ??
+    options[0]?.label ??
+    "";
+  return (
+    <div className="relative">
+      <CrmFilterButton active={false} onClick={onToggle}>
+        <span>Trier</span>
+        <span className="text-xs font-medium text-muted-foreground">
+          : {current}
+        </span>
+        <ChevronDown className="size-3 opacity-60" />
+      </CrmFilterButton>
+      {open && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute left-0 top-[calc(100%+4px)] z-30 min-w-[200px] rounded-xl border bg-popover p-1 shadow-lg"
+        >
+          {options.map((opt) => (
+            <div
+              key={opt.id}
+              onClick={() => onChange(opt.id)}
+              className={`flex cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 text-[13px] hover:bg-accent ${
+                value === opt.id ? "font-semibold text-[#0052D9]" : ""
+              }`}
+            >
+              {opt.label}
+              {value === opt.id && <Check className="size-3.5" />}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

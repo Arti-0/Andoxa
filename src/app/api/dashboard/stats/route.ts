@@ -590,6 +590,8 @@ export async function getDashboardStats(
   const messagesByWeek = new Array(weekBuckets.length).fill(0) as number[];
   const responseByWeek = new Array(weekBuckets.length).fill(0) as number[];
 
+  const inboundChats = inboundChatsRes.data ?? [];
+
   for (const a of invitesActivityRes.data ?? []) {
     const idx = bucketIndex(weekBuckets, new Date(a.created_at as string));
     if (idx >= 0) invitesByWeek[idx]++;
@@ -598,7 +600,7 @@ export async function getDashboardStats(
     const idx = bucketIndex(weekBuckets, new Date(a.created_at as string));
     if (idx >= 0) messagesByWeek[idx]++;
   }
-  for (const c of inboundChatsRes.data ?? []) {
+  for (const c of inboundChats) {
     if (!c.last_inbound_at) continue;
     const idx = bucketIndex(weekBuckets, new Date(c.last_inbound_at));
     if (idx >= 0) responseByWeek[idx]++;
@@ -656,7 +658,7 @@ export async function getDashboardStats(
   const acceptances = acceptedProspectIds.size;
   // Responses ≈ chats with last_inbound in window AND prospect was messaged.
   let responses = 0;
-  for (const c of inboundChatsRes.data ?? []) {
+  for (const c of inboundChats) {
     if (!inWindow(c.last_inbound_at ?? null, current)) continue;
     if (c.prospect_id && messagedProspectIds.has(c.prospect_id as string)) {
       responses++;
@@ -695,7 +697,7 @@ export async function getDashboardStats(
     prevMessages++;
     if (a.prospect_id) prevMessagedIds.add(a.prospect_id as string);
   }
-  for (const c of inboundChatsRes.data ?? []) {
+  for (const c of inboundChats) {
     if (!inWindow(c.last_inbound_at ?? null, previous)) continue;
     if (c.prospect_id && prevMessagedIds.has(c.prospect_id as string)) {
       prevResponses++;

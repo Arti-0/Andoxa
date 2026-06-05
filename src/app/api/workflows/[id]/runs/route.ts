@@ -312,7 +312,9 @@ export const POST = createApiHandler(
         throw Errors.internal("Impossible de vérifier les campagnes actives");
       }
       prospectIdsInActiveCampaign = new Set(
-        (ov ?? []).map((r) => r.prospect_id)
+        (ov ?? [])
+          .map((r) => r.prospect_id)
+          .filter((id): id is string => Boolean(id))
       );
     }
 

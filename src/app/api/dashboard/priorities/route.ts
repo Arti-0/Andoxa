@@ -1,11 +1,13 @@
 import { createApiHandler, Errors, type ApiContext } from "@/lib/api";
 import { isMockStatsEnabled, mockDashboardPriorities } from "@/lib/mock-stats";
 import { todayBoundsIso } from "@/lib/dashboard/timezone";
+import { isFeatureEnabled } from "@/lib/config/feature-flags";
 
 /**
  * GET /api/dashboard/priorities
  *
- * Returns the 5 cockpit priority cards for the active workspace:
+ * Returns the cockpit priority cards for the active workspace (the
+ * pending_workflows card is omitted while the workflows #FF is off):
  *   • rdv_today           — events scheduled for today
  *   • stale_conversations — Unipile chats with last_inbound > 7d (silent threads)
  *   • unread_responses    — recent inbound replies (last 7d, not yet acted on)
@@ -19,6 +21,7 @@ interface PriorityItem {
     | "stale_conversations"
     | "unread_responses"
     | "proposals_to_follow"
+    | "active_campaigns"
     | "pending_workflows";
   count: number;
   label: string;
@@ -66,7 +69,7 @@ export async function getDashboardPriorities(
     staleChatsCountRes,
     unreadChatsCountRes,
     proposalsCountRes,
-    proposalsSampleRes,
+    activeCampaignsRes,
     pendingRunsCountRes,
     pendingRunSampleRes,
   ] = await Promise.all([
@@ -103,15 +106,12 @@ export async function getDashboardPriorities(
       .is("deleted_at", null)
       .eq("status", "proposal")
       .or(`last_contact.is.null,last_contact.lt.${twoDaysAgo}`),
+    // Active campaigns — jobs currently sending (status 'running').
     ctx.supabase
-      .from("prospects")
-      .select("full_name")
+      .from("campaign_jobs")
+      .select("id", { count: "exact", head: true })
       .eq("organization_id", ctx.workspaceId)
-      .is("deleted_at", null)
-      .eq("status", "proposal")
-      .or(`last_contact.is.null,last_contact.lt.${twoDaysAgo}`)
-      .order("updated_at", { ascending: false })
-      .limit(2),
+      .eq("status", "running"),
     ctx.supabase
       .from("workflow_runs")
       .select("id", { count: "exact", head: true })
@@ -126,27 +126,26 @@ export async function getDashboardPriorities(
       .limit(1),
   ]);
 
+  // Sub-labels describe what each metric tracks (its window / criterion) rather
+  // than restating the count — so they stay meaningful at zero. The only
+  // dynamic one is the next RDV, which is genuinely useful extra context.
   const rdvCount = rdvTodayRes.count ?? 0;
-  let rdvSub = "Aucun RDV planifié aujourd'hui";
-  if (rdvCount > 0 && nextRdvRes.data && nextRdvRes.data.length > 0) {
+  let rdvSub: string;
+  if (nextRdvRes.data && nextRdvRes.data.length > 0) {
     const next = nextRdvRes.data[0];
     const who = next.guest_name ?? next.title ?? "Prospect";
     rdvSub = `Prochain : ${formatHourMinute(next.start_time)}, ${who}`;
   } else if (rdvCount > 0) {
-    rdvSub = `${rdvCount} RDV planifié${rdvCount > 1 ? "s" : ""} aujourd'hui`;
+    rdvSub = "RDV du jour terminés";
+  } else {
+    rdvSub = "Agenda libre aujourd'hui";
   }
 
   const staleCount = staleChatsCountRes.count ?? 0;
   const unreadCount = unreadChatsCountRes.count ?? 0;
 
   const proposalsCount = proposalsCountRes.count ?? 0;
-  let proposalsSub = "Aucune proposition à relancer";
-  if (proposalsCount > 0) {
-    const names = (proposalsSampleRes.data ?? [])
-      .map((p) => p.full_name ?? "Prospect")
-      .filter(Boolean);
-    proposalsSub = names.length > 0 ? names.join(" · ") : "Voir le pipeline";
-  }
+  const proposalsSub = "Sans relance depuis 2 jours";
 
   const pendingCount = pendingRunsCountRes.count ?? 0;
   let pendingSub = "Aucun workflow en attente";
@@ -158,6 +157,14 @@ export async function getDashboardPriorities(
       total != null ? `étape ${(r.current_step_index ?? 0) + 1}/${total}` : "en pause";
     pendingSub = `« ${def.name ?? "Parcours"} » · ${stepLabel}`;
   }
+
+  // Channel wording follows the #FF: WhatsApp is hidden until that flag ships.
+  const channelSub = isFeatureEnabled("whatsapp")
+    ? "LinkedIn + WhatsApp · 7 derniers jours"
+    : "LinkedIn · 7 derniers jours";
+
+  const activeCampaignsCount = activeCampaignsRes.count ?? 0;
+  const activeCampaignsSub = "Séquences d'envoi en cours";
 
   const items: PriorityItem[] = [
     {
@@ -178,7 +185,7 @@ export async function getDashboardPriorities(
       key: "unread_responses",
       count: unreadCount,
       label: "Réponses récentes",
-      sub: "LinkedIn + WhatsApp · 7 derniers jours",
+      sub: channelSub,
       href: "/messagerie",
     },
     {
@@ -189,12 +196,26 @@ export async function getDashboardPriorities(
       href: "/crm?status=proposal",
     },
     {
-      key: "pending_workflows",
-      count: pendingCount,
-      label: pendingCount > 1 ? "Workflows en attente" : "Workflow en attente",
-      sub: pendingSub,
-      href: "/workflows",
+      key: "active_campaigns",
+      count: activeCampaignsCount,
+      label: "Campagnes actives",
+      sub: activeCampaignsSub,
+      href: "/campaigns?status=running",
     },
+    // #FF: workflows — the "en attente" card links to /workflows (hidden while
+    // the feature is gated), so it's only surfaced when workflows are enabled.
+    ...(isFeatureEnabled("workflows")
+      ? [
+          {
+            key: "pending_workflows" as const,
+            count: pendingCount,
+            label:
+              pendingCount > 1 ? "Workflows en attente" : "Workflow en attente",
+            sub: pendingSub,
+            href: "/workflows",
+          },
+        ]
+      : []),
   ];
 
   return {

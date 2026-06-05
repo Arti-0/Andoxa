@@ -40,20 +40,15 @@ import type { CampaignConfig } from "@/lib/campaigns/types";
 import type { BddItem, FilterState } from "./crm-table";
 import { useProspectStatuses } from "@/lib/prospects/statuses";
 import { isFeatureEnabled } from "@/lib/config/feature-flags";
+import { CRM_SOURCE_FILTER_OPTIONS } from "./crm-source-filters";
 
 export type CrmView = "listes" | "prospects" | "corbeille" | "kanban";
 
-// Only sources actually written by the API are exposed as filter options.
-// `linkedin` (without `_extension`) is a legacy alias that older rows may
-// still carry — kept handled by the rendering pipeline but hidden from the
-// filter to avoid duplicate "LinkedIn" rows. See docs/TAGS_AUDIT.md §3.
-const SOURCE_OPTIONS = [
-  { value: "linkedin_extension", label: "LinkedIn" },
-  { value: "csv", label: "Import CSV" },
-  { value: "xlsx", label: "Import Excel" },
-  { value: "manual", label: "Manuel" },
-  { value: "booking", label: "Booking" },
-];
+// Effective acquisition sources usable by users — single source of truth in
+// crm-source-filters.ts (LinkedIn, CSV, Excel, Manuel, Inbound). "Booking" is
+// intentionally absent: a booking is an event on an existing prospect, not an
+// acquisition source.
+const SOURCE_OPTIONS = CRM_SOURCE_FILTER_OPTIONS;
 
 // Status filter options are sourced from the shared useProspectStatuses
 // hook (React Query, cache shared with kanban / pills / panel) so renames,

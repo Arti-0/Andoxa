@@ -16,6 +16,7 @@ import {
   DEFAULT_FILTERS,
   computePerf,
   type Campaign,
+  type CampaignStatus,
   type FilterState,
   type Item,
 } from "./data";
@@ -198,7 +199,25 @@ export default function CampaignsPage() {
     if (fromUrl && fromUrl !== tab) setTab(fromUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
-  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<FilterState>(() => {
+    // `?status=running` (comma-separated) deep-links the status filter — used
+    // by the dashboard "Campagnes actives" card to land on the "En cours" view.
+    const statusParam = searchParams?.get("status");
+    if (!statusParam) return DEFAULT_FILTERS;
+    const valid: CampaignStatus[] = [
+      "running",
+      "paused",
+      "completed",
+      "failed",
+      "draft",
+      "ready",
+    ];
+    const statuses = statusParam
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s): s is CampaignStatus => (valid as string[]).includes(s));
+    return statuses.length ? { ...DEFAULT_FILTERS, statuses } : DEFAULT_FILTERS;
+  });
   const [selected, setSelected] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortBy>({ field: "launchedAt", dir: "desc" });
   // `?new=campaign&bdd=<id>` / `?new=session&bdd=<id>` deep-links open the

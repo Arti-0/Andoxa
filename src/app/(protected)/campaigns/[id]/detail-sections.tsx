@@ -13,7 +13,7 @@
  *     endpoint exists (see #45).
  */
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
   AlertTriangle,
@@ -79,7 +79,7 @@ function getFunnelSteps(c: Campaign): FunnelStepData[] {
         big: sent,
         total: c.total,
         label: "Invitations envoyées",
-        sub: `sur ${c.total} (${pct(sent, c.total)}% du carnet)`,
+        sub: "",
         tip: "Invitations LinkedIn envoyées depuis le lancement.",
         showProgress: true,
         color: "#0052D9",
@@ -102,7 +102,7 @@ function getFunnelSteps(c: Campaign): FunnelStepData[] {
         big: sent,
         total: c.total,
         label: "Messages envoyés",
-        sub: `sur ${c.total} (${pct(sent, c.total)}% du carnet)`,
+        sub: "",
         tip: "Messages envoyés aux relations 1er degré.",
         showProgress: true,
         color: "#0052D9",
@@ -151,57 +151,54 @@ function getFunnelSteps(c: Campaign): FunnelStepData[] {
   ];
 }
 
-function FunnelStep({
-  step,
-  isFirst,
-  isLast,
-}: {
-  step: FunnelStepData;
-  isFirst: boolean;
-  isLast: boolean;
-}) {
+// Each funnel step is rendered as a stat card (mirrors the KpiCard design on
+// the campaigns list): label + optional info tooltip, a large value, then the
+// conversion sub-line. The lead step keeps a progress bar ("% du carnet").
+function FunnelStep({ step }: { step: FunnelStepData }) {
   const tierColor = step.tier ? TIER_COLORS[step.tier] : null;
   const valuePct = step.total ? (step.big / step.total) * 100 : null;
   return (
-    <div
-      className="relative flex min-w-0 flex-1 flex-col gap-1.5 p-[18px]"
-      style={{ borderLeft: isFirst ? "none" : "1px solid var(--border)" }}
-    >
-      <div className="flex items-center gap-1.5">
-        <span className="text-[11.5px] font-medium text-muted-foreground">{step.label}</span>
-        <span title={step.tip} className="inline-flex cursor-help text-muted-foreground/50">
-          <Info className="size-3" />
+    <div className="relative flex min-w-0 flex-1 flex-col rounded-xl border bg-card px-4 py-3.5 transition-colors hover:border-foreground/20">
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate text-[12.5px] font-medium text-muted-foreground">
+          {step.label}
         </span>
+        {/* Info tooltip only when the step has extra context to surface. */}
+        {step.tip && (
+          <span
+            title={step.tip}
+            className="shrink-0 cursor-help text-muted-foreground/60"
+          >
+            <Info className="size-3" />
+          </span>
+        )}
       </div>
-      <div className="flex items-baseline gap-1.5">
-        <span className="text-[30px] font-semibold leading-none tracking-tight tabular-nums">
+      <div className="mt-1.5 flex items-baseline gap-1">
+        <span className="text-3xl font-semibold leading-none tracking-tight tabular-nums">
           {step.big.toLocaleString("fr-FR")}
         </span>
         {step.total != null && (
-          <span className="text-sm font-medium text-muted-foreground tabular-nums">/ {step.total}</span>
+          <span className="text-lg font-medium text-muted-foreground tabular-nums">
+            / {step.total}
+          </span>
         )}
       </div>
-      <div
-        className="inline-flex items-center gap-1 text-xs font-medium"
-        style={{ color: tierColor ?? "var(--muted-foreground)" }}
-      >
-        {step.tier === "good" && <ArrowUp className="size-2.5" />}
-        {step.tier === "bad" && <AlertTriangle className="size-2.5" />}
-        {step.sub}
-      </div>
-      <div className="mt-1.5 flex h-[26px] items-center">
-        {step.showProgress && (
-          <div className="flex w-full flex-col gap-1">
-            <ProgressBar value={step.big} max={step.total ?? 1} color={step.color} height={5} />
-            <span className="text-[10.5px] text-muted-foreground tabular-nums">
-              {valuePct?.toFixed(0)}% du carnet traité
-            </span>
-          </div>
-        )}
-      </div>
-      {!isLast && (
-        <div className="absolute -right-2.5 top-1/2 z-[2] flex size-5 -translate-y-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground">
-          <ChevronRight className="size-3" />
+      {step.sub && (
+        <div
+          className="mt-2 inline-flex items-center gap-1 text-[12px] font-medium"
+          style={{ color: tierColor ?? "var(--muted-foreground)" }}
+        >
+          {step.tier === "good" && <ArrowUp className="size-3" />}
+          {step.tier === "bad" && <AlertTriangle className="size-3" />}
+          {step.sub}
+        </div>
+      )}
+      {step.showProgress && (
+        <div className="mt-auto flex flex-col gap-1 pt-3">
+          <ProgressBar value={step.big} max={step.total ?? 1} color={step.color} height={5} />
+          <span className="text-[10.5px] text-muted-foreground tabular-nums">
+            {valuePct?.toFixed(0)}% du carnet traité
+          </span>
         </div>
       )}
     </div>
@@ -229,9 +226,9 @@ export function CampaignKpiFunnel({
           </span>
         )}
       </div>
-      <div className="flex items-stretch overflow-visible rounded-xl border bg-card">
-        {steps.map((s, i) => (
-          <FunnelStep key={s.key} step={s} isFirst={i === 0} isLast={i === steps.length - 1} />
+      <div className="flex flex-col gap-3 sm:flex-row">
+        {steps.map((s) => (
+          <FunnelStep key={s.key} step={s} />
         ))}
       </div>
     </section>
@@ -278,14 +275,36 @@ function CampaignChart({
   type,
   series,
   loading,
+  selectedDate,
+  onSelectDate,
 }: {
   type: CampaignType;
   series: CampaignTimelineSeriesPoint[];
   loading: boolean;
+  /** YYYY-MM-DD currently filtering the prospects table, or null. */
+  selectedDate?: string | null;
+  /** Clicking a day on the chart toggles the table filter for that day. */
+  onSelectDate?: (date: string) => void;
 }) {
   const defs = useMemo(() => seriesDefsFor(type), [type]);
   const [cumulative, setCumulative] = useState(false);
   const [hover, setHover] = useState<number | null>(null);
+
+  // Measure the real rendered width so the SVG draws 1:1. The chart used a
+  // fixed 900-wide viewBox stretched with preserveAspectRatio="none", which
+  // distorted the line slopes, axis labels and point markers horizontally.
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(900);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w && w > 0) setWidth(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const plotted = useMemo(() => {
     if (!cumulative) return series;
@@ -300,7 +319,7 @@ function CampaignChart({
     });
   }, [series, cumulative, defs]);
 
-  const W = 900;
+  const W = width;
   const H = 240;
   const padL = 36;
   const padR = 14;
@@ -326,6 +345,17 @@ function CampaignChart({
   }, [plotted, n]);
 
   const hasData = series.some((pt) => defs.some((d) => pt[d.key] > 0));
+  const selIdx =
+    selectedDate != null
+      ? plotted.findIndex((p) => p.date === selectedDate)
+      : -1;
+  // Tooltip follows the hovered day, else the pinned/selected one.
+  const tipIdx = hover ?? (selIdx >= 0 ? selIdx : null);
+  const idxFromClientX = (clientX: number, rect: DOMRect) => {
+    const x = ((clientX - rect.left) / rect.width) * W;
+    const ratio = Math.max(0, Math.min(1, (x - padL) / innerW));
+    return Math.round(ratio * (n - 1));
+  };
 
   return (
     <section>
@@ -377,17 +407,26 @@ function CampaignChart({
             </div>
           </div>
         ) : (
-          <div className="relative" onMouseLeave={() => setHover(null)}>
+          <div
+            className="relative"
+            ref={wrapRef}
+            onMouseLeave={() => setHover(null)}
+          >
             <svg
               viewBox={`0 0 ${W} ${H}`}
-              className="block w-full"
+              width={W}
+              height={H}
+              className={`block w-full ${onSelectDate ? "cursor-pointer" : ""}`}
               style={{ height: H }}
-              preserveAspectRatio="none"
               onMouseMove={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
-                const x = ((e.clientX - rect.left) / rect.width) * W;
-                const ratio = Math.max(0, Math.min(1, (x - padL) / innerW));
-                setHover(Math.round(ratio * (n - 1)));
+                setHover(idxFromClientX(e.clientX, rect));
+              }}
+              onClick={(e) => {
+                if (!onSelectDate || n === 0) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const i = idxFromClientX(e.clientX, rect);
+                if (plotted[i]) onSelectDate(plotted[i].date);
               }}
             >
               {yTicks.map((tv, i) => (
@@ -414,31 +453,82 @@ function CampaignChart({
                 const pts = plotted.map((pt, i) => [xFor(i), yFor(pt[d.key])] as const);
                 const line = "M" + pts.map((p) => p.join(",")).join(" L");
                 return (
-                  <path key={d.key} d={line} fill="none" stroke={d.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+                  <path
+                    key={d.key}
+                    d={line}
+                    fill="none"
+                    stroke={d.color}
+                    strokeWidth={2}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
                 );
               })}
-              {hover != null && plotted[hover] && (
-                <g>
-                  <line x1={xFor(hover)} x2={xFor(hover)} y1={padT} y2={padT + innerH} stroke="var(--border)" strokeDasharray="3 3" />
-                  {defs.map((d) => (
-                    <circle key={d.key} cx={xFor(hover)} cy={yFor(plotted[hover][d.key])} r={3.5} fill="var(--background)" stroke={d.color} strokeWidth={2} />
-                  ))}
-                </g>
+              {/* Selected day — persistent solid marker driving the table filter */}
+              {selIdx >= 0 && plotted[selIdx] && (
+                <line
+                  x1={xFor(selIdx)}
+                  x2={xFor(selIdx)}
+                  y1={padT}
+                  y2={padT + innerH}
+                  stroke="#0052D9"
+                  strokeWidth={1.5}
+                />
               )}
+              {/* Hover crosshair (dashed) */}
+              {hover != null && hover !== selIdx && plotted[hover] && (
+                <line
+                  x1={xFor(hover)}
+                  x2={xFor(hover)}
+                  y1={padT}
+                  y2={padT + innerH}
+                  stroke="var(--border)"
+                  strokeDasharray="3 3"
+                />
+              )}
+              {/* Point markers on the active day */}
+              {tipIdx != null &&
+                plotted[tipIdx] &&
+                defs.map((d) => (
+                  <circle
+                    key={d.key}
+                    cx={xFor(tipIdx)}
+                    cy={yFor(plotted[tipIdx][d.key])}
+                    r={3.5}
+                    fill="var(--background)"
+                    stroke={d.color}
+                    strokeWidth={2}
+                  />
+                ))}
             </svg>
-            {hover != null && plotted[hover] && (
+            {tipIdx != null && plotted[tipIdx] && (
               <div
                 className="pointer-events-none absolute top-2 rounded-lg border bg-popover px-2.5 py-2 text-[12px] shadow-lg"
-                style={{ left: `min(calc(100% - 170px), max(0px, ${(xFor(hover) / W) * 100}%))`, minWidth: 150 }}
+                style={{ left: `min(calc(100% - 170px), max(0px, ${(xFor(tipIdx) / W) * 100}%))`, minWidth: 150 }}
               >
-                <div className="mb-1 text-[11.5px] font-semibold">{frShortDate(plotted[hover].date)}</div>
+                <div className="mb-1 flex items-center justify-between gap-2 text-[11.5px] font-semibold">
+                  <span>{frShortDate(plotted[tipIdx].date)}</span>
+                  {tipIdx === selIdx && (
+                    <span className="rounded bg-[#E8F0FD] px-1.5 py-px text-[10px] font-semibold text-[#003EA3]">
+                      Filtré
+                    </span>
+                  )}
+                </div>
                 {defs.map((d) => (
                   <div key={d.key} className="flex items-center gap-1.5 py-px">
                     <span className="size-2 rounded-full" style={{ background: d.color }} />
                     <span className="flex-1 text-muted-foreground">{d.label}</span>
-                    <strong className="tabular-nums">{plotted[hover][d.key]}</strong>
+                    <strong className="tabular-nums">{plotted[tipIdx][d.key]}</strong>
                   </div>
                 ))}
+                {onSelectDate && (
+                  <div className="mt-1 border-t pt-1 text-[10.5px] text-muted-foreground">
+                    {tipIdx === selIdx
+                      ? "Cliquez pour retirer le filtre"
+                      : "Cliquez pour filtrer les prospects"}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -578,14 +668,30 @@ function fmtProcessedAt(iso: string | null): string {
   }
 }
 
+/** Local-time YYYY-MM-DD for a timestamp — matches the chart's day buckets so a
+ *  clicked chart day filters the rows processed that same calendar day. */
+function ymdLocal(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
 const PAGE_SIZE = 12;
 
 export function CampaignProspectsTable({
   rows,
   campaignName,
+  dateFilter,
+  onClearDateFilter,
 }: {
   rows: CampaignJobProspectRow[];
   campaignName: string;
+  /** YYYY-MM-DD set by clicking a day on the chart, or null. */
+  dateFilter?: string | null;
+  onClearDateFilter?: () => void;
 }) {
   const showExport = isFeatureEnabled("campaignDetailExport");
   const [search, setSearch] = useState("");
@@ -603,9 +709,10 @@ export function CampaignProspectsTable({
     return rows.filter((p) => {
       if (search && !p.prospect_name.toLowerCase().includes(search.toLowerCase())) return false;
       if (statusFilter.length > 0 && !statusFilter.includes(p.status)) return false;
+      if (dateFilter && ymdLocal(p.processed_at) !== dateFilter) return false;
       return true;
     });
-  }, [rows, search, statusFilter]);
+  }, [rows, search, statusFilter, dateFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
@@ -716,6 +823,17 @@ export function CampaignProspectsTable({
                 </div>
               )}
             </div>
+          )}
+          {dateFilter && (
+            <button
+              type="button"
+              onClick={onClearDateFilter}
+              title="Retirer le filtre par date"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#0052D9] bg-[#E8F0FD] px-2.5 text-[12.5px] font-medium text-[#003EA3]"
+            >
+              {frShortDate(dateFilter)}
+              <X className="size-3" />
+            </button>
           )}
           <span className="ml-auto text-[12px] text-muted-foreground tabular-nums">
             {filtered.length} résultat{filtered.length > 1 ? "s" : ""}

@@ -25,11 +25,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     Search,
     Loader2,
-    Filter,
     ArrowDown,
     ArrowUp,
     ChevronDown,
-    Layers,
     Plus,
     X,
     Check,
@@ -62,6 +60,9 @@ import {
     silenceTierClasses,
     useDynamicStatusConfig,
     prospectPhotoFromEnrichment,
+    CrmFiltersLabel,
+    CrmSourceDropdown,
+    CrmSortDropdown,
     type StatusConfig,
 } from './crm-shared';
 import { type Prospect } from '@/lib/types/prospects';
@@ -70,7 +71,6 @@ import {
     PROSPECT_SORT_OPTIONS,
     type ProspectSortKey,
 } from './crm-prospect-sort';
-import { CRM_SOURCE_FILTER_OPTIONS } from './crm-source-filters';
 
 /** Fallback when an unknown status (custom row from another org, archived, etc.)
  *  shows up. Keeps the UI from crashing on a `cfgByKey.get(...)` miss. */
@@ -139,11 +139,12 @@ export function PipelineTab({
             : null;
 
     const [search, setSearch] = useState('');
-    const [filtersOpen, setFiltersOpen] = useState(false);
+    const [openFilter, setOpenFilter] = useState<'source' | 'sort' | null>(
+        null
+    );
     const [pipelineSourceFilter, setPipelineSourceFilter] = useState<string[]>(
         []
     );
-    const [sortOpen, setSortOpen] = useState(false);
     const [sortBy, setSortBy] = useState<ProspectSortKey>('lastActivity');
     /** When the page is deep-linked with `?status=...`, collapse every
      *  section except the targeted one — mirrors the funnel-card click. */
@@ -393,156 +394,55 @@ export function PipelineTab({
                 </div>
             )}
 
-            {/* Action bar */}
-            <div className="mb-3.5 flex flex-wrap items-center gap-2.5">
-                <div className="flex w-[320px] max-w-full items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5">
+            {/* Action bar — "Filtres" label + per-category dropdowns left,
+                search + create on the right (shared with Prospects & Listes). */}
+            <div className="mb-3.5 flex flex-wrap items-center gap-2">
+                <CrmFiltersLabel />
+
+                <CrmSourceDropdown
+                    selected={pipelineSourceFilter}
+                    onChange={setPipelineSourceFilter}
+                    open={openFilter === 'source'}
+                    onToggle={() =>
+                        setOpenFilter((o) => (o === 'source' ? null : 'source'))
+                    }
+                />
+
+                <CrmSortDropdown
+                    options={PROSPECT_SORT_OPTIONS}
+                    value={sortBy}
+                    onChange={(id) => {
+                        setSortBy(id);
+                        setOpenFilter(null);
+                    }}
+                    open={openFilter === 'sort'}
+                    onToggle={() =>
+                        setOpenFilter((o) => (o === 'sort' ? null : 'sort'))
+                    }
+                />
+
+                <div className="relative ml-auto w-full min-w-[220px] sm:w-[300px]">
                     {prospectsFetching ? (
-                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-600" />
+                        <Loader2 className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 animate-spin text-blue-600" />
                     ) : (
-                        <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                     )}
                     <input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         placeholder="Rechercher un prospect…"
-                        className="min-w-0 flex-1 border-none bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
+                        className="h-[34px] w-full rounded-lg border border-input bg-background pl-8 pr-8 text-[13px] outline-none transition-colors placeholder:text-muted-foreground focus:border-[#0052D9]"
                     />
                     {search && (
                         <button
                             onClick={() => setSearch('')}
-                            className="text-muted-foreground hover:text-foreground"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-accent"
+                            aria-label="Effacer la recherche"
                         >
-                            <X className="h-3 w-3" />
+                            <X className="h-3.5 w-3.5" />
                         </button>
                     )}
                 </div>
-                <div className="relative">
-                    <button
-                        onClick={() => {
-                            setFiltersOpen((o) => !o);
-                            setSortOpen(false);
-                        }}
-                        className={`inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[12.5px] font-medium ${
-                            filtersOpen ? 'bg-accent' : 'bg-card'
-                        }`}
-                    >
-                        <Filter className="h-3 w-3" />
-                        Filtres
-                        {pipelineSourceFilter.length > 0 && (
-                            <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold text-white">
-                                {pipelineSourceFilter.length}
-                            </span>
-                        )}
-                        <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
-                    </button>
-                    {filtersOpen && (
-                        <div
-                            onClick={(e) => e.stopPropagation()}
-                            className="absolute left-0 top-[calc(100%+6px)] z-30 w-[300px] rounded-lg border border-border bg-popover p-3 shadow-lg"
-                        >
-                            <div className="mb-2.5 flex items-center justify-between">
-                                <span className="text-[13px] font-semibold">
-                                    Filtres
-                                </span>
-                                <button
-                                    onClick={() => setPipelineSourceFilter([])}
-                                    className="text-[11.5px] font-medium text-blue-700"
-                                >
-                                    Tout effacer
-                                </button>
-                            </div>
-                            <div>
-                                <div className="mb-1 text-[11.5px] font-medium text-muted-foreground">
-                                    Source
-                                </div>
-                                <div className="flex flex-wrap gap-1">
-                                    {CRM_SOURCE_FILTER_OPTIONS.map((opt) => {
-                                        const active =
-                                            pipelineSourceFilter.includes(
-                                                opt.value
-                                            );
-                                        return (
-                                            <button
-                                                key={opt.value}
-                                                onClick={() =>
-                                                    setPipelineSourceFilter(
-                                                        (prev) =>
-                                                            prev.includes(
-                                                                opt.value
-                                                            )
-                                                                ? prev.filter(
-                                                                      (v) =>
-                                                                          v !==
-                                                                          opt.value
-                                                                  )
-                                                                : [
-                                                                      ...prev,
-                                                                      opt.value,
-                                                                  ]
-                                                    )
-                                                }
-                                                className={`rounded-md px-2 py-1 text-[11.5px] ${
-                                                    active
-                                                        ? 'bg-blue-600 text-white'
-                                                        : 'bg-muted text-foreground/80 hover:bg-muted/70'
-                                                }`}
-                                            >
-                                                {opt.label}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                            <div className="mt-3 flex justify-end">
-                                <button
-                                    onClick={() => setFiltersOpen(false)}
-                                    className="rounded-md bg-blue-600 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-blue-700"
-                                >
-                                    Fermer
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-                <div className="relative">
-                    <button
-                        onClick={() => {
-                            setSortOpen((o) => !o);
-                            setFiltersOpen(false);
-                        }}
-                        className={`inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[12.5px] font-medium ${
-                            sortOpen ? 'bg-accent' : 'bg-card'
-                        }`}
-                    >
-                        <Layers className="h-3 w-3" />
-                        Trier
-                        <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
-                    </button>
-                    {sortOpen && (
-                        <div className="absolute left-0 top-[calc(100%+6px)] z-30 w-[220px] rounded-lg border border-border bg-popover p-1.5 shadow-lg">
-                            {PROSPECT_SORT_OPTIONS.map(({ id, label }) => (
-                                <div
-                                    key={id}
-                                    onClick={() => {
-                                        setSortBy(id);
-                                        setSortOpen(false);
-                                    }}
-                                    className={`flex cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 text-[12.5px] ${
-                                        sortBy === id
-                                            ? 'bg-accent font-semibold text-blue-700'
-                                            : 'text-foreground hover:bg-accent/50'
-                                    }`}
-                                >
-                                    {label}
-                                    {sortBy === id && (
-                                        <Check className="h-3 w-3" />
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-                <div className="flex-1" />
                 {/* The list/group toggle was removed: the flat "Liste" display
                     duplicated the Prospects + Listes views. Pipeline is always
                     grouped by stage, which is its distinctive value. */}
@@ -623,13 +523,12 @@ export function PipelineTab({
                 />
             )}
 
-            {(pillMenu || rowMenu || filtersOpen || sortOpen) && (
+            {(pillMenu || rowMenu || openFilter) && (
                 <div
                     onClick={() => {
                         setPillMenu(null);
                         setRowMenu(null);
-                        setFiltersOpen(false);
-                        setSortOpen(false);
+                        setOpenFilter(null);
                     }}
                     className="fixed inset-0 z-5"
                 />

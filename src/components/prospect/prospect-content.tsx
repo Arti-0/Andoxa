@@ -1285,9 +1285,22 @@ function ContexteSection({
           <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Résumé LinkedIn
           </div>
-          <p className="mb-0 mt-1.5 text-[13px] leading-relaxed text-foreground/85">
-            {summary}
-          </p>
+          {/* Preserve the paragraph/line-break structure of the LinkedIn
+              summary instead of collapsing it into one block. */}
+          <div className="mt-1.5 flex flex-col gap-2">
+            {summary
+              .split(/\n{2,}/)
+              .map((para) => para.trim())
+              .filter(Boolean)
+              .map((para, i) => (
+                <p
+                  key={i}
+                  className="mb-0 whitespace-pre-line text-[13px] leading-relaxed text-foreground/85"
+                >
+                  {para}
+                </p>
+              ))}
+          </div>
         </div>
       )}
     </Surface>

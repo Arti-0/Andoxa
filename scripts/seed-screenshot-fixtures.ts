@@ -417,34 +417,205 @@ async function seedFunnelClosings(prospectIds: string[]): Promise<void> {
 
 async function seedWorkflowRuns(
   userId: string,
-  prospectIds: string[]
+  prospectIds: string[],
+  bddMap: Map<number, string>
 ): Promise<void> {
   const seeds = buildProspectSeeds(220);
-  const runs: Array<Record<string, unknown>> = [];
+  const steps = WORKFLOW_DEF_SNAPSHOT.steps;
+  const bddIds = [...bddMap.values()];
+  const bddFor = (i: number) => bddIds[i % bddIds.length] ?? null;
 
+  type RunSeed = {
+    workflow_id: string;
+    prospect_id: string;
+    status: string;
+    current_step_index: number;
+    last_error?: string | null;
+    enrollBdd: string | null;
+    createdDaysAgo: number;
+  };
+  const runSeeds: RunSeed[] = [];
+
+  // Active runs (running / paused) — these also back the CRM prospect workflow
+  // badges, so their status mirrors `seed.inWorkflow`. Enrollment list ids in
+  // `context` populate the workflow detail's "par liste" filter.
   prospectIds.forEach((pid, i) => {
     const seed = seeds[i];
     if (!seed?.inWorkflow) return;
-    const wfId =
-      seed.inWorkflow === "paused" ? WORKFLOW_RELANCES_ID : CANVAS_WORKFLOW_ID;
-    runs.push({
-      organization_id: SCREENSHOT_ORG_ID,
-      workflow_id: wfId,
+    runSeeds.push({
+      workflow_id:
+        seed.inWorkflow === "paused" ? WORKFLOW_RELANCES_ID : CANVAS_WORKFLOW_ID,
       prospect_id: pid,
-      started_by: userId,
       status: seed.inWorkflow,
       current_step_index: (seed.workflowStep ?? 1) - 1,
-      definition_snapshot: WORKFLOW_DEF_SNAPSHOT,
-      context: {},
-      has_outbound_step: true,
-      created_at: daysAgo(3 + (i % 10)),
+      enrollBdd: bddFor(i),
+      createdDaysAgo: 3 + (i % 10),
     });
   });
 
-  if (runs.length) {
-    const { error } = await admin.from("workflow_runs").insert(runs);
-    if (error) throw new Error(`workflow runs — ${error.message}`);
+  // Completed runs — drive runs_completed_pct and steps_progress_pct (every
+  // step done). Distinct prospect slice so the one-active-run-per-prospect
+  // partial unique index never trips.
+  prospectIds.slice(120, 156).forEach((pid, i) => {
+    runSeeds.push({
+      workflow_id: i % 3 === 0 ? WORKFLOW_RELANCES_ID : CANVAS_WORKFLOW_ID,
+      prospect_id: pid,
+      status: "completed",
+      current_step_index: steps.length,
+      enrollBdd: bddFor(i + 2),
+      createdDaysAgo: 10 + (i % 20),
+    });
+  });
+
+  // Failed runs — drive failed_runs_count + sample_errors.
+  const errs = [
+    "Compte LinkedIn déconnecté pendant l'envoi.",
+    "Limite d'invitations LinkedIn atteinte pour aujourd'hui.",
+    "Numéro WhatsApp introuvable pour ce prospect.",
+    "Prospect désinscrit avant la fin du parcours.",
+  ];
+  prospectIds.slice(156, 164).forEach((pid, i) => {
+    runSeeds.push({
+      workflow_id: CANVAS_WORKFLOW_ID,
+      prospect_id: pid,
+      status: "failed",
+      current_step_index: 1 + (i % 2),
+      last_error: errs[i % errs.length],
+      enrollBdd: bddFor(i + 5),
+      createdDaysAgo: 6 + (i % 12),
+    });
+  });
+
+  if (runSeeds.length === 0) return;
+
+  const { data: insertedRuns, error } = await admin
+    .from("workflow_runs")
+    .insert(
+      runSeeds.map((r) => ({
+        organization_id: SCREENSHOT_ORG_ID,
+        workflow_id: r.workflow_id,
+        prospect_id: r.prospect_id,
+        started_by: userId,
+        status: r.status,
+        current_step_index: r.current_step_index,
+        definition_snapshot: WORKFLOW_DEF_SNAPSHOT,
+        context: r.enrollBdd ? { enrollment_bdd_ids: [r.enrollBdd] } : {},
+        has_outbound_step: true,
+        last_error: r.last_error ?? null,
+        created_at: daysAgo(r.createdDaysAgo),
+      }))
+    )
+    .select("id, status, current_step_index");
+  if (error) throw new Error(`workflow runs — ${error.message}`);
+
+  // Per-run step executions — these power `steps_progress_pct` and the
+  // queue counters (pending / processing) on the workflow detail page.
+  const execRows: Array<Record<string, unknown>> = [];
+  (insertedRuns ?? []).forEach((run, runIdx) => {
+    const csi = run.current_step_index ?? 0;
+    steps.forEach((step, idx) => {
+      let status: string | null = null;
+      let processedAt: string | null = null;
+      if (run.status === "completed") {
+        status = "completed";
+        processedAt = daysAgo(2 + (idx % 5));
+      } else if (run.status === "failed") {
+        if (idx < csi) {
+          status = "completed";
+          processedAt = daysAgo(3 + idx);
+        } else if (idx === csi) {
+          status = "failed";
+          processedAt = daysAgo(2);
+        } else return;
+      } else {
+        // running / paused
+        if (idx < csi) {
+          status = "completed";
+          processedAt = daysAgo(2 + idx);
+        } else if (idx === csi) {
+          // A handful of running runs sit "processing"; the rest are queued.
+          status =
+            run.status === "running" && runIdx % 7 === 0
+              ? "processing"
+              : "pending";
+        } else return;
+      }
+      execRows.push({
+        run_id: run.id,
+        step_id: step.id,
+        step_index: idx,
+        step_type: step.type,
+        status,
+        processed_at: processedAt,
+        run_after: daysAgo(1),
+        config_snapshot: step.config ?? {},
+        idempotency_key: `${run.id}:${step.id}`,
+      });
+    });
+  });
+
+  for (let i = 0; i < execRows.length; i += 100) {
+    const batch = execRows.slice(i, i + 100);
+    const { error: eErr } = await admin
+      .from("workflow_step_executions")
+      .insert(batch);
+    if (eErr) throw new Error(`workflow step executions ${i} — ${eErr.message}`);
   }
+}
+
+/**
+ * Workflow activity feed — `prospect_activity` rows carrying `workflow_id` so
+ * the workflow detail page's "Activité récente" panel isn't empty (it filters
+ * strictly on workflow_id, which none of the other activity rows set).
+ */
+async function seedWorkflowActivity(
+  userId: string,
+  prospectIds: string[]
+): Promise<void> {
+  const plans = [
+    { id: CANVAS_WORKFLOW_ID, name: "Post-RDV WhatsApp", offset: 0 },
+    { id: WORKFLOW_RELANCES_ID, name: "Relance 48 h sans réponse", offset: 60 },
+  ];
+  const stepTypes = ["whatsapp_message", "wait", "linkedin_message"];
+  const rows: Array<Record<string, unknown>> = [];
+
+  for (const wf of plans) {
+    for (let i = 0; i < 28; i++) {
+      const pid = prospectIds[(wf.offset + i) % prospectIds.length]!;
+      const day = i % 14;
+      rows.push({
+        organization_id: SCREENSHOT_ORG_ID,
+        prospect_id: pid,
+        actor_id: userId,
+        workflow_id: wf.id,
+        action: "workflow_enrolled",
+        details: { workflow_name: wf.name },
+        created_at: daysAgo(day + 2, 9 + (i % 6)),
+      });
+      rows.push({
+        organization_id: SCREENSHOT_ORG_ID,
+        prospect_id: pid,
+        actor_id: userId,
+        workflow_id: wf.id,
+        action: "workflow_step_completed",
+        details: { workflow_name: wf.name, step_type: stepTypes[i % 3] },
+        created_at: daysAgo(day + 1, 12 + (i % 5)),
+      });
+      if (i % 4 === 0) {
+        rows.push({
+          organization_id: SCREENSHOT_ORG_ID,
+          prospect_id: pid,
+          actor_id: userId,
+          workflow_id: wf.id,
+          action: "workflow_run_completed",
+          details: { workflow_name: wf.name },
+          created_at: daysAgo(day, 16 + (i % 3)),
+        });
+      }
+    }
+  }
+
+  await insertInBatches("prospect_activity", rows, 100);
 }
 
 async function seedCampaigns(
@@ -877,7 +1048,8 @@ async function main(): Promise<void> {
   await seedFunnelClosings(prospectIds);
   await seedUnipileChats(prospectIds);
   await seedWorkflows(userId);
-  await seedWorkflowRuns(userId, prospectIds);
+  await seedWorkflowRuns(userId, prospectIds, bddMap);
+  await seedWorkflowActivity(userId, prospectIds);
   const jobIds = await seedCampaigns(userId, prospectIds);
   await seedAllActivity(userId, prospectIds, jobIds);
   await seedFunnelRdvs(userId, prospectIds);

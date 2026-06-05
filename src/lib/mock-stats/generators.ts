@@ -1,6 +1,7 @@
 import type { DashboardPeriod } from "@/lib/dashboard/period";
 import { mockCalendarKpiBundle } from "./calendar-events";
 import { funnelCounts, mockUuid, randInt, randPct, randSpark, randTrend } from "./random";
+import { isFeatureEnabled } from "@/lib/config/feature-flags";
 
 export function mockDashboardStats(period: DashboardPeriod) {
   const pipelineTotal = randInt(142, 218);
@@ -132,6 +133,7 @@ export function mockDashboardPriorities() {
   const stale = randInt(12, 28);
   const unread = randInt(8, 22);
   const proposals = randInt(6, 18);
+  const activeCampaigns = randInt(3, 9);
   const workflows = randInt(4, 11);
 
   return {
@@ -141,37 +143,52 @@ export function mockDashboardPriorities() {
         key: "rdv_today" as const,
         count: rdv,
         label: "RDV aujourd'hui",
-        sub: rdv > 0 ? `Prochain à ${randInt(9, 16)}h${String(randInt(0, 45)).padStart(2, "0")}` : "Aucun RDV prévu",
+        sub:
+          rdv > 0
+            ? `Prochain à ${randInt(9, 16)}h${String(randInt(0, 45)).padStart(2, "0")}`
+            : "Agenda libre aujourd'hui",
         href: "/calendar",
       },
       {
         key: "stale_conversations" as const,
         count: stale,
         label: "Conversations à relancer",
-        sub: `${stale} sans réponse depuis 7j+`,
+        sub: "Silence > 7 jours",
         href: "/messagerie?filter=stale",
       },
       {
         key: "unread_responses" as const,
         count: unread,
         label: "Réponses récentes",
-        sub: `${unread} à traiter cette semaine`,
+        sub: "LinkedIn · 7 derniers jours",
         href: "/messagerie?filter=unread",
       },
       {
         key: "proposals_to_follow" as const,
         count: proposals,
         label: "Propositions à suivre",
-        sub: "Dernière activité > 2j",
+        sub: "Sans relance depuis 2 jours",
         href: "/crm?status=proposal",
       },
       {
-        key: "pending_workflows" as const,
-        count: workflows,
-        label: "Workflow en attente",
-        sub: `${workflows} parcours en pause`,
-        href: "/workflows",
+        key: "active_campaigns" as const,
+        count: activeCampaigns,
+        label: "Campagnes actives",
+        sub: "Séquences d'envoi en cours",
+        href: "/campaigns?status=running",
       },
+      // #FF: workflows — hidden alongside the gated Workflows feature.
+      ...(isFeatureEnabled("workflows")
+        ? [
+            {
+              key: "pending_workflows" as const,
+              count: workflows,
+              label: "Workflow en attente",
+              sub: `${workflows} parcours en pause`,
+              href: "/workflows",
+            },
+          ]
+        : []),
     ],
   };
 }

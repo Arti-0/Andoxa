@@ -56,6 +56,12 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
 
   // Timeline period — same keys as the campaigns-section KPI bar (7/30/90/all).
   const [timelinePeriod, setTimelinePeriod] = useState<CampaignPeriod>("30");
+  // Day selected by clicking the chart — filters the prospects table below.
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  // NOTE: must be declared with the other hooks, BEFORE any early return below —
+  // otherwise the loading→loaded transition changes the hook count and React
+  // throws "Rendered more hooks than during the previous render" (the crash).
+  const [duplicated, setDuplicated] = useState(false);
   const apiStatusNow = detail.data?.apiStatus;
   const timelineLive = apiStatusNow === "running" || apiStatusNow === "pending";
   const timeline = useCampaignTimeline(id, timelinePeriod, timelineLive);
@@ -139,8 +145,8 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
 
   // Duplicate = open the creation wizard prefilled (handled on the list page),
   // not a direct row create. We route there with ?duplicate=<id>; the lock /
-  // "Dupliqué ✓" state below gives immediate feedback before the nav.
-  const [duplicated, setDuplicated] = useState(false);
+  // "Dupliqué ✓" state (declared up top with the other hooks) gives immediate
+  // feedback before the nav.
   const onDuplicate = () => {
     if (busy || duplicated) return;
     setDuplicated(true);
@@ -226,7 +232,11 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
           {PERIOD_OPTIONS.map((o) => (
             <button
               key={o.id}
-              onClick={() => setTimelinePeriod(o.id)}
+              onClick={() => {
+                setTimelinePeriod(o.id);
+                // The selected day may fall outside the new range — reset it.
+                setSelectedDate(null);
+              }}
               className={`rounded-md px-2.5 py-1 text-[12.5px] font-medium transition-colors ${
                 timelinePeriod === o.id
                   ? "bg-[#E8F0FD] text-[#003EA3]"
@@ -245,6 +255,10 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
         type={campaign.type}
         series={timeline.data?.series ?? []}
         loading={timeline.isPending}
+        selectedDate={selectedDate}
+        onSelectDate={(d) =>
+          setSelectedDate((prev) => (prev === d ? null : d))
+        }
       />
 
       <CampaignMessageCard type={campaign.type} template={detail.data.messageTemplate} />
@@ -257,7 +271,12 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
           <p className="text-[13px] text-muted-foreground">Aucun prospect dans cette campagne.</p>
         </div>
       ) : (
-        <CampaignProspectsTable rows={prospects} campaignName={campaign.name} />
+        <CampaignProspectsTable
+          rows={prospects}
+          campaignName={campaign.name}
+          dateFilter={selectedDate}
+          onClearDateFilter={() => setSelectedDate(null)}
+        />
       )}
 
       <CampaignActivity

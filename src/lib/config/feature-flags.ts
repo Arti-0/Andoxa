@@ -89,9 +89,10 @@ const EXPERIMENT_FLAGS = {
 
   /**
    * #FF — "Hors CRM" filter in Messagerie (conversations with no linked
-   * prospect). Kept off until the unlinked-chat experience is fleshed out.
+   * prospect). Enabled: surfaces the toggle so users can see conversations
+   * with contacts not yet in the CRM.
    */
-  messagerieHorsCrm: experimentFromEnv("messagerieHorsCrm", false),
+  messagerieHorsCrm: experimentFromEnv("messagerieHorsCrm", true),
 } as const;
 
 export const featureFlags = {

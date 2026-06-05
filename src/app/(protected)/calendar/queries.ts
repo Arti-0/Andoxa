@@ -308,6 +308,10 @@ export function useUpdateBookingSlug() {
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: calendarKeys.bookingSlug() });
+      // The messagerie "Lien booking" button caches the slug under its own key
+      // (["booking-slug"], staleTime 5 min) — invalidate it too so the button
+      // pastes the new link without a manual refresh.
+      void qc.invalidateQueries({ queryKey: ["booking-slug"] });
     },
   });
 }

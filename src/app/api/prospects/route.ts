@@ -88,13 +88,30 @@ export const GET = createApiHandler(async (req, ctx) => {
 
   const searchTrimmed = params.search?.trim() ?? "";
 
+  // Server-side sort. Only a whitelist of real DB columns may be ordered by
+  // (the CRM table headers map to exactly these). Default: newest first.
+  const SORTABLE_COLUMNS = new Set([
+    "full_name",
+    "company",
+    "status",
+    "source",
+    "created_at",
+    "deleted_at",
+  ]);
+  const hasCustomSort = !!params.sort && SORTABLE_COLUMNS.has(params.sort);
+  const sortColumn = hasCustomSort ? (params.sort as string) : "created_at";
+  const sortAscending = params.dir === "asc";
+
   // Recherche : RPC insensible à la casse et aux accents (extension unaccent — voir migrations/003)
   if (searchTrimmed) {
     const statuses = params.status ? params.status.split(",").filter(Boolean) : null;
     const sources = params.source ? params.source.split(",").filter(Boolean) : null;
     const bddId = params.bdd_id?.trim() || null;
 
-    const { data: rpcResult, error: rpcError } = await ctx.supabase.rpc("rpc_prospects_list_with_search", {
+    // NULL = "no filter". The remote RPC signature (at type-gen time) marks
+    // these args required, but Postgres accepts NULL for them — cast past the
+    // over-strict generated type until the RPC signature is reconciled.
+    const searchRpcArgs = {
       p_organization_id: workspaceId,
       p_search: searchTrimmed,
       p_limit: pageSize,
@@ -102,7 +119,13 @@ export const GET = createApiHandler(async (req, ctx) => {
       p_bdd_id: bddId,
       p_statuses: statuses && statuses.length > 0 ? statuses : null,
       p_sources: sources && sources.length > 0 ? sources : null,
-    });
+    } as never;
+
+    // The RPC can't ORDER BY a caller-chosen column, so when the table requests
+    // a custom sort we skip it and use the ilike fallback below (which orders).
+    const { data: rpcResult, error: rpcError } = hasCustomSort
+      ? { data: null, error: null }
+      : await ctx.supabase.rpc("rpc_prospects_list_with_search", searchRpcArgs);
 
     if (!rpcError && rpcResult && typeof rpcResult === "object" && "items" in rpcResult) {
       const parsed = rpcResult as { items: unknown[]; total: number };
@@ -134,7 +157,7 @@ export const GET = createApiHandler(async (req, ctx) => {
       .select("*", { count: "exact" })
       .eq("organization_id", workspaceId)
       .is("deleted_at", null)
-      .order("created_at", { ascending: false })
+      .order(sortColumn, { ascending: sortAscending })
       .range(offset, offset + pageSize - 1);
 
     if (params.status) {
@@ -178,7 +201,7 @@ export const GET = createApiHandler(async (req, ctx) => {
     .select("*", { count: "exact" })
     .eq("organization_id", workspaceId)
     .is("deleted_at", null)
-    .order("created_at", { ascending: false })
+    .order(sortColumn, { ascending: sortAscending })
     .range(offset, offset + pageSize - 1);
 
   // Apply filters

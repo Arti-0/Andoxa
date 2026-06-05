@@ -128,6 +128,7 @@ interface PriorityItem {
     | "stale_conversations"
     | "unread_responses"
     | "proposals_to_follow"
+    | "active_campaigns"
     | "pending_workflows";
   count: number;
   label: string;
@@ -736,6 +737,7 @@ const PRIORITY_VISUAL: Record<
   stale_conversations: { icon: MessageSquare, tone: "amber" },
   unread_responses: { icon: Zap, tone: "violet" },
   proposals_to_follow: { icon: Target, tone: "green" },
+  active_campaigns: { icon: Megaphone, tone: "cyan" },
   pending_workflows: { icon: Workflow, tone: "cyan" },
 };
 

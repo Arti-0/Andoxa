@@ -27,6 +27,9 @@ import {
   Layers,
   List as ListIcon,
   Play,
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown,
 } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -59,7 +62,9 @@ import { CrmProspectToolbar } from "./crm-prospect-toolbar";
 import { PipelineSettingsModal } from "./pipeline-settings-modal";
 import {
   sortProspects,
+  PROSPECT_SORT_DEFAULT_DIR,
   type ProspectSortKey,
+  type SortDir,
 } from "./crm-prospect-sort";
 import { extractCleanRole } from "@/lib/utils/extract-role";
 import { isFeatureEnabled } from "@/lib/config/feature-flags";
@@ -130,6 +135,7 @@ export function ProspectsTab({
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<ProspectSortKey>("lastActivity");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [view, setView] = useState<"table" | "compact">("table");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -309,10 +315,34 @@ export function ProspectsTab({
     totalProspects,
   ]);
 
-  const rows = useMemo(
-    () => sortProspects(allProspects, sortBy),
-    [allProspects, sortBy],
+  // Pipeline order → index map so the "Statut" column sorts by pipeline order.
+  const statusOrder = useMemo(
+    () => new Map(pipelineOrder.map((k, i) => [k, i])),
+    [pipelineOrder],
   );
+
+  const rows = useMemo(
+    () => sortProspects(allProspects, sortBy, sortDir, statusOrder),
+    [allProspects, sortBy, sortDir, statusOrder],
+  );
+
+  // Column-header click: toggle direction if it's the active column, otherwise
+  // switch to that column at its natural default direction. Sorting is fully
+  // client-side here (the list is capped at ~150 rows), so this is instant.
+  const handleHeaderSort = (key: ProspectSortKey) => {
+    if (key === sortBy) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(key);
+      setSortDir(PROSPECT_SORT_DEFAULT_DIR[key]);
+    }
+  };
+
+  // Dropdown selection: switch column at its default direction.
+  const handleSortByChange = (key: ProspectSortKey) => {
+    setSortBy(key);
+    setSortDir(PROSPECT_SORT_DEFAULT_DIR[key]);
+  };
 
   const enCours = totalAllStatuses
     - (funnelByStatus.get("won") ?? 0)
@@ -435,7 +465,7 @@ export function ProspectsTab({
         sourceFilter={sourceFilter}
         onSourceFilterChange={setSourceFilter}
         sortBy={sortBy}
-        onSortByChange={setSortBy}
+        onSortByChange={handleSortByChange}
         loading={prospectsFetching || search.trim() !== debouncedSearch}
       />
 
@@ -555,6 +585,9 @@ export function ProspectsTab({
           onOpen={(p) => router.push(`/prospect/${p.id}`)}
           menuItems={rowActions.menu}
           onSourceClick={handleSourceClick}
+          sortBy={sortBy}
+          sortDir={sortDir}
+          onHeaderSort={handleHeaderSort}
         />
       ) : (
         <CompactView
@@ -569,6 +602,9 @@ export function ProspectsTab({
           onOpen={(p) => router.push(`/prospect/${p.id}`)}
           menuItems={rowActions.menu}
           onSourceClick={handleSourceClick}
+          sortBy={sortBy}
+          sortDir={sortDir}
+          onHeaderSort={handleHeaderSort}
         />
       )}
 
@@ -607,6 +643,9 @@ interface ViewProps {
   onOpen: (p: Prospect) => void;
   menuItems: (p: Prospect) => ProspectMenuItem[];
   onSourceClick: (src: string, list: string | null) => void;
+  sortBy: ProspectSortKey;
+  sortDir: SortDir;
+  onHeaderSort: (key: ProspectSortKey) => void;
 }
 
 function TableView({
@@ -621,6 +660,9 @@ function TableView({
   onOpen,
   menuItems,
   onSourceClick,
+  sortBy,
+  sortDir,
+  onHeaderSort,
 }: ViewProps) {
   const allSelected =
     rows.length > 0 && rows.every((p) => selected.has(p.id));
@@ -628,7 +670,7 @@ function TableView({
     rows.length > 0 && !allSelected && rows.some((p) => selected.has(p.id));
 
   return (
-    <div className="overflow-x-auto overscroll-x-contain rounded-xl border bg-card scrollbar-gutter-stable">
+    <div className="overflow-x-auto overscroll-x-contain rounded-xl border bg-card">
       <table className="w-full table-fixed border-collapse text-[13.5px]">
         <thead>
           <tr>
@@ -646,10 +688,18 @@ function TableView({
                 onCheckedChange={() => toggleAll()}
               />
             </th>
-            <ProTh>Prospect</ProTh>
-            <ProTh className="w-[118px]">Statut pipeline</ProTh>
-            <ProTh className="w-[108px]">Source</ProTh>
-            <ProTh className="w-[132px]">Dernière activité</ProTh>
+            <SortableTh sortKey="alpha" sortBy={sortBy} sortDir={sortDir} onSort={onHeaderSort}>
+              Prospect
+            </SortableTh>
+            <SortableTh className="w-[118px]" sortKey="status" sortBy={sortBy} sortDir={sortDir} onSort={onHeaderSort}>
+              Statut pipeline
+            </SortableTh>
+            <SortableTh className="w-[108px]" sortKey="source" sortBy={sortBy} sortDir={sortDir} onSort={onHeaderSort}>
+              Source
+            </SortableTh>
+            <SortableTh className="w-[132px]" sortKey="lastActivity" sortBy={sortBy} sortDir={sortDir} onSort={onHeaderSort}>
+              Dernière activité
+            </SortableTh>
             {SHOW_WORKFLOWS && <ProTh className="w-[148px]">Workflow</ProTh>}
             <ProTh className="w-[72px]">Canaux</ProTh>
             <ProTh className="w-[108px]" />
@@ -704,6 +754,53 @@ function ProTh({
       )}
     >
       {children}
+    </th>
+  );
+}
+
+/** Clickable header that sorts the (client-side) prospect list asc/desc. */
+function SortableTh({
+  children,
+  sortKey,
+  sortBy,
+  sortDir,
+  onSort,
+  className = "",
+}: {
+  children: React.ReactNode;
+  sortKey: ProspectSortKey;
+  sortBy: ProspectSortKey;
+  sortDir: SortDir;
+  onSort: (key: ProspectSortKey) => void;
+  className?: string;
+}) {
+  const active = sortBy === sortKey;
+  return (
+    <th
+      className={cn(
+        "h-[38px] border-b bg-muted/40 px-3.5 text-left align-middle",
+        className,
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={cn(
+          "-mx-1 inline-flex select-none items-center gap-1 rounded px-1 py-0.5 text-[11.5px] font-semibold uppercase tracking-wide transition-colors hover:text-foreground",
+          active ? "text-foreground" : "text-muted-foreground",
+        )}
+      >
+        {children}
+        {active ? (
+          sortDir === "asc" ? (
+            <ChevronUp className="h-3 w-3" />
+          ) : (
+            <ChevronDown className="h-3 w-3" />
+          )
+        ) : (
+          <ChevronsUpDown className="h-3 w-3 opacity-40" />
+        )}
+      </button>
     </th>
   );
 }

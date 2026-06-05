@@ -31,13 +31,13 @@ const MEETING_KINDS = [
 ] as const satisfies readonly MeetingKind[];
 
 function coerceEventStatus(raw: string | undefined): EventStatus {
-  return raw && EVENT_STATUSES.includes(raw as EventStatus)
+  return raw && (EVENT_STATUSES as readonly string[]).includes(raw)
     ? (raw as EventStatus)
     : "confirmed";
 }
 
 function coerceMeetingKind(raw: string | undefined): MeetingKind {
-  return raw && MEETING_KINDS.includes(raw as MeetingKind)
+  return raw && (MEETING_KINDS as readonly string[]).includes(raw)
     ? (raw as MeetingKind)
     : "meet";
 }

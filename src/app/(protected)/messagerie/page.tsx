@@ -16,6 +16,12 @@ import {
 } from "./queries";
 import type { ThreadEntry } from "./data";
 import { Skeleton } from "@/components/ui/skeleton";
+import { isFeatureEnabled } from "@/lib/config/feature-flags";
+
+// #FF: messagerieHorsCrm — gates the "Inclure les conversations Hors CRM"
+// toggle. When off, the legacy behaviour (all conversations always shown)
+// applies; when on, hors-CRM conversations are hidden until the user opts in.
+const HORS_CRM_ENABLED = isFeatureEnabled("messagerieHorsCrm");
 
 function ConvListSkeleton() {
   return (
@@ -218,13 +224,16 @@ function readLastChatId(): string | null {
   }
 }
 
-export type MsgFilter = "all" | "unread" | "relance" | "rdv" | "horscrm";
+export type MsgFilter = "all" | "unread" | "relance" | "rdv";
 
 export default function Messagerie2Page() {
   // Initialise from localStorage so useThread fires immediately on mount,
   // before the conversations list resolves (~4-7s).
   const [activeId, setActiveId] = useState<string | null>(readLastChatId);
   const [filter, setFilter] = useState<MsgFilter>("all");
+  // Off by default: the standard views exclude conversations whose contact
+  // isn't a CRM prospect. The toggle in the conv-list opts them back in.
+  const [includeHorsCrm, setIncludeHorsCrm] = useState(false);
   const [channel, setChannel] = useState<"all" | "li" | "wa">("all");
   // Sticky-filter membership: when a filter is active, conversations that
   // matched when it was entered stay visible for the session (so reading an
@@ -243,7 +252,21 @@ export default function Messagerie2Page() {
   const markSeen = useMarkChatSeen();
   const togglePin = useToggleChatPin();
 
-  const visibleConvs = conversations ?? [];
+  // Default view hides hors-CRM conversations (contact not linked to a CRM
+  // prospect). They reappear — and every filter count below updates — only when
+  // the user enables the toggle. Gated by the #FF so it can be killed via env.
+  const visibleConvs = useMemo(() => {
+    const base = conversations ?? [];
+    if (!HORS_CRM_ENABLED || includeHorsCrm) return base;
+    return base.filter((c) => c.prospectId !== null);
+  }, [conversations, includeHorsCrm]);
+
+  // Total hors-CRM conversations — shown on the toggle so the user knows how
+  // many are hidden. Always counted over the full (unfiltered) list.
+  const horsCrmCount = useMemo(
+    () => (conversations ?? []).filter((c) => c.prospectId === null).length,
+    [conversations],
+  );
 
   // Compute the set of conversations that match a sticky-eligible filter
   // *right now*. Used to seed `stickyIds` when a filter is (re-)selected.
@@ -252,7 +275,6 @@ export default function Messagerie2Page() {
       if (f === "unread") return c.unread > 0;
       if (f === "relance") return c.silentDays >= 4;
       if (f === "rdv") return c.stage === "meeting";
-      if (f === "horscrm") return c.prospectId === null;
       return true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -260,10 +282,9 @@ export default function Messagerie2Page() {
 
   // When the active filter changes, snapshot the matching ids so they remain
   // visible even after their underlying condition flips (read / RDV passes).
-  // "all" and "horscrm" don't need stickiness ("all" shows everything;
-  // "horscrm" membership doesn't change by reading).
+  // "all" needs no stickiness — it shows everything.
   useEffect(() => {
-    if (filter === "all" || filter === "horscrm") {
+    if (filter === "all") {
       setStickyIds(null);
       return;
     }
@@ -337,6 +358,9 @@ export default function Messagerie2Page() {
               setChannel={setChannel}
               stickyIds={stickyIds}
               matchesFilter={matchesFilter}
+              includeHorsCrm={includeHorsCrm}
+              setIncludeHorsCrm={setIncludeHorsCrm}
+              horsCrmCount={horsCrmCount}
             />
 
             {conv ? (

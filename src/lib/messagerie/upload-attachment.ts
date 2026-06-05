@@ -11,11 +11,20 @@ export interface UploadedAttachment {
   size: number;
 }
 
+/** Signed-URL lifetime for outbound attachments (1 year). Long enough for the
+ *  recipient's provider (LinkedIn / WhatsApp) to fetch and re-fetch, while the
+ *  bucket itself stays private (objects aren't publicly listable/guessable). */
+const SIGNED_URL_TTL_S = 60 * 60 * 24 * 365;
+
 /**
- * Uploads a single file to the `messagerie-attachments` bucket and
- * returns its public URL. Files live under
+ * Uploads a single file to the (private) `messagerie-attachments` bucket and
+ * returns a signed URL. Files live under
  * `<organization_id>/<timestamp>_<filename>` so RLS (migration 046)
- * scopes uploads to org members.
+ * scopes uploads + reads to org members.
+ *
+ * The bucket is NOT public — we hand a time-limited signed URL to the message
+ * draft so the recipient's provider can still download the file without the
+ * whole bucket being world-readable.
  *
  * Returns null on failure — the composer surfaces a toast and
  * doesn't insert anything into the draft.
@@ -40,8 +49,13 @@ export async function uploadMessagerieAttachment(
     return null;
   }
 
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-  if (!data?.publicUrl) return null;
+  const { data, error: signErr } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrl(path, SIGNED_URL_TTL_S);
+  if (signErr || !data?.signedUrl) {
+    console.error("[messagerie] sign failed", signErr?.message);
+    return null;
+  }
 
-  return { url: data.publicUrl, name: file.name, size: file.size };
+  return { url: data.signedUrl, name: file.name, size: file.size };
 }

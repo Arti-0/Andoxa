@@ -26,6 +26,9 @@ export function ConvList({
   setChannel,
   stickyIds,
   matchesFilter,
+  includeHorsCrm,
+  setIncludeHorsCrm,
+  horsCrmCount,
 }: {
   conversations: Conversation[];
   activeId: string;
@@ -38,7 +41,14 @@ export function ConvList({
   /** Session-sticky membership for the active filter (null = no stickiness). */
   stickyIds: Set<string> | null;
   matchesFilter: (f: MsgFilter, c: Conversation) => boolean;
+  /** "Inclure les conversations Hors CRM" toggle state. */
+  includeHorsCrm: boolean;
+  setIncludeHorsCrm: (v: boolean) => void;
+  /** Total hidden hors-CRM conversations — shown next to the toggle. */
+  horsCrmCount: number;
 }) {
+  // `conversations` is already hors-CRM filtered upstream, so every count below
+  // reflects the toggle automatically.
   const STATUS: { id: MsgFilter; label: string; count: number }[] = [
     { id: "all", label: "Tous", count: conversations.length },
     {
@@ -53,18 +63,9 @@ export function ConvList({
     },
     {
       id: "rdv",
-      label: "RDV à venir",
+      label: "RDV",
       count: conversations.filter((c) => c.stage === "meeting").length,
     },
-    ...(SHOW_HORS_CRM
-      ? [
-          {
-            id: "horscrm" as MsgFilter,
-            label: "Hors CRM",
-            count: conversations.filter((c) => c.prospectId === null).length,
-          },
-        ]
-      : []),
   ];
 
   const filtered = useMemo(() => {
@@ -165,14 +166,57 @@ export function ConvList({
         </div>
       )}
 
-      {/* Niveau 2 — statut */}
+      {/* Row 1 — "Hors CRM" toggle (gated by #FF). When enabled, hidden hors-CRM
+          conversations reappear and every count below updates to match. */}
+      {SHOW_HORS_CRM && (
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "9px 14px",
+            borderBottom: "1px solid var(--m2-slate-150)",
+            cursor: "pointer",
+            fontSize: 12,
+            color: "var(--m2-slate-700)",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={includeHorsCrm}
+            onChange={(e) => setIncludeHorsCrm(e.target.checked)}
+            style={{
+              accentColor: "#0052D9",
+              width: 14,
+              height: 14,
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          />
+          <span style={{ flex: 1 }}>Inclure les conversations Hors CRM</span>
+          {horsCrmCount > 0 && (
+            <span
+              style={{
+                fontSize: 11,
+                color: "var(--m2-slate-500)",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {horsCrmCount}
+            </span>
+          )}
+        </label>
+      )}
+
+      {/* Row 2 — statut filters. Wrap instead of horizontal-scroll so labels
+          never truncate; counts shown compactly in parentheses. */}
       <div
         style={{
           padding: "10px 14px",
           borderBottom: "1px solid var(--m2-slate-150)",
           display: "flex",
-          gap: 4,
-          overflowX: "auto",
+          flexWrap: "wrap",
+          gap: 6,
         }}
       >
         {STATUS.map((f) => (
@@ -181,8 +225,12 @@ export function ConvList({
             className={"m2-filter-chip" + (filter === f.id ? " active" : "")}
             onClick={() => setFilter(f.id)}
           >
-            {f.label}
-            <span className="count">{f.count}</span>
+            {f.label}{" "}
+            <span
+              style={{ opacity: 0.55, fontVariantNumeric: "tabular-nums" }}
+            >
+              ({f.count})
+            </span>
           </button>
         ))}
       </div>
@@ -257,7 +305,9 @@ export function ConvList({
                     marginTop: 5,
                   }}
                 >
-                  <StagePill stage={c.stage} />
+                  {/* Hors-CRM conversations (no linked prospect) have no
+                      pipeline status — don't show a stage pill for them. */}
+                  {c.prospectId !== null && <StagePill stage={c.stage} />}
                   {isStale && (
                     <span
                       style={{ fontSize: 10, color: "var(--m2-slate-500)" }}

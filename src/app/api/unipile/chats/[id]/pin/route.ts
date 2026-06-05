@@ -27,35 +27,47 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
   const pinned = body.pinned === true;
   const pinnedAt = pinned ? new Date().toISOString() : null;
 
-  // Pin is a plain boolean that must persist for ANY conversation. If the chat
-  // already has a linkage row, update it; otherwise create a prospect-less row
-  // that exists purely to carry `pinned_at` (the chat→prospect mapping ignores
-  // rows with a null prospect_id, so this stays "hors CRM").
-  const { data: row, error: findErr } = await ctx.supabase
+  // Pin is a plain boolean that must persist for ANY conversation, and must be
+  // robust to a chat having MORE than one linkage row (a CRM-linked row + a
+  // prospect-less pin row, or several links). We therefore update *every* row
+  // for this (org, chat) — never `maybeSingle()`, which throws on duplicates
+  // and was making unpin fail and revert. If no row exists yet, we insert a
+  // prospect-less row purely to carry `pinned_at` (the chat→prospect mapping
+  // ignores null-prospect rows, so this stays "hors CRM").
+  const { data: updatedRows, error: updateErr } = await ctx.supabase
     .from("unipile_chat_prospects")
-    .select("id")
+    .update({ pinned_at: pinnedAt })
     .eq("organization_id", ctx.workspaceId)
     .eq("unipile_chat_id", chatId)
-    .maybeSingle();
+    .select("id");
 
-  if (findErr) throw Errors.internal(findErr.message);
+  if (updateErr) throw Errors.internal(updateErr.message);
 
-  if (row) {
-    const { error } = await ctx.supabase
-      .from("unipile_chat_prospects")
-      .update({ pinned_at: pinnedAt })
-      .eq("id", row.id);
-    if (error) throw Errors.internal(error.message);
+  if (pinned) {
+    if (!updatedRows || updatedRows.length === 0) {
+      // No linkage row yet — insert a prospect-less row purely to carry the pin.
+      const { error: insertErr } = await ctx.supabase
+        .from("unipile_chat_prospects")
+        .insert({
+          organization_id: ctx.workspaceId,
+          unipile_chat_id: chatId,
+          prospect_id: null,
+          pinned_at: pinnedAt,
+        });
+      if (insertErr) throw Errors.internal(insertErr.message);
+    }
   } else {
-    const { error } = await ctx.supabase
+    // Unpin: the UPDATE above already cleared pinned_at on CRM-linked rows.
+    // Prospect-less rows exist ONLY to carry a pin, so once unpinned they're
+    // dead weight — and a leftover one is exactly what made the conversation
+    // "re-pin" on the next refetch. Delete them so no stale marker survives.
+    const { error: cleanupErr } = await ctx.supabase
       .from("unipile_chat_prospects")
-      .insert({
-        organization_id: ctx.workspaceId,
-        unipile_chat_id: chatId,
-        prospect_id: null,
-        pinned_at: pinnedAt,
-      });
-    if (error) throw Errors.internal(error.message);
+      .delete()
+      .eq("organization_id", ctx.workspaceId)
+      .eq("unipile_chat_id", chatId)
+      .is("prospect_id", null);
+    if (cleanupErr) throw Errors.internal(cleanupErr.message);
   }
 
   return { ok: true as const, pinned };

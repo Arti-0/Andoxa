@@ -70,12 +70,15 @@ export function ExtensionSettingsSection({
 
     const chromeUrl =
         process.env.NEXT_PUBLIC_EXTENSION_CHROME_URL ??
-        "https://chromewebstore.google.com";
+        "https://chromewebstore.google.com/detail/Andoxa/jdjllpkghmohemlmhceilhoehgjfocke";
+    const firefoxUrl =
+        process.env.NEXT_PUBLIC_EXTENSION_FIREFOX_URL ??
+        "https://addons.mozilla.org/fr/firefox/addon/andoxa/";
 
     const steps = [
         {
-            t: "Téléchargez l'extension Chrome",
-            d: "Cliquez sur « Installer l'extension » ci-dessus pour ouvrir le Chrome Web Store.",
+            t: "Téléchargez l'extension",
+            d: "Cliquez sur « Chrome » ou « Firefox » ci-dessus pour ouvrir la boutique d'extensions de votre navigateur.",
         },
         {
             t: "Épinglez Andoxa à votre barre",
@@ -90,12 +93,16 @@ export function ExtensionSettingsSection({
     return (
         <IntegrationCard
             logo={
-                <div className="flex size-9 items-center justify-center overflow-hidden rounded-[10px] border border-border bg-card">
+                <div
+                    className="flex size-9 items-center justify-center overflow-hidden rounded-[10px]"
+                    style={{ background: "#0052D9" }}
+                >
+                    {/* White Andoxa mark on the brand-blue tile. */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                        src="/assets/logofiles/logo_mark%202.jpg"
-                        alt="Andoxa"
-                        className="size-9 object-cover"
+                        src="/assets/logofiles/logo_mark-2.svg"
+                        alt="Logo Andoxa"
+                        className="size-6"
                     />
                 </div>
             }
@@ -111,16 +118,28 @@ export function ExtensionSettingsSection({
                 </Badge>
             }
             action={
-                <Button asChild variant="outline" size="sm" className="gap-1.5">
-                    <Link
-                        href={chromeUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                    >
-                        <Download className="size-3.5" />
-                        Installer l&apos;extension
-                    </Link>
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Button asChild variant="outline" size="sm" className="gap-1.5">
+                        <Link
+                            href={chromeUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            <Download className="size-3.5" />
+                            Chrome
+                        </Link>
+                    </Button>
+                    <Button asChild variant="outline" size="sm" className="gap-1.5">
+                        <Link
+                            href={firefoxUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            <Download className="size-3.5" />
+                            Firefox
+                        </Link>
+                    </Button>
+                </div>
             }
         >
             <div className="flex flex-col gap-2">

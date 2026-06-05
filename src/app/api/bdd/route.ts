@@ -25,13 +25,13 @@ export const GET = createApiHandler(async (req, ctx) => {
     p_organization_id: workspaceId,
     p_limit: pageSize,
     p_offset: offset,
-    p_search: params.search?.trim() || null,
-    p_source: params.source?.trim() || null,
-    p_proprietaire: params.proprietaire?.trim() || null,
-    p_date_from: params.date_from?.trim() || null,
+    p_search: params.search?.trim() || undefined,
+    p_source: params.source?.trim() || undefined,
+    p_proprietaire: params.proprietaire?.trim() || undefined,
+    p_date_from: params.date_from?.trim() || undefined,
     p_date_to: params.date_to?.trim()
       ? `${params.date_to.trim()}T23:59:59.999Z`
-      : null,
+      : undefined,
   });
 
   if (error) {

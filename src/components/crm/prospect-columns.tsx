@@ -99,6 +99,7 @@ export function getProspectColumns(
 ): ColumnDef<Prospect>[] {
     const metaCols: ColumnDef<Prospect>[] = (options?.metadataKeys ?? []).map((key) => ({
         id: `meta_${key}`,
+        enableSorting: false,
         accessorFn: (row) => {
             const meta = row.metadata as Record<string, unknown> | null;
             return meta?.[key] ?? null;
@@ -114,6 +115,7 @@ export function getProspectColumns(
         {
             id: 'enriched_at',
             accessorKey: 'enriched_at',
+            enableSorting: false,
             header: 'Enrichi le',
             cell: ({ row }) => {
                 const d = row.original.enriched_at;
@@ -124,6 +126,7 @@ export function getProspectColumns(
         {
             id: 'enrichment_source',
             accessorKey: 'enrichment_source',
+            enableSorting: false,
             header: 'Source enrichissement',
             cell: ({ row }) => {
                 const s = row.original.enrichment_source;

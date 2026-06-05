@@ -19,10 +19,14 @@ import {
 } from "./data";
 import { Avatar, StatusBadge } from "./primitives";
 import { Checkbox } from "@/components/ui/checkbox";
+import { isFeatureEnabled } from "@/lib/config/feature-flags";
 
+// WhatsApp is gated behind the `whatsapp` #FF — hide it from the canal filter.
 const CHANNEL_OPTIONS: { id: Channel; label: string }[] = [
   { id: "linkedin", label: "LinkedIn" },
-  { id: "whatsapp", label: "WhatsApp" },
+  ...(isFeatureEnabled("whatsapp")
+    ? [{ id: "whatsapp" as Channel, label: "WhatsApp" }]
+    : []),
   { id: "phone", label: "Téléphone" },
 ];
 

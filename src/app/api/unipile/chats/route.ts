@@ -175,9 +175,17 @@ async function attachPinnedAt<T extends UnipileChat>(
   if (error || !data) {
     return items.map((c) => ({ ...c, pinned_at: null }));
   }
-  const map = new Map(
-    data.map((r) => [r.unipile_chat_id, r.pinned_at as string | null]),
-  );
+  // A chat can have MORE than one linkage row (a CRM row + a prospect-less pin
+  // marker, or several prospect links). A plain `new Map(data.map(...))` keeps
+  // whichever row happens to come last, so a chat could read back as unpinned
+  // even while another of its rows is pinned. Aggregate instead: the chat is
+  // pinned if ANY row carries a non-null `pinned_at` (keep the most recent).
+  const map = new Map<string, string | null>();
+  for (const r of data) {
+    const val = (r.pinned_at as string | null) ?? null;
+    const prev = map.get(r.unipile_chat_id) ?? null;
+    map.set(r.unipile_chat_id, val && (!prev || val > prev) ? val : prev);
+  }
   return items.map((c) => ({ ...c, pinned_at: map.get(c.id) ?? null }));
 }
 

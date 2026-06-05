@@ -24,8 +24,7 @@ type Tab = "prospects" | "pipeline" | "listes" | "corbeille";
 export function CrmContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { workspaceId, user } = useWorkspace();
-  const currentUserId = user?.id ?? null;
+  const { workspaceId } = useWorkspace();
 
   const initialBddId = searchParams.get("bdd_id");
   const initialStatus = searchParams.get("status");
@@ -152,7 +151,6 @@ export function CrmContent() {
           ) : (
             <ListesTab
               workspaceId={workspaceId}
-              currentUserId={currentUserId}
               memberNames={memberNames}
               memberAvatars={memberAvatars}
               onSelectList={handleSelectList}

@@ -21,9 +21,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Search,
   X,
-  Filter,
+  CalendarDays,
   ChevronDown,
-  Check,
   Upload,
   Megaphone,
   MoreVertical,
@@ -32,7 +31,6 @@ import {
   Users,
   Pencil,
   Download,
-  Layers,
   Phone,
   Loader2,
   List as ListIcon,
@@ -40,6 +38,7 @@ import {
 import { useRouter } from "next/navigation";
 import { toast } from "@/lib/toast";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ProspectImportDialog } from "@/components/crm/prospect-import-dialog";
 import {
   NameAvatar,
@@ -47,9 +46,12 @@ import {
   Surface,
   StatusPill,
   getSourceConfig,
+  CrmFilterButton,
+  CrmFiltersLabel,
+  CrmSourceDropdown,
+  CrmSortDropdown,
 } from "./crm-shared";
 import type { BddRow } from "./crm-table";
-import { CRM_SOURCE_FILTER_OPTIONS } from "./crm-source-filters";
 
 /* ============================================================
    Types
@@ -63,24 +65,25 @@ interface BddApiResponse {
   hasMore: boolean;
 }
 
-type Scope = "all" | "mine" | "team";
 type SortBy = "recent" | "conversion" | "volume" | "alpha";
+
+const LISTES_SORT_OPTIONS: { id: SortBy; label: string }[] = [
+  { id: "recent", label: "Plus récente" },
+  { id: "conversion", label: "Plus performante" },
+  { id: "volume", label: "Plus de prospects" },
+  { id: "alpha", label: "Alphabétique" },
+];
 
 interface ListesFilterState {
   source: string[];
-  proprietaire: string | null;
+  /** Author filter — multi-select, applied client-side over the loaded rows. */
+  proprietaires: string[];
   dateFrom: string | null;
   dateTo: string | null;
 }
 
-// Canonical source taxonomy — shared with the Prospects & Pipeline toolbars.
-const SOURCE_FILTER_OPTIONS: { value: string; label: string }[] = [
-  ...CRM_SOURCE_FILTER_OPTIONS,
-];
-
 interface ListesTabProps {
   workspaceId: string | null;
-  currentUserId?: string | null;
   memberNames: Map<string, string>;
   memberAvatars?: Map<string, string | null>;
   onSelectList: (bddId: string) => void;
@@ -158,7 +161,6 @@ function SourceMark({
 
 export function ListesTab({
   workspaceId,
-  currentUserId,
   memberNames,
   memberAvatars,
   onSelectList,
@@ -172,10 +174,12 @@ export function ListesTab({
     router.push(`/campaigns?new=campaign&bdd=${bddId}`);
   const launchCallSession = (bddId: string) =>
     router.push(`/campaigns?tab=sessions&new=session&bdd=${bddId}`);
-  const [scope, setScope] = useState<Scope>("all");
   const [search, setSearch] = useState("");
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [sortOpen, setSortOpen] = useState(false);
+  // Which filter dropdown is open (one at a time). Mirrors the campaign page:
+  // an unclickable "Filtres" label followed by per-category dropdown pills.
+  const [openFilter, setOpenFilter] = useState<
+    "source" | "auteur" | "date" | "sort" | null
+  >(null);
   const [sortBy, setSortBy] = useState<SortBy>("recent");
   const [menuId, setMenuId] = useState<string | null>(null);
   const [openList, setOpenList] = useState<BddRow | null>(null);
@@ -184,20 +188,28 @@ export function ListesTab({
   const [showImport, setShowImport] = useState(false);
   const [filters, setFilters] = useState<ListesFilterState>({
     source: [],
-    proprietaire: null,
+    proprietaires: [],
     dateFrom: null,
     dateTo: null,
   });
 
   /* ---------- queries ---------- */
+  // Author is filtered client-side, so it's excluded from the query key.
   const { data: bddData, isFetching: bddFetching } = useQuery({
-    queryKey: ["bdd", "listes-v2", workspaceId, search, filters],
+    queryKey: [
+      "bdd",
+      "listes-v2",
+      workspaceId,
+      search,
+      filters.source,
+      filters.dateFrom,
+      filters.dateTo,
+    ],
     queryFn: async () => {
       const params = new URLSearchParams({ page: "1", pageSize: "100" });
       if (search.trim()) params.set("search", search.trim());
       if (filters.source.length > 0)
         params.set("source", filters.source.join(","));
-      if (filters.proprietaire) params.set("proprietaire", filters.proprietaire);
       if (filters.dateFrom) params.set("date_from", filters.dateFrom);
       if (filters.dateTo) params.set("date_to", filters.dateTo);
       const res = await fetch(`/api/bdd?${params.toString()}`, {
@@ -313,9 +325,11 @@ export function ListesTab({
 
   /* ---------- derived ---------- */
   const filtered = useMemo(() => {
+    const authors = filters.proprietaires;
     let list = items.filter((l) => {
-      if (scope === "mine" && l.proprietaire !== currentUserId) return false;
-      if (scope === "team" && l.proprietaire === currentUserId) return false;
+      if (authors.length > 0 && !authors.includes(l.proprietaire ?? "")) {
+        return false;
+      }
       return true;
     });
     list = list.slice().sort((a, b) => {
@@ -334,7 +348,7 @@ export function ListesTab({
       return tb - ta;
     });
     return list;
-  }, [items, scope, sortBy, currentUserId]);
+  }, [items, sortBy, filters.proprietaires]);
 
   const avgConv = useMemo(() => {
     if (items.length === 0) return 0;
@@ -365,129 +379,76 @@ export function ListesTab({
         </button>
       </div>
 
-      {/* Action bar */}
-      <div className="mb-3 flex flex-wrap items-center gap-2.5">
-        {/* Search */}
-        <div className="flex w-full items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5 sm:w-[360px] sm:max-w-full">
+      {/* Action bar — campaign-style: filters grouped left, search right. */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {/* Unclickable "Filtres" label, then one dropdown per category. */}
+        <CrmFiltersLabel />
+
+        <CrmSourceDropdown
+          selected={filters.source}
+          onChange={(v) => setFilters({ ...filters, source: v })}
+          open={openFilter === "source"}
+          onToggle={() =>
+            setOpenFilter((o) => (o === "source" ? null : "source"))
+          }
+        />
+
+        <AuteurFilterDropdown
+          members={[...memberNames.entries()].map(([id, name]) => ({
+            id,
+            name,
+            avatar: memberAvatars?.get(id) ?? null,
+          }))}
+          selected={filters.proprietaires}
+          onChange={(v) => setFilters({ ...filters, proprietaires: v })}
+          open={openFilter === "auteur"}
+          onToggle={() =>
+            setOpenFilter((o) => (o === "auteur" ? null : "auteur"))
+          }
+        />
+
+        <DateFilterDropdown
+          dateFrom={filters.dateFrom}
+          dateTo={filters.dateTo}
+          onChange={(from, to) =>
+            setFilters({ ...filters, dateFrom: from, dateTo: to })
+          }
+          open={openFilter === "date"}
+          onToggle={() => setOpenFilter((o) => (o === "date" ? null : "date"))}
+        />
+
+        <CrmSortDropdown
+          options={LISTES_SORT_OPTIONS}
+          value={sortBy}
+          onChange={(id) => {
+            setSortBy(id);
+            setOpenFilter(null);
+          }}
+          open={openFilter === "sort"}
+          onToggle={() => setOpenFilter((o) => (o === "sort" ? null : "sort"))}
+        />
+
+        {/* Search — right-aligned, campaign style */}
+        <div className="relative ml-auto w-full min-w-[220px] sm:w-[300px]">
           {bddFetching ? (
-            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-600" />
+            <Loader2 className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 animate-spin text-blue-600" />
           ) : (
-            <Search className="h-3.5 w-3.5 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           )}
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Rechercher une liste…"
-            className="min-w-0 flex-1 border-none bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
+            className="h-[34px] w-full rounded-lg border border-input bg-background pl-8 pr-8 text-[13px] outline-none transition-colors placeholder:text-muted-foreground focus:border-[#0052D9]"
           />
           {search && (
             <button
               onClick={() => setSearch("")}
-              className="text-muted-foreground hover:text-foreground"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-accent"
+              aria-label="Effacer la recherche"
             >
-              <X className="h-3 w-3" />
+              <X className="h-3.5 w-3.5" />
             </button>
-          )}
-        </div>
-
-        {/* Scope pills */}
-        <div className="inline-flex gap-0.5 rounded-lg border border-border bg-card p-0.5">
-          {(
-            [
-              ["all", "Toutes"],
-              ["mine", "Mes listes"],
-              ["team", "Listes équipe"],
-            ] as const
-          ).map(([id, lbl]) => {
-            const active = scope === id;
-            return (
-              <button
-                key={id}
-                onClick={() => setScope(id)}
-                className={`rounded-md px-2.5 py-1 text-[12.5px] font-medium ${
-                  active
-                    ? "bg-blue-600 text-white"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {lbl}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Filtres */}
-        <div className="relative">
-          <button
-            onClick={() => {
-              setFiltersOpen((o) => !o);
-              setSortOpen(false);
-            }}
-            className={`inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[12.5px] font-medium ${
-              filtersOpen ? "bg-accent" : "bg-card"
-            }`}
-          >
-            <Filter className="h-3 w-3" />
-            Filtres
-            <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
-          </button>
-          {filtersOpen && (
-            <FiltersPopover
-              filters={filters}
-              onChange={setFilters}
-              members={[...memberNames.entries()].map(([id, name]) => ({
-                id,
-                name,
-              }))}
-              onClose={() => setFiltersOpen(false)}
-            />
-          )}
-        </div>
-
-        <div className="flex-1" />
-
-        {/* Tri */}
-        <div className="relative">
-          <button
-            onClick={() => {
-              setSortOpen((o) => !o);
-              setFiltersOpen(false);
-            }}
-            className={`inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[12.5px] font-medium ${
-              sortOpen ? "bg-accent" : "bg-card"
-            }`}
-          >
-            <Layers className="h-3 w-3" />
-            Trier
-            <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
-          </button>
-          {sortOpen && (
-            <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-[220px] rounded-lg border border-border bg-popover p-1.5 shadow-lg">
-              {(
-                [
-                  ["recent", "Plus récente"],
-                  ["conversion", "Plus performante"],
-                  ["volume", "Plus de prospects"],
-                  ["alpha", "Alphabétique"],
-                ] as const
-              ).map(([id, label]) => (
-                <div
-                  key={id}
-                  onClick={() => {
-                    setSortBy(id);
-                    setSortOpen(false);
-                  }}
-                  className={`flex cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 text-[12.5px] ${
-                    sortBy === id
-                      ? "bg-accent font-semibold text-blue-700"
-                      : "text-foreground hover:bg-accent/50"
-                  }`}
-                >
-                  {label}
-                  {sortBy === id && <Check className="h-3 w-3" />}
-                </div>
-              ))}
-            </div>
           )}
         </div>
       </div>
@@ -579,11 +540,10 @@ export function ListesTab({
       )}
 
       {/* Click-outside backdrop for menus */}
-      {(filtersOpen || sortOpen || menuId) && (
+      {(openFilter || menuId) && (
         <div
           onClick={() => {
-            setFiltersOpen(false);
-            setSortOpen(false);
+            setOpenFilter(null);
             setMenuId(null);
           }}
           className="fixed inset-0 z-[5]"
@@ -1371,132 +1331,174 @@ function Meta({
   );
 }
 
-function FiltersPopover({
-  filters,
-  onChange,
+/* ------------------------------------------------------------------
+   Per-category filter dropdowns — each is a campaign-style pill that
+   opens its own dropdown. `open`/`onToggle` are driven by the parent's
+   single `openFilter` state so only one is ever open at a time.
+   ------------------------------------------------------------------ */
+
+/**
+ * Author filter — mirrors the campaigns CreatorDropdown: always-visible search,
+ * real profile pictures, multi-select checkbox rows and a "Tout cocher" reset.
+ * An empty selection means "all authors" (no filter).
+ */
+function AuteurFilterDropdown({
   members,
-  onClose,
+  selected,
+  onChange,
+  open,
+  onToggle,
 }: {
-  filters: ListesFilterState;
-  onChange: (next: ListesFilterState) => void;
-  members: { id: string; name: string }[];
-  onClose: () => void;
+  members: { id: string; name: string; avatar: string | null }[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+  open: boolean;
+  onToggle: () => void;
 }) {
-  const toggleSource = (value: string) => {
-    onChange({
-      ...filters,
-      source: filters.source.includes(value)
-        ? filters.source.filter((s) => s !== value)
-        : [...filters.source, value],
-    });
+  const [query, setQuery] = useState("");
+  const allIds = members.map((m) => m.id);
+  const isAll = selected.length === 0 || selected.length === allIds.length;
+  const summary = isAll
+    ? "Tous"
+    : selected.length === 1
+      ? (members.find((m) => m.id === selected[0])?.name ?? "1 sélectionné")
+      : `${selected.length} sur ${allIds.length}`;
+  // `isAll` shows every row checked; toggling from there starts a fresh subset.
+  const isChecked = (id: string) => isAll || selected.includes(id);
+  const toggle = (id: string) => {
+    const base = isAll ? [...allIds] : [...selected];
+    const next = base.includes(id)
+      ? base.filter((x) => x !== id)
+      : [...base, id];
+    onChange(next.length === allIds.length ? [] : next);
   };
-  const reset = () =>
-    onChange({ source: [], proprietaire: null, dateFrom: null, dateTo: null });
-
+  const filtered = members.filter((m) =>
+    m.name.toLowerCase().includes(query.toLowerCase()),
+  );
   return (
-    <div
-      onClick={(e) => e.stopPropagation()}
-      className="absolute left-0 top-[calc(100%+6px)] z-30 w-[340px] rounded-lg border border-border bg-popover p-3 shadow-lg"
-    >
-      <div className="mb-2.5 flex items-center justify-between">
-        <span className="text-[13px] font-semibold">Filtres</span>
-        <button
-          onClick={reset}
-          className="text-[11.5px] font-medium text-blue-700"
+    <div className="relative">
+      <CrmFilterButton active={!isAll} onClick={onToggle}>
+        <span>Auteur</span>
+        <span className="text-xs font-medium text-muted-foreground">
+          : {summary}
+        </span>
+        <ChevronDown className="size-3 opacity-60" />
+      </CrmFilterButton>
+      {open && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute left-0 top-[calc(100%+4px)] z-30 w-[240px] rounded-xl border bg-popover p-1 shadow-lg"
         >
-          Tout effacer
-        </button>
-      </div>
-
-      <div className="mb-2">
-        <div className="mb-1 text-[11.5px] font-medium text-muted-foreground">
-          Source
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {SOURCE_FILTER_OPTIONS.map((opt) => {
-            const active = filters.source.includes(opt.value);
-            return (
-              <button
-                key={opt.value}
-                onClick={() => toggleSource(opt.value)}
-                className={`rounded-md px-2 py-1 text-[11.5px] ${
-                  active
-                    ? "bg-blue-600 text-white"
-                    : "bg-muted text-foreground/80 hover:bg-muted/70"
-                }`}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="mb-2">
-        <div className="mb-1 text-[11.5px] font-medium text-muted-foreground">
-          Auteur
-        </div>
-        <div className="flex flex-wrap gap-1">
+          <div className="relative px-2 pb-1 pt-1.5">
+            <Search className="absolute left-4 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Rechercher..."
+              className="h-7 w-full rounded-md border border-input bg-background pl-6 pr-2 text-xs outline-none focus:border-[#0052D9]"
+            />
+          </div>
+          <div className="border-b px-2.5 pb-1.5 pt-1">
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              className="text-[11.5px] font-semibold text-[#0052D9]"
+            >
+              Tout cocher
+            </button>
+          </div>
           {members.length === 0 && (
-            <p className="text-[11.5px] text-muted-foreground">Aucun membre</p>
+            <div className="px-2.5 py-2 text-center text-[12.5px] text-muted-foreground">
+              Aucun membre
+            </div>
           )}
-          {members.map((m) => {
-            const active = filters.proprietaire === m.id;
-            return (
-              <button
-                key={m.id}
-                onClick={() =>
-                  onChange({
-                    ...filters,
-                    proprietaire: active ? null : m.id,
-                  })
-                }
-                className={`rounded-md px-2 py-1 text-[11.5px] ${
-                  active
-                    ? "bg-blue-600 text-white"
-                    : "bg-muted text-foreground/80 hover:bg-muted/70"
-                }`}
-              >
-                {m.name}
-              </button>
-            );
-          })}
+          {members.length > 0 && filtered.length === 0 && (
+            <div className="py-3 text-center text-xs text-muted-foreground">
+              Aucun résultat
+            </div>
+          )}
+          {filtered.map((m) => (
+            <div
+              key={m.id}
+              onClick={() => toggle(m.id)}
+              className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] hover:bg-accent"
+            >
+              <Checkbox checked={isChecked(m.id)} />
+              <NameAvatar name={m.name} size={20} photo={m.avatar} />
+              <span className="truncate">{m.name}</span>
+            </div>
+          ))}
         </div>
-      </div>
+      )}
+    </div>
+  );
+}
 
-      <div className="mb-1.5">
-        <div className="mb-1 text-[11.5px] font-medium text-muted-foreground">
-          Date de création
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="date"
-            value={filters.dateFrom ?? ""}
-            onChange={(e) =>
-              onChange({ ...filters, dateFrom: e.target.value || null })
-            }
-            className="min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1 text-[11.5px]"
-          />
-          <span className="text-muted-foreground">→</span>
-          <input
-            type="date"
-            value={filters.dateTo ?? ""}
-            onChange={(e) =>
-              onChange({ ...filters, dateTo: e.target.value || null })
-            }
-            className="min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1 text-[11.5px]"
-          />
-        </div>
-      </div>
-
-      <div className="mt-3 flex justify-end">
-        <button
-          onClick={onClose}
-          className="rounded-md bg-blue-600 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-blue-700"
+function DateFilterDropdown({
+  dateFrom,
+  dateTo,
+  onChange,
+  open,
+  onToggle,
+}: {
+  dateFrom: string | null;
+  dateTo: string | null;
+  onChange: (from: string | null, to: string | null) => void;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const summary =
+    dateFrom && dateTo
+      ? `${fr(dateFrom)} → ${fr(dateTo)}`
+      : dateFrom
+        ? `depuis ${fr(dateFrom)}`
+        : dateTo
+          ? `jusqu’au ${fr(dateTo)}`
+          : "Toutes";
+  return (
+    <div className="relative">
+      <CrmFilterButton active={!!dateFrom || !!dateTo} onClick={onToggle}>
+        <CalendarDays className="size-3.5 opacity-70" />
+        <span>Date</span>
+        <span className="text-xs font-medium text-muted-foreground">
+          : {summary}
+        </span>
+        <ChevronDown className="size-3 opacity-60" />
+      </CrmFilterButton>
+      {open && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute left-0 top-[calc(100%+4px)] z-30 w-[260px] rounded-xl border bg-popover p-2.5 shadow-lg"
         >
-          Fermer
-        </button>
-      </div>
+          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Date de création
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={dateFrom ?? ""}
+              onChange={(e) => onChange(e.target.value || null, dateTo)}
+              className="min-w-0 flex-1 rounded-md border border-input bg-background px-2 py-1 text-[12px] outline-none transition-colors focus:border-[#0052D9]"
+            />
+            <span className="text-muted-foreground">→</span>
+            <input
+              type="date"
+              value={dateTo ?? ""}
+              onChange={(e) => onChange(dateFrom, e.target.value || null)}
+              className="min-w-0 flex-1 rounded-md border border-input bg-background px-2 py-1 text-[12px] outline-none transition-colors focus:border-[#0052D9]"
+            />
+          </div>
+          {(dateFrom || dateTo) && (
+            <button
+              type="button"
+              onClick={() => onChange(null, null)}
+              className="mt-2 text-[11.5px] font-medium text-[#0052D9]"
+            >
+              Effacer
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
