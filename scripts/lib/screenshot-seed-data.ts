@@ -104,8 +104,9 @@ const JOB_TITLES = [
   "Head of Marketing", "VP Business", "SDR Manager", "Sales Ops", "Head of Partnerships",
 ];
 
+// WhatsApp is gated off, so seeded prospects never use it as a source.
 const SOURCES = [
-  "manual", "csv", "linkedin_extension", "booking", "inbound", "website", "whatsapp",
+  "manual", "csv", "linkedin_extension", "booking", "inbound", "website",
 ] as const;
 
 /** Weighted status distribution ≈ 220 active pipeline prospects for a 10-person team. */
@@ -395,13 +396,11 @@ export const CAMPAIGN_JOB_DEFS = [
   { type: "invite" as const, status: "running" as const, name: "Connect — Dirigeants PME", total: 280, processed: 198, success: 142, errors: 5, createdDaysAgo: 28, startedDaysAgo: 27 },
   { type: "contact" as const, status: "paused" as const, name: "Relance décideurs", total: 156, processed: 112, success: 68, errors: 3, createdDaysAgo: 21, startedDaysAgo: 20 },
   { type: "contact" as const, status: "completed" as const, name: "Messages post-acceptation", total: 124, processed: 124, success: 82, errors: 2, createdDaysAgo: 55, startedDaysAgo: 54 },
-  { type: "whatsapp" as const, status: "completed" as const, name: "Post-RDV WhatsApp", total: 96, processed: 96, success: 88, errors: 1, createdDaysAgo: 35, startedDaysAgo: 34 },
   { type: "invite_with_note" as const, status: "completed" as const, name: "Salon VivaTech — follow-up", total: 186, processed: 186, success: 128, errors: 6, createdDaysAgo: 68, startedDaysAgo: 67 },
   { type: "contact" as const, status: "running" as const, name: "Séquence inbound webinar", total: 142, processed: 86, success: 54, errors: 2, createdDaysAgo: 12, startedDaysAgo: 11 },
   { type: "invite" as const, status: "paused" as const, name: "Expansion Nord", total: 240, processed: 118, success: 76, errors: 7, createdDaysAgo: 18, startedDaysAgo: 17 },
   { type: "invite_with_note" as const, status: "completed" as const, name: "CMO SaaS — Paris", total: 168, processed: 168, success: 112, errors: 4, createdDaysAgo: 45, startedDaysAgo: 44 },
   { type: "contact" as const, status: "running" as const, name: "Relance proposition Q2", total: 88, processed: 52, success: 31, errors: 1, createdDaysAgo: 8, startedDaysAgo: 7 },
-  { type: "whatsapp" as const, status: "running" as const, name: "WhatsApp — leads chauds", total: 64, processed: 38, success: 34, errors: 0, createdDaysAgo: 5, startedDaysAgo: 4 },
   { type: "invite" as const, status: "completed" as const, name: "LinkedIn ABM FinTech", total: 132, processed: 132, success: 89, errors: 3, createdDaysAgo: 72, startedDaysAgo: 71 },
 ];
 

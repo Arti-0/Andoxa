@@ -110,10 +110,15 @@ export const DELETE = createApiHandler(async (req: NextRequest, ctx) => {
     if (
       message.includes("remplacement") ||
       message.includes("transférer") ||
-      message.includes("différent")
+      message.includes("différent") ||
+      message.includes("introuvable")
     ) {
       throw Errors.validation({ _: message });
     }
-    throw Errors.internal("Failed to delete status");
+    // Surface the real cause instead of an opaque "Failed to delete status" —
+    // a swallowed DB error (e.g. a constraint from migration drift) made this
+    // impossible to diagnose.
+    console.error("[prospect-statuses DELETE] failed:", err);
+    throw Errors.internal(`Suppression du statut impossible : ${message}`);
   }
 });

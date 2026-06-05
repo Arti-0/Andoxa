@@ -4,6 +4,11 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import Link from "next/link";
 import { useLinkedInAccount } from "@/hooks/use-linkedin-account";
+import { isFeatureEnabled } from "@/lib/config/feature-flags";
+
+// #FF: whatsapp — while the WhatsApp flow is hidden, a disconnected WhatsApp
+// account must not surface a connection error to the user.
+const SHOW_WHATSAPP = isFeatureEnabled("whatsapp");
 
 const ERROR_STATUSES = new Set(["error", "stopped", "disconnected"]);
 
@@ -37,7 +42,8 @@ export function UnipileAccountBanner() {
   }, []);
 
   const linkedinError = status && ERROR_STATUSES.has(status.linkedin_status);
-  const whatsappError = status && ERROR_STATUSES.has(status.whatsapp_status);
+  const whatsappError =
+    SHOW_WHATSAPP && status && ERROR_STATUSES.has(status.whatsapp_status);
 
   if (dismissed || (!linkedinError && !whatsappError)) return null;
 

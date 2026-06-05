@@ -62,6 +62,7 @@ export async function transferProspectsAndRewriteWorkflows(
   if (wfError) throw wfError;
 
   let workflowsUpdated = 0;
+  const workflowFailures: string[] = [];
   for (const wf of workflows ?? []) {
     const updates: Record<string, unknown> = {};
     const triggerRewrite = rewriteTriggerConfigStatusId(
@@ -101,8 +102,25 @@ export async function transferProspectsAndRewriteWorkflows(
       .update(updates)
       .eq("id", wf.id)
       .eq("organization_id", organizationId);
-    if (error) throw error;
+    if (error) {
+      // A single un-updatable workflow row — e.g. a legacy row whose
+      // `trigger_kind` violates a newer CHECK constraint — must NOT block
+      // deleting the status and transferring prospects (Postgres re-validates
+      // CHECK constraints on every UPDATE, even for columns we don't touch).
+      // Skip it and carry on; the dangling status reference is recoverable.
+      console.error(
+        `[status-delete] workflow ${wf.id} rewrite skipped: ${error.message}`,
+      );
+      workflowFailures.push(wf.id);
+      continue;
+    }
     workflowsUpdated += 1;
+  }
+
+  if (workflowFailures.length > 0) {
+    console.warn(
+      `[status-delete] ${workflowFailures.length} workflow(s) could not be rewritten: ${workflowFailures.join(", ")}`,
+    );
   }
 
   return { prospectsUpdated, workflowsUpdated };

@@ -1,3 +1,5 @@
+import { isFeatureEnabled } from "@/lib/config/feature-flags";
+
 /** Persisted on `profiles.onboarding_step` */
 export const ONBOARDING_PROFILE_STEP = {
   INVITED: "invited",
@@ -22,7 +24,7 @@ export type StepId =
 
 export type OnboardingScenario = "new_owner" | "new_invited" | "new_org";
 
-export const SEQUENCES: Record<OnboardingScenario, StepId[]> = {
+const RAW_SEQUENCES: Record<OnboardingScenario, StepId[]> = {
   new_owner: [
     "welcome",
     "user.name",
@@ -45,6 +47,19 @@ export const SEQUENCES: Record<OnboardingScenario, StepId[]> = {
   ],
   new_org: ["org.create", "org.invite", "org.finish"],
 };
+
+// #FF: whatsapp — while the WhatsApp flow is hidden, drop its onboarding
+// connect step so users are never prompted to link a hidden channel.
+export const SEQUENCES: Record<OnboardingScenario, StepId[]> = isFeatureEnabled(
+  "whatsapp",
+)
+  ? RAW_SEQUENCES
+  : (Object.fromEntries(
+      Object.entries(RAW_SEQUENCES).map(([scenario, steps]) => [
+        scenario,
+        steps.filter((s) => s !== "install.whatsapp"),
+      ]),
+    ) as Record<OnboardingScenario, StepId[]>);
 
 /**
  * Returns null when the user should leave the wizard (dashboard or other app area).
