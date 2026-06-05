@@ -17,7 +17,7 @@ export const WORKFLOW_LINKEDIN_ID = "c3333333-3333-4333-8333-333333333333";
 
 /**
  * Target dashboard figures for screenshot fixtures.
- * Period: use « 30 jours » on /dashboard so KPI + funnel align with these counts.
+ * Scoped to « Ce mois » (rolling 30-day window on /dashboard).
  */
 export const SCREENSHOT_DASHBOARD_STATS = {
   priorities: {

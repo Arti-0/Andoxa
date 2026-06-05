@@ -1,13 +1,15 @@
 /**
  * Period helpers for dashboard v2 endpoints.
  *
- * Accepts the period keys produced by `PageHeader` (today / week / month / 30d)
+ * Accepts the period keys produced by `PageHeader` (today / week / month)
  * and returns:
  *   • `current`  — the [start, end] window for the selected period
  *   • `previous` — the iso-window immediately before, used to compute trends
+ *
+ * « Ce mois » maps to a rolling 30-day window (not calendar month).
  */
 
-export type DashboardPeriod = "today" | "week" | "month" | "30d";
+export type DashboardPeriod = "today" | "week" | "month";
 
 export interface PeriodWindow {
   start: Date;
@@ -23,14 +25,15 @@ const FRENCH_LABEL_TO_KEY: Record<string, DashboardPeriod> = {
   "Aujourd'hui": "today",
   "Cette semaine": "week",
   "Ce mois": "month",
-  "30 jours": "30d",
 };
 
 export function parsePeriod(input: string | null | undefined): DashboardPeriod {
   if (!input) return "month";
+  // Legacy clients still send ?period=30d — treat as month (rolling 30d).
+  if (input === "30d" || input === "30 jours") return "month";
   if (input in FRENCH_LABEL_TO_KEY)
     return FRENCH_LABEL_TO_KEY[input as keyof typeof FRENCH_LABEL_TO_KEY];
-  if (["today", "week", "month", "30d"].includes(input))
+  if (["today", "week", "month"].includes(input))
     return input as DashboardPeriod;
   return "month";
 }
@@ -55,8 +58,15 @@ function startOfWeek(d: Date): Date {
   return x;
 }
 
-function startOfMonth(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+function rolling30DayWindow(now: Date): PeriodPair {
+  const end = endOfDay(now);
+  const start = new Date(end);
+  start.setDate(start.getDate() - 30);
+  const prevEnd = new Date(start);
+  prevEnd.setMilliseconds(prevEnd.getMilliseconds() - 1);
+  const prevStart = new Date(prevEnd);
+  prevStart.setDate(prevStart.getDate() - 30);
+  return { current: { start, end }, previous: { start: prevStart, end: prevEnd } };
 }
 
 export function getPeriodPair(
@@ -82,26 +92,9 @@ export function getPeriodPair(
       prevEnd.setMilliseconds(prevEnd.getMilliseconds() - 1);
       return { current: { start, end }, previous: { start: prevStart, end: prevEnd } };
     }
-    case "month": {
-      const start = startOfMonth(now);
-      const end = endOfDay(now);
-      const prevStart = new Date(start);
-      prevStart.setMonth(prevStart.getMonth() - 1);
-      const prevEnd = new Date(start);
-      prevEnd.setMilliseconds(prevEnd.getMilliseconds() - 1);
-      return { current: { start, end }, previous: { start: prevStart, end: prevEnd } };
-    }
-    case "30d":
-    default: {
-      const end = endOfDay(now);
-      const start = new Date(end);
-      start.setDate(start.getDate() - 30);
-      const prevEnd = new Date(start);
-      prevEnd.setMilliseconds(prevEnd.getMilliseconds() - 1);
-      const prevStart = new Date(prevEnd);
-      prevStart.setDate(prevStart.getDate() - 30);
-      return { current: { start, end }, previous: { start: prevStart, end: prevEnd } };
-    }
+    case "month":
+    default:
+      return rolling30DayWindow(now);
   }
 }
 

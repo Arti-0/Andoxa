@@ -11,6 +11,30 @@ export const SCREENSHOT_USER_EMAIL =
 export const SCREENSHOT_USER_PASSWORD =
   process.env.ANDOXA_SCREENSHOT_PASSWORD ?? "AndoxaScreenshot2026!";
 
+/**
+ * Optional local-dev email(s) switched to the screenshot org after seeding.
+ * `ANDOXA_DEV_EMAIL` takes precedence; `ADMIN_EMAILS` entries are also attached.
+ */
+const FIXTURE_EMAIL_RE = /@andoxa\.dev$/i;
+
+export function isFixtureSeedEmail(email: string | undefined): boolean {
+  if (!email) return true;
+  if (email === SCREENSHOT_USER_EMAIL) return true;
+  return FIXTURE_EMAIL_RE.test(email);
+}
+
+export function resolveSeedViewerEmails(): string[] {
+  const emails: string[] = [];
+  const dev = process.env.ANDOXA_DEV_EMAIL?.trim();
+  if (dev) emails.push(dev);
+  const admins = process.env.ADMIN_EMAILS?.split(",") ?? [];
+  for (const raw of admins) {
+    const email = raw.trim().replace(/^["']|["']$/g, "");
+    if (email && !emails.includes(email)) emails.push(email);
+  }
+  return emails;
+}
+
 export const SCREENSHOT_ORG_NAME = "Acme Sales";
 export const SCREENSHOT_USER_NAME = "Marie Dupont";
 

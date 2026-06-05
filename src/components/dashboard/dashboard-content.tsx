@@ -462,17 +462,15 @@ const PERIODS = [
   "Aujourd'hui",
   "Cette semaine",
   "Ce mois",
-  "30 jours",
 ] as const;
 export type Period = (typeof PERIODS)[number];
 
-export type ApiPeriod = "today" | "week" | "month" | "30d";
+export type ApiPeriod = "today" | "week" | "month";
 
 const PERIOD_TO_API: Record<Period, ApiPeriod> = {
   "Aujourd'hui": "today",
   "Cette semaine": "week",
   "Ce mois": "month",
-  "30 jours": "30d",
 };
 
 export type PdfOrientation = "portrait" | "landscape";

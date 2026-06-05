@@ -9,7 +9,7 @@ import { readDashboardTargets } from "@/lib/dashboard/targets";
 import { isMockStatsEnabled, mockDashboardFunnel } from "@/lib/mock-stats";
 
 /**
- * GET /api/dashboard/funnel?period=today|week|month|30d
+ * GET /api/dashboard/funnel?period=today|week|month
  *
  * Aggregates the full outbound funnel for the selected period:
  *   1. invitations  — workflow `linkedin_invite` step completions

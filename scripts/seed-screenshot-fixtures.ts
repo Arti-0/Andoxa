@@ -20,6 +20,8 @@ import {
   SCREENSHOT_USER_EMAIL,
   SCREENSHOT_USER_NAME,
   SCREENSHOT_USER_PASSWORD,
+  isFixtureSeedEmail,
+  resolveSeedViewerEmails,
   type ScreenshotState,
 } from "./lib/screenshot-config";
 import { MOCK_PROSPECT_ID } from "./lib/messagerie-mocks";
@@ -121,14 +123,29 @@ function buildCanvasMetadata() {
   };
 }
 
+async function findAuthUserByEmail(
+  email: string
+): Promise<{ id: string } | null> {
+  for (let page = 1; page <= 20; page++) {
+    const { data: listed, error } = await admin.auth.admin.listUsers({
+      page,
+      perPage: 200,
+    });
+    if (error) throw new Error(`list users — ${error.message}`);
+    const hit = listed?.users?.find((u) => u.email === email);
+    if (hit) return { id: hit.id };
+    if ((listed?.users?.length ?? 0) < 200) break;
+  }
+  return null;
+}
+
 async function ensureUser(
   email: string,
   password: string,
   fullName: string,
   fixedId?: string
 ): Promise<string> {
-  const { data: listed } = await admin.auth.admin.listUsers();
-  const existing = listed?.users?.find((u) => u.email === email);
+  const existing = await findAuthUserByEmail(email);
   if (existing) {
     await admin.auth.admin.updateUserById(existing.id, {
       password,
@@ -241,6 +258,78 @@ async function wipeOrgData(orgId: string): Promise<void> {
   await admin.from("bdd").delete().eq("organization_id", orgId);
 }
 
+/**
+ * Point local dev account(s) at the screenshot org so /dashboard reads seeded data
+ * without logging in as screenshots@andoxa.dev.
+ */
+async function loadAuthUsers(): Promise<Array<{ id: string; email?: string }>> {
+  const authUsers: Array<{ id: string; email?: string }> = [];
+  for (let page = 1; page <= 20; page++) {
+    const { data: listed, error: listErr } = await admin.auth.admin.listUsers({
+      page,
+      perPage: 200,
+    });
+    if (listErr) throw new Error(`list users for seed viewers — ${listErr.message}`);
+    const batch = listed?.users ?? [];
+    authUsers.push(...batch.map((u) => ({ id: u.id, email: u.email })));
+    if (batch.length < 200) break;
+  }
+  return authUsers;
+}
+
+async function attachSeedViewers(): Promise<string[]> {
+  const authUsers = await loadAuthUsers();
+  const emails = [...resolveSeedViewerEmails()];
+  const attached: string[] = [];
+
+  const realAccounts = authUsers
+    .map((u) => u.email)
+    .filter((e): e is string => !!e && !isFixtureSeedEmail(e));
+
+  if (emails.length === 0) return attached;
+
+  for (const email of emails) {
+    if (email === SCREENSHOT_USER_EMAIL) continue;
+
+    const userId = authUsers.find((u) => u.email === email)?.id ?? null;
+    if (!userId) {
+      console.warn(`  ⚠ Seed viewer not found (sign up first): ${email}`);
+      continue;
+    }
+
+    const { error: memberErr } = await admin.from("organization_members").upsert(
+      {
+        organization_id: SCREENSHOT_ORG_ID,
+        user_id: userId,
+        role: "owner",
+      },
+      { onConflict: "organization_id,user_id" }
+    );
+    if (memberErr) {
+      throw new Error(`attach member ${email} — ${memberErr.message}`);
+    }
+
+    const { error: profileErr } = await admin
+      .from("profiles")
+      .update({ active_organization_id: SCREENSHOT_ORG_ID })
+      .eq("id", userId);
+    if (profileErr) {
+      throw new Error(`attach profile ${email} — ${profileErr.message}`);
+    }
+
+    console.log(`  ✓ Active org → ${SCREENSHOT_ORG_NAME} for ${email}`);
+    attached.push(email);
+  }
+
+  if (attached.length === 0 && realAccounts.length > 0) {
+    console.warn(
+      `  ⚠ No dev viewer attached. Set ANDOXA_DEV_EMAIL to one of: ${realAccounts.slice(0, 5).join(", ")}`
+    );
+  }
+
+  return attached;
+}
+
 async function upsertOrg(userId: string): Promise<void> {
   const trialEnds = new Date();
   trialEnds.setFullYear(trialEnds.getFullYear() + 1);
@@ -288,6 +377,36 @@ async function upsertOrg(userId: string): Promise<void> {
     },
     { onConflict: "id" }
   );
+}
+
+/** Re-apply after wipe/seed so the fixture account always lands on Acme Sales. */
+async function ensureScreenshotActiveWorkspace(userId: string): Promise<void> {
+  const { error: profileErr } = await admin.from("profiles").upsert(
+    {
+      id: userId,
+      email: SCREENSHOT_USER_EMAIL,
+      full_name: SCREENSHOT_USER_NAME,
+      avatar_url: avatarUrl(SCREENSHOT_USER_EMAIL),
+      booking_slug: "marie-dupont",
+      active_organization_id: SCREENSHOT_ORG_ID,
+    },
+    { onConflict: "id" }
+  );
+  if (profileErr) {
+    throw new Error(`screenshot active workspace — ${profileErr.message}`);
+  }
+
+  const { error: memberErr } = await admin.from("organization_members").upsert(
+    {
+      organization_id: SCREENSHOT_ORG_ID,
+      user_id: userId,
+      role: "owner",
+    },
+    { onConflict: "organization_id,user_id" }
+  );
+  if (memberErr) {
+    throw new Error(`screenshot org membership — ${memberErr.message}`);
+  }
 }
 
 async function insertInBatches<T extends Record<string, unknown>>(
@@ -1078,9 +1197,21 @@ async function main(): Promise<void> {
   await seedActivityVolumeBookings(userId, prospectIds);
   await seedActivityVolumeCallSessions(userId);
 
+  await ensureScreenshotActiveWorkspace(userId);
+  const attachedViewers = await attachSeedViewers();
+
   writeState(userId);
   console.log(`\n✓ Seeded ${prospectIds.length} prospects, ${jobIds.length} campaigns`);
-  console.log("✓ Screenshot org ready. Run: bun run images:sync");
+  console.log(`\nDashboard fixtures — org « ${SCREENSHOT_ORG_NAME} »`);
+  console.log(`  Period: « Ce mois » (30 derniers jours)`);
+  console.log(`  Sign in: ${SCREENSHOT_USER_EMAIL}`);
+  console.log(`  Password: ${SCREENSHOT_USER_PASSWORD}`);
+  console.log(`  Profile: ${SCREENSHOT_USER_NAME}`);
+  if (attachedViewers.length > 0) {
+    console.log(`  Also attached: ${attachedViewers.join(", ")}`);
+  }
+  console.log("  → Sign out, log in as Marie Dupont, open /dashboard.");
+  console.log("\n✓ Screenshot org ready. Run: bun run images:sync");
 }
 
 main().catch((err) => {

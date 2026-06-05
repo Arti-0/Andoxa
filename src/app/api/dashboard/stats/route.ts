@@ -13,7 +13,7 @@ import { isMockStatsEnabled, mockDashboardStats } from "@/lib/mock-stats";
  * GET /api/dashboard/stats
  *
  * Returns aggregated stats for both legacy (v1) and v2 dashboards. Accepts
- * an optional `?period=today|week|month|30d` to scope period-relative metrics
+ * an optional `?period=today|week|month` to scope period-relative metrics
  * (defaults to "month").
  *
  * v1 fields (preserved for backward compat with the legacy /dashboard page):

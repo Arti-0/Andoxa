@@ -8,7 +8,7 @@ import { getDashboardStats } from "../stats/route";
 import { getDashboardFunnel } from "../funnel/route";
 
 /**
- * GET /api/dashboard/team-export?period=today|week|month|30d
+ * GET /api/dashboard/team-export?period=today|week|month
  *
  * Server-side aggregation backing the "Performance de l'équipe" PDF export.
  * Everything is scoped to the caller's workspace (organization_id) — which IS
@@ -142,11 +142,9 @@ function buildPeriodLabel(period: DashboardPeriod, start: Date): string {
       return "Aujourd'hui";
     case "week":
       return "Cette semaine";
-    case "30d":
-      return "30 derniers jours";
     case "month":
     default:
-      return `Mois en cours — ${MONTHS_FR[start.getMonth()]} ${start.getFullYear()}`;
+      return "30 derniers jours";
   }
 }
 
