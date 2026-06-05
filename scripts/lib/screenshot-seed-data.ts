@@ -15,6 +15,52 @@ export const COLLEAGUE_USERS = [
 export const WORKFLOW_RELANCES_ID = "c2222222-2222-4222-8222-222222222222";
 export const WORKFLOW_LINKEDIN_ID = "c3333333-3333-4333-8333-333333333333";
 
+/**
+ * Target dashboard figures for screenshot fixtures.
+ * Period: use « 30 jours » on /dashboard so KPI + funnel align with these counts.
+ */
+export const SCREENSHOT_DASHBOARD_STATS = {
+  priorities: {
+    rdvToday: 6,
+    staleConversations: 23,
+    recentResponses: 18,
+    proposalsToFollow: 9,
+    activeCampaigns: 4,
+  },
+  pipeline: {
+    activeTotal: 172,
+    contacted: 71,
+    qualified: 43,
+    rdv: 32,
+    proposal: 26,
+  },
+  kpi: {
+    rdvBooked: 27,
+    linkedinInvitations: 560,
+    linkedinMessages: 560,
+    linkedinResponses: 78,
+    linkedinAcceptances: 207,
+    closings: 7,
+    closingsTarget: 12,
+  },
+  funnel: {
+    invitations: 560,
+    accepted: 207,
+    conversations: 78,
+    rdvs: 27,
+    closings: 7,
+    avgCycleDays: 8,
+  },
+  activityVolume: {
+    messages: [120, 130, 135, 140, 150, 165, 175, 165] as const,
+    calls: [3, 4, 5, 5, 6, 6, 7, 5] as const,
+    rdv: [4, 5, 6, 6, 7, 7, 8, 7] as const,
+  },
+} as const;
+
+/** Enough prospects for 560 distinct LinkedIn invites + pipeline stages. */
+export const SCREENSHOT_PROSPECT_COUNT = 600;
+
 const BDD_NAMES = [
   "ICP SaaS Q2",
   "Décideurs Enterprise",
@@ -104,38 +150,58 @@ const JOB_TITLES = [
   "Head of Marketing", "VP Business", "SDR Manager", "Sales Ops", "Head of Partnerships",
 ];
 
-// WhatsApp is gated off, so seeded prospects never use it as a source.
 const SOURCES = [
   "manual", "csv", "linkedin_extension", "booking", "inbound", "website",
 ] as const;
 
-/** Weighted status distribution ≈ 220 active pipeline prospects for a 10-person team. */
-const STATUS_POOL: string[] = [
-  ...Array(28).fill("new"),
-  ...Array(24).fill("contacted"),
-  ...Array(42).fill("qualified"),
-  ...Array(32).fill("rdv"),
-  ...Array(26).fill("proposal"),
-  ...Array(22).fill("won"),
-  ...Array(16).fill("lost"),
-];
+const { pipeline, priorities } = SCREENSHOT_DASHBOARD_STATS;
 
-export function buildProspectSeeds(count = 220): ProspectSeed[] {
+/** Ordered status pool — pipeline stages first, then closings / lost / invite overflow. */
+function buildStatusPool(): string[] {
+  const { contacted, qualified, rdv, proposal } = pipeline;
+  const closings = SCREENSHOT_DASHBOARD_STATS.kpi.closings;
+  const overflow = SCREENSHOT_PROSPECT_COUNT - pipeline.activeTotal - closings - 16;
+  return [
+    ...Array(contacted).fill("contacted"),
+    ...Array(qualified).fill("qualified"),
+    ...Array(rdv).fill("rdv"),
+    ...Array(proposal).fill("proposal"),
+    ...Array(closings).fill("won"),
+    ...Array(16).fill("lost"),
+    ...Array(Math.max(0, overflow)).fill("new"),
+  ];
+}
+
+const STATUS_POOL = buildStatusPool();
+
+const PROPOSAL_START = pipeline.contacted + pipeline.qualified + pipeline.rdv;
+const PROPOSAL_END = PROPOSAL_START + pipeline.proposal;
+const WON_START = PROPOSAL_END;
+const WON_END = WON_START + SCREENSHOT_DASHBOARD_STATS.kpi.closings;
+
+export function buildProspectSeeds(count = SCREENSHOT_PROSPECT_COUNT): ProspectSeed[] {
   const seeds: ProspectSeed[] = [];
   for (let i = 0; i < count; i++) {
     const first = FIRST[i % FIRST.length]!;
     const last = LAST[(i * 3 + 7) % LAST.length]!;
     const name = `${first} ${last}`;
     const company = COMPANIES[i % COMPANIES.length]!;
-    const status = STATUS_POOL[i % STATUS_POOL.length]!;
+    const status = STATUS_POOL[i] ?? "new";
     const source = SOURCES[i % SOURCES.length]!;
     const createdDaysAgo = 2 + (i % 150);
-    const lastContactDaysAgo =
-      status === "proposal" && i % 2 === 0
-        ? 3 + (i % 8)
-        : status === "won" || status === "lost"
-          ? 15 + (i % 60)
-          : i % 14;
+
+    let lastContactDaysAgo: number;
+    if (status === "proposal") {
+      const proposalIndex = i - PROPOSAL_START;
+      lastContactDaysAgo =
+        proposalIndex < priorities.proposalsToFollow
+          ? 3 + (proposalIndex % 6)
+          : 0;
+    } else if (status === "won" || status === "lost") {
+      lastContactDaysAgo = 2 + ((i - WON_START) % 20);
+    } else {
+      lastContactDaysAgo = i % 14;
+    }
 
     seeds.push({
       name,
@@ -188,44 +254,118 @@ export function daysAgoInMonth(daysAgoVal: number, hour = 10): string {
 }
 
 /**
- * Funnel card tiers (current month) — each step is a subset of the previous.
- * Counts target realistic conversion for a 10-person sales team.
+ * Week index for activity-volume buckets (dashboard stats route):
+ *   0 = oldest week (~7 weeks ago), 7 = current week.
  */
+export function daysAgoForActivityWeek(weekIndex: number, hour = 11): string {
+  const weeksAgo = 7 - weekIndex;
+  return daysAgo(weeksAgo * 7 + 3, hour);
+}
+
 export const FUNNEL_TIER_COUNTS = {
-  invitations: 186,
-  accepted: 98,
-  conversations: 72,
-  rdvs: 38,
-  closings: 11,
+  invitations: SCREENSHOT_DASHBOARD_STATS.funnel.invitations,
+  accepted: SCREENSHOT_DASHBOARD_STATS.funnel.accepted,
+  conversations: SCREENSHOT_DASHBOARD_STATS.funnel.conversations,
+  rdvs: SCREENSHOT_DASHBOARD_STATS.funnel.rdvs,
+  closings: SCREENSHOT_DASHBOARD_STATS.funnel.closings,
 } as const;
 
-/** workflow_step_completed / linkedin_invite — one row per invited prospect. */
+/**
+ * LinkedIn invites — both activity flavours the dashboard reads:
+ *   • workflow_step_completed / linkedin_invite  → KPI invitations
+ *   • linkedin_invite_sent                       → funnel invitations
+ */
 export function buildFunnelInviteRows(
   orgId: string,
   userId: string,
   prospectIds: string[],
+  jobIds: string[] = [],
 ): Array<Record<string, unknown>> {
   const n = Math.min(FUNNEL_TIER_COUNTS.invitations, prospectIds.length);
   const rows: Array<Record<string, unknown>> = [];
   for (let i = 0; i < n; i++) {
-    const inviteDay = 4 + (i % 24);
+    const inviteDay = 2 + (i % 26);
+    const createdAt = daysAgo(inviteDay, 9 + (i % 7));
+    const pid = prospectIds[i]!;
+    const jobId = jobIds[i % Math.max(1, jobIds.length)];
+
+    rows.push({
+      organization_id: orgId,
+      prospect_id: pid,
+      actor_id: userId,
+      action: "workflow_step_completed",
+      details: { step_type: "linkedin_invite" },
+      created_at: createdAt,
+    });
+    rows.push({
+      organization_id: orgId,
+      prospect_id: pid,
+      actor_id: userId,
+      action: "linkedin_invite_sent",
+      campaign_job_id: jobId ?? null,
+      created_at: createdAt,
+    });
+  }
+  return rows;
+}
+
+/** Outbound LinkedIn messages — denominator for response-rate KPI. */
+export function buildLinkedInMessageRows(
+  orgId: string,
+  userId: string,
+  prospectIds: string[],
+): Array<Record<string, unknown>> {
+  const n = Math.min(
+    SCREENSHOT_DASHBOARD_STATS.kpi.linkedinMessages,
+    prospectIds.length,
+  );
+  const rows: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < n; i++) {
+    const day = 2 + (i % 26);
     rows.push({
       organization_id: orgId,
       prospect_id: prospectIds[i]!,
       actor_id: userId,
       action: "workflow_step_completed",
-      details: { step_type: "linkedin_invite" },
-      created_at: daysAgo(inviteDay, 9 + (i % 7)),
+      details: { step_type: "linkedin_message" },
+      created_at: daysAgo(day, 14 + (i % 5)),
+    });
+  }
+  return rows;
+}
+
+/** Distinct invite acceptances for acceptance-rate KPI. */
+export function buildLinkedInAcceptanceRows(
+  orgId: string,
+  userId: string,
+  prospectIds: string[],
+  jobIds: string[] = [],
+): Array<Record<string, unknown>> {
+  const n = Math.min(
+    SCREENSHOT_DASHBOARD_STATS.kpi.linkedinAcceptances,
+    prospectIds.length,
+  );
+  const rows: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < n; i++) {
+    const day = 3 + (i % 24);
+    rows.push({
+      organization_id: orgId,
+      prospect_id: prospectIds[i]!,
+      actor_id: userId,
+      action: "linkedin_invite_accepted",
+      campaign_job_id: jobIds[i % Math.max(1, jobIds.length)] ?? null,
+      created_at: daysAgo(day, 11 + (i % 6)),
     });
   }
   return rows;
 }
 
 /**
- * Unipile chats aligned with funnel tiers:
- *   • 0..97  — chat opened this month (acceptances) after their invite
- *   • 0..71  — also replied this month (conversations)
- *   • 98+    — stale / out-of-funnel chats for other dashboard widgets
+ * Unipile chats aligned with funnel + cockpit priorities:
+ *   • 0..206  — accepted (chat opened in last 30d)
+ *   • 0..77   — replied in last 30d (funnel conversations)
+ *   • 0..17   — replied in last 7d (priorities « réponses récentes »)
+ *   • 18..40  — replied 10–45d ago (priorities « silence > 7j »)
  */
 export function buildFunnelChatRows(
   orgId: string,
@@ -237,6 +377,9 @@ export function buildFunnelChatRows(
   created_at: string;
   last_inbound_at: string | null;
 }> {
+  const { accepted, conversations } = FUNNEL_TIER_COUNTS;
+  const { recentResponses, staleConversations } = priorities;
+
   const rows: Array<{
     organization_id: string;
     prospect_id: string;
@@ -245,25 +388,32 @@ export function buildFunnelChatRows(
     last_inbound_at: string | null;
   }> = [];
 
-  for (let i = 0; i < FUNNEL_TIER_COUNTS.accepted; i++) {
+  for (let i = 0; i < accepted; i++) {
     const pid = prospectIds[i];
     if (!pid) break;
     const inviteDay = 4 + (i % 24);
     const chatDay = Math.max(1, inviteDay - 2);
-    const hasReply = i < FUNNEL_TIER_COUNTS.conversations;
+    const hasReply = i < conversations;
+    let lastInbound: string | null = null;
+    if (hasReply) {
+      if (i < recentResponses) {
+        lastInbound = daysAgo(i % 6, 15 + (i % 4));
+      } else if (i < recentResponses + staleConversations) {
+        lastInbound = daysAgo(10 + ((i - recentResponses) % 35), 15 + (i % 4));
+      } else {
+        lastInbound = daysAgo(8 + ((i - recentResponses) % 22), 15 + (i % 4));
+      }
+    }
     rows.push({
       organization_id: orgId,
       prospect_id: pid,
       unipile_chat_id: `funnel-chat-${String(i + 1).padStart(3, "0")}`,
       created_at: daysAgo(chatDay, 11 + (i % 5)),
-      last_inbound_at: hasReply
-        ? daysAgo(Math.max(0, chatDay - 3), 15 + (i % 4))
-        : null,
+      last_inbound_at: lastInbound,
     });
   }
 
-  // Non-funnel chats (priorities / messagerie) — replies outside the current month
-  prospectIds.slice(FUNNEL_TIER_COUNTS.invitations).forEach((pid, j) => {
+  prospectIds.slice(accepted).forEach((pid, j) => {
     rows.push({
       organization_id: orgId,
       prospect_id: pid,
@@ -276,19 +426,26 @@ export function buildFunnelChatRows(
   return rows;
 }
 
-/** Events whose end_time falls in the current month — funnel RDV step. */
+/** RDV events for funnel (created_at in window) — excludes today's cockpit RDVs. */
 export function buildFunnelRdvRows(
   orgId: string,
   userId: string,
   prospectIds: string[],
 ): Array<Record<string, unknown>> {
   const rows: Array<Record<string, unknown>> = [];
-  for (let i = 0; i < FUNNEL_TIER_COUNTS.rdvs; i++) {
-    const pid = prospectIds[i];
+  const nonTodayCount = FUNNEL_TIER_COUNTS.rdvs - priorities.rdvToday;
+  const offset = priorities.rdvToday;
+
+  const cycleDays = SCREENSHOT_DASHBOARD_STATS.funnel.avgCycleDays;
+
+  for (let i = 0; i < nonTodayCount; i++) {
+    const prospectIndex = offset + i;
+    const pid = prospectIds[prospectIndex];
     if (!pid) break;
-    const day = 2 + (i % 20);
-    const start = daysAgo(day, 10 + (i % 6));
-    const end = daysAgo(day, 11 + (i % 6));
+    const inviteDay = 2 + (prospectIndex % 26);
+    const rdvDay = Math.max(2, inviteDay - cycleDays);
+    const start = daysAgo(rdvDay, 10 + (i % 6));
+    const end = daysAgo(rdvDay, 11 + (i % 6));
     rows.push({
       organization_id: orgId,
       title: `RDV funnel — ${i + 1}`,
@@ -301,14 +458,15 @@ export function buildFunnelRdvRows(
       is_all_day: false,
       source: "andoxa",
       created_by: userId,
+      created_at: daysAgo(rdvDay + 1, 9),
     });
   }
   return rows;
 }
 
-/** Prospect IDs that should count as funnel closings (won + updated_at this month). */
+/** Won prospects that count as funnel closings (indices in the status pool). */
 export function funnelClosingProspectIds(prospectIds: string[]): string[] {
-  return prospectIds.slice(0, FUNNEL_TIER_COUNTS.closings);
+  return prospectIds.slice(WON_START, WON_END);
 }
 
 /** Outcomes used by /api/call-sessions list stats and the session UI. */
@@ -321,10 +479,6 @@ export type CallSessionProspectSeed = {
   called_at: string | null;
 };
 
-/**
- * Builds call_session_prospects rows with counts that match the campaigns
- * session card (processed / meetings / qualifications / pickup rate).
- */
 export function buildCallSessionProspectRows(
   sessionId: string,
   prospectIds: string[],
@@ -336,7 +490,6 @@ export function buildCallSessionProspectRows(
     callback: number;
     refused: number;
     wrong: number;
-    /** Prospect currently on the line (no outcome yet). */
     calling?: number;
   },
 ): Array<Record<string, unknown>> {
@@ -404,105 +557,134 @@ export const CAMPAIGN_JOB_DEFS = [
   { type: "invite" as const, status: "completed" as const, name: "LinkedIn ABM FinTech", total: 132, processed: 132, success: 89, errors: 3, createdDaysAgo: 72, startedDaysAgo: 71 },
 ];
 
-/** Activity rows for dashboard + campaign KPIs — concentrated in the last 30 days. */
-export function buildBulkActivityRows(
+/**
+ * Activity rows for the 8-week volume chart.
+ * Workflow linkedin_message rows (KPI denominator) also land in this window,
+ * so outbound-only rows are scaled to keep the chart total at 1180.
+ */
+export function buildActivityVolumeMessageRows(
   orgId: string,
   userId: string,
   prospectIds: string[],
-  jobIds: string[],
 ): Array<Record<string, unknown>> {
   const rows: Array<Record<string, unknown>> = [];
+  const weeklyTarget = SCREENSHOT_DASHBOARD_STATS.activityVolume.messages;
+  const kpiMessages = SCREENSHOT_DASHBOARD_STATS.kpi.linkedinMessages;
+  const chartTotal = weeklyTarget.reduce((s, n) => s + n, 0);
+  const outboundTotal = chartTotal - kpiMessages;
+  const scale = outboundTotal / chartTotal;
 
-  // LinkedIn invites + messages (current month heavy)
-  for (let i = 0; i < 160; i++) {
-    const pid = prospectIds[i % prospectIds.length]!;
-    const jobId = jobIds[i % jobIds.length]!;
-    const day = i % 28;
-    rows.push({
-      organization_id: orgId,
-      prospect_id: pid,
-      actor_id: userId,
-      action: "linkedin_invite_sent",
-      campaign_job_id: jobId,
-      created_at: daysAgo(day, 9 + (i % 8)),
-    });
-    if (i % 2 === 0) {
-      rows.push({
-        organization_id: orgId,
-        prospect_id: pid,
-        actor_id: userId,
-        action: "linkedin_invite_accepted",
-        campaign_job_id: jobId,
-        created_at: daysAgo(Math.max(0, day - 1), 11 + (i % 6)),
-      });
-    }
-    if (i % 3 !== 2) {
+  let prospectCursor = 0;
+  let allocated = 0;
+
+  weeklyTarget.forEach((count, weekIndex) => {
+    const weekOutbound =
+      weekIndex === weeklyTarget.length - 1
+        ? outboundTotal - allocated
+        : Math.round(count * scale);
+    allocated += weekOutbound;
+
+    for (let i = 0; i < weekOutbound; i++) {
+      const pid = prospectIds[prospectCursor % prospectIds.length]!;
+      prospectCursor++;
       rows.push({
         organization_id: orgId,
         prospect_id: pid,
         actor_id: userId,
         action: "linkedin_message_outbound",
-        campaign_job_id: jobId,
-        created_at: daysAgo(Math.max(0, day - 2), 14 + (i % 5)),
+        created_at: daysAgoForActivityWeek(weekIndex, 10 + (i % 8)),
       });
     }
-    if (i % 4 === 0) {
+  });
+
+  return rows;
+}
+
+/**
+ * One call_session row = one « appel » on the volume chart.
+ * Returns lightweight session stubs (no prospect rows required).
+ */
+export function buildActivityVolumeCallSessions(): Array<{
+  title: string;
+  createdAt: string;
+}> {
+  const weekly = SCREENSHOT_DASHBOARD_STATS.activityVolume.calls;
+  const sessions: Array<{ title: string; createdAt: string }> = [];
+
+  weekly.forEach((callCount, weekIndex) => {
+    for (let i = 0; i < callCount; i++) {
+      sessions.push({
+        title: `Appel vol. S${weekIndex + 1} #${i + 1}`,
+        createdAt: daysAgoForActivityWeek(weekIndex, 9 + (i % 6)),
+      });
+    }
+  });
+
+  return sessions;
+}
+
+export function buildActivityVolumeBookingRows(
+  orgId: string,
+  userId: string,
+  prospectIds: string[],
+): Array<Record<string, unknown>> {
+  const rows: Array<Record<string, unknown>> = [];
+  const weekly = SCREENSHOT_DASHBOARD_STATS.activityVolume.rdv;
+  let prospectCursor = 200;
+
+  weekly.forEach((count, weekIndex) => {
+    for (let i = 0; i < count; i++) {
+      const pid = prospectIds[prospectCursor % prospectIds.length]!;
+      prospectCursor++;
+      const createdAt = daysAgoForActivityWeek(weekIndex, 12 + (i % 4));
       rows.push({
         organization_id: orgId,
         prospect_id: pid,
-        actor_id: userId,
-        action: "linkedin_message_inbound",
-        campaign_job_id: jobId,
-        created_at: daysAgo(Math.max(0, day - 3), 16 + (i % 4)),
+        booked_by: userId,
+        booked_at: createdAt,
+        scheduled_for: endOfTodayAt(14 + (i % 4)),
+        created_at: createdAt,
       });
     }
-  }
+  });
 
-  // Workflow messages for LinkedIn dashboard block (not funnel invites)
-  for (let i = 0; i < 80; i++) {
-    const pid = prospectIds[(i + 40) % prospectIds.length]!;
+  return rows;
+}
+
+/** Status-change rows for closings KPI + funnel closings step. */
+export function buildClosingActivityRows(
+  orgId: string,
+  userId: string,
+  prospectIds: string[],
+): Array<Record<string, unknown>> {
+  const ids = funnelClosingProspectIds(prospectIds);
+  return ids.map((prospect_id, i) => ({
+    organization_id: orgId,
+    prospect_id,
+    actor_id: userId,
+    action: "status_change",
+    details: { from: "proposal", to: "won" },
+    created_at: daysAgo(4 + (i % 18), 16),
+  }));
+}
+
+/** Residual timeline noise (not counted in dashboard aggregates). */
+export function buildBulkActivityRows(
+  orgId: string,
+  userId: string,
+  prospectIds: string[],
+  _jobIds: string[],
+): Array<Record<string, unknown>> {
+  const rows: Array<Record<string, unknown>> = [];
+
+  for (let i = 0; i < 24; i++) {
+    const pid = prospectIds[(i + 80) % prospectIds.length]!;
     rows.push({
       organization_id: orgId,
       prospect_id: pid,
-      actor_id: userId,
-      action: "workflow_step_completed",
-      details: { step_type: "linkedin_message" },
-      created_at: daysAgo(i % 22, 15 + (i % 5)),
-    });
-  }
-
-  // WhatsApp
-  for (let i = 0; i < 80; i++) {
-    const pid = prospectIds[(i + 40) % prospectIds.length]!;
-    rows.push({
-      organization_id: orgId,
-      prospect_id: pid,
-      actor_id: userId,
-      action: i % 3 === 0 ? "whatsapp_message_inbound" : "whatsapp_message_outbound",
-      created_at: daysAgo(i % 20, 11 + (i % 8)),
-    });
-  }
-
-  // RDV scheduled (activity feed — separate from funnel events)
-  for (let i = 0; i < 48; i++) {
-    rows.push({
-      organization_id: orgId,
-      prospect_id: prospectIds[(i + 10) % prospectIds.length]!,
       actor_id: userId,
       action: "rdv_scheduled",
-      created_at: daysAgo(i % 26, 13 + (i % 4)),
-    });
-  }
-
-  // Closings (activity timeline — funnel closings use prospect.updated_at)
-  for (let i = 0; i < 18; i++) {
-    rows.push({
-      organization_id: orgId,
-      prospect_id: prospectIds[(i + 80) % prospectIds.length]!,
-      actor_id: userId,
-      action: "status_change",
-      details: { from: "proposal", to: "won" },
-      created_at: daysAgo(5 + i * 2, 17),
+      created_at: daysAgo(40 + (i % 30), 13 + (i % 4)),
     });
   }
 
@@ -532,13 +714,13 @@ export function buildEventSlots(
     internal?: boolean;
   }> = [];
 
-  // Today — 5 RDVs
   const todayMeetings = [
     "Démo Andoxa — NovaTech",
     "Discovery — DataFlow",
     "Closing FinEdge",
     "Point ScaleUp",
     "Relance CloudNine",
+    "Suivi GrowthLab",
   ];
   todayMeetings.forEach((title, i) => {
     slots.push({
@@ -551,7 +733,6 @@ export function buildEventSlots(
     });
   });
 
-  // This week — internal only (prospect RDVs live in buildFunnelRdvRows)
   for (let d = 1; d <= 3; d++) {
     slots.push({
       title: `Sync équipe — J${d}`,
@@ -564,7 +745,6 @@ export function buildEventSlots(
     });
   }
 
-  // Internal syncs
   ["Point pipeline", "Weekly sales", "RevOps sync", "Forecast Q2"].forEach(
     (title, i) => {
       slots.push({
@@ -579,7 +759,6 @@ export function buildEventSlots(
     },
   );
 
-  // Past month (done / noshow) — end_time before current month for funnel separation
   for (let i = 0; i < 35; i++) {
     slots.push({
       title: `RDV passé #${i + 1}`,

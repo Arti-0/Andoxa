@@ -153,10 +153,13 @@ export async function proxy(request: NextRequest) {
         }
     );
 
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
+    // getClaims() verifies the JWT locally against the project's asymmetric
+    // signing keys (ES256) — no Auth-server round-trip, unlike getUser(). Token
+    // refresh is still handled by the supabase-ssr client via the cookie
+    // getAll/setAll wiring above, so sessions are kept fresh.
+    const { data: claimsData } = await supabase.auth.getClaims();
+    const userId = claimsData?.claims?.sub ?? null;
+    if (!userId) {
         const loginUrl = createRedirectUrl('/auth/login', request);
         loginUrl.searchParams.set('next', pathname);
         return NextResponse.redirect(loginUrl);
@@ -165,7 +168,7 @@ export async function proxy(request: NextRequest) {
     const { data: profile } = await supabase
         .from('profiles')
         .select('active_organization_id')
-        .eq('id', user.id)
+        .eq('id', userId)
         .maybeSingle();
 
     const profileOrgId = profile?.active_organization_id ?? null;
@@ -190,7 +193,7 @@ export async function proxy(request: NextRequest) {
         supabase
             .from('user_subscriptions')
             .select('plan_id, status')
-            .eq('user_id', user.id)
+            .eq('user_id', userId)
             .in('status', ['active', 'trialing'])
             .maybeSingle(),
     ]);

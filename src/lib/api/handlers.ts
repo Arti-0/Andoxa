@@ -191,21 +191,25 @@ async function buildApiContext(
     ) as unknown as SupabaseClient<Database>;
   }
 
-  const {
-    data: { user },
-    error: authError,
-  } = bearerToken
-    ? await supabase.auth.getUser(bearerToken)
-    : await supabase.auth.getUser();
+  // getClaims() verifies the JWT locally against the project's asymmetric
+  // signing keys — no Auth-server round-trip per request, unlike getUser().
+  // For the bearer (extension) path it verifies the passed token the same way.
+  const { data: claimsData, error: authError } = bearerToken
+    ? await supabase.auth.getClaims(bearerToken)
+    : await supabase.auth.getClaims();
 
-  if (options.requireAuth !== false && (!user || authError)) {
+  const claims = claimsData?.claims ?? null;
+  const userId = claims?.sub ?? null;
+  const email = (claims?.email as string | undefined) ?? "";
+
+  if (options.requireAuth !== false && (!userId || authError)) {
     throw Errors.unauthorized();
   }
 
   let workspace: Workspace | null = null;
 
   // Get workspace if user is authenticated
-  if (user) {
+  if (userId) {
     const { data } = await supabase
       .from("profiles")
       .select(
@@ -227,7 +231,7 @@ async function buildApiContext(
         )
       `
       )
-      .eq("id", user.id)
+      .eq("id", userId)
       .single();
 
     const profile = data as ProfileWithOrg | null;
@@ -270,8 +274,8 @@ async function buildApiContext(
 
   // createServerClient<Database> infers a different schema generic than SupabaseClient<Database>; cast for ApiContext
   return {
-    userId: user?.id ?? "",
-    email: user?.email ?? "",
+    userId: userId ?? "",
+    email,
     workspace,
     workspaceId: workspace?.id ?? null,
     supabase: supabase as unknown as SupabaseClient<Database>,
@@ -308,13 +312,19 @@ export function createApiHandler<T>(
   options: HandlerOptions = {}
 ) {
   return async (request: NextRequest): Promise<NextResponse> => {
+    // Phase timings surfaced via `Server-Timing` so each route's cost breakdown
+    // (auth/context vs rate-limit vs handler) is visible in Chrome DevTools →
+    // Network → Timing, without any extra tooling.
+    const t0 = performance.now();
     try {
       const context = await buildApiContext(request, options);
+      const tCtx = performance.now();
 
       if (context.userId) {
         Sentry.setUser({ id: context.userId, email: context.email });
       }
 
+      let tRl = tCtx;
       if (options.rateLimit !== false) {
         const identifier = context.userId || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
         const rlResponse = await withRateLimit(request, identifier, {
@@ -323,12 +333,24 @@ export function createApiHandler<T>(
           window: options.rateLimit?.window ?? "1 m",
         });
         if (rlResponse) return rlResponse;
+        tRl = performance.now();
       }
 
       const result = await handler(request, context);
+      const tHandler = performance.now();
 
       // Return success response
-      return createResponse(result);
+      const response = createResponse(result);
+      response.headers.set(
+        "Server-Timing",
+        [
+          `ctx;dur=${(tCtx - t0).toFixed(1)}`,
+          `rl;dur=${(tRl - tCtx).toFixed(1)}`,
+          `handler;dur=${(tHandler - tRl).toFixed(1)}`,
+          `total;dur=${(tHandler - t0).toFixed(1)}`,
+        ].join(", ")
+      );
+      return response;
     } catch (error) {
       // Handle known API errors
       if (error instanceof ApiError) {

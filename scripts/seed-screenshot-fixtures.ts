@@ -26,19 +26,26 @@ import { MOCK_PROSPECT_ID } from "./lib/messagerie-mocks";
 import {
   CAMPAIGN_JOB_DEFS,
   COLLEAGUE_USERS,
+  SCREENSHOT_DASHBOARD_STATS,
+  SCREENSHOT_PROSPECT_COUNT,
   WORKFLOW_LINKEDIN_ID,
   WORKFLOW_RELANCES_ID,
   avatarUrl,
+  buildActivityVolumeBookingRows,
+  buildActivityVolumeCallSessions,
+  buildActivityVolumeMessageRows,
   buildBddLists,
   buildBulkActivityRows,
+  buildClosingActivityRows,
   buildEventSlots,
   buildFunnelChatRows,
   buildFunnelInviteRows,
   buildFunnelRdvRows,
+  buildLinkedInAcceptanceRows,
+  buildLinkedInMessageRows,
   buildProspectSeeds,
   buildCallSessionProspectRows,
   daysAgo,
-  endOfTodayAt,
   funnelClosingProspectIds,
   todayAt,
 } from "./lib/screenshot-seed-data";
@@ -253,7 +260,7 @@ async function upsertOrg(userId: string): Promise<void> {
       metadata: {
         dashboard_targets: {
           rdv_per_month: 48,
-          closings_per_month: 14,
+          closings_per_month: SCREENSHOT_DASHBOARD_STATS.kpi.closingsTarget,
         },
       },
     },
@@ -323,7 +330,7 @@ async function seedProspects(
   bddMap: Map<number, string>
 ): Promise<string[]> {
   const ids: string[] = [];
-  const seeds = buildProspectSeeds(220);
+  const seeds = buildProspectSeeds(SCREENSHOT_PROSPECT_COUNT);
 
   const messagerieRow = {
     id: MOCK_PROSPECT_ID,
@@ -403,12 +410,13 @@ async function seedFunnelRdvs(userId: string, prospectIds: string[]): Promise<vo
 async function seedFunnelClosings(prospectIds: string[]): Promise<void> {
   const ids = funnelClosingProspectIds(prospectIds);
   for (let i = 0; i < ids.length; i++) {
+    const closedAt = daysAgo(4 + (i % 18), 14);
     const { error } = await admin
       .from("prospects")
       .update({
         status: "won",
-        updated_at: daysAgo(2 + (i % 20), 14),
-        last_contact: daysAgo(2 + (i % 20), 14),
+        updated_at: closedAt,
+        last_contact: closedAt,
       })
       .eq("id", ids[i]!);
     if (error) throw new Error(`funnel closing prospect — ${error.message}`);
@@ -420,7 +428,7 @@ async function seedWorkflowRuns(
   prospectIds: string[],
   bddMap: Map<number, string>
 ): Promise<void> {
-  const seeds = buildProspectSeeds(220);
+  const seeds = buildProspectSeeds(SCREENSHOT_PROSPECT_COUNT);
   const steps = WORKFLOW_DEF_SNAPSHOT.steps;
   const bddIds = [...bddMap.values()];
   const bddFor = (i: number) => bddIds[i % bddIds.length] ?? null;
@@ -675,35 +683,50 @@ async function seedAllActivity(
   jobIds: string[]
 ): Promise<void> {
   const rows = [
-    ...buildFunnelInviteRows(SCREENSHOT_ORG_ID, userId, prospectIds),
-    ...buildBulkActivityRows(
-      SCREENSHOT_ORG_ID,
-      userId,
-      prospectIds,
-      jobIds
-    ),
+    ...buildFunnelInviteRows(SCREENSHOT_ORG_ID, userId, prospectIds, jobIds),
+    ...buildLinkedInMessageRows(SCREENSHOT_ORG_ID, userId, prospectIds),
+    ...buildLinkedInAcceptanceRows(SCREENSHOT_ORG_ID, userId, prospectIds, jobIds),
+    ...buildActivityVolumeMessageRows(SCREENSHOT_ORG_ID, userId, prospectIds),
+    ...buildClosingActivityRows(SCREENSHOT_ORG_ID, userId, prospectIds),
+    ...buildBulkActivityRows(SCREENSHOT_ORG_ID, userId, prospectIds, jobIds),
   ];
 
-  const { data: wonProspects } = await admin
-    .from("prospects")
-    .select("id")
-    .eq("organization_id", SCREENSHOT_ORG_ID)
-    .eq("status", "won");
-
-  const closingIds = new Set(funnelClosingProspectIds(prospectIds));
-  for (const [i, p] of (wonProspects ?? []).entries()) {
-    if (closingIds.has(p.id)) continue;
-    rows.push({
-      organization_id: SCREENSHOT_ORG_ID,
-      prospect_id: p.id,
-      actor_id: userId,
-      action: "status_change",
-      details: { from: "proposal", to: "won" },
-      created_at: daysAgo(2 + (i % 24), 16),
-    });
-  }
-
   await insertInBatches("prospect_activity", rows, 100);
+}
+
+async function seedActivityVolumeBookings(
+  userId: string,
+  prospectIds: string[]
+): Promise<void> {
+  const rows = buildActivityVolumeBookingRows(
+    SCREENSHOT_ORG_ID,
+    userId,
+    prospectIds,
+  );
+  for (let i = 0; i < rows.length; i += 40) {
+    const batch = rows.slice(i, i + 40);
+    const { error } = await admin.from("quick_bookings").insert(batch);
+    if (error) throw new Error(`activity volume quick_bookings — ${error.message}`);
+  }
+}
+
+async function seedActivityVolumeCallSessions(userId: string): Promise<void> {
+  const sessions = buildActivityVolumeCallSessions();
+  for (const session of sessions) {
+    const { error } = await admin.from("call_sessions").insert({
+      organization_id: SCREENSHOT_ORG_ID,
+      created_by: userId,
+      title: session.title,
+      status: "completed",
+      script_template: "Script volume activité",
+      created_at: session.createdAt,
+      ended_at: session.createdAt,
+      total_duration_s: 900,
+    });
+    if (error) {
+      throw new Error(`activity volume call session — ${error.message}`);
+    }
+  }
 }
 
 async function seedCallSessions(
@@ -978,6 +1001,13 @@ async function seedCalendarEvents(
     const end = new Date(start);
     end.setHours(start.getHours() + 1);
 
+    const eventCreatedAt =
+      slot.dayOffset === 0
+        ? daysAgo(1, 8 + (idx % 4))
+        : slot.dayOffset < 0
+          ? daysAgo(-slot.dayOffset + 2, 9)
+          : daysAgo(slot.dayOffset + 1, 9);
+
     await admin.from("events").insert({
       organization_id: SCREENSHOT_ORG_ID,
       title: slot.title,
@@ -990,24 +1020,14 @@ async function seedCalendarEvents(
       is_all_day: false,
       source: "andoxa",
       created_by: slot.owner,
+      created_at: eventCreatedAt,
       attendee_user_ids: slot.attendees,
       guest_name: slot.internal
         ? null
-        : buildProspectSeeds(220)[idx % 220]?.name ?? null,
+        : buildProspectSeeds(SCREENSHOT_PROSPECT_COUNT)[idx % SCREENSHOT_PROSPECT_COUNT]?.name ?? null,
     });
   }
 
-  for (let i = 0; i < 40; i++) {
-    const { error } = await admin.from("quick_bookings").insert({
-      organization_id: SCREENSHOT_ORG_ID,
-      prospect_id: prospectIds[i % prospectIds.length]!,
-      booked_by: userId,
-      booked_at: daysAgo(5 + (i % 25)),
-      scheduled_for: endOfTodayAt(14 + (i % 4)),
-      created_at: daysAgo(5 + (i % 25)),
-    });
-    if (error) throw new Error(`quick_bookings — ${error.message}`);
-  }
 }
 
 function writeState(userId: string): void {
@@ -1055,6 +1075,8 @@ async function main(): Promise<void> {
   await seedFunnelRdvs(userId, prospectIds);
   await seedCallSessions(userId, prospectIds);
   await seedCalendarEvents(userId, colleagueIds, prospectIds);
+  await seedActivityVolumeBookings(userId, prospectIds);
+  await seedActivityVolumeCallSessions(userId);
 
   writeState(userId);
   console.log(`\n✓ Seeded ${prospectIds.length} prospects, ${jobIds.length} campaigns`);

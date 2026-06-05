@@ -1,14 +1,19 @@
 /**
  * Redis Cache Layer
- * 
+ *
  * Provides caching for frequently accessed data to reduce Supabase queries.
- * Falls back gracefully when Redis is unavailable.
- * 
+ * Backed by Upstash Redis over HTTP/REST — stateless and connectionless, which
+ * is the correct client for Vercel serverless / Fluid Compute (no TCP connection
+ * to establish per cold start). Falls back to an in-memory cache when Upstash
+ * credentials are absent (local dev).
+ *
  * Usage:
  * ```ts
  * const data = await cache.wrap('key', () => fetchData(), { ttl: 60 });
  * ```
  */
+
+import { Redis } from "@upstash/redis";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -125,40 +130,18 @@ class MemoryCache implements CacheClient {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Redis Cache (production)
+// Upstash Redis Cache (production) — HTTP/REST, stateless, serverless-friendly
 // ─────────────────────────────────────────────────────────────────────────────
 
-class RedisCache implements CacheClient {
-  private client: any; // Redis client type
+class UpstashCache implements CacheClient {
+  private client: Redis;
   private prefix: string;
-  private isConnected = false;
 
-  constructor(redisUrl: string, prefix = "andoxa:") {
+  constructor(url: string, token: string, prefix = "andoxa:") {
     this.prefix = prefix;
-    this.initializeClient(redisUrl);
-  }
-
-  private async initializeClient(redisUrl: string) {
-    try {
-      // Dynamic import to avoid issues when Redis is not needed
-      const { createClient } = await import("redis");
-      this.client = createClient({ url: redisUrl });
-
-      this.client.on("error", (err: Error) => {
-        console.error("[Redis] Error:", err);
-        this.isConnected = false;
-      });
-
-      this.client.on("connect", () => {
-        console.log("[Redis] Connected");
-        this.isConnected = true;
-      });
-
-      await this.client.connect();
-    } catch (error) {
-      console.warn("[Redis] Failed to connect, using memory cache:", error);
-      this.isConnected = false;
-    }
+    // Stateless REST client — no connection lifecycle, safe to construct once
+    // and reuse across invocations.
+    this.client = new Redis({ url, token });
   }
 
   private getKey(key: string): string {
@@ -166,38 +149,30 @@ class RedisCache implements CacheClient {
   }
 
   async get<T>(key: string): Promise<T | null> {
-    if (!this.isConnected) return null;
-
     try {
-      const fullKey = this.getKey(key);
-      const value = await this.client.get(fullKey);
-      return value ? JSON.parse(value) : null;
+      // @upstash/redis transparently (de)serializes JSON values.
+      const value = await this.client.get<T>(this.getKey(key));
+      return value ?? null;
     } catch (error) {
-      console.error("[Redis] Get error:", error);
+      console.error("[Cache] Get error:", error);
       return null;
     }
   }
 
   async set<T>(key: string, value: T, options?: CacheOptions): Promise<void> {
-    if (!this.isConnected) return;
-
     try {
-      const fullKey = this.getKey(key);
       const ttl = options?.ttl ?? 300;
-      await this.client.setEx(fullKey, ttl, JSON.stringify(value));
+      await this.client.set(this.getKey(key), value, { ex: ttl });
     } catch (error) {
-      console.error("[Redis] Set error:", error);
+      console.error("[Cache] Set error:", error);
     }
   }
 
   async del(key: string): Promise<void> {
-    if (!this.isConnected) return;
-
     try {
-      const fullKey = this.getKey(key);
-      await this.client.del(fullKey);
+      await this.client.del(this.getKey(key));
     } catch (error) {
-      console.error("[Redis] Del error:", error);
+      console.error("[Cache] Del error:", error);
     }
   }
 
@@ -217,16 +192,26 @@ class RedisCache implements CacheClient {
   }
 
   async invalidatePattern(pattern: string): Promise<void> {
-    if (!this.isConnected) return;
-
     try {
       const fullPattern = this.getKey(pattern);
-      const keys = await this.client.keys(fullPattern);
-      if (keys.length > 0) {
-        await this.client.del(keys);
+      // SCAN instead of KEYS: non-blocking, O(1) per call. KEYS is O(N) over the
+      // whole keyspace and is discouraged in production.
+      let cursor = "0";
+      const toDelete: string[] = [];
+      do {
+        const [next, batch] = await this.client.scan(cursor, {
+          match: fullPattern,
+          count: 100,
+        });
+        cursor = next;
+        if (batch.length > 0) toDelete.push(...batch);
+      } while (cursor !== "0");
+
+      if (toDelete.length > 0) {
+        await this.client.del(...toDelete);
       }
     } catch (error) {
-      console.error("[Redis] InvalidatePattern error:", error);
+      console.error("[Cache] InvalidatePattern error:", error);
     }
   }
 }
@@ -240,12 +225,13 @@ let cacheInstance: CacheClient | null = null;
 export function createCache(): CacheClient {
   if (cacheInstance) return cacheInstance;
 
-  const redisUrl = process.env.REDIS_URL;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
 
-  if (redisUrl) {
-    cacheInstance = new RedisCache(redisUrl);
+  if (url && token) {
+    cacheInstance = new UpstashCache(url, token);
   } else {
-    console.log("[Cache] No REDIS_URL, using memory cache");
+    console.log("[Cache] No Upstash credentials, using in-memory cache");
     cacheInstance = new MemoryCache();
   }
 
