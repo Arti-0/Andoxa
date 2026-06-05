@@ -2,6 +2,10 @@ import { createApiHandler, Errors, type ApiContext } from "@/lib/api";
 import { isMockStatsEnabled, mockDashboardPriorities } from "@/lib/mock-stats";
 import { todayBoundsIso } from "@/lib/dashboard/timezone";
 import { isFeatureEnabled } from "@/lib/config/feature-flags";
+import {
+  isScreenshotWorkspace,
+  screenshotPriorities,
+} from "@/lib/dashboard/screenshot-stats";
 
 /**
  * GET /api/dashboard/priorities
@@ -53,6 +57,8 @@ export async function getDashboardPriorities(
   ctx: ApiContext,
 ): Promise<PrioritiesPayload> {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
+  // Dedicated marketing-screenshot org: serve fixed figures (localhost + prod).
+  if (isScreenshotWorkspace(ctx.workspaceId)) return screenshotPriorities();
   if (isMockStatsEnabled()) return mockDashboardPriorities();
 
   // "Today" boundaries computed in the org's display timezone (defaults to

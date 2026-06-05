@@ -330,6 +330,26 @@ async function attachSeedViewers(): Promise<string[]> {
   return attached;
 }
 
+/**
+ * The 10 default pipeline statuses (mirrors the org-insert trigger in
+ * 20260521120000 and the reconcile migration). The seed UPSERTS the org rather
+ * than INSERTing it, so the `AFTER INSERT` seed trigger never fires on re-seed —
+ * without this the screenshot org drifts to an incomplete catalogue (e.g. the
+ * missing `rdv_realise` we hit in prod).
+ */
+const DEFAULT_PROSPECT_STATUSES = [
+  { key: "new", name: "Nouveau", color: "#94a3b8", sort_order: 10 },
+  { key: "contacted", name: "Contacté", color: "#60a5fa", sort_order: 20 },
+  { key: "qualified", name: "Qualifié", color: "#2563eb", sort_order: 30 },
+  { key: "rdv", name: "RDV", color: "#0ea5e9", sort_order: 40 },
+  { key: "noshow", name: "No-show", color: "#f97316", sort_order: 42 },
+  { key: "rdv_realise", name: "RDV réalisé", color: "#22c55e", sort_order: 45 },
+  { key: "rdv_replanifier", name: "RDV à replanifier", color: "#0ea5e9", sort_order: 48 },
+  { key: "proposal", name: "Proposition", color: "#a855f7", sort_order: 50 },
+  { key: "won", name: "Signé", color: "#16a34a", sort_order: 60 },
+  { key: "lost", name: "Perdu", color: "#ef4444", sort_order: 70 },
+] as const;
+
 async function upsertOrg(userId: string): Promise<void> {
   const trialEnds = new Date();
   trialEnds.setFullYear(trialEnds.getFullYear() + 1);
@@ -376,6 +396,35 @@ async function upsertOrg(userId: string): Promise<void> {
       active_organization_id: SCREENSHOT_ORG_ID,
     },
     { onConflict: "id" }
+  );
+
+  // Explicit status catalogue — the insert trigger doesn't fire on org upsert,
+  // so seed the full default set ourselves. Idempotent on (organization_id, key):
+  // re-runs refresh name/color/sort_order and backfill any missing status.
+  const { error: statusErr } = await admin.from("prospect_statuses").upsert(
+    DEFAULT_PROSPECT_STATUSES.map((s) => ({
+      organization_id: SCREENSHOT_ORG_ID,
+      key: s.key,
+      name: s.name,
+      color: s.color,
+      sort_order: s.sort_order,
+    })),
+    { onConflict: "organization_id,key" }
+  );
+  if (statusErr) {
+    throw new Error(`prospect_statuses upsert — ${statusErr.message}`);
+  }
+}
+
+/** Map status key → prospect_statuses.id for the screenshot org. */
+async function loadStatusIdMap(): Promise<Map<string, string>> {
+  const { data, error } = await admin
+    .from("prospect_statuses")
+    .select("id, key")
+    .eq("organization_id", SCREENSHOT_ORG_ID);
+  if (error) throw new Error(`load prospect_statuses — ${error.message}`);
+  return new Map(
+    (data ?? []).map((r: { id: string; key: string }) => [r.key, r.id])
   );
 }
 
@@ -446,10 +495,12 @@ async function seedBddLists(userId: string): Promise<Map<number, string>> {
 
 async function seedProspects(
   userId: string,
-  bddMap: Map<number, string>
+  bddMap: Map<number, string>,
+  statusMap: Map<string, string>
 ): Promise<string[]> {
   const ids: string[] = [];
   const seeds = buildProspectSeeds(SCREENSHOT_PROSPECT_COUNT);
+  const statusIdFor = (key: string) => statusMap.get(key) ?? null;
 
   const messagerieRow = {
     id: MOCK_PROSPECT_ID,
@@ -462,6 +513,7 @@ async function seedProspects(
     phone: "+33601020304",
     linkedin: "https://linkedin.com/in/sophiemartin",
     status: "qualified",
+    status_id: statusIdFor("qualified"),
     source: "linkedin_extension",
     created_at: daysAgo(45),
     updated_at: daysAgo(1),
@@ -489,6 +541,7 @@ async function seedProspects(
       email: `${slug}@${p.company.toLowerCase().replace(/\s+/g, "")}.fr`,
       phone: `+336${String(10000000 + bulkRows.length).slice(-8)}`,
       status: p.status,
+      status_id: statusIdFor(p.status),
       source: p.source,
       bdd_id: p.bddIndex != null ? bddMap.get(p.bddIndex) ?? null : null,
       created_at: daysAgo(p.createdDaysAgo),
@@ -526,14 +579,19 @@ async function seedFunnelRdvs(userId: string, prospectIds: string[]): Promise<vo
   if (error) throw new Error(`funnel RDV events — ${error.message}`);
 }
 
-async function seedFunnelClosings(prospectIds: string[]): Promise<void> {
+async function seedFunnelClosings(
+  prospectIds: string[],
+  statusMap: Map<string, string>
+): Promise<void> {
   const ids = funnelClosingProspectIds(prospectIds);
+  const wonStatusId = statusMap.get("won") ?? null;
   for (let i = 0; i < ids.length; i++) {
     const closedAt = daysAgo(4 + (i % 18), 14);
     const { error } = await admin
       .from("prospects")
       .update({
         status: "won",
+        status_id: wonStatusId,
         updated_at: closedAt,
         last_contact: closedAt,
       })
@@ -1182,9 +1240,10 @@ async function main(): Promise<void> {
   await upsertOrg(userId);
   await wipeOrgData(SCREENSHOT_ORG_ID);
 
+  const statusMap = await loadStatusIdMap();
   const bddMap = await seedBddLists(userId);
-  const prospectIds = await seedProspects(userId, bddMap);
-  await seedFunnelClosings(prospectIds);
+  const prospectIds = await seedProspects(userId, bddMap, statusMap);
+  await seedFunnelClosings(prospectIds, statusMap);
   await seedUnipileChats(prospectIds);
   await seedWorkflows(userId);
   await seedWorkflowRuns(userId, prospectIds, bddMap);

@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { createApiHandler, Errors, parseBody } from "@/lib/api";
 import { z } from "zod";
-import { deleteProspectStatus } from "@/lib/prospects/status-delete";
+import {
+  deleteProspectStatus,
+  StatusActionError,
+} from "@/lib/prospects/status-delete";
 import { invalidate } from "@/lib/cache/redis";
 
 const UpdateStatusSchema = z.object({
@@ -106,19 +109,20 @@ export const DELETE = createApiHandler(async (req: NextRequest, ctx) => {
     await invalidate.prospects(ctx.workspaceId);
     return { success: true, ...result };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Suppression impossible";
-    if (
-      message.includes("remplacement") ||
-      message.includes("transférer") ||
-      message.includes("différent") ||
-      message.includes("introuvable")
-    ) {
-      throw Errors.validation({ _: message });
+    // User-actionable problems (missing / identical replacement status, no
+    // replacement chosen) carry a clean French message — surface it as a 400
+    // so the dialog can guide the user. `badRequest` puts the text in
+    // `error.message`, which is what the client reads.
+    if (err instanceof StatusActionError) {
+      throw Errors.badRequest(err.message);
     }
-    // Surface the real cause instead of an opaque "Failed to delete status" —
-    // a swallowed DB error (e.g. a constraint from migration drift) made this
-    // impossible to diagnose.
+    // Anything else is an unexpected server/DB fault (e.g. a constraint from
+    // migration drift). Log the full detail — the wrapped Postgres code/message
+    // from `toDbError` — for Sentry, but show the user a clean line instead of
+    // raw SQL like "column prospects.status_id does not exist [42703]".
     console.error("[prospect-statuses DELETE] failed:", err);
-    throw Errors.internal(`Suppression du statut impossible : ${message}`);
+    throw Errors.internal(
+      "La suppression du statut a échoué. Réessayez ; si le problème persiste, contactez le support.",
+    );
   }
 });

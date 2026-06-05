@@ -8,6 +8,10 @@ import {
 } from "@/lib/dashboard/period";
 import { readDashboardTargets } from "@/lib/dashboard/targets";
 import { isMockStatsEnabled, mockDashboardStats } from "@/lib/mock-stats";
+import {
+  isScreenshotWorkspace,
+  screenshotStats,
+} from "@/lib/dashboard/screenshot-stats";
 
 /**
  * GET /api/dashboard/stats
@@ -64,6 +68,7 @@ export async function getDashboardStats(
     throw Errors.badRequest("Workspace required");
   }
 
+  if (isScreenshotWorkspace(ctx.workspaceId)) return screenshotStats(period);
   if (isMockStatsEnabled()) return mockDashboardStats(period);
 
   const { current, previous } = getPeriodPair(period);

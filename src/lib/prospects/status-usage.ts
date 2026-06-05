@@ -33,6 +33,31 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
 
+/**
+ * Supabase/PostgREST errors are plain objects (`{ message, code, details,
+ * hint }`), NOT `Error` instances. Throwing them raw makes every downstream
+ * `err instanceof Error ? err.message : "…"` collapse to the generic fallback,
+ * which is exactly why a status delete could only ever say "Suppression
+ * impossible" with no cause. Wrap them so the real Postgres code + message
+ * survive the throw (e.g. `23503` FK violation, `23514` CHECK violation).
+ */
+export function toDbError(context: string, raw: unknown): Error {
+  if (raw instanceof Error) return raw;
+  const e = (raw ?? {}) as {
+    message?: string;
+    code?: string;
+    details?: string;
+    hint?: string;
+  };
+  const bits = [
+    e.message,
+    e.code ? `[${e.code}]` : null,
+    e.details,
+    e.hint,
+  ].filter(Boolean);
+  return new Error(bits.length ? `${context} : ${bits.join(" ")}` : context);
+}
+
 function countCrmStepsForStatus(definition: unknown, statusKey: string): number {
   if (!isRecord(definition)) return 0;
   const steps = definition.steps;
@@ -91,7 +116,7 @@ export async function countProspectsOnStatus(
     .eq("organization_id", organizationId)
     .is("deleted_at", null)
     .or(`status_id.eq.${statusId},status.eq.${statusKey}`);
-  if (error) throw error;
+  if (error) throw toDbError("Comptage des prospects échoué", error);
   return count ?? 0;
 }
 
@@ -117,7 +142,7 @@ export async function getStatusUsage(
       "id, name, trigger_kind, trigger_config, draft_definition, published_definition",
     )
     .eq("organization_id", organizationId);
-  if (wfError) throw wfError;
+  if (wfError) throw toDbError("Lecture des workflows échouée", wfError);
 
   const usageMap = new Map<string, StatusWorkflowUsage>();
 

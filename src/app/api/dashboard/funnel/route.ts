@@ -7,6 +7,10 @@ import {
 } from "@/lib/dashboard/period";
 import { readDashboardTargets } from "@/lib/dashboard/targets";
 import { isMockStatsEnabled, mockDashboardFunnel } from "@/lib/mock-stats";
+import {
+  isScreenshotWorkspace,
+  screenshotFunnel,
+} from "@/lib/dashboard/screenshot-stats";
 
 /**
  * GET /api/dashboard/funnel?period=today|week|month
@@ -171,6 +175,7 @@ export async function getDashboardFunnel(
   period: DashboardPeriod,
 ): Promise<FunnelResponse> {
   if (!ctx.workspaceId) throw Errors.badRequest("Workspace required");
+  if (isScreenshotWorkspace(ctx.workspaceId)) return screenshotFunnel(period);
   if (isMockStatsEnabled()) return mockDashboardFunnel(period);
 
   const { current, previous } = getPeriodPair(period);

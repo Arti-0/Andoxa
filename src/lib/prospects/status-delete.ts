@@ -5,7 +5,22 @@ import {
   getStatusUsage,
   rewriteDefinitionStatusKey,
   rewriteTriggerConfigStatusId,
+  toDbError,
 } from "./status-usage";
+
+/**
+ * A user-actionable problem with the delete/transfer request itself — a missing
+ * status, or a replacement that's missing/identical. The message is clean,
+ * French, and safe to show end users (the route surfaces it as a 400). Distinct
+ * from the wrapped Postgres errors from `toDbError`, which are logged but never
+ * shown raw.
+ */
+export class StatusActionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StatusActionError";
+  }
+}
 
 export async function transferProspectsAndRewriteWorkflows(
   supabase: SupabaseClient,
@@ -14,17 +29,19 @@ export async function transferProspectsAndRewriteWorkflows(
   toStatusId: string,
 ): Promise<{ prospectsUpdated: number; workflowsUpdated: number }> {
   if (fromStatusId === toStatusId) {
-    throw new Error("Le statut de remplacement doit être différent");
+    throw new StatusActionError("Le statut de remplacement doit être différent");
   }
 
   const [fromStatus, toStatus] = await Promise.all([
     getProspectStatusRow(supabase, organizationId, fromStatusId),
     getProspectStatusRow(supabase, organizationId, toStatusId),
   ]);
-  if (!fromStatus) throw new Error("Statut introuvable");
-  if (!toStatus) throw new Error("Statut de remplacement introuvable");
+  if (!fromStatus) throw new StatusActionError("Statut introuvable");
+  if (!toStatus) {
+    throw new StatusActionError("Statut de remplacement introuvable");
+  }
   if (toStatus.id === fromStatus.id) {
-    throw new Error("Le statut de remplacement doit être différent");
+    throw new StatusActionError("Le statut de remplacement doit être différent");
   }
 
   const prospectCount = await countProspectsOnStatus(
@@ -45,10 +62,13 @@ export async function transferProspectsAndRewriteWorkflows(
         updated_at: new Date().toISOString(),
       })
       .eq("organization_id", organizationId)
-      .is("deleted_at", null)
+      // Intentionally NOT filtering on deleted_at: soft-deleted prospects also
+      // hold a status_id/status referencing this row. We must reassign them too,
+      // otherwise their `status` text is stranded on a now-deleted key (status_id
+      // is FK ON DELETE SET NULL, but the text column has no such safety net).
       .or(`status_id.eq.${fromStatusId},status.eq.${fromStatus.key}`)
       .select("id");
-    if (error) throw error;
+    if (error) throw toDbError("Transfert des prospects échoué", error);
     prospectsUpdated = (data ?? []).length;
   }
 
@@ -59,7 +79,7 @@ export async function transferProspectsAndRewriteWorkflows(
       "id, trigger_kind, trigger_config, draft_definition, published_definition",
     )
     .eq("organization_id", organizationId);
-  if (wfError) throw wfError;
+  if (wfError) throw toDbError("Lecture des workflows échouée", wfError);
 
   let workflowsUpdated = 0;
   const workflowFailures: string[] = [];
@@ -133,14 +153,14 @@ export async function deleteProspectStatus(
   transferToId?: string | null,
 ): Promise<{ prospectsUpdated: number; workflowsUpdated: number }> {
   const usage = await getStatusUsage(supabase, organizationId, statusId);
-  if (!usage) throw new Error("Statut introuvable");
+  if (!usage) throw new StatusActionError("Statut introuvable");
 
   const needsTransfer =
     usage.prospectCount > 0 || usage.workflows.length > 0;
 
   if (needsTransfer) {
     if (!transferToId) {
-      throw new Error(
+      throw new StatusActionError(
         "Choisissez un statut de remplacement pour transférer les prospects et mettre à jour les workflows.",
       );
     }
@@ -157,7 +177,7 @@ export async function deleteProspectStatus(
       .delete()
       .eq("id", statusId)
       .eq("organization_id", organizationId);
-    if (error) throw error;
+    if (error) throw toDbError("Suppression du statut en base échouée", error);
     return result;
   }
 
@@ -167,6 +187,6 @@ export async function deleteProspectStatus(
     .delete()
     .eq("id", statusId)
     .eq("organization_id", organizationId);
-  if (error) throw error;
+  if (error) throw toDbError("Suppression du statut en base échouée", error);
   return { prospectsUpdated: 0, workflowsUpdated: 0 };
 }
