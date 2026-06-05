@@ -16,7 +16,7 @@ export async function GET() {
     );
   }
 
-  const { data: profile, error: profileErr } = await supabase
+  const { data: profile } = await supabase
     .from("profiles")
     .select(
       "id, email, full_name, avatar_url, linkedin_url, linkedin_auto_enrich, active_organization_id, metadata, calendar_preferences"
@@ -32,11 +32,6 @@ export async function GET() {
   } as const;
 
   if (!profile?.active_organization_id) {
-    console.log("[api/workspace/me] no active_organization_id", {
-      userId: user.id,
-      profileFound: !!profile,
-      profileErr: profileErr ?? null,
-    });
     return NextResponse.json(
       {
         user: userWithIdentities,
@@ -70,18 +65,6 @@ export async function GET() {
       .in("status", ["active", "trialing"])
       .maybeSingle(),
   ]);
-
-  console.log("[api/workspace/me] resolved", {
-    userId: user.id,
-    activeOrgId: profile.active_organization_id,
-    workspaceFound: !!workspaceRes.data,
-    workspaceErr: workspaceRes.error ?? null,
-    workspaceName: workspaceRes.data?.name ?? null,
-    workspacePlan: workspaceRes.data?.plan ?? null,
-    membersCount: membersRes.data?.length ?? 0,
-    membersErr: membersRes.error ?? null,
-    subscriptionFound: !!subscriptionRes.data,
-  });
 
   return NextResponse.json(
     {

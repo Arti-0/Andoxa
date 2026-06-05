@@ -520,6 +520,38 @@ async function runDashboardExport(opts: {
   }
 }
 
+/** Report kind chosen in the export menu. */
+export type ExportKind = "dashboard" | "team";
+
+/**
+ * Team performance export — same detached-job pattern as the dashboard export.
+ * Pulls the org-wide (team) aggregation for the chosen period and renders the
+ * "Performance de l'équipe" PDF.
+ */
+async function runTeamExport(opts: {
+  apiPeriod: ApiPeriod;
+  orientation: PdfOrientation;
+}): Promise<void> {
+  if (dashboardExportInFlight) {
+    sonnerToast.info("Un export est déjà en cours…");
+    return;
+  }
+  dashboardExportInFlight = true;
+  const toastId = sonnerToast.loading("Génération du PDF équipe…");
+  try {
+    const { exportTeamPerformancePdf } = await import("./team-performance-pdf");
+    await exportTeamPerformancePdf(opts);
+    sonnerToast.success("Export PDF téléchargé", { id: toastId });
+  } catch (e) {
+    console.error("Team performance PDF export failed", e);
+    sonnerToast.error("L'export a échoué. Réessaie dans un instant.", {
+      id: toastId,
+    });
+  } finally {
+    dashboardExportInFlight = false;
+  }
+}
+
 /* ============================================================
    PAGE HEADER
    ============================================================ */
@@ -558,12 +590,13 @@ function PageHeader({
   avatarUrl?: string | null;
   period: Period;
   setPeriod: (p: Period) => void;
-  onExport: (p: Period, orientation: PdfOrientation) => void;
+  onExport: (p: Period, orientation: PdfOrientation, kind: ExportKind) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportOrientation, setExportOrientation] =
     useState<PdfOrientation>("portrait");
+  const [exportKind, setExportKind] = useState<ExportKind>("dashboard");
   const ref = useRef<HTMLDivElement | null>(null);
   const exportRef = useRef<HTMLDivElement | null>(null);
   const today = useMemo(() => new Date(), []);
@@ -669,6 +702,30 @@ function PageHeader({
           {exportOpen && (
             <div className="absolute right-0 mt-1.5 w-56 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-md shadow-lg p-1 z-30">
               <div className="px-2.5 py-1.5 text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500 dark:text-zinc-400">
+                Type de rapport
+              </div>
+              <div className="flex gap-1 px-1.5 pb-1.5">
+                {(
+                  [
+                    { key: "dashboard", label: "Tableau de bord" },
+                    { key: "team", label: "Performance équipe" },
+                  ] as const
+                ).map((t) => (
+                  <button
+                    key={t.key}
+                    onClick={() => setExportKind(t.key)}
+                    className={`flex-1 px-2 py-1 text-[11.5px] rounded transition-colors ${
+                      exportKind === t.key
+                        ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 font-medium"
+                        : "text-slate-600 hover:bg-slate-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <div className="my-1 border-t border-slate-100 dark:border-zinc-800" />
+              <div className="px-2.5 py-1.5 text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500 dark:text-zinc-400">
                 Orientation
               </div>
               <div className="flex gap-1 px-1.5 pb-1.5">
@@ -700,7 +757,7 @@ function PageHeader({
                   key={p}
                   onClick={() => {
                     setExportOpen(false);
-                    onExport(p, exportOrientation);
+                    onExport(p, exportOrientation, exportKind);
                   }}
                   className="w-full text-left px-2.5 py-1.5 text-[12.5px] rounded transition-colors flex items-center justify-between text-slate-700 hover:bg-slate-50 dark:text-zinc-300 dark:hover:bg-zinc-800"
                 >
@@ -1969,7 +2026,18 @@ export function DashboardContent() {
 
   // Fire-and-forget: the export runs as a detached module-level job with its
   // own toast feedback, so it survives navigation and never disables the button.
-  const handleExport = (chosenPeriod: Period, orientation: PdfOrientation) => {
+  const handleExport = (
+    chosenPeriod: Period,
+    orientation: PdfOrientation,
+    kind: ExportKind,
+  ) => {
+    if (kind === "team") {
+      void runTeamExport({
+        apiPeriod: PERIOD_TO_API[chosenPeriod],
+        orientation,
+      });
+      return;
+    }
     void runDashboardExport({
       period: chosenPeriod,
       apiPeriod: PERIOD_TO_API[chosenPeriod],

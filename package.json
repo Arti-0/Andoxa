@@ -94,7 +94,6 @@
         "react-resizable": "^3.0.5",
         "react-wrap-balancer": "^1.1.1",
         "recharts": "^2.15.4",
-        "redis": "^5.11.0",
         "remixicon": "^4.8.0",
         "resend": "^6.10.0",
         "shiki": "^3.9.1",

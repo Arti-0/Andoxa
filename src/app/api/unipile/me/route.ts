@@ -68,22 +68,28 @@ export const GET = createApiHandler(
     let linkedinReconciledStatus: string | null = null;
     let whatsappReconciledStatus: string | null = null;
 
-    // LinkedIn — skip the Unipile call when the row was checked recently.
-    if (
-      linkedin?.unipile_account_id &&
-      !isFresh(linkedin.last_status_at, ME_RECONCILE_MAX_AGE_MS)
-    ) {
+    // Reconcile both accounts against Unipile in parallel, with a short timeout
+    // so this latency-sensitive endpoint degrades to local DB state instead of
+    // blocking the user when Unipile is slow. The 60s freshness gate means most
+    // polls skip these calls entirely; a timeout/error just falls back to the
+    // stored status (the hourly reconciler cron repairs any drift).
+    const RECONCILE_TIMEOUT_MS = 8_000;
+
+    const reconcileLinkedIn = async () => {
+      if (
+        !linkedin?.unipile_account_id ||
+        isFresh(linkedin.last_status_at, ME_RECONCILE_MAX_AGE_MS)
+      ) {
+        return;
+      }
       try {
         const account = await unipileFetch<UnipileAccount>(
-          `/accounts/${encodeURIComponent(linkedin.unipile_account_id)}`
+          `/accounts/${encodeURIComponent(linkedin.unipile_account_id)}`,
+          { timeoutMs: RECONCILE_TIMEOUT_MS }
         );
         const reconciled = await reconcileUnipileAccountStatusFromAccount(
           ctx.supabase,
-          {
-            userId: ctx.userId,
-            accountType: "LINKEDIN",
-            unipileAccount: account,
-          }
+          { userId: ctx.userId, accountType: "LINKEDIN", unipileAccount: account }
         );
         if (reconciled?.changed) {
           linkedinReconciledStatus = reconciled.status;
@@ -105,23 +111,23 @@ export const GET = createApiHandler(
           console.warn("[Unipile /me] LinkedIn account validation failed:", e);
         }
       }
-    }
+    };
 
-    if (
-      whatsapp?.unipile_account_id &&
-      !isFresh(whatsapp.last_status_at, ME_RECONCILE_MAX_AGE_MS)
-    ) {
+    const reconcileWhatsApp = async () => {
+      if (
+        !whatsapp?.unipile_account_id ||
+        isFresh(whatsapp.last_status_at, ME_RECONCILE_MAX_AGE_MS)
+      ) {
+        return;
+      }
       try {
         const account = await unipileFetch<UnipileAccount>(
-          `/accounts/${encodeURIComponent(whatsapp.unipile_account_id)}`
+          `/accounts/${encodeURIComponent(whatsapp.unipile_account_id)}`,
+          { timeoutMs: RECONCILE_TIMEOUT_MS }
         );
         const reconciled = await reconcileUnipileAccountStatusFromAccount(
           ctx.supabase,
-          {
-            userId: ctx.userId,
-            accountType: "WHATSAPP",
-            unipileAccount: account,
-          }
+          { userId: ctx.userId, accountType: "WHATSAPP", unipileAccount: account }
         );
         if (reconciled?.changed) {
           whatsappReconciledStatus = reconciled.status;
@@ -143,7 +149,9 @@ export const GET = createApiHandler(
           console.warn("[Unipile /me] WhatsApp account validation failed:", e);
         }
       }
-    }
+    };
+
+    await Promise.all([reconcileLinkedIn(), reconcileWhatsApp()]);
 
     const linkedinTier = inferLinkedInAccountTier(
       linkedin?.is_premium ?? false,

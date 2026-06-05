@@ -96,25 +96,58 @@ function parseUnipileError(res: Response, text: string): UnipileApiError {
   }
 }
 
+/** Default upper bound for any single Unipile call. Without this, a hung
+ * upstream request rides until the Vercel function `maxDuration` (up to 300s).
+ * Latency-sensitive read paths (e.g. /api/unipile/me) should pass a shorter
+ * `timeoutMs` so they degrade to local DB state instead of blocking the user. */
+const UNIPILE_DEFAULT_TIMEOUT_MS = 30_000;
+
 export async function unipileFetch<T>(
   path: string,
-  options?: RequestInit
+  options?: RequestInit & { timeoutMs?: number }
 ): Promise<T> {
+  const { timeoutMs = UNIPILE_DEFAULT_TIMEOUT_MS, signal: callerSignal, ...init } =
+    options ?? {};
   const baseUrl = getV1BaseUrl();
   const url = path.startsWith("http") ? path : `${baseUrl}${path}`;
   const baseHeaders = getUnipileHeaders();
   // Si le body est un FormData, on laisse fetch poser lui-même le Content-Type
   // (avec la bonne boundary multipart). Forcer application/json casse l'upload.
   const isFormData =
-    typeof FormData !== "undefined" && options?.body instanceof FormData;
+    typeof FormData !== "undefined" && init.body instanceof FormData;
   const headers: Record<string, string> = isFormData
     ? { "X-API-KEY": baseHeaders["X-API-KEY"] }
     : baseHeaders;
 
-  const res = await fetch(url, {
-    ...options,
-    headers: { ...headers, ...options?.headers },
-  });
+  // Abort on timeout, while still honoring a caller-provided signal.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  if (callerSignal) {
+    if (callerSignal.aborted) controller.abort();
+    else
+      callerSignal.addEventListener("abort", () => controller.abort(), {
+        once: true,
+      });
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...init,
+      headers: { ...headers, ...init.headers },
+      signal: controller.signal,
+    });
+  } catch (e) {
+    if (controller.signal.aborted && !callerSignal?.aborted) {
+      throw new UnipileApiError(
+        "Le service de messagerie a mis trop de temps à répondre.",
+        504
+      );
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 
   const text = await res.text();
 
