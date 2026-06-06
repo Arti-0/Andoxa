@@ -1,4 +1,5 @@
 import { createApiHandler, Errors } from "@/lib/api";
+import { cache, CACHE_TTL } from "@/lib/cache/redis";
 import { parsePeriod } from "@/lib/dashboard/period";
 
 import {
@@ -73,38 +74,49 @@ export const GET = createApiHandler(
         ? rawScope
         : "all";
 
-    // Fan out — every inner fetch only does its own Supabase queries; the
-    // auth + workspace context is shared via `ctx`. Errors propagate so the
-    // client sees a normal failure shape instead of silent partial data.
-    const [
-      stats,
-      priorities,
-      funnel,
-      topDeals,
-      atRisk,
-      activeCampaigns,
-      activity,
-      linkedinUsage,
-    ] = await Promise.all([
-      getDashboardStats(ctx, period),
-      getDashboardPriorities(ctx),
-      getDashboardFunnel(ctx, period),
-      getTopDeals(ctx, { limit: 5 }),
-      getAtRisk(ctx, { limit: 5, minSilenceDays: 6 }),
-      getActiveCampaigns(ctx),
-      getDashboardActivity(ctx, scope),
-      getLinkedInUsage(ctx),
-    ]);
+    // andoxa-perf-2b: cache the aggregate payload. The fan-out below is ~480ms
+    // of parallel Supabase aggregation (measured in prod); serve it from the
+    // shared cache for 30s instead. Keyed by workspace + user + period + scope
+    // — userId matters because scope="mine"/activity is per-user. Short TTL
+    // bounds staleness without explicit invalidation.
+    return cache.wrap(
+      `dashboard:overview:${ctx.workspaceId}:${ctx.userId}:${period}:${scope}`,
+      async (): Promise<DashboardOverviewPayload> => {
+        // Fan out — every inner fetch only does its own Supabase queries; the
+        // auth + workspace context is shared via `ctx`. Errors propagate so the
+        // client sees a normal failure shape instead of silent partial data.
+        const [
+          stats,
+          priorities,
+          funnel,
+          topDeals,
+          atRisk,
+          activeCampaigns,
+          activity,
+          linkedinUsage,
+        ] = await Promise.all([
+          getDashboardStats(ctx, period),
+          getDashboardPriorities(ctx),
+          getDashboardFunnel(ctx, period),
+          getTopDeals(ctx, { limit: 5 }),
+          getAtRisk(ctx, { limit: 5, minSilenceDays: 6 }),
+          getActiveCampaigns(ctx),
+          getDashboardActivity(ctx, scope),
+          getLinkedInUsage(ctx),
+        ]);
 
-    return {
-      stats,
-      priorities,
-      funnel,
-      topDeals,
-      atRisk,
-      activeCampaigns,
-      activity,
-      linkedinUsage,
-    };
+        return {
+          stats,
+          priorities,
+          funnel,
+          topDeals,
+          atRisk,
+          activeCampaigns,
+          activity,
+          linkedinUsage,
+        };
+      },
+      { ttl: CACHE_TTL.KPI }
+    );
   },
 );
