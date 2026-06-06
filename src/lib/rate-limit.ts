@@ -9,7 +9,9 @@ function getRedis(): Redis | null {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
-  redis = new Redis({ url, token });
+  // Cap retries (default is 5× exponential backoff, ~12s) so an unreachable
+  // Upstash can't stall request handling — see src/lib/cache/redis.ts.
+  redis = new Redis({ url, token, retry: { retries: 1, backoff: () => 50 } });
   return redis;
 }
 
@@ -27,6 +29,11 @@ function getLimiter(name: string, requests: number, window: string): Ratelimit |
     limiter: Ratelimit.slidingWindow(requests, window as `${number} ${"s" | "m" | "h" | "d"}`),
     prefix: `rl:${name}`,
     analytics: false,
+    // Fail OPEN fast: if Upstash doesn't answer within timeout ms, allow the
+    // request rather than blocking. ephemeralCache short-circuits repeated
+    // identifiers in-process, cutting Upstash round-trips on bursty loads.
+    timeout: 500,
+    ephemeralCache: new Map<string, number>(),
   });
   limiters.set(key, limiter);
   return limiter;

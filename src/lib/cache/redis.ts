@@ -16,6 +16,34 @@
 
 import { Redis } from "@upstash/redis";
 
+// andoxa-perf-2b: hard ceiling on any single Upstash round-trip. In-region
+// Upstash answers in ~tens of ms; if it's slow or erroring, the cache MUST
+// degrade to a DB read fast rather than stall the request. (A 13s prod sample
+// traced to default 5× exponential-backoff retries on a failing Upstash.) Any
+// dangling promise resolves later and is harmlessly discarded.
+const CACHE_OP_TIMEOUT_MS = 600;
+
+function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(onTimeout), ms);
+  });
+  return Promise.race([p.finally(() => clearTimeout(timer)), timeout]);
+}
+
+// A dead/unreachable Upstash would otherwise log on every single cache op
+// (2× per request). Log the first occurrence per instance, then stay silent —
+// the cache has already degraded to a DB read, so this is informational.
+let cacheErrorLogged = false;
+function logCacheErrorOnce(op: string, error: unknown): void {
+  if (cacheErrorLogged) return;
+  cacheErrorLogged = true;
+  console.error(
+    `[Cache] ${op} error (degraded to DB; further cache errors suppressed):`,
+    error
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -141,8 +169,14 @@ class UpstashCache implements CacheClient {
   constructor(url: string, token: string, prefix = "andoxa:") {
     this.prefix = prefix;
     // Stateless REST client — no connection lifecycle, safe to construct once
-    // and reuse across invocations.
-    this.client = new Redis({ url, token });
+    // and reuse across invocations. `retry` is capped: the default is 5 attempts
+    // with exponential backoff (~12s ceiling), which turned a failing Upstash
+    // into multi-second request stalls. One quick retry, then fall back.
+    this.client = new Redis({
+      url,
+      token,
+      retry: { retries: 1, backoff: () => 50 },
+    });
   }
 
   private getKey(key: string): string {
@@ -151,11 +185,16 @@ class UpstashCache implements CacheClient {
 
   async get<T>(key: string): Promise<T | null> {
     try {
-      // @upstash/redis transparently (de)serializes JSON values.
-      const value = await this.client.get<T>(this.getKey(key));
+      // @upstash/redis transparently (de)serializes JSON values. Bounded by
+      // withTimeout so a slow/unreachable Upstash degrades to a miss fast.
+      const value = await withTimeout<T | null>(
+        this.client.get<T>(this.getKey(key)),
+        CACHE_OP_TIMEOUT_MS,
+        null
+      );
       return value ?? null;
     } catch (error) {
-      console.error("[Cache] Get error:", error);
+      logCacheErrorOnce("Get", error);
       return null;
     }
   }
@@ -163,9 +202,13 @@ class UpstashCache implements CacheClient {
   async set<T>(key: string, value: T, options?: CacheOptions): Promise<void> {
     try {
       const ttl = options?.ttl ?? 300;
-      await this.client.set(this.getKey(key), value, { ex: ttl });
+      await withTimeout<unknown>(
+        this.client.set(this.getKey(key), value, { ex: ttl }),
+        CACHE_OP_TIMEOUT_MS,
+        undefined
+      );
     } catch (error) {
-      console.error("[Cache] Set error:", error);
+      logCacheErrorOnce("Set", error);
     }
   }
 
