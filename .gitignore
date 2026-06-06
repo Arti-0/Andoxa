@@ -90,3 +90,4 @@ andoxa-extension/*
 andoxa-extension-firefox/*
 ._*
 *.pdf
+.vercel
