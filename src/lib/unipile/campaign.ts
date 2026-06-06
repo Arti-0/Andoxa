@@ -60,6 +60,42 @@ export function prepareWhatsAppOutboundText(text: string): string {
   return out;
 }
 
+/**
+ * Open (or reuse) a LinkedIn chat and post a message via Unipile `/chats`.
+ *
+ * Without an attachment this sends the same JSON body the campaign worker has
+ * always used. With one, it switches to multipart/form-data so the file rides
+ * along — Unipile expects `attachments` as a file part, mirroring the inbox
+ * send route. The attachment blob is downloaded by the caller
+ * (downloadCampaignAttachment) so this helper stays free of storage concerns.
+ */
+export async function sendLinkedInChatMessage(opts: {
+  accountId: string;
+  providerId: string;
+  text: string;
+  attachment?: { blob: Blob; name: string } | null;
+}): Promise<{ id?: string }> {
+  if (opts.attachment) {
+    const form = new FormData();
+    form.append("account_id", opts.accountId);
+    form.append("attendees_ids", opts.providerId);
+    if (opts.text?.trim()) form.append("text", opts.text);
+    form.append("attachments", opts.attachment.blob, opts.attachment.name);
+    return unipileFetch<{ id?: string }>("/chats", {
+      method: "POST",
+      body: form,
+    });
+  }
+  return unipileFetch<{ id?: string }>("/chats", {
+    method: "POST",
+    body: JSON.stringify({
+      account_id: opts.accountId,
+      attendees_ids: [opts.providerId],
+      text: opts.text,
+    }),
+  });
+}
+
 export async function sendWhatsAppMessage(opts: {
   accountId: string;
   phone: string;

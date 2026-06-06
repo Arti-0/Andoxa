@@ -18,15 +18,15 @@ import * as Sentry from "@sentry/nextjs";
 import type { Database } from "@/lib/types/supabase";
 import { insertProspectActivity } from "@/lib/prospect-activity";
 import { emitWorkflowTrigger } from "@/lib/workflows/fire-trigger";
-import { unipileFetch } from "@/lib/unipile/client";
-import { applyMessageVariables } from "@/lib/unipile/campaign";
+import { applyMessageVariables, sendLinkedInChatMessage } from "@/lib/unipile/campaign";
+import { readCampaignAttachment } from "@/lib/campaigns/types";
+import { downloadCampaignAttachment } from "@/lib/campaigns/attachment";
 import { env } from "@/lib/config/environment";
 import { buildBookingPublicUrlForProfile } from "@/lib/booking/public-path";
 import {
   dailyPeriodKey,
   incrementUsageCounter,
 } from "@/lib/campaigns/throttle";
-import type { UnipileChat } from "@/lib/unipile/types";
 
 /**
  * How far back to look for a matching `linkedin_invite_sent` when inferring
@@ -344,15 +344,21 @@ async function dispatchInviteThenMessageFollowUp(
       ? override
       : applyMessageVariables(template, prospect, { bookingLink });
 
+  // Optional single-file attachment, mirroring the `contact` campaign path.
+  // A failed download throws — the caller logs + reports to Sentry and a later
+  // acceptance signal / reconciler can retry (dedupe guards against doubles).
+  const attachment = readCampaignAttachment(job.metadata);
+  const attachmentFile = attachment
+    ? await downloadCampaignAttachment(supabase, attachment)
+    : null;
+
   // Send via /chats — LinkedIn opens the thread and posts the message in the
   // same call. Same wire shape as a `contact`-type campaign send.
-  const chatRes = await unipileFetch<UnipileChat & { id: string }>("/chats", {
-    method: "POST",
-    body: JSON.stringify({
-      account_id: args.accountId,
-      attendees_ids: [args.providerId],
-      text,
-    }),
+  const chatRes = await sendLinkedInChatMessage({
+    accountId: args.accountId,
+    providerId: args.providerId,
+    text,
+    attachment: attachmentFile,
   });
   const newChatId = chatRes?.id ?? args.chatId ?? null;
 

@@ -5,12 +5,14 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tansta
 import { toast } from "@/lib/toast";
 import { useWorkspace } from "@/lib/workspace";
 import type {
+  CampaignAttachment,
   CampaignJobStatus,
   CampaignJobType,
 } from "@/lib/campaigns/types";
 import {
   campaignLabel,
   configFromJobType,
+  readCampaignAttachment,
 } from "@/lib/campaigns/types";
 import { resolveSessionLiveStatus } from "@/lib/call-sessions/presence";
 import type {
@@ -257,6 +259,7 @@ export function useCampaignJobDetail(jobId: string | undefined) {
         // Extra raw fields the detail-page redesign needs but the design type
         // (Campaign) doesn't carry.
         messageTemplate: jobRow.message_template ?? null,
+        attachment: readCampaignAttachment(jobRow.metadata) as CampaignAttachment | null,
         startedAt: jobRow.started_at ?? null,
       };
     },

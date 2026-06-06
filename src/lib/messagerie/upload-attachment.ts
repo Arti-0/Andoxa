@@ -7,6 +7,9 @@ const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 
 export interface UploadedAttachment {
   url: string;
+  /** Storage path inside the bucket — used by campaign jobs to re-download
+   *  the file server-side at send time. The inbox composer ignores it. */
+  path: string;
   name: string;
   size: number;
 }
@@ -57,5 +60,5 @@ export async function uploadMessagerieAttachment(
     return null;
   }
 
-  return { url: data.signedUrl, name: file.name, size: file.size };
+  return { url: data.signedUrl, path, name: file.name, size: file.size };
 }

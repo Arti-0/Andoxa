@@ -8,6 +8,8 @@ import {
   UnipileAccountUnusableError,
 } from "@/lib/unipile/account-status";
 import { isProspectAutomationExcluded, type ProspectWithMetadata } from "@/lib/prospects/automation-opt-out";
+import { CAMPAIGN_ATTACHMENT_MAX_BYTES } from "@/lib/campaigns/attachment";
+import type { CampaignAttachment } from "@/lib/campaigns/types";
 
 /**
  * POST /api/campaigns/jobs
@@ -45,6 +47,13 @@ export const POST = createApiHandler(
       delay_ms?: number;
       launch_now?: boolean;
       message_overrides?: Record<string, string>;
+      /**
+       * Optional single file attached to the message. Only honored for
+       * `contact` and `invite_then_message` (invitations can't carry files).
+       * `path` must live under the caller's workspace prefix in the
+       * messagerie-attachments bucket — see lib/campaigns/attachment.ts.
+       */
+      attachment?: { path?: string; name?: string; size?: number };
     }>(req);
 
     const allowedTypes = [
@@ -59,6 +68,31 @@ export const POST = createApiHandler(
         type:
           "Must be 'invite', 'invite_with_note', 'invite_then_message', 'contact', or 'whatsapp'",
       });
+    }
+
+    // Resolve + validate the optional attachment. Only message-bearing LinkedIn
+    // sends can carry a file; for any other type we silently ignore it so a
+    // stray field never blocks job creation. The path must be scoped to this
+    // workspace so a caller can't reference another org's uploads.
+    let attachmentMeta: CampaignAttachment | null = null;
+    if (
+      body.attachment?.path &&
+      (body.type === "contact" || body.type === "invite_then_message")
+    ) {
+      const { path, name, size } = body.attachment;
+      if (typeof path !== "string" || !path.startsWith(`${ctx.workspaceId}/`)) {
+        throw Errors.validation({ attachment: "Pièce jointe invalide" });
+      }
+      if (typeof size === "number" && size > CAMPAIGN_ATTACHMENT_MAX_BYTES) {
+        throw Errors.validation({
+          attachment: "La pièce jointe dépasse la taille maximale (10 Mo).",
+        });
+      }
+      attachmentMeta = {
+        path,
+        name: typeof name === "string" && name.trim() ? name : "attachment",
+        size: typeof size === "number" ? size : 0,
+      };
     }
 
     // Resolve bdd → prospect ids when provided. Workspace-scoped, soft-deleted
@@ -101,9 +135,10 @@ export const POST = createApiHandler(
     if (rawIds.length === 0) {
       /** Draft job with zero targets (wizard will add prospects later). */
       const overrides = body.message_overrides ?? {};
-      const metadata: Record<string, string | Record<string, string>> = {};
+      const metadata: Record<string, unknown> = {};
       if (overrides && Object.keys(overrides).length > 0) metadata.message_overrides = overrides;
       if (body.name?.trim()) metadata.name = body.name.trim();
+      if (attachmentMeta) metadata.attachment = attachmentMeta;
 
       const { data: job, error: jobError } = await ctx.supabase
         .from("campaign_jobs")
@@ -200,9 +235,10 @@ export const POST = createApiHandler(
     }
 
     const overrides = body.message_overrides ?? {};
-    const metadata: Record<string, string | Record<string, string>> = {};
+    const metadata: Record<string, unknown> = {};
     if (overrides && Object.keys(overrides).length > 0) metadata.message_overrides = overrides;
     if (body.name?.trim()) metadata.name = body.name.trim();
+    if (attachmentMeta) metadata.attachment = attachmentMeta;
 
     const initialStatus = body.launch_now ? "pending" : "draft";
 

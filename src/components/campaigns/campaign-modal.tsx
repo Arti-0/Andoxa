@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/ui/app-modal';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,8 @@ import {
     Clock,
     Users,
     AlertCircle,
+    Paperclip,
+    X,
 } from 'lucide-react';
 import type { Prospect } from '@/lib/types/prospects';
 import type { CampaignConfig, LinkedInAction } from '@/lib/campaigns/types';
@@ -48,6 +50,18 @@ import {
 } from '@/lib/campaigns/throttle';
 import type { LinkedInAccountTier } from '@/lib/linkedin/tier';
 import { tierSupportsPremiumInviteFeatures } from '@/lib/linkedin/tier';
+import { useWorkspace } from '@/lib/workspace';
+import {
+    uploadMessagerieAttachment,
+    type UploadedAttachment,
+} from '@/lib/messagerie/upload-attachment';
+import { CAMPAIGN_ATTACHMENT_MAX_BYTES } from '@/lib/campaigns/attachment';
+
+function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} o`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+}
 
 const INVITE_NOTE_PLACEHOLDER = `Bonjour {{firstName}},
 
@@ -151,6 +165,7 @@ export function CampaignModal({
     linkedInTier = 'standard',
 }: CampaignModalProps) {
     const queryClient = useQueryClient();
+    const { workspaceId } = useWorkspace();
     const hasPaidLinkedIn = tierSupportsPremiumInviteFeatures(linkedInTier);
     const [message, setMessage] = useState('');
     const [sending, setSending] = useState(false);
@@ -166,6 +181,11 @@ export function CampaignModal({
     const [alreadyInvitedIds, setAlreadyInvitedIds] = useState<Set<string>>(
         new Set()
     );
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [attachment, setAttachment] = useState<UploadedAttachment | null>(
+        null
+    );
+    const [attachmentUploading, setAttachmentUploading] = useState(false);
 
     const { data: bookingSlugRes } = useQuery({
         queryKey: ['booking-slug', open],
@@ -240,6 +260,7 @@ export function CampaignModal({
     const isInviteWithNote = linkedInAction === 'invite_with_note';
     const isInviteThenMessage = linkedInAction === 'invite_then_message';
     const isContact = linkedInAction === 'contact';
+    const showAttachment = isLinkedIn && (isContact || isInviteThenMessage);
 
     const effectiveConfig: CampaignConfig = useMemo(() => {
         if (!config) return { channel: 'linkedin', linkedInAction: 'contact' };
@@ -317,6 +338,29 @@ export function CampaignModal({
             return dr.trim() !== def;
         }).length;
     }, [gapDefaults, gapDrafts]);
+
+    const handleAttachmentSelect = async (file: File | null) => {
+        if (!file) return;
+        if (file.size > CAMPAIGN_ATTACHMENT_MAX_BYTES) {
+            toast.error('La pièce jointe dépasse la taille maximale (10 Mo).');
+            return;
+        }
+        if (!workspaceId) {
+            toast.error('Espace de travail introuvable.');
+            return;
+        }
+        setAttachmentUploading(true);
+        try {
+            const uploaded = await uploadMessagerieAttachment(file, workspaceId);
+            if (!uploaded) {
+                toast.error("La pièce jointe n'a pas pu être envoyée.");
+                return;
+            }
+            setAttachment(uploaded);
+        } finally {
+            setAttachmentUploading(false);
+        }
+    };
 
     const handleComposeNext = () => {
         if (saveAsTemplate && !templateName.trim()) {
@@ -401,6 +445,14 @@ export function CampaignModal({
                         Object.keys(messageByProspect).length > 0
                             ? messageByProspect
                             : undefined,
+                    attachment:
+                        showAttachment && attachment
+                            ? {
+                                  path: attachment.path,
+                                  name: attachment.name,
+                                  size: attachment.size,
+                              }
+                            : undefined,
                 }),
             });
             const json = await res.json();
@@ -478,6 +530,8 @@ export function CampaignModal({
         setGapDefaults({});
         setGapDrafts({});
         setGapTargets([]);
+        setAttachment(null);
+        setAttachmentUploading(false);
     };
 
     const handleClose = (o: boolean) => {
@@ -545,7 +599,10 @@ export function CampaignModal({
                 >
                     Annuler
                 </Button>
-                <Button onClick={handleComposeNext} disabled={count === 0}>
+                <Button
+                    onClick={handleComposeNext}
+                    disabled={count === 0 || attachmentUploading}
+                >
                     {incompleteProspects.length > 0 ? 'Suite' : 'Aperçu'}
                     <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
@@ -734,6 +791,72 @@ export function CampaignModal({
                             </>
                         )}
 
+                        {showAttachment && (
+                            <div className="space-y-1.5">
+                                <Label className="text-sm font-medium">
+                                    Pièce jointe
+                                </Label>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        const f =
+                                            e.target.files?.[0] ?? null;
+                                        void handleAttachmentSelect(f);
+                                        // Reset so re-selecting the same file fires onChange.
+                                        e.target.value = '';
+                                    }}
+                                />
+                                {attachment ? (
+                                    <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+                                        <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                        <div className="min-w-0 flex-1">
+                                            <div className="truncate text-sm font-medium">
+                                                {attachment.name}
+                                            </div>
+                                            <div className="text-xs text-muted-foreground">
+                                                {formatFileSize(
+                                                    attachment.size
+                                                )}
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setAttachment(null)}
+                                            title="Retirer la pièce jointe"
+                                            className="rounded p-1 text-muted-foreground hover:bg-accent"
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={attachmentUploading}
+                                        onClick={() =>
+                                            fileInputRef.current?.click()
+                                        }
+                                    >
+                                        {attachmentUploading ? (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <Paperclip className="mr-2 h-4 w-4" />
+                                        )}
+                                        {attachmentUploading
+                                            ? 'Envoi…'
+                                            : 'Ajouter un fichier'}
+                                    </Button>
+                                )}
+                                <p className="text-xs text-muted-foreground">
+                                    Un seul fichier, 10&nbsp;Mo max. Envoyé avec
+                                    le message.
+                                </p>
+                            </div>
+                        )}
+
                         {saveAsTemplate && !(isLinkedIn && isInvitePlain) && (
                             <div>
                                 <Label
@@ -914,6 +1037,18 @@ export function CampaignModal({
                                 )}
                             </div>
                         </div>
+
+                        {showAttachment && attachment && (
+                            <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                                <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                <span className="truncate">
+                                    {attachment.name}
+                                </span>
+                                <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                                    {formatFileSize(attachment.size)}
+                                </span>
+                            </div>
+                        )}
                     </div>
                 )}
 

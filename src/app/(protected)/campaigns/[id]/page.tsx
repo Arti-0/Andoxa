@@ -261,7 +261,11 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
         }
       />
 
-      <CampaignMessageCard type={campaign.type} template={detail.data.messageTemplate} />
+      <CampaignMessageCard
+        type={campaign.type}
+        template={detail.data.messageTemplate}
+        attachment={detail.data.attachment}
+      />
 
       {prospects.length === 0 ? (
         <div className="rounded-xl border bg-card p-5">

@@ -29,7 +29,9 @@ import {
   MoreVertical,
   ExternalLink,
   MessageSquare,
+  Paperclip,
 } from "lucide-react";
+import type { CampaignAttachment } from "@/lib/campaigns/types";
 import { isFeatureEnabled } from "@/lib/config/feature-flags";
 import { ProgressBar } from "../primitives";
 import type { Campaign, CampaignType } from "../data";
@@ -560,12 +562,21 @@ function renderWithPills(text: string) {
   );
 }
 
+function formatAttachmentSize(bytes: number): string {
+  if (bytes <= 0) return "";
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
 export function CampaignMessageCard({
   type,
   template,
+  attachment,
 }: {
   type: CampaignType;
   template: string | null;
+  attachment?: CampaignAttachment | null;
 }) {
   const [open, setOpen] = useState(false);
   const isInvitation = type === "invitation";
@@ -618,6 +629,19 @@ export function CampaignMessageCard({
                 </div>
               </div>
             )}
+            {attachment ? (
+              <div className="mt-3 flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+                <Paperclip className="size-4 shrink-0 text-muted-foreground" />
+                <span className="truncate text-[13px] font-medium">
+                  {attachment.name}
+                </span>
+                {attachment.size > 0 ? (
+                  <span className="ml-auto shrink-0 text-[11.5px] text-muted-foreground">
+                    {formatAttachmentSize(attachment.size)}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
             <div className="mt-3.5 flex items-start gap-2 rounded-lg border border-[#C7DBF7] bg-[var(--brand-blue-tint)] px-3 py-2.5 text-[12.5px] text-[var(--brand-blue-dark,#003EA3)]">
               <Info className="mt-0.5 size-3.5 shrink-0" />
               <span>

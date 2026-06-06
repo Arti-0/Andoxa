@@ -2,6 +2,37 @@
 export type CampaignChannel = "linkedin" | "whatsapp";
 
 /**
+ * A single file attached to a campaign message. Stored on
+ * `campaign_jobs.metadata.attachment`. `path` points into the private
+ * `messagerie-attachments` Supabase bucket (see lib/campaigns/attachment.ts);
+ * the batch worker downloads it at send time and forwards it to the provider.
+ *
+ * Only `contact` and `invite_then_message` campaigns can carry an attachment —
+ * LinkedIn invitations cannot carry files.
+ */
+export interface CampaignAttachment {
+  /** Storage path, e.g. `<organization_id>/<timestamp>_<filename>`. */
+  path: string;
+  name: string;
+  size: number;
+}
+
+/** Read a CampaignAttachment off a job's `metadata`, or null when absent/malformed. */
+export function readCampaignAttachment(
+  metadata: unknown
+): CampaignAttachment | null {
+  const att = (metadata as { attachment?: unknown } | null)?.attachment;
+  if (!att || typeof att !== "object") return null;
+  const { path, name, size } = att as Record<string, unknown>;
+  if (typeof path !== "string" || !path) return null;
+  return {
+    path,
+    name: typeof name === "string" ? name : "attachment",
+    size: typeof size === "number" ? size : 0,
+  };
+}
+
+/**
  * Action LinkedIn — non applicable à WhatsApp.
  *
  * `invite_then_message` sends a bare invitation in phase 1 (no attached note,

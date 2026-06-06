@@ -13,11 +13,12 @@ import { markUnipileAccountErroredFromError } from "@/lib/unipile/account-status
 import {
   applyMessageVariables,
   extractLinkedInSlug,
+  sendLinkedInChatMessage,
   sendWhatsAppMessage,
 } from "@/lib/unipile/campaign";
+import { readCampaignAttachment, type CampaignJobType } from "@/lib/campaigns/types";
+import { downloadCampaignAttachment } from "@/lib/campaigns/attachment";
 import { normalizePhoneForWhatsApp } from "@/lib/utils/phone";
-import type { CampaignJobType } from "@/lib/campaigns/types";
-import type { UnipileChat } from "@/lib/unipile/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/supabase";
 import {
@@ -223,6 +224,23 @@ async function runBatchLinkedIn(
         .cap
     : 0;
 
+  // Single-file attachment — contact campaigns only (LinkedIn invitations
+  // can't carry files). Downloaded once and reused across the whole batch.
+  // A failed download is surfaced per-prospect below rather than dropping the
+  // file silently.
+  const attachment =
+    linkedInJobType === "contact" ? readCampaignAttachment(job.metadata) : null;
+  let attachmentFile: { blob: Blob; name: string } | null = null;
+  let attachmentError: string | null = null;
+  if (attachment) {
+    try {
+      attachmentFile = await downloadCampaignAttachment(supabase, attachment);
+    } catch (err) {
+      attachmentError =
+        err instanceof Error ? err.message : "Pièce jointe indisponible";
+    }
+  }
+
   let batchSuccess = 0;
   let batchError = 0;
   let rateLimited = false;
@@ -319,13 +337,16 @@ async function runBatchLinkedIn(
           body: JSON.stringify(inviteBody),
         });
       } else {
-        const chatRes = await unipileFetch<UnipileChat & { id: string }>("/chats", {
-          method: "POST",
-          body: JSON.stringify({
-            account_id: accountId,
-            attendees_ids: [providerId],
-            text,
-          }),
+        if (attachment && !attachmentFile) {
+          // Download failed during batch prep — mark this prospect as an error
+          // instead of sending a message that references a missing file.
+          throw new Error(attachmentError ?? "Pièce jointe indisponible");
+        }
+        const chatRes = await sendLinkedInChatMessage({
+          accountId,
+          providerId,
+          text,
+          attachment: attachmentFile,
         });
         const chatId = chatRes?.id;
         if (chatId) {
