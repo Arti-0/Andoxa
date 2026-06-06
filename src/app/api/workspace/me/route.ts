@@ -1,3 +1,4 @@
+// andoxa-perf-2b 2026-06-06: removed hot-path console.logs
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 

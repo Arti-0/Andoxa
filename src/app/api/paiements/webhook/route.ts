@@ -1,3 +1,4 @@
+// andoxa-perf-2b 2026-06-06: invalidate cached org context on billing changes
 import { NextRequest, NextResponse } from 'next/server';
 import * as Sentry from "@sentry/nextjs";
 import { createServiceClient } from '@/lib/supabase/service';

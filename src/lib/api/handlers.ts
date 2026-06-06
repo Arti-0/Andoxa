@@ -1,3 +1,4 @@
+// andoxa-perf-2b 2026-06-06: getClaims + cached org context + Server-Timing
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";

@@ -1,3 +1,4 @@
+// andoxa-perf-2b 2026-06-06: parallel reconcile + 8s timeout (was the 35s route)
 import { createApiHandler } from "@/lib/api";
 import { inferLinkedInAccountTier } from "@/lib/linkedin/tier";
 import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";

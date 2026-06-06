@@ -95,8 +95,10 @@ function isProtectedAssetPath(pathname: string) {
 // Proxy — single place for session refresh + navigation gates (before route handlers)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// andoxa-perf-2b: getClaims + JWT-resolved active org + cached org context. 2026-06-06
 export async function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
+    const proxyStart = performance.now();
 
     if (pathname.startsWith('/api/')) {
         if (request.method === 'OPTIONS') {
@@ -153,6 +155,7 @@ export async function proxy(request: NextRequest) {
     // refresh is still handled by the supabase-ssr client via the cookie
     // getAll/setAll wiring above, so sessions are kept fresh.
     const { data: claimsData } = await supabase.auth.getClaims();
+    const afterAuth = performance.now();
     const claims = claimsData?.claims ?? null;
     const userId = claims?.sub ?? null;
     if (!userId) {
@@ -190,6 +193,7 @@ export async function proxy(request: NextRequest) {
     ]);
 
     const subscription = subscriptionResult.data;
+    const afterCtx = performance.now();
 
     const orgGate: OrgDashboardGateRow | null = organization
         ? {
@@ -227,6 +231,16 @@ export async function proxy(request: NextRequest) {
         }
         return NextResponse.redirect(createRedirectUrl('/onboarding', request));
     }
+
+    // Proxy cost breakdown for the entitled pass-through (visible on every
+    // protected navigation, incl. RSC `?_rsc=` requests) → DevTools Network →
+    // Timing → Server Timing. `auth` = getClaims, `ctx` = org cache + sub query.
+    response.headers.set(
+        'Server-Timing',
+        `proxy-auth;dur=${(afterAuth - proxyStart).toFixed(1)}, ` +
+            `proxy-ctx;dur=${(afterCtx - afterAuth).toFixed(1)}, ` +
+            `proxy-total;dur=${(performance.now() - proxyStart).toFixed(1)}`
+    );
 
     return response;
 }

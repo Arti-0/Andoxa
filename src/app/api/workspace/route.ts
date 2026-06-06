@@ -1,3 +1,4 @@
+// andoxa-perf-2b 2026-06-06: invalidate cached org context on workspace edits
 import { createApiHandler, Errors, parseBody } from "../../../lib/api";
 import { planAllowsAutoEnrichOnImport } from "@/lib/enrichment/queue-helpers";
 import { invalidateOrgContext } from "@/lib/workspace/cached-context";

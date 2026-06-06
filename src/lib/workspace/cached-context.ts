@@ -1,3 +1,4 @@
+// andoxa-perf-2b 2026-06-06: NEW FILE — must be git-added or the build breaks
 /**
  * Cached workspace/org context (Layer 2b)
  *

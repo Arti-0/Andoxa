@@ -1,3 +1,4 @@
+// andoxa-perf-2b 2026-06-06: switched to Upstash REST client (serverless-safe)
 /**
  * Redis Cache Layer
  *
