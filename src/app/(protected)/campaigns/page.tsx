@@ -43,6 +43,8 @@ import {
   type CreateCampaignPayload,
   type LinkedInCampaignType,
 } from "./create-campaign-modal";
+import { WIZARD_PROSPECT_SELECTION_KEY } from "@/lib/campaigns/wizard-selection";
+import type { ProspectForVariables } from "@/lib/messaging/template-variables";
 import {
   CallSessionModal,
   type CreateSessionPayload,
@@ -145,6 +147,40 @@ function mapLinkedInCampaignType(
     case "invitation_message":
       return "invite_then_message";
   }
+}
+
+/**
+ * Build a human-readable "N prospects ignored: …" line from the API's `skipped`
+ * array (returned on both create and draft). Returns null when nothing was
+ * filtered out. Shared by the create + draft handlers so the user always learns
+ * which prospects were excluded and why.
+ */
+function summarizeSkipped(payload: unknown): string | null {
+  const rec = payload as Record<string, unknown> | null;
+  const inner =
+    rec && typeof rec === "object" && "data" in rec
+      ? (rec["data"] as Record<string, unknown> | undefined)
+      : rec;
+  const skipped = Array.isArray(
+    (inner as Record<string, unknown> | undefined)?.["skipped"],
+  )
+    ? (inner as { skipped: { reason?: string }[] }).skipped
+    : [];
+  if (skipped.length === 0) return null;
+  const byReason = new Map<string, number>();
+  for (const s of skipped) {
+    const r = s.reason ?? "other";
+    byReason.set(r, (byReason.get(r) ?? 0) + 1);
+  }
+  const reasonLabel: Record<string, string> = {
+    in_active_workflow: "déjà dans un parcours",
+    in_active_campaign: "déjà dans une campagne active",
+    automation_excluded: "exclus des automatisations",
+  };
+  const description = [...byReason.entries()]
+    .map(([r, n]) => `${n} ${reasonLabel[r] ?? r}`)
+    .join(" · ");
+  return `${skipped.length} prospect(s) ignoré(s) : ${description}`;
 }
 
 function unwrapCreatedEntityId(payload: unknown): string | undefined {
@@ -336,6 +372,40 @@ export default function CampaignsPage() {
   // Honour ?duplicate=<id> deep-link (used by the detail page's Dupliquer):
   // open the prefilled wizard once the campaign is in the list, then strip
   // the param so it doesn't re-trigger.
+  // CRM "Inviter" hands an ad-hoc prospect selection to the wizard via
+  // sessionStorage (URL params can't carry 100+ ids). Read it once on mount
+  // when arriving with ?from=selection, then clear it and strip the param.
+  const [preselectedProspects, setPreselectedProspects] = useState<{
+    ids: string[];
+    sample: ProspectForVariables | null;
+  } | null>(null);
+  const selectionHandledRef = useRef(false);
+  useEffect(() => {
+    if (selectionHandledRef.current) return;
+    if (searchParams?.get("from") !== "selection") return;
+    selectionHandledRef.current = true;
+    try {
+      const raw = sessionStorage.getItem(WIZARD_PROSPECT_SELECTION_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as {
+          prospectIds?: string[];
+          sample?: ProspectForVariables | null;
+        };
+        if (Array.isArray(parsed.prospectIds) && parsed.prospectIds.length > 0) {
+          setPreselectedProspects({
+            ids: parsed.prospectIds,
+            sample: parsed.sample ?? null,
+          });
+          setCreateOpen(true);
+        }
+      }
+      sessionStorage.removeItem(WIZARD_PROSPECT_SELECTION_KEY);
+    } catch {
+      // Ignore unavailable/corrupt sessionStorage — the wizard still opens.
+    }
+    router.replace("/campaigns");
+  }, [searchParams, router]);
+
   const duplicateParam = searchParams?.get("duplicate") ?? null;
   const duplicateHandledRef = useRef<string | null>(null);
   useEffect(() => {
@@ -506,6 +576,7 @@ export default function CampaignsPage() {
     type: mapLinkedInCampaignType(data),
     name: data.name.trim(),
     bdd_id: data.bdd_id,
+    prospect_ids: data.prospect_ids,
     refine_exclude_contacted: data.refine_exclude_contacted,
     refine_only_with_phone: data.refine_only_with_phone,
     refine_exclude_active: data.refine_exclude_active,
@@ -515,6 +586,9 @@ export default function CampaignsPage() {
     // was accepted. The phase-1 invite is bare (no note).
     message_template:
       data.type === "invitation_only" ? data.invitation_note : data.message,
+    // Attachments only apply to message-bearing types; the API ignores it for
+    // invitation_only. Safe to always forward.
+    attachment: data.attachment,
     launch_now: launchNow,
   });
 
@@ -525,7 +599,12 @@ export default function CampaignsPage() {
         buildCampaignPayload(data, false),
       );
       const createdId = unwrapCreatedEntityId(payload);
-      toast.success("Brouillon enregistré", { description: "Vous pouvez ajuster avant de lancer." });
+      const skippedNote = summarizeSkipped(payload);
+      toast.success("Brouillon enregistré", {
+        description:
+          skippedNote ??
+          "Vous pouvez ajuster avant de lancer.",
+      });
       setCreateOpen(false);
       void qc.invalidateQueries({ queryKey: ["campaigns", "jobs", workspaceId] });
       if (createdId) router.push(`/campaigns/${createdId}`);
@@ -545,36 +624,10 @@ export default function CampaignsPage() {
       // The API returns a `skipped` array when prospects were filtered out
       // (already in an active workflow / campaign). Surface it so the user
       // doesn't wonder why the count is lower than expected.
-      const payloadRecord = payload as Record<string, unknown> | null;
-      const inner =
-        payloadRecord && typeof payloadRecord === "object" && "data" in payloadRecord
-          ? (payloadRecord["data"] as Record<string, unknown> | undefined)
-          : payloadRecord;
-      const skipped = Array.isArray(
-        (inner as Record<string, unknown> | undefined)?.["skipped"],
-      )
-        ? ((inner as { skipped: { reason?: string }[] }).skipped)
-        : [];
-
-      if (skipped.length > 0) {
-        const byReason = new Map<string, number>();
-        for (const s of skipped) {
-          const r = s.reason ?? "other";
-          byReason.set(r, (byReason.get(r) ?? 0) + 1);
-        }
-        const reasonLabel: Record<string, string> = {
-          in_active_workflow: "déjà dans un parcours",
-          in_active_campaign: "déjà dans une campagne active",
-        };
-        const description = [...byReason.entries()]
-          .map(([r, n]) => `${n} ${reasonLabel[r] ?? r}`)
-          .join(" · ");
-        toast.success("Campagne lancée", {
-          description: `${skipped.length} prospect(s) ignoré(s) : ${description}`,
-        });
-      } else {
-        toast.success("Campagne lancée");
-      }
+      const skippedNote = summarizeSkipped(payload);
+      toast.success("Campagne lancée", {
+        ...(skippedNote ? { description: skippedNote } : {}),
+      });
 
       setCreateOpen(false);
       void qc.invalidateQueries({ queryKey: ["campaigns", "jobs", workspaceId] });
@@ -798,11 +851,16 @@ export default function CampaignsPage() {
         open={createOpen}
         onOpenChange={(o) => {
           setCreateOpen(o);
-          if (!o) setDuplicatePrefill(null);
+          if (!o) {
+            setDuplicatePrefill(null);
+            setPreselectedProspects(null);
+          }
         }}
         onCreate={onCreateCampaign}
         onDraft={onDraftCampaign}
         initialBddId={preselectedBdd}
+        initialProspectIds={preselectedProspects?.ids ?? null}
+        initialPreviewProspect={preselectedProspects?.sample ?? null}
         hasPaidLinkedIn={hasPaidLinkedIn}
         initialValues={duplicatePrefill}
       />

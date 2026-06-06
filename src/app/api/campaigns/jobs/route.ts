@@ -228,17 +228,40 @@ export const POST = createApiHandler(
       return true;
     });
 
-    if (!prospect_ids.length) {
-      throw Errors.badRequest(
-        "Aucun prospect éligible : chacun est déjà dans un parcours actif, dans une autre campagne, ou exclu des automatisations."
-      );
-    }
-
     const overrides = body.message_overrides ?? {};
     const metadata: Record<string, unknown> = {};
     if (overrides && Object.keys(overrides).length > 0) metadata.message_overrides = overrides;
     if (body.name?.trim()) metadata.name = body.name.trim();
     if (attachmentMeta) metadata.attachment = attachmentMeta;
+
+    // When every targeted prospect was filtered out, a launch can't proceed —
+    // but a draft must still save so the user doesn't lose their work. The
+    // `skipped` breakdown is returned in both cases so the UI can explain why.
+    if (!prospect_ids.length) {
+      if (body.launch_now) {
+        throw Errors.badRequest(
+          "Aucun prospect éligible : chacun est déjà dans un parcours actif, dans une autre campagne, ou exclu des automatisations. Décochez un affinage (par ex. « déjà dans une campagne active ») ou enregistrez en brouillon."
+        );
+      }
+      const { data: draftJob, error: draftErr } = await ctx.supabase
+        .from("campaign_jobs")
+        .insert({
+          organization_id: ctx.workspaceId,
+          created_by: ctx.userId!,
+          type: body.type,
+          status: "draft",
+          total_count: 0,
+          batch_size: body.batch_size ?? 10,
+          delay_ms: body.delay_ms ?? 120000,
+          message_template: body.message_template ?? null,
+          metadata: Object.keys(metadata).length > 0 ? metadata : null,
+        })
+        .select()
+        .single();
+      if (draftErr || !draftJob)
+        throw Errors.internal("Failed to create campaign job");
+      return skipped.length ? { ...draftJob, skipped } : draftJob;
+    }
 
     const initialStatus = body.launch_now ? "pending" : "draft";
 

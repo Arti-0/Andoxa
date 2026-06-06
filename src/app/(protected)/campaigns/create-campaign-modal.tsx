@@ -25,10 +25,13 @@ import {
   ArrowRight,
   Check,
   Linkedin,
+  Loader2,
   Lock,
   MessageSquare,
+  Paperclip,
   UserPlus,
   Workflow,
+  X,
   Zap,
 } from "lucide-react";
 import {
@@ -45,7 +48,23 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { applyMessageVariables } from "@/lib/messaging/template-variables";
+import {
+  applyMessageVariables,
+  type ProspectForVariables,
+} from "@/lib/messaging/template-variables";
+import { useWorkspace } from "@/lib/workspace";
+import {
+  uploadMessagerieAttachment,
+  type UploadedAttachment,
+} from "@/lib/messagerie/upload-attachment";
+import { CAMPAIGN_ATTACHMENT_MAX_BYTES } from "@/lib/campaigns/attachment";
+import { toast } from "@/lib/toast";
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+}
 
 export type LinkedInCampaignType =
   | "invitation_only"
@@ -57,6 +76,8 @@ export interface CreateCampaignPayload {
   name: string;
   /** When set, server resolves prospect_ids from this bdd + the refinements. */
   bdd_id?: string;
+  /** Ad-hoc prospect ids (CRM selection) — used instead of bdd_id. */
+  prospect_ids?: string[];
   refine_exclude_contacted?: boolean;
   refine_only_with_phone?: boolean;
   refine_exclude_active?: boolean;
@@ -64,6 +85,8 @@ export interface CreateCampaignPayload {
   invitation_note?: string;
   /** Message body (for message_only / invitation_message). */
   message?: string;
+  /** Single file attached to the message (message_only / invitation_message). */
+  attachment?: { path: string; name: string; size: number };
 }
 
 // ─── Types tiles ─────────────────────────────────────────────────────────────
@@ -104,16 +127,24 @@ const VARIABLES = [
   { token: "{{bookingLink}}", label: "Lien booking" },
 ];
 
-const PREVIEW_PROSPECT = {
+// Fallback used only when the selected list has no usable sample prospect yet
+// (e.g. empty list, or still loading). The live preview prefers a real
+// prospect from the selected list.
+const FALLBACK_PREVIEW_PROSPECT: ProspectForVariables = {
   full_name: "Marie Dupont",
   company: "Acme",
   job_title: "CTO",
 };
-const PREVIEW_BOOKING_LINK = "andoxa.fr/booking/vous";
 
-function applyPreviewVars(text: string): string {
-  return applyMessageVariables(text, PREVIEW_PROSPECT, {
-    bookingLink: PREVIEW_BOOKING_LINK,
+function applyPreviewVars(
+  text: string,
+  prospect: ProspectForVariables,
+  bookingLink: string | null,
+): string {
+  return applyMessageVariables(text, prospect, {
+    // When the user hasn't configured a booking link, show a readable
+    // placeholder instead of leaving a dangling {{bookingLink}} token.
+    bookingLink: bookingLink ?? "[configurez votre lien de réservation]",
   });
 }
 
@@ -251,6 +282,8 @@ export function CreateCampaignModal({
   onCreate,
   onDraft,
   initialBddId = null,
+  initialProspectIds = null,
+  initialPreviewProspect = null,
   hasPaidLinkedIn = true,
   initialValues = null,
 }: {
@@ -260,6 +293,14 @@ export function CreateCampaignModal({
   onDraft: (data: CreateCampaignPayload) => void | Promise<void>;
   /** Preselect a list (used by the CRM "Lancer une campagne" list action). */
   initialBddId?: string | null;
+  /**
+   * Ad-hoc prospect selection from the CRM "Inviter" action. When non-empty the
+   * wizard runs in "selection mode": step 1 shows the selected count instead of
+   * the list picker, and the job is created with these prospect ids directly.
+   */
+  initialProspectIds?: string[] | null;
+  /** A sample prospect (from the CRM selection) used to render step 3/4 previews. */
+  initialPreviewProspect?: ProspectForVariables | null;
   /**
    * Whether the connected LinkedIn account is Premium/Sales Navigator.
    * Invitation + Message requires a paid account, so the tile is locked when
@@ -287,6 +328,14 @@ export function CreateCampaignModal({
   const [excludeContacted, setExcludeContacted] = useState(false);
   const [onlyWithPhone, setOnlyWithPhone] = useState(false);
   const [excludeActive, setExcludeActive] = useState(true);
+  // "Selection mode": prospects came from the CRM rather than a saved list.
+  // Derived straight from the prop (not state) so it tracks correctly even
+  // when the page supplies the selection after the modal has already mounted.
+  const selectionIds = useMemo(
+    () => initialProspectIds ?? [],
+    [initialProspectIds],
+  );
+  const selectionMode = selectionIds.length > 0;
 
   // Step 2
   const [type, setType] = useState<LinkedInCampaignType | null>(null);
@@ -296,8 +345,66 @@ export function CreateCampaignModal({
   const [hasNote, setHasNote] = useState(false);
   const [invitationNote, setInvitationNote] = useState("");
   const [message, setMessage] = useState("");
+  const [attachment, setAttachment] = useState<UploadedAttachment | null>(null);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
 
+  const { workspaceId } = useWorkspace();
   const { data: bdds = [], isLoading: bddsLoading } = useBddOptions(open);
+
+  // Live preview data: the user's real booking link + a sample prospect from
+  // the selected list, so step 3/4 previews reflect what recipients will see.
+  const { data: bookingPath } = useQuery({
+    queryKey: ["campaigns", "wizard-booking-slug", open] as const,
+    enabled: open,
+    queryFn: async () => {
+      const res = await fetch("/api/booking/slug", { credentials: "include" });
+      if (!res.ok) return null;
+      const json = await res.json();
+      const d = json?.data ?? json;
+      return (d?.booking_public_path ?? d?.booking_slug ?? null) as
+        | string
+        | null;
+    },
+    staleTime: 60_000,
+  });
+  const bookingLink =
+    typeof window !== "undefined" && bookingPath
+      ? `${window.location.origin}/booking/${String(bookingPath).replace(/^\/+|\/+$/g, "")}`
+      : null;
+
+  const { data: sampleProspect } = useQuery({
+    queryKey: ["campaigns", "wizard-sample-prospect", bddId] as const,
+    enabled: open && !!bddId,
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/prospects?bdd_id=${encodeURIComponent(bddId!)}&pageSize=1`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return null;
+      const json = await res.json();
+      const items = (json?.items ?? json?.data?.items ?? []) as Array<{
+        full_name?: string | null;
+        company?: string | null;
+        job_title?: string | null;
+      }>;
+      const p = items[0];
+      if (!p) return null;
+      return {
+        full_name: p.full_name ?? null,
+        company: p.company ?? null,
+        job_title: p.job_title ?? null,
+      } satisfies ProspectForVariables;
+    },
+    staleTime: 60_000,
+  });
+
+  // In selection mode the sample comes from the CRM selection; otherwise from
+  // the selected list. Fall back to a generic prospect when neither is usable.
+  const previewSource = selectionMode ? initialPreviewProspect : sampleProspect;
+  const previewProspect: ProspectForVariables =
+    previewSource?.full_name ? previewSource : FALLBACK_PREVIEW_PROSPECT;
+  const previewName = previewProspect.full_name ?? "Prospect";
+  const previewCompany = previewProspect.company ?? "—";
 
   const reset = () => {
     setStep(1);
@@ -312,6 +419,31 @@ export function CreateCampaignModal({
     setHasNote(false);
     setInvitationNote("");
     setMessage("");
+    setAttachment(null);
+    setAttachmentUploading(false);
+  };
+
+  const handleAttachmentSelect = async (file: File | null) => {
+    if (!file) return;
+    if (file.size > CAMPAIGN_ATTACHMENT_MAX_BYTES) {
+      toast.error("La pièce jointe dépasse la taille maximale (10 Mo).");
+      return;
+    }
+    if (!workspaceId) {
+      toast.error("Espace de travail introuvable.");
+      return;
+    }
+    setAttachmentUploading(true);
+    try {
+      const uploaded = await uploadMessagerieAttachment(file, workspaceId);
+      if (!uploaded) {
+        toast.error("La pièce jointe n'a pas pu être envoyée.");
+        return;
+      }
+      setAttachment(uploaded);
+    } finally {
+      setAttachmentUploading(false);
+    }
   };
 
   // Reset state when modal closes (after a tick so the close animation finishes).
@@ -344,7 +476,7 @@ export function CreateCampaignModal({
   );
 
   // ── Validation per step ─────────────────────────────────────────────────
-  const step1Valid = !!bddId;
+  const step1Valid = selectionMode ? selectionIds.length > 0 : !!bddId;
   const nameValid = name.trim().length >= 3 && name.trim().length <= 80;
   const step2Valid = !!type && nameValid;
   const step3Valid = (() => {
@@ -372,7 +504,8 @@ export function CreateCampaignModal({
   const buildPayload = (): CreateCampaignPayload => ({
     type: type!,
     name: name.trim(),
-    bdd_id: bddId ?? undefined,
+    bdd_id: selectionMode ? undefined : (bddId ?? undefined),
+    prospect_ids: selectionMode ? selectionIds : undefined,
     refine_exclude_contacted: excludeContacted,
     refine_only_with_phone: onlyWithPhone,
     refine_exclude_active: excludeActive,
@@ -381,6 +514,15 @@ export function CreateCampaignModal({
     invitation_note:
       type === "invitation_only" && hasNote ? invitationNote.trim() : undefined,
     message: type === "invitation_only" ? undefined : message.trim(),
+    // Attachments only apply to message-bearing types.
+    attachment:
+      type !== "invitation_only" && attachment
+        ? {
+            path: attachment.path,
+            name: attachment.name,
+            size: attachment.size,
+          }
+        : undefined,
   });
 
   const run = async (kind: "create" | "draft") => {
@@ -425,6 +567,8 @@ export function CreateCampaignModal({
               setExcludeContacted={setExcludeContacted}
               excludeActive={excludeActive}
               setExcludeActive={setExcludeActive}
+              selectionMode={selectionMode}
+              selectionCount={selectionIds.length}
             />
           )}
           {step === 2 && (
@@ -446,6 +590,14 @@ export function CreateCampaignModal({
               setInvitationNote={setInvitationNote}
               message={message}
               setMessage={setMessage}
+              attachment={attachment}
+              attachmentUploading={attachmentUploading}
+              onSelectFile={handleAttachmentSelect}
+              onRemoveAttachment={() => setAttachment(null)}
+              previewProspect={previewProspect}
+              previewName={previewName}
+              previewCompany={previewCompany}
+              bookingLink={bookingLink}
             />
           )}
           {step === 4 && type && (
@@ -453,11 +605,16 @@ export function CreateCampaignModal({
               type={type}
               name={name}
               bdd={selectedBdd}
+              selectionMode={selectionMode}
+              selectionCount={selectionIds.length}
               excludeContacted={excludeContacted}
               excludeActive={excludeActive}
               hasNote={hasNote}
               invitationNote={invitationNote}
               message={message}
+              attachment={attachment}
+              previewProspect={previewProspect}
+              bookingLink={bookingLink}
             />
           )}
         </div>
@@ -481,7 +638,9 @@ export function CreateCampaignModal({
               <Button
                 variant="outline"
                 onClick={() => void run("draft")}
-                disabled={!type || !nameValid || !!submitting}
+                disabled={
+                  !type || !nameValid || !!submitting || attachmentUploading
+                }
               >
                 {submitting === "draft" ? "Enregistrement…" : "Brouillon"}
               </Button>
@@ -492,7 +651,7 @@ export function CreateCampaignModal({
                 disabled={
                   (step === 1 && !step1Valid) ||
                   (step === 2 && !step2Valid) ||
-                  (step === 3 && !step3Valid)
+                  (step === 3 && (!step3Valid || attachmentUploading))
                 }
               >
                 Continuer
@@ -525,6 +684,8 @@ function Step1Prospects({
   setExcludeContacted,
   excludeActive,
   setExcludeActive,
+  selectionMode,
+  selectionCount,
 }: {
   bdds: BddRow[];
   loading: boolean;
@@ -534,7 +695,40 @@ function Step1Prospects({
   setExcludeContacted: (v: boolean) => void;
   excludeActive: boolean;
   setExcludeActive: (v: boolean) => void;
+  selectionMode: boolean;
+  selectionCount: number;
 }) {
+  // Ad-hoc selection from the CRM: skip the list picker entirely. The
+  // "exclude contacted" refinement is list-only (resolved server-side from the
+  // bdd), so it's hidden here; "exclude active" still applies to raw ids.
+  if (selectionMode) {
+    return (
+      <div className="space-y-5">
+        <div className="flex items-center gap-3 rounded-md border bg-[var(--brand-blue-tint)] px-4 py-3">
+          <UserPlus className="size-5 shrink-0 text-[var(--brand-blue)]" />
+          <div className="text-sm">
+            <div className="font-medium">
+              {selectionCount} prospect{selectionCount > 1 ? "s" : ""} sélectionné
+              {selectionCount > 1 ? "s" : ""}
+            </div>
+            <div className="text-[11.5px] text-muted-foreground">
+              Depuis votre sélection dans le CRM.
+            </div>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label className="mb-1 block">Affinages</Label>
+          <RefineToggle
+            label="Exclure ceux déjà dans une campagne active"
+            hint="Évite les chevauchements et la double sollicitation"
+            checked={excludeActive}
+            onCheckedChange={setExcludeActive}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <div>
@@ -738,6 +932,14 @@ function Step3Config({
   setInvitationNote,
   message,
   setMessage,
+  attachment,
+  attachmentUploading,
+  onSelectFile,
+  onRemoveAttachment,
+  previewProspect,
+  previewName,
+  previewCompany,
+  bookingLink,
 }: {
   type: LinkedInCampaignType;
   hasNote: boolean;
@@ -746,6 +948,14 @@ function Step3Config({
   setInvitationNote: (v: string) => void;
   message: string;
   setMessage: (v: string) => void;
+  attachment: UploadedAttachment | null;
+  attachmentUploading: boolean;
+  onSelectFile: (file: File | null) => void;
+  onRemoveAttachment: () => void;
+  previewProspect: ProspectForVariables;
+  previewName: string;
+  previewCompany: string;
+  bookingLink: string | null;
 }) {
   // invitation_message is bare-invite + post-acceptance message. The phase-1
   // invite carries no note, so the wizard only collects the follow-up body.
@@ -756,6 +966,7 @@ function Step3Config({
   // to the end. The helper restores focus + caret position post-insert.
   const noteRef = useRef<HTMLTextAreaElement>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
@@ -838,7 +1049,7 @@ function Step3Config({
             />
             <div className="mt-1 flex items-center justify-between">
               <span className="text-[11px] text-muted-foreground">
-                Markdown léger non supporté.
+                Le message part en texte brut (sans mise en forme).
               </span>
               <span
                 className={cn(
@@ -853,24 +1064,97 @@ function Step3Config({
                 {message.length}/2000
               </span>
             </div>
+
+            {/* Single-file attachment — sent with the message. */}
+            <div className="mt-4 border-t pt-3">
+              <Label className="mb-2 block text-sm font-semibold">
+                Pièce jointe
+                <span className="ml-1.5 font-normal text-muted-foreground">
+                  (optionnel)
+                </span>
+              </Label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                onChange={(e) => {
+                  onSelectFile(e.target.files?.[0] ?? null);
+                  // Reset so re-selecting the same file fires onChange again.
+                  e.target.value = "";
+                }}
+              />
+              {attachment ? (
+                <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+                  <Paperclip className="size-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-medium">
+                      {attachment.name}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      {formatFileSize(attachment.size)}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onRemoveAttachment}
+                    title="Retirer la pièce jointe"
+                    className="rounded p-1 text-muted-foreground hover:bg-muted"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={attachmentUploading}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {attachmentUploading ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Paperclip className="size-3.5" />
+                  )}
+                  {attachmentUploading ? "Envoi…" : "Ajouter un fichier"}
+                </Button>
+              )}
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Un seul fichier, 10&nbsp;Mo max.
+                {type === "invitation_message"
+                  ? " Envoyé avec le message après acceptation."
+                  : " Envoyé avec le message."}
+              </p>
+            </div>
           </div>
         )}
       </div>
 
       <div className="space-y-2 lg:sticky lg:top-0">
         <div className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Aperçu (Marie Dupont · Acme)
+          Aperçu ({previewName} · {previewCompany})
         </div>
         <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
           {showNote && (
             <PreviewBubble title="Note d'invitation" tone="blue">
-              {hasNote ? applyPreviewVars(invitationNote || "—") : "Demande sans note"}
+              {hasNote
+                ? applyPreviewVars(invitationNote || "—", previewProspect, bookingLink)
+                : "Demande sans note"}
             </PreviewBubble>
           )}
           {showMessage && (
             <PreviewBubble title="Message" tone="slate">
-              {applyPreviewVars(message || "—")}
+              {applyPreviewVars(message || "—", previewProspect, bookingLink)}
             </PreviewBubble>
+          )}
+          {showMessage && attachment && (
+            <div className="flex items-center gap-2 rounded-md border bg-background px-2.5 py-2">
+              <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate text-[12px]">{attachment.name}</span>
+              <span className="ml-auto shrink-0 text-[10.5px] text-muted-foreground">
+                {formatFileSize(attachment.size)}
+              </span>
+            </div>
           )}
         </div>
       </div>
@@ -928,20 +1212,30 @@ function Step4Recap({
   type,
   name,
   bdd,
+  selectionMode,
+  selectionCount,
   excludeContacted,
   excludeActive,
   hasNote,
   invitationNote,
   message,
+  attachment,
+  previewProspect,
+  bookingLink,
 }: {
   type: LinkedInCampaignType;
   name: string;
   bdd: BddRow | null;
+  selectionMode: boolean;
+  selectionCount: number;
   excludeContacted: boolean;
   excludeActive: boolean;
   hasNote: boolean;
   invitationNote: string;
   message: string;
+  attachment: UploadedAttachment | null;
+  previewProspect: ProspectForVariables;
+  bookingLink: string | null;
 }) {
   const typeLabel = TYPES.find((t) => t.id === type)?.label ?? "—";
   const refines = [
@@ -960,10 +1254,22 @@ function Step4Recap({
           <div className="text-sm font-medium">{name || "—"}</div>
         </RecapCard>
         <RecapCard label="Cible">
-          <div className="text-sm font-medium">{bdd?.name ?? "—"}</div>
-          <div className="text-[11.5px] text-muted-foreground">
-            {bdd?.prospect_count ?? 0} prospects dans la liste
-          </div>
+          {selectionMode ? (
+            <>
+              <div className="text-sm font-medium">Sélection CRM</div>
+              <div className="text-[11.5px] text-muted-foreground">
+                {selectionCount} prospect{selectionCount > 1 ? "s" : ""} sélectionné
+                {selectionCount > 1 ? "s" : ""}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-sm font-medium">{bdd?.name ?? "—"}</div>
+              <div className="text-[11.5px] text-muted-foreground">
+                {bdd?.prospect_count ?? 0} prospects dans la liste
+              </div>
+            </>
+          )}
         </RecapCard>
         <RecapCard label="Affinages">
           {refines.length === 0 ? (
@@ -984,7 +1290,7 @@ function Step4Recap({
       {type === "invitation_only" && hasNote && (
         <RecapCard label="Note d'invitation">
           <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-foreground">
-            {applyPreviewVars(invitationNote || "—")}
+            {applyPreviewVars(invitationNote || "—", previewProspect, bookingLink)}
           </div>
         </RecapCard>
       )}
@@ -1000,8 +1306,17 @@ function Step4Recap({
       {(type === "message_only" || type === "invitation_message") && (
         <RecapCard label="Message">
           <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-foreground">
-            {applyPreviewVars(message || "—")}
+            {applyPreviewVars(message || "—", previewProspect, bookingLink)}
           </div>
+          {attachment && (
+            <div className="mt-2 flex items-center gap-2 rounded-md border bg-muted/30 px-2.5 py-2">
+              <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate text-[12px]">{attachment.name}</span>
+              <span className="ml-auto shrink-0 text-[10.5px] text-muted-foreground">
+                {formatFileSize(attachment.size)}
+              </span>
+            </div>
+          )}
         </RecapCard>
       )}
 

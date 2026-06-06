@@ -35,8 +35,7 @@ import {
 } from "@/components/ui/command";
 import { ProspectCreateDialog } from "./prospect-create-dialog";
 import { ProspectImportDialog } from "./prospect-import-dialog";
-import { CampaignModal } from "@/components/campaigns/campaign-modal";
-import type { CampaignConfig } from "@/lib/campaigns/types";
+import { WIZARD_PROSPECT_SELECTION_KEY } from "@/lib/campaigns/wizard-selection";
 import type { BddItem, FilterState } from "./crm-table";
 import { useProspectStatuses } from "@/lib/prospects/statuses";
 import { isFeatureEnabled } from "@/lib/config/feature-flags";
@@ -104,7 +103,6 @@ import { useRouter } from "next/navigation";
 import { toast } from "@/lib/toast";
 import type { BddRow, ListesFilterState } from "./crm-table";
 import type { Prospect } from "@/lib/types/prospects";
-import { useLinkedInAccount } from "@/hooks/use-linkedin-account";
 
 interface CrmToolbarProps {
   view: CrmView;
@@ -135,10 +133,6 @@ export function CrmToolbar({
 }: CrmToolbarProps) {
   const router = useRouter();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [showCampaignModal, setShowCampaignModal] = useState(false);
-  const [campaignConfig, setCampaignConfig] = useState<CampaignConfig | null>(null);
-  const { data: linkedInAccount } = useLinkedInAccount();
-  const linkedInTier = linkedInAccount?.linkedin_tier ?? "standard";
 
   const prospectsWithLinkedin = selectedProspects.filter((p) => p.linkedin?.trim());
   const prospectsWithPhone = selectedProspects.filter((p) => p.phone?.trim());
@@ -146,15 +140,35 @@ export function CrmToolbar({
   const hasListesSelection = selectedListes.length > 0;
   const hasAnySelection = selectedProspects.length > 0 || hasListesSelection;
 
-  const openCampaignModal = (config: CampaignConfig) => {
-    setCampaignConfig(config);
-    setShowCampaignModal(true);
+  // Launch a campaign from the current CRM prospect selection. The selection
+  // (plus a sample prospect for the wizard preview) is handed off via
+  // sessionStorage — URL params can't carry 100+ ids — then we open the
+  // campaigns wizard in selection mode.
+  const launchCampaignFromSelection = () => {
+    const ids = prospectsWithLinkedin.map((p) => p.id);
+    if (ids.length === 0) return;
+    const first = prospectsWithLinkedin[0];
+    try {
+      sessionStorage.setItem(
+        WIZARD_PROSPECT_SELECTION_KEY,
+        JSON.stringify({
+          prospectIds: ids,
+          sample: first
+            ? {
+                full_name: first.full_name ?? null,
+                company: first.company ?? null,
+                job_title: first.job_title ?? null,
+              }
+            : null,
+        }),
+      );
+    } catch {
+      // sessionStorage may be unavailable (private mode); the wizard still
+      // opens and the user can pick a list instead.
+    }
+    router.push("/campaigns?new=campaign&from=selection");
   };
 
-  const closeCampaignModal = () => {
-    setShowCampaignModal(false);
-    setCampaignConfig(null);
-  };
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showFiltersOpen, setShowFiltersOpen] = useState(false);
   const filtersRef = useRef(filters);
@@ -558,16 +572,16 @@ export function CrmToolbar({
           </div>
         </div>
 
-        {/* Row 2: Selection-specific actions (Inviter / Conversation) – only in prospects view */}
+        {/* Row 2: Selection-specific actions (campaign / conversation) – only in prospects view */}
         {view === "prospects" && hasLinkedinSelection && (
           <div className="flex flex-wrap items-center gap-2 pt-1 border-t">
             <button
               type="button"
-              onClick={() => openCampaignModal({ channel: "linkedin" })}
+              onClick={launchCampaignFromSelection}
               className="flex items-center gap-2 rounded-lg border border-primary px-3 py-1.5 text-sm text-primary hover:bg-primary/10"
             >
               <UserPlus className="h-4 w-4" />
-              Inviter ({prospectsWithLinkedin.length})
+              Lancer une campagne ({prospectsWithLinkedin.length})
             </button>
             <Link
               href="/messagerie"
@@ -590,14 +604,6 @@ export function CrmToolbar({
       <ProspectImportDialog
         open={showImportDialog}
         onOpenChange={setShowImportDialog}
-      />
-      <CampaignModal
-        open={showCampaignModal}
-        onOpenChange={(open) => !open && closeCampaignModal()}
-        config={campaignConfig}
-        prospects={prospectsWithLinkedin}
-        onSuccess={closeCampaignModal}
-        linkedInTier={linkedInTier}
       />
     </>
   );
