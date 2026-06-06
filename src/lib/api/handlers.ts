@@ -10,29 +10,11 @@ import {
   assertWorkspaceHasActiveBilling,
   BillingInactiveError,
 } from "../billing/workspace-billing";
+import { getCachedOrg, resolveActiveOrgId } from "../workspace/cached-context";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** Result shape of profiles select with organizations join (Database type has no profiles table) */
-interface ProfileWithOrg {
-  active_organization_id: string | null;
-  organizations: {
-    id: string;
-    name: string;
-    slug: string | null;
-    logo_url: string | null;
-    plan: string | null;
-    subscription_status: string | null;
-    trial_ends_at: string | null;
-    credits?: number;
-    owner_id: string | null;
-    created_at: string;
-    updated_at: string;
-    metadata?: unknown;
-  } | null;
-}
 
 export interface ApiContext {
   /** Authenticated user ID */
@@ -208,35 +190,18 @@ async function buildApiContext(
 
   let workspace: Workspace | null = null;
 
-  // Get workspace if user is authenticated
+  // Get workspace if user is authenticated. Active org comes from the JWT
+  // app_metadata claim (fallback: profiles lookup); the org row is served from
+  // the shared short-TTL cache keyed by org id — same key the proxy uses.
   if (userId) {
-    const { data } = await supabase
-      .from("profiles")
-      .select(
-        `
-        active_organization_id,
-        organizations:active_organization_id (
-          id,
-          name,
-          slug,
-          logo_url,
-          plan,
-          subscription_status,
-          trial_ends_at,
-          credits,
-          owner_id,
-          created_at,
-          updated_at,
-          metadata
-        )
-      `
-      )
-      .eq("id", userId)
-      .single();
-
-    const profile = data as ProfileWithOrg | null;
-    if (profile?.organizations) {
-      const org = profile.organizations;
+    const db = supabase as unknown as SupabaseClient<Database>;
+    const activeOrgId = await resolveActiveOrgId(
+      db,
+      userId,
+      claims as unknown as { app_metadata?: Record<string, unknown> | null }
+    );
+    const org = activeOrgId ? await getCachedOrg(db, activeOrgId) : null;
+    if (org) {
       // Workspace type: organizations = team workspace (multi-user)
       workspace = {
         id: org.id,

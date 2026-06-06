@@ -7,6 +7,7 @@ import {
   resolvePriceId,
 } from "@/lib/config/stripe-plans";
 import { insertWebhookDedupe } from "@/lib/webhooks/dedupe";
+import { invalidateOrgContext } from "@/lib/workspace/cached-context";
 import type { Database } from "@/lib/types/supabase";
 
 type OrganizationUpdate = Database["public"]["Tables"]["organizations"]["Update"];
@@ -171,6 +172,7 @@ export async function POST(request: NextRequest) {
             sessionId: session.id,
           });
         } else {
+          await invalidateOrgContext(organizationId);
           console.log("Organization activated after payment", {
             organizationId,
             sessionId: session.id,
@@ -232,6 +234,7 @@ export async function POST(request: NextRequest) {
             .from("organizations")
             .update(orgUpdate)
             .eq("id", org.id);
+          await invalidateOrgContext(org.id);
         }
         break;
       }
@@ -263,6 +266,7 @@ export async function POST(request: NextRequest) {
               updated_at: new Date().toISOString(),
             })
             .eq("id", org.id);
+          await invalidateOrgContext(org.id);
 
           console.log("[Webhook] Marked organization past_due", {
             organizationId: org.id,
@@ -304,6 +308,7 @@ export async function POST(request: NextRequest) {
               updated_at: new Date().toISOString(),
             })
             .eq("id", org.id);
+          await invalidateOrgContext(org.id);
         }
         break;
       }

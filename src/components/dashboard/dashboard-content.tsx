@@ -491,40 +491,11 @@ export type PdfOrientation = "portrait" | "landscape";
  */
 let dashboardExportInFlight = false;
 
-async function runDashboardExport(opts: {
-  period: Period;
-  apiPeriod: ApiPeriod;
-  orientation: PdfOrientation;
-  orgName: string | null;
-  orgLogoUrl: string | null;
-}): Promise<void> {
-  if (dashboardExportInFlight) {
-    sonnerToast.info("Un export est déjà en cours…");
-    return;
-  }
-  dashboardExportInFlight = true;
-  const toastId = sonnerToast.loading("Génération du PDF…");
-  try {
-    const { exportDashboardPdf } = await import("./dashboard-pdf");
-    await exportDashboardPdf(opts);
-    sonnerToast.success("Export PDF téléchargé", { id: toastId });
-  } catch (e) {
-    console.error("Dashboard PDF export failed", e);
-    sonnerToast.error("L'export a échoué. Réessaie dans un instant.", {
-      id: toastId,
-    });
-  } finally {
-    dashboardExportInFlight = false;
-  }
-}
-
-/** Report kind chosen in the export menu. */
-export type ExportKind = "dashboard" | "team";
-
 /**
- * Team performance export — same detached-job pattern as the dashboard export.
- * Pulls the org-wide (team) aggregation for the chosen period and renders the
- * "Performance de l'équipe" PDF.
+ * Team performance export — the dashboard's single PDF export. Runs as a
+ * detached module-level job with its own toast feedback. Pulls the org-wide
+ * (team) aggregation for the chosen period and renders the "Performance de
+ * l'équipe" PDF.
  */
 async function runTeamExport(opts: {
   apiPeriod: ApiPeriod;
@@ -588,13 +559,10 @@ function PageHeader({
   avatarUrl?: string | null;
   period: Period;
   setPeriod: (p: Period) => void;
-  onExport: (p: Period, orientation: PdfOrientation, kind: ExportKind) => void;
+  onExport: (p: Period, orientation: PdfOrientation) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  const [exportOrientation, setExportOrientation] =
-    useState<PdfOrientation>("portrait");
-  const [exportKind, setExportKind] = useState<ExportKind>("dashboard");
   const ref = useRef<HTMLDivElement | null>(null);
   const exportRef = useRef<HTMLDivElement | null>(null);
   const today = useMemo(() => new Date(), []);
@@ -688,7 +656,7 @@ function PageHeader({
             type="button"
             onClick={() => setExportOpen((o) => !o)}
             className="h-9 px-3 sm:px-3.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-800 rounded-md bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
-            title="Exporter le tableau de bord en PDF"
+            title="Exporter la performance de l'équipe en PDF"
           >
             <Download size={14} />
             <span className="hidden sm:inline">Exporter</span>
@@ -698,68 +666,22 @@ function PageHeader({
             />
           </button>
           {exportOpen && (
-            <div className="absolute right-0 mt-1.5 w-56 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-md shadow-lg p-1 z-30">
-              <div className="px-2.5 py-1.5 text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500 dark:text-zinc-400">
-                Type de rapport
-              </div>
-              <div className="flex gap-1 px-1.5 pb-1.5">
-                {(
-                  [
-                    { key: "dashboard", label: "Tableau de bord" },
-                    { key: "team", label: "Performance équipe" },
-                  ] as const
-                ).map((t) => (
-                  <button
-                    key={t.key}
-                    onClick={() => setExportKind(t.key)}
-                    className={`flex-1 px-2 py-1 text-[11.5px] rounded transition-colors ${
-                      exportKind === t.key
-                        ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 font-medium"
-                        : "text-slate-600 hover:bg-slate-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-              <div className="my-1 border-t border-slate-100 dark:border-zinc-800" />
-              <div className="px-2.5 py-1.5 text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500 dark:text-zinc-400">
-                Orientation
-              </div>
-              <div className="flex gap-1 px-1.5 pb-1.5">
-                {(
-                  [
-                    { key: "portrait", label: "Vertical" },
-                    { key: "landscape", label: "Horizontal" },
-                  ] as const
-                ).map((o) => (
-                  <button
-                    key={o.key}
-                    onClick={() => setExportOrientation(o.key)}
-                    className={`flex-1 px-2 py-1 text-[12px] rounded transition-colors ${
-                      exportOrientation === o.key
-                        ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 font-medium"
-                        : "text-slate-600 hover:bg-slate-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
-                    }`}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-              <div className="my-1 border-t border-slate-100 dark:border-zinc-800" />
-              <div className="px-2.5 py-1.5 text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500 dark:text-zinc-400">
-                Choisir la période
-              </div>
-              {PERIODS.map((p) => (
+            <div className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-md shadow-lg p-1 z-30">
+              {(
+                [
+                  { key: "portrait", label: "Vertical" },
+                  { key: "landscape", label: "Horizontal" },
+                ] as const
+              ).map((o) => (
                 <button
-                  key={p}
+                  key={o.key}
                   onClick={() => {
                     setExportOpen(false);
-                    onExport(p, exportOrientation, exportKind);
+                    onExport(period, o.key);
                   }}
                   className="w-full text-left px-2.5 py-1.5 text-[12.5px] rounded transition-colors flex items-center justify-between text-slate-700 hover:bg-slate-50 dark:text-zinc-300 dark:hover:bg-zinc-800"
                 >
-                  {p}
+                  {o.label}
                 </button>
               ))}
             </div>
@@ -2024,24 +1946,10 @@ export function DashboardContent() {
 
   // Fire-and-forget: the export runs as a detached module-level job with its
   // own toast feedback, so it survives navigation and never disables the button.
-  const handleExport = (
-    chosenPeriod: Period,
-    orientation: PdfOrientation,
-    kind: ExportKind,
-  ) => {
-    if (kind === "team") {
-      void runTeamExport({
-        apiPeriod: PERIOD_TO_API[chosenPeriod],
-        orientation,
-      });
-      return;
-    }
-    void runDashboardExport({
-      period: chosenPeriod,
+  const handleExport = (chosenPeriod: Period, orientation: PdfOrientation) => {
+    void runTeamExport({
       apiPeriod: PERIOD_TO_API[chosenPeriod],
       orientation,
-      orgName: workspace?.name ?? null,
-      orgLogoUrl: workspace?.logo_url ?? null,
     });
   };
 

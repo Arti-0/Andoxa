@@ -1,11 +1,14 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/lib/types/supabase';
 import {
     evaluateDashboardEntitlement,
     shouldRedirectToOrgInactivePage,
     type OrgDashboardGateRow,
 } from '@/lib/auth/dashboard-entitlement';
 import { resolveAppOrigin } from '@/lib/config/app-url';
+import { getCachedOrg, resolveActiveOrgId } from '@/lib/workspace/cached-context';
 
 type ResponseCookieOptions = Parameters<
     ReturnType<typeof NextResponse.next>['cookies']['set']
@@ -76,14 +79,6 @@ function isOnboardingPath(pathname: string) {
 function createRedirectUrl(path: string, request: NextRequest): URL {
     return new URL(path, resolveAppOrigin(request));
 }
-
-type OrgRow = {
-    id: string;
-    status: string | null;
-    subscription_status: string | null;
-    trial_ends_at: string | null;
-    deleted_at: string | null;
-};
 
 function isProtectedAssetPath(pathname: string) {
     return (
@@ -158,38 +153,34 @@ export async function proxy(request: NextRequest) {
     // refresh is still handled by the supabase-ssr client via the cookie
     // getAll/setAll wiring above, so sessions are kept fresh.
     const { data: claimsData } = await supabase.auth.getClaims();
-    const userId = claimsData?.claims?.sub ?? null;
+    const claims = claimsData?.claims ?? null;
+    const userId = claims?.sub ?? null;
     if (!userId) {
         const loginUrl = createRedirectUrl('/auth/login', request);
         loginUrl.searchParams.set('next', pathname);
         return NextResponse.redirect(loginUrl);
     }
 
-    const { data: profile } = await supabase
-        .from('profiles')
-        .select('active_organization_id')
-        .eq('id', userId)
-        .maybeSingle();
-
-    const profileOrgId = profile?.active_organization_id ?? null;
-
     // Post-checkout wait page: allow authenticated users without full dashboard entitlement
     if (pathname === '/success') {
         return response;
     }
 
-    const activeOrganizationId = profileOrgId;
+    const db = supabase as unknown as SupabaseClient<Database>;
 
-    const [orgResult, subscriptionResult] = await Promise.all([
+    // Active org from the JWT app_metadata claim (fresh after a workspace switch),
+    // falling back to a profiles lookup. The org row itself is served from the
+    // shared short-TTL cache, keyed by org id.
+    const activeOrganizationId = await resolveActiveOrgId(
+        db,
+        userId,
+        claims as unknown as { app_metadata?: Record<string, unknown> | null }
+    );
+
+    const [organization, subscriptionResult] = await Promise.all([
         activeOrganizationId
-            ? supabase
-                  .from('organizations')
-                  .select(
-                      'id, status, subscription_status, trial_ends_at, deleted_at'
-                  )
-                  .eq('id', activeOrganizationId)
-                  .maybeSingle()
-            : Promise.resolve({ data: null }),
+            ? getCachedOrg(db, activeOrganizationId)
+            : Promise.resolve(null),
         supabase
             .from('user_subscriptions')
             .select('plan_id, status')
@@ -198,7 +189,6 @@ export async function proxy(request: NextRequest) {
             .maybeSingle(),
     ]);
 
-    const organization = (orgResult.data ?? null) as OrgRow | null;
     const subscription = subscriptionResult.data;
 
     const orgGate: OrgDashboardGateRow | null = organization

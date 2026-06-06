@@ -1,5 +1,6 @@
 import { createApiHandler, Errors, parseBody } from "../../../lib/api";
 import { planAllowsAutoEnrichOnImport } from "@/lib/enrichment/queue-helpers";
+import { invalidateOrgContext } from "@/lib/workspace/cached-context";
 import type { Json } from "@/lib/types/supabase";
 
 /**
@@ -108,6 +109,9 @@ export const PATCH = createApiHandler(async (req, ctx) => {
   if (error) {
     throw Errors.internal("Failed to update workspace");
   }
+
+  // Keep the shared org-context cache (proxy + API) coherent after edits.
+  await invalidateOrgContext(ctx.workspace.id);
 
   return data;
 });

@@ -32,8 +32,8 @@ import type { ApiPeriod } from "./dashboard-content";
 
 export type PdfOrientation = "portrait" | "landscape";
 
-/** Public raster brand mark (JPG). SVG assets are not supported by react-pdf. */
-const ANDOXA_MARK_PATH = "/assets/logofiles/logo_mark%201.jpg";
+/** Public raster brand mark (PNG). SVG assets are not supported by react-pdf. */
+const ANDOXA_MARK_PATH = "/assets/logofiles/logo-mark.png";
 
 /* ============================================================
    TYPES (subset of the dashboard API payloads we need)

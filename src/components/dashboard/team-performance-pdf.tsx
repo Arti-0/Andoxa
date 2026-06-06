@@ -38,8 +38,14 @@ Font.registerHyphenationCallback((word) => [word]);
 import type { ApiPeriod, PdfOrientation } from "./dashboard-content";
 import type { TeamExportData, TeamExportKpi } from "@/app/api/dashboard/team-export/route";
 
-/** Public JPG brand mark. (react-pdf cannot rasterise the SVG wordmark.) */
-const ANDOXA_MARK_PATH = "/assets/logofiles/logo_mark%201.jpg";
+/**
+ * Public PNG brand mark (react-pdf rasterises PNG/JPEG, not SVG). NOTE: the
+ * legacy `logo_mark 1.jpg` is actually PNG bytes behind a `.jpg` extension —
+ * served as image/jpeg, react-pdf's JPEG decoder silently failed on it and the
+ * logo went missing. We point at a correctly-typed `.png` and additionally
+ * sniff the real format in `toDataUrl` below as defense-in-depth.
+ */
+const ANDOXA_MARK_PATH = "/assets/logofiles/logo-mark.png";
 
 /* ============================ palette (from design tokens) ============================ */
 const C = {
@@ -617,18 +623,43 @@ export function TeamPerformanceDocument({
 
 /* ============================ data fetch + export ============================ */
 
+/**
+ * Sniff the real image type from magic bytes. The server's Content-Type (and
+ * thus FileReader's data-URL prefix) follows the file *extension*, which can lie
+ * — a PNG saved as `.jpg` is served `image/jpeg`, and react-pdf then fails to
+ * decode it. Deriving the MIME from the actual bytes makes the embed robust to
+ * mislabeled assets.
+ */
+function sniffImageMime(bytes: Uint8Array): string | null {
+  if (
+    bytes.length >= 4 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47
+  ) {
+    return "image/png";
+  }
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "image/jpeg";
+  }
+  return null;
+}
+
 async function toDataUrl(url: string | null | undefined): Promise<string | null> {
   if (!url) return null;
   try {
     const res = await fetch(url, { credentials: "omit" });
     if (!res.ok) return null;
-    const blob = await res.blob();
-    return await new Promise<string | null>((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve((reader.result as string) ?? null);
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(blob);
-    });
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.length === 0) return null;
+    const mime =
+      sniffImageMime(bytes) ?? res.headers.get("content-type") ?? "image/png";
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return `data:${mime};base64,${btoa(binary)}`;
   } catch {
     return null;
   }
