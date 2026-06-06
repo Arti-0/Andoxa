@@ -137,7 +137,11 @@ function getBearerToken(request: NextRequest): string | null {
 async function buildApiContext(
   request: NextRequest,
   options: HandlerOptions
-): Promise<ApiContext> {
+): Promise<{ context: ApiContext; timings: { auth: number; org: number } }> {
+  // andoxa-perf-2b: sub-phase timings (auth=getClaims, org=resolveActiveOrgId +
+  // getCachedOrg) so the context cost can be localized in X-Andoxa-Timing.
+  let authMs = 0;
+  let orgMs = 0;
   const bearerToken = getBearerToken(request);
 
   let supabase: SupabaseClient<Database>;
@@ -177,9 +181,11 @@ async function buildApiContext(
   // getClaims() verifies the JWT locally against the project's asymmetric
   // signing keys — no Auth-server round-trip per request, unlike getUser().
   // For the bearer (extension) path it verifies the passed token the same way.
+  const _tAuth0 = performance.now();
   const { data: claimsData, error: authError } = bearerToken
     ? await supabase.auth.getClaims(bearerToken)
     : await supabase.auth.getClaims();
+  authMs = performance.now() - _tAuth0;
 
   const claims = claimsData?.claims ?? null;
   const userId = claims?.sub ?? null;
@@ -196,12 +202,14 @@ async function buildApiContext(
   // the shared short-TTL cache keyed by org id — same key the proxy uses.
   if (userId) {
     const db = supabase as unknown as SupabaseClient<Database>;
+    const _tOrg0 = performance.now();
     const activeOrgId = await resolveActiveOrgId(
       db,
       userId,
       claims as unknown as { app_metadata?: Record<string, unknown> | null }
     );
     const org = activeOrgId ? await getCachedOrg(db, activeOrgId) : null;
+    orgMs = performance.now() - _tOrg0;
     if (org) {
       // Workspace type: organizations = team workspace (multi-user)
       workspace = {
@@ -240,11 +248,14 @@ async function buildApiContext(
 
   // createServerClient<Database> infers a different schema generic than SupabaseClient<Database>; cast for ApiContext
   return {
-    userId: userId ?? "",
-    email,
-    workspace,
-    workspaceId: workspace?.id ?? null,
-    supabase: supabase as unknown as SupabaseClient<Database>,
+    context: {
+      userId: userId ?? "",
+      email,
+      workspace,
+      workspaceId: workspace?.id ?? null,
+      supabase: supabase as unknown as SupabaseClient<Database>,
+    },
+    timings: { auth: authMs, org: orgMs },
   };
 }
 
@@ -283,7 +294,7 @@ export function createApiHandler<T>(
     // Network → Timing, without any extra tooling.
     const t0 = performance.now();
     try {
-      const context = await buildApiContext(request, options);
+      const { context, timings } = await buildApiContext(request, options);
       const tCtx = performance.now();
 
       if (context.userId) {
@@ -307,15 +318,19 @@ export function createApiHandler<T>(
 
       // Return success response
       const response = createResponse(result);
-      response.headers.set(
-        "Server-Timing",
-        [
-          `ctx;dur=${(tCtx - t0).toFixed(1)}`,
-          `rl;dur=${(tRl - tCtx).toFixed(1)}`,
-          `handler;dur=${(tHandler - tRl).toFixed(1)}`,
-          `total;dur=${(tHandler - t0).toFixed(1)}`,
-        ].join(", ")
-      );
+      // Vercel STRIPS `Server-Timing` in production, so emit the same breakdown
+      // under `X-Andoxa-Timing` too (custom X- headers pass through Vercel's
+      // edge). Server-Timing is kept for local dev (DevTools waterfall).
+      const timingValue = [
+        `auth;dur=${timings.auth.toFixed(1)}`,
+        `org;dur=${timings.org.toFixed(1)}`,
+        `ctx;dur=${(tCtx - t0).toFixed(1)}`,
+        `rl;dur=${(tRl - tCtx).toFixed(1)}`,
+        `handler;dur=${(tHandler - tRl).toFixed(1)}`,
+        `total;dur=${(tHandler - t0).toFixed(1)}`,
+      ].join(", ");
+      response.headers.set("Server-Timing", timingValue);
+      response.headers.set("X-Andoxa-Timing", timingValue);
       return response;
     } catch (error) {
       // Handle known API errors

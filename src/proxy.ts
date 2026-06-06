@@ -235,12 +235,13 @@ export async function proxy(request: NextRequest) {
     // Proxy cost breakdown for the entitled pass-through (visible on every
     // protected navigation, incl. RSC `?_rsc=` requests) → DevTools Network →
     // Timing → Server Timing. `auth` = getClaims, `ctx` = org cache + sub query.
-    response.headers.set(
-        'Server-Timing',
+    const proxyTiming =
         `proxy-auth;dur=${(afterAuth - proxyStart).toFixed(1)}, ` +
-            `proxy-ctx;dur=${(afterCtx - afterAuth).toFixed(1)}, ` +
-            `proxy-total;dur=${(performance.now() - proxyStart).toFixed(1)}`
-    );
+        `proxy-ctx;dur=${(afterCtx - afterAuth).toFixed(1)}, ` +
+        `proxy-total;dur=${(performance.now() - proxyStart).toFixed(1)}`;
+    // Vercel strips `Server-Timing` in prod → also emit under `X-Andoxa-Timing`.
+    response.headers.set('Server-Timing', proxyTiming);
+    response.headers.set('X-Andoxa-Timing', proxyTiming);
 
     return response;
 }
