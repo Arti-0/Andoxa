@@ -39,13 +39,12 @@ import type { ApiPeriod, PdfOrientation } from "./dashboard-content";
 import type { TeamExportData, TeamExportKpi } from "@/app/api/dashboard/team-export/route";
 
 /**
- * Public PNG brand mark (react-pdf rasterises PNG/JPEG, not SVG). NOTE: the
- * legacy `logo_mark 1.jpg` is actually PNG bytes behind a `.jpg` extension —
- * served as image/jpeg, react-pdf's JPEG decoder silently failed on it and the
- * logo went missing. We point at a correctly-typed `.png` and additionally
- * sniff the real format in `toDataUrl` below as defense-in-depth.
+ * Public PNG brand mark (react-pdf rasterises PNG/JPEG, not SVG). The asset is a
+ * correctly-typed `.png`; as defense-in-depth `toDataUrl` below also sniffs the
+ * real format from magic bytes, so a mislabeled asset (e.g. a PNG saved as
+ * `.jpg`, served `image/jpeg`) can never silently break the embed again.
  */
-const ANDOXA_MARK_PATH = "/assets/logofiles/logo-mark.png";
+const ANDOXA_MARK_PATH = "/assets/logofiles/andoxa-mark.png";
 
 /* ============================ palette (from design tokens) ============================ */
 const C = {

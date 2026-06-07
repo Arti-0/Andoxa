@@ -1,0 +1,92 @@
+/* Relief mockup — LinkedIn Safe : tableau de bord "sécurité du compte"
+   (quotas sous les limites LinkedIn) + sceau flottant. À plat (pas de 3D)
+   pour une netteté maximale, cohérent avec les visuels du parcours.
+   Tokens projet; l'accent succès (vert) est isolé en vars locales au module. */
+
+.scene {
+  --success: #16a34a;
+  --success-bg: #eaf7ef;
+
+  perspective: none;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1040 / 560;
+  font-family: var(--font-geist-sans, "Geist", -apple-system, sans-serif);
+}
+:global(.dark) .scene {
+  --card: #18181b;
+  --accent: #1f1f23;
+  --success: #22c55e;
+  --success-bg: #102219;
+}
+
+/* Boîte de design fixe, mise à l'échelle de la colonne via --rs (ResizeObserver). */
+.fit {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1040px;
+  height: 560px;
+  transform: scale(var(--rs, 0.5));
+  transform-origin: top left;
+}
+
+.stage {
+  position: relative;
+  transform-style: preserve-3d;
+  transform: none;
+  backface-visibility: hidden;
+  transition: transform 600ms cubic-bezier(0.22, 1, 0.36, 1);
+  height: 560px;
+}
+.scene:hover .stage { transform: none; }
+
+.layer { position: absolute; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-xl); overflow: hidden; }
+.winFront { top: 96px; left: 150px; width: 620px; height: 430px; transform: translateZ(20px); box-shadow: 0 30px 60px -28px rgba(2, 16, 48, 0.22); }
+:global(.dark) .winFront { box-shadow: 0 30px 60px -28px rgba(0, 0, 0, 0.6); }
+
+.winBar { height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--accent); }
+.mark { width: 22px; height: 22px; flex: none; display: grid; place-items: center; }
+.title { color: var(--foreground); font-weight: 600; font-size: 15px; }
+.pillOk { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--success-bg); color: var(--success); font-weight: 600; font-size: 12px; line-height: 1; }
+.pillOk .d { width: 6px; height: 6px; border-radius: 999px; background: var(--success); }
+
+.body { padding: 22px; }
+.intro { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+.shield { width: 46px; height: 46px; border-radius: var(--radius-lg); flex: none; display: grid; place-items: center; background: var(--success-bg); color: var(--success); }
+.shield svg { width: 24px; height: 24px; }
+.intro h3 { margin: 0; color: var(--foreground); font-weight: 600; font-size: 18px; line-height: 1.35; }
+.intro p { margin: 2px 0 0; color: var(--muted-foreground); font-size: 13px; line-height: 1.5; }
+
+.gauge { margin-bottom: 16px; }
+.gaugeTop { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
+.gaugeLabel { color: var(--foreground); font-weight: 500; font-size: 13px; display: inline-flex; align-items: center; gap: 7px; }
+.gaugeLabel svg { width: 15px; height: 15px; color: var(--muted-foreground); }
+.gaugeVal { color: var(--muted-foreground); font-size: 13px; }
+.gaugeVal strong { color: var(--success); font-weight: 600; }
+.gaugeTrack { position: relative; height: 9px; border-radius: 999px; background: var(--muted); overflow: hidden; }
+.gaugeFill { height: 100%; border-radius: 999px; background: var(--success); transform-origin: left; animation: grow 900ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.gaugeCap { font-size: 11px; color: var(--muted-foreground); margin-top: 4px; }
+
+.chips { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
+.chip { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--foreground); background: var(--card); font-size: 13px; }
+.chip .ic { width: 26px; height: 26px; border-radius: var(--radius-sm); flex: none; display: grid; place-items: center; background: var(--success-bg); color: var(--success); }
+.chip .ic svg { width: 15px; height: 15px; }
+
+/* Sceau flottant (à plat) */
+.seal { position: absolute; top: 48px; right: 44px; width: 250px; transform: translateZ(120px); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-xl); box-shadow: 0 30px 60px -28px rgba(2, 16, 48, 0.22); padding: 20px; text-align: center; }
+:global(.dark) .seal { box-shadow: 0 30px 60px -28px rgba(0, 0, 0, 0.6); }
+.sealBadge { width: 64px; height: 64px; margin: 0 auto 12px; border-radius: 999px; display: grid; place-items: center; color: #fff; background: var(--success); box-shadow: 0 0 0 6px var(--success-bg); }
+.sealBadge svg { width: 32px; height: 32px; }
+.seal h4 { margin: 0; color: var(--foreground); font-weight: 600; font-size: 17px; line-height: 1.2; }
+.seal p { margin: 6px 0 14px; color: var(--muted-foreground); font-size: 13px; line-height: 1.45; }
+.sealLive { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 999px; background: var(--success-bg); color: var(--success); font-weight: 600; font-size: 12px; line-height: 1; }
+.sealLive .pulse { width: 7px; height: 7px; border-radius: 999px; background: var(--success); animation: blink 1.8s ease-in-out infinite; }
+
+@keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) {
+  .gaugeFill { animation: none; transform: scaleX(1); }
+  .sealLive .pulse { animation: none; }
+  .scene:hover .stage { transform: none; }
+}

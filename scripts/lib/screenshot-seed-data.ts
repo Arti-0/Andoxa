@@ -58,8 +58,24 @@ export const SCREENSHOT_DASHBOARD_STATS = {
   },
 } as const;
 
-/** Enough prospects for 560 distinct LinkedIn invites + pipeline stages. */
-export const SCREENSHOT_PROSPECT_COUNT = 600;
+/**
+ * Total prospects is DERIVED from the curated pipeline so the CRM's real status
+ * counts match the dashboard exactly:
+ *   active = contacted 71 + qualified 43 + rdv 32 + proposal 26 = 172
+ *            → equals SCREENSHOT_DASHBOARD_STATS.pipeline.activeTotal ("Pipeline actif")
+ *   + won (7) + lost (LOST_COUNT)  → terminal stages
+ *
+ * There is deliberately NO "new" bucket: any prospect in `new` (or any other
+ * non-terminal stage) counts as active and would push the CRM's "Pipeline
+ * actif" past the dashboard's 172. The leftover volume from cold outreach lands
+ * in `lost` (realistic attrition). Bump LOST_COUNT to grow the base without
+ * breaking the dashboard ↔ CRM match.
+ */
+const LOST_COUNT = 121;
+export const SCREENSHOT_PROSPECT_COUNT =
+  SCREENSHOT_DASHBOARD_STATS.pipeline.activeTotal +
+  SCREENSHOT_DASHBOARD_STATS.kpi.closings +
+  LOST_COUNT;
 
 const BDD_NAMES = [
   "ICP SaaS Q2",
@@ -156,19 +172,22 @@ const SOURCES = [
 
 const { pipeline, priorities } = SCREENSHOT_DASHBOARD_STATS;
 
-/** Ordered status pool — pipeline stages first, then closings / lost / invite overflow. */
+/**
+ * Ordered status pool — active stages (sum = pipeline.activeTotal), then won,
+ * then lost. No "new" overflow (see SCREENSHOT_PROSPECT_COUNT): the pool length
+ * equals the prospect count exactly, so every seeded prospect lands in a
+ * curated stage and "Pipeline actif" matches the dashboard's 172.
+ */
 function buildStatusPool(): string[] {
   const { contacted, qualified, rdv, proposal } = pipeline;
   const closings = SCREENSHOT_DASHBOARD_STATS.kpi.closings;
-  const overflow = SCREENSHOT_PROSPECT_COUNT - pipeline.activeTotal - closings - 16;
   return [
     ...Array(contacted).fill("contacted"),
     ...Array(qualified).fill("qualified"),
     ...Array(rdv).fill("rdv"),
     ...Array(proposal).fill("proposal"),
     ...Array(closings).fill("won"),
-    ...Array(16).fill("lost"),
-    ...Array(Math.max(0, overflow)).fill("new"),
+    ...Array(LOST_COUNT).fill("lost"),
   ];
 }
 
@@ -281,12 +300,17 @@ export function buildFunnelInviteRows(
   prospectIds: string[],
   jobIds: string[] = [],
 ): Array<Record<string, unknown>> {
-  const n = Math.min(FUNNEL_TIER_COUNTS.invitations, prospectIds.length);
+  // Volume is the curated funnel target (e.g. 560), independent of how many
+  // prospects exist — cycle through them so a smaller prospect base (300) still
+  // produces the full invitation count and a correct acceptance rate
+  // (accepted / invitations). Some prospects get >1 invite row (re-invites),
+  // which is realistic and only affects activity rows, not pipeline counts.
+  const n = FUNNEL_TIER_COUNTS.invitations;
   const rows: Array<Record<string, unknown>> = [];
   for (let i = 0; i < n; i++) {
     const inviteDay = 2 + (i % 26);
     const createdAt = daysAgo(inviteDay, 9 + (i % 7));
-    const pid = prospectIds[i]!;
+    const pid = prospectIds[i % prospectIds.length]!;
     const jobId = jobIds[i % Math.max(1, jobIds.length)];
 
     rows.push({
@@ -315,16 +339,14 @@ export function buildLinkedInMessageRows(
   userId: string,
   prospectIds: string[],
 ): Array<Record<string, unknown>> {
-  const n = Math.min(
-    SCREENSHOT_DASHBOARD_STATS.kpi.linkedinMessages,
-    prospectIds.length,
-  );
+  // Curated volume, independent of prospect count (cycle prospects).
+  const n = SCREENSHOT_DASHBOARD_STATS.kpi.linkedinMessages;
   const rows: Array<Record<string, unknown>> = [];
   for (let i = 0; i < n; i++) {
     const day = 2 + (i % 26);
     rows.push({
       organization_id: orgId,
-      prospect_id: prospectIds[i]!,
+      prospect_id: prospectIds[i % prospectIds.length]!,
       actor_id: userId,
       action: "workflow_step_completed",
       details: { step_type: "linkedin_message" },
@@ -684,7 +706,9 @@ export function buildBulkActivityRows(
       prospect_id: pid,
       actor_id: userId,
       action: "rdv_scheduled",
-      created_at: daysAgo(40 + (i % 30), 13 + (i % 4)),
+      // Within the last ~30 days so the campaigns "RDV bookés" KPI (which counts
+      // rdv_scheduled in the selected window) isn't empty for the 7/30-day views.
+      created_at: daysAgo(2 + (i % 28), 13 + (i % 4)),
     });
   }
 
@@ -759,11 +783,15 @@ export function buildEventSlots(
     },
   );
 
+  // Completed RDVs spread across the last ~37 days so the calendar's "30
+  // derniers jours réalisés" KPI is healthy (most within 30d) with a positive
+  // delta vs the prior 30d (the older tail). `done` drives that count; a few
+  // no-shows for realism.
   for (let i = 0; i < 35; i++) {
     slots.push({
       title: `RDV passé #${i + 1}`,
       hour: 10 + (i % 6),
-      dayOffset: -(32 + (i % 25)),
+      dayOffset: -(3 + i),
       owner: i % 2 === 0 ? userId : team[i % team.length]!,
       attendees: [],
       status: i % 7 === 0 ? "noshow" : "done",

@@ -1131,7 +1131,7 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
                             className="foot-logo-link"
                         >
                             <Image
-                                src="/assets/logofiles/logo_1.svg"
+                                src="/assets/logofiles/andoxa-logo-light.svg"
                                 alt="Andoxa"
                                 width={80}
                                 height={18}

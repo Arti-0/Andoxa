@@ -29,6 +29,10 @@ const PUBLIC_ROUTES = [
     '/auth/invite',
     
     '/pricing',
+    '/comparatif',
+    '/resources',
+    // /about page was removed in the site redesign; kept here so the dead route
+    // returns a clean 404 instead of redirecting anonymous visitors to login.
     '/about',
     '/help',
     '/privacy',

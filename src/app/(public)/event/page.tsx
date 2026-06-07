@@ -41,7 +41,7 @@ export default function EventLandingPage() {
       <header className="el-header">
         <a className="el-logo" href="/" aria-label="Andoxa">
           <Image
-            src="/assets/logofiles/logo_1.svg"
+            src="/assets/logofiles/andoxa-logo-light.svg"
             alt=""
             width={120}
             height={26}

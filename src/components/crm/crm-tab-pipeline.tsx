@@ -202,9 +202,16 @@ export function PipelineTab({
         staleTime: 60_000,
     });
     const funnelByStatus = useMemo(() => {
-        const m = new Map<string, { delta: number; cycle: number | null }>();
+        const m = new Map<
+            string,
+            { count: number; delta: number; cycle: number | null }
+        >();
         for (const s of funnelData?.stages ?? []) {
-            m.set(s.status, { delta: s.delta_7d, cycle: s.avg_cycle_days });
+            m.set(s.status, {
+                count: s.count,
+                delta: s.delta_7d,
+                cycle: s.avg_cycle_days,
+            });
         }
         return m;
     }, [funnelData]);
@@ -228,6 +235,8 @@ export function PipelineTab({
         },
         onSuccess: (_d, vars) => {
             queryClient.invalidateQueries({ queryKey: ['prospects-pipeline'] });
+            // Refresh server stage counts so the KPI cards reflect the move.
+            queryClient.invalidateQueries({ queryKey: ['prospects-funnel'] });
             const cfg = cfgByKey.get(vars.status) ?? STATUS_FALLBACK;
             toast.success(`Déplacé vers ${cfg.label}`);
         },
@@ -247,20 +256,40 @@ export function PipelineTab({
         });
     }, [items, funnelFilter]);
 
+    // Stage counts come from the server funnel (all rows, uncapped) so the KPI
+    // cards stay stable and agree with the Prospects tab. Only when a search or
+    // source filter narrows the fetched page do we fall back to counting the
+    // loaded rows — mirroring crm-tab-prospects' `useLocalCounts`.
+    const useLocalCounts =
+        !!search.trim() || pipelineSourceFilter.length > 0;
     const counts = useMemo(() => {
         const m: Record<string, number> = {};
         for (const s of pipelineOrder) m[s] = 0;
-        for (const p of items) {
-            if (p.status && m[p.status] !== undefined) m[p.status]++;
+        if (useLocalCounts) {
+            for (const p of items) {
+                if (p.status && m[p.status] !== undefined) m[p.status]++;
+            }
+        } else {
+            for (const s of pipelineOrder) {
+                m[s] = funnelByStatus.get(s)?.count ?? 0;
+            }
         }
         return m;
-    }, [items]);
+    }, [items, useLocalCounts, funnelByStatus, pipelineOrder]);
 
-    const totalActive = items.filter(
-        (p) => p.status !== 'lost' && p.status !== 'won'
-    ).length;
-    const conversionRate = items.length
-        ? Math.round((counts.won / items.length) * 100)
+    const totalActive = useMemo(
+        () =>
+            pipelineOrder
+                .filter((s) => s !== 'lost' && s !== 'won')
+                .reduce((sum, s) => sum + (counts[s] ?? 0), 0),
+        [pipelineOrder, counts],
+    );
+    const totalAll = useMemo(
+        () => pipelineOrder.reduce((sum, s) => sum + (counts[s] ?? 0), 0),
+        [pipelineOrder, counts],
+    );
+    const conversionRate = totalAll
+        ? Math.round(((counts.won ?? 0) / totalAll) * 100)
         : 0;
 
     const avgCycleAcrossStages = useMemo(() => {

@@ -209,7 +209,9 @@ export function screenshotStats(period: DashboardPeriod) {
 
   return {
     // ── v1 (legacy /dashboard) ──────────────────────────────────────────────
-    prospects: 612,
+    // Total = active (172) + won (7) + lost (121). Keep in sync with
+    // SCREENSHOT_PROSPECT_COUNT in scripts/lib/screenshot-seed-data.ts.
+    prospects: 300,
     campaignsThisMonth: 10,
     rdvEffectues: kpi.rdvBooked,
     conversionRate: 12.4,

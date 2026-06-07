@@ -56,7 +56,7 @@ export default function AndoxaFooter() {
           <div className="space-y-8">
             <div className="flex items-center gap-3">
               <Image
-                src="/assets/logofiles/logo_3.svg"
+                src="/assets/logofiles/andoxa-logo-dark.svg"
                 alt="Andoxa Logo"
                 width={120}
                 height={40}

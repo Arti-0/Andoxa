@@ -42,7 +42,7 @@ export function Navigation() {
           <Link href={siteConfig.baseLinks.home} aria-label="Home">
             <span className="sr-only">Company logo</span>
             <Image
-              src="/assets/logofiles/logo_1.svg"
+              src="/assets/logofiles/andoxa-logo-light.svg"
               alt="Andoxa Logo"
               width={128}
               height={32}

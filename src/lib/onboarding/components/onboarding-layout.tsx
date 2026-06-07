@@ -33,7 +33,7 @@ export function OnboardingLayout({
       <div className="flex h-20 items-center justify-between px-6">
         <Link href="/" className="flex items-center space-x-2">
           <Image
-            src="/assets/logofiles/logo_1.svg"
+            src="/assets/logofiles/andoxa-logo-light.svg"
             alt="Andoxa Logo"
             width={120}
             height={40}
@@ -42,7 +42,7 @@ export function OnboardingLayout({
             priority
           />
           <Image
-            src="/assets/logofiles/logo_3.svg"
+            src="/assets/logofiles/andoxa-logo-dark.svg"
             alt="Andoxa Logo"
             width={120}
             height={40}

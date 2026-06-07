@@ -235,7 +235,7 @@ export default function ExtensionConnectPage() {
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center py-8">
             <div className="mb-10 flex flex-col items-center">
               <Image
-                src="/assets/logofiles/logo_1.svg"
+                src="/assets/logofiles/andoxa-logo-light.svg"
                 alt="Andoxa"
                 width={160}
                 height={48}
@@ -243,7 +243,7 @@ export default function ExtensionConnectPage() {
                 priority
               />
               <Image
-                src="/assets/logofiles/logo_3.svg"
+                src="/assets/logofiles/andoxa-logo-dark.svg"
                 alt="Andoxa"
                 width={160}
                 height={48}

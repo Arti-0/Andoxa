@@ -148,7 +148,7 @@ export function UnifiedHeader({
             <Link href="/" className="-m-1.5 p-1.5">
               <span className="sr-only">Andoxa</span>
               <Image
-                src="/assets/logofiles/logo_1.svg"
+                src="/assets/logofiles/andoxa-logo-light.svg"
                 alt="Andoxa Logo"
                 width={120}
                 height={40}
@@ -156,7 +156,7 @@ export function UnifiedHeader({
                 priority
               />
               <Image
-                src="/assets/logofiles/logo_3.svg"
+                src="/assets/logofiles/andoxa-logo-dark.svg"
                 alt="Andoxa Logo"
                 width={120}
                 height={40}

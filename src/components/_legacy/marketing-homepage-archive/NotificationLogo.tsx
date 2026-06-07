@@ -409,7 +409,7 @@ export function NotificationLogo({ position = "bottom-right", disableDrag = true
           style={{ borderWidth: "1px" }}
         >
           <Image
-            src="/assets/logofiles/logo_mark 2 copie.jpg"
+            src="/assets/logofiles/andoxa-mark-badge.svg"
             alt="Andoxa Logo"
             width={40}
             height={40}
@@ -470,7 +470,7 @@ export function NotificationLogo({ position = "bottom-right", disableDrag = true
         >
           {/* Logo Image */}
           <Image
-            src="/assets/logofiles/logo_mark 2 copie.jpg"
+            src="/assets/logofiles/andoxa-mark-badge.svg"
             alt="Andoxa Logo"
             width={40}
             height={40}

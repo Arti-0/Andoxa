@@ -100,7 +100,7 @@ export function ExtensionSettingsSection({
                     {/* White Andoxa mark on the brand-blue tile. */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                        src="/assets/logofiles/logo_mark-2.svg"
+                        src="/assets/logofiles/andoxa-mark-badge.svg"
                         alt="Logo Andoxa"
                         className="size-6"
                     />

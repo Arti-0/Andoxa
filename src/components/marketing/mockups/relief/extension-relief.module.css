@@ -1,0 +1,135 @@
+/* Relief mockup — Extension Chrome sur un profil LinkedIn. Project tokens; the
+   LinkedIn chrome is isolated in module-local --li-* vars (third-party UI). */
+
+.scene {
+  --li-blue: #0a66c2;
+  --li-bg: #f4f2ee;
+  --li-card: #ffffff;
+  --li-text: #1b1f23;
+  --li-muted: #5e6670;
+  --li-border: #e4e2dd;
+  --success: #16a34a;
+  --on-brand: #ffffff;
+
+  perspective: none;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1040 / 620;
+  font-family: var(--font-geist-sans, "Geist", -apple-system, sans-serif);
+}
+:global(.dark) .scene {
+  /* Le projet rend --card / --accent translucides en dark ; un mockup a besoin
+     de surfaces 100% opaques (le premier plan ne doit pas laisser voir le fond). */
+  --card: #18181b;
+  --accent: #1f1f23;
+  --li-blue: #4aa0e8;
+  --li-bg: #1b1f24;
+  --li-card: #1e2329;
+  --li-text: #e8eaed;
+  --li-muted: #9aa3ad;
+  --li-border: #2a3038;
+  --success: #22c55e;
+}
+
+.fit {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1040px;
+  height: 620px;
+  transform: scale(var(--rs, 0.5));
+  transform-origin: top left;
+}
+
+.stage {
+  position: relative;
+  transform-style: preserve-3d;
+  transform: none;
+  backface-visibility: hidden;
+  transition: transform 600ms cubic-bezier(0.22, 1, 0.36, 1);
+  height: 600px;
+}
+.scene:hover .stage { transform: none; }
+
+.layer { position: absolute; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-xl); overflow: hidden; }
+.winBack { top: 60px; left: 40px; width: 560px; height: 380px; transform: translateZ(-90px) translateX(-28px) translateY(-12px); opacity: 0.55; box-shadow: 0 16px 32px -20px rgba(2, 16, 48, 0.16); }
+.winMid { top: 90px; left: 90px; width: 600px; height: 400px; transform: translateZ(-40px); opacity: 0.8; box-shadow: 0 16px 32px -20px rgba(2, 16, 48, 0.16); }
+.winFront { top: 110px; left: 120px; width: 650px; height: 440px; transform: translateZ(20px); box-shadow: 0 30px 60px -28px rgba(2, 16, 48, 0.22); }
+:global(.dark) .winBack, :global(.dark) .winMid { opacity: 1; background: var(--background); box-shadow: 0 16px 32px -20px rgba(0, 0, 0, 0.5); }
+:global(.dark) .winFront { box-shadow: 0 30px 60px -28px rgba(0, 0, 0, 0.6); }
+
+.winBar { height: 38px; display: flex; align-items: center; gap: 6px; padding: 0 14px; border-bottom: 1px solid var(--border); background: var(--accent); }
+.winBar.brand { background: var(--brand-blue); border-bottom-color: var(--brand-blue); }
+.winLogo { display: inline-flex; align-items: center; gap: 7px; margin-right: 10px; }
+.winLogo .mark { width: 18px; height: 18px; border-radius: var(--radius-sm); background: var(--brand-blue); }
+.winBar.brand .winLogo .mark { background: rgba(255, 255, 255, 0.9); }
+.tab { height: 8px; border-radius: 999px; background: var(--border); }
+.winBar.brand .tab { background: rgba(255, 255, 255, 0.35); }
+.dot3 { width: 8px; height: 8px; border-radius: 999px; background: var(--border); }
+.urlbar { flex: 1; max-width: 260px; height: 18px; margin-left: 10px; border-radius: 999px; background: var(--muted); }
+
+/* LinkedIn profile (third-party chrome) */
+.li { display: flex; flex-direction: column; height: 100%; background: var(--li-bg); }
+.liTop { display: flex; align-items: center; gap: 12px; padding: 0 16px; height: 44px; background: var(--li-card); border-bottom: 1px solid var(--li-border); }
+.liLogo { width: 26px; height: 26px; border-radius: var(--radius-sm); background: var(--li-blue); display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 14px; flex: none; }
+.liSearch { width: 180px; height: 26px; border-radius: var(--radius-sm); background: var(--li-bg); border: 1px solid var(--li-border); }
+.liNav { margin-left: auto; display: flex; gap: 16px; color: var(--li-muted); }
+.liNav svg { width: 18px; height: 18px; }
+.liScroll { flex: 1; overflow: hidden; padding: 14px 16px; }
+.liCard { background: var(--li-card); border: 1px solid var(--li-border); border-radius: var(--radius-lg); overflow: hidden; }
+.liBanner { height: 64px; background: linear-gradient(120deg, var(--li-blue), #2c8fd6); }
+.liProfile { padding: 0 18px 16px; position: relative; }
+.liAvatar { width: 72px; height: 72px; border-radius: 999px; border: 3px solid var(--li-card); background: #c9d6e0; margin-top: -36px; display: grid; place-items: center; color: var(--li-text); font-weight: 600; font-size: 24px; }
+.liNameRow { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+.liName { color: var(--li-text); font-weight: 600; font-size: 19px; }
+.liVerify { color: var(--li-blue); display: inline-flex; }
+.liHeadline { color: var(--li-text); font-weight: 400; font-size: 14px; margin-top: 3px; }
+.liSub { color: var(--li-muted); font-size: 12px; margin-top: 6px; }
+.liConns { color: var(--li-blue); font-weight: 600; }
+.liActions { display: flex; gap: 8px; margin-top: 14px; }
+.liBtn { padding: 6px 16px; border-radius: 999px; font-weight: 600; font-size: 13px; border: 1px solid transparent; }
+.liBtn.primary { background: var(--li-blue); color: #fff; }
+.liBtn.ghost { background: transparent; color: var(--li-blue); border-color: var(--li-blue); }
+.liSection { margin-top: 12px; padding: 14px 18px; border-top: 1px solid var(--li-border); }
+.liSecTitle { color: var(--li-text); font-weight: 600; font-size: 15px; margin-bottom: 8px; }
+.liExp { display: flex; gap: 10px; align-items: flex-start; }
+.liExp .co { width: 34px; height: 34px; border-radius: var(--radius-sm); background: var(--li-bg); border: 1px solid var(--li-border); flex: none; }
+.liExp .et { color: var(--li-text); font-weight: 600; font-size: 13px; }
+.liExp .es { color: var(--li-muted); font-size: 12px; }
+
+/* Andoxa extension panel (the hero, floating) */
+.floatPanel { position: absolute; top: 70px; right: 78px; width: 332px; transform: translateZ(220px); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-xl); box-shadow: 0 30px 60px -28px rgba(2, 16, 48, 0.22); padding: 22px; }
+:global(.dark) .floatPanel { box-shadow: 0 30px 60px -28px rgba(0, 0, 0, 0.6); }
+.extHead { display: flex; align-items: center; gap: 8px; padding-bottom: 14px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.extHead .name { color: var(--foreground); font-weight: 600; font-size: 14px; }
+.extHead .tag { font-size: 10px; padding: 2px 6px; border-radius: 999px; background: var(--brand-blue-tint); color: var(--brand-blue); font-weight: 600; }
+.extHead .x { margin-left: auto; color: var(--muted-foreground); }
+.extStatus { display: inline-flex; align-items: center; gap: 6px; color: var(--success); margin-bottom: 10px; font-weight: 500; font-size: 12px; }
+.extStatus .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--success); }
+.extCard { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px; background: var(--accent); margin-bottom: 14px; }
+.extProf { display: flex; align-items: center; gap: 10px; }
+.extProf .av { width: 48px; height: 48px; border-radius: 999px; background: var(--brand-blue); color: var(--on-brand); flex: none; display: grid; place-items: center; font-weight: 600; font-size: 17px; }
+.extProf .nm { color: var(--foreground); font-weight: 600; font-size: 15px; }
+.extProf .rl { color: var(--muted-foreground); font-size: 13px; }
+.extFields { margin-top: 12px; display: flex; flex-direction: column; gap: 7px; }
+.extField { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.extField .check { color: var(--success); flex: none; }
+.extField .lbl { color: var(--muted-foreground); width: 78px; flex: none; }
+.extField .val { color: var(--foreground); font-weight: 500; }
+.extSelect { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card); color: var(--foreground); margin-bottom: 14px; font-size: 13px; }
+.extSelect .sd { width: 8px; height: 8px; border-radius: 2px; background: var(--brand-blue); flex: none; }
+.extSelect .seqn { flex: 1; text-align: left; }
+.extSelect svg { color: var(--muted-foreground); }
+.extCta { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; padding: 14px 16px; background: var(--brand-blue); color: var(--on-brand); border: none; border-radius: var(--radius-lg); font-weight: 600; font-size: 15px; animation: ctaPulse 2.6s ease-out infinite; }
+.extCta svg { width: 18px; height: 18px; }
+.extFoot { text-align: center; color: var(--muted-foreground); margin-top: 10px; font-size: 12px; }
+
+@keyframes ctaPulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand-blue) 45%, transparent); }
+  70% { box-shadow: 0 0 0 12px color-mix(in srgb, var(--brand-blue) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand-blue) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scene:hover .stage { transform: none; }
+  .extCta { animation: none; }
+}

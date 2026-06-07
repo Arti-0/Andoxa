@@ -1,26 +1,25 @@
 import type { Metadata } from "next";
 import { FloatingNav, type NavItem } from "@/components/marketing/aceternity/floating-nav";
+import { RESOURCES_MENU } from "@/components/marketing/legal-page-layout";
 import { ScrollProgress } from "@/components/marketing/ui/scroll-progress";
 import { SmoothScroll } from "@/components/marketing/smooth-scroll";
 import { HomeIntro } from "@/components/marketing/home-intro";
 import { Footer } from "@/components/marketing/footer";
 import { MarketingHero } from "@/components/marketing/sections/hero";
-import { MarketingProblemeSection } from "@/components/marketing/sections/probleme";
-import { MarketingSolutionSection } from "@/components/marketing/sections/solution";
-import { MarketingPersonasSection } from "@/components/marketing/sections/personas";
-import { MarketingParcoursSection } from "@/components/marketing/sections/parcours";
+import { MarketingFlowSection } from "@/components/marketing/sections/flow";
+import { MarketingLinkedInSafeSection } from "@/components/marketing/sections/safe";
 import { MarketingModulesBentoSection } from "@/components/marketing/modules-bento";
-import { MarketingWorkflowPromiseSection } from "@/components/marketing/sections/workflow-promise";
 import { MarketingPricingSection } from "@/components/marketing/sections/pricing";
+import { MarketingFaqSection } from "@/components/marketing/sections/faq";
 import { MarketingFinalCtaSection } from "@/components/marketing/sections/final-cta";
 
 export const metadata: Metadata = {
-  title: "Andoxa, une seule stack, deux fois moins de no-shows",
+  title: "Andoxa, vendez sur LinkedIn sans gérer la prospection",
   description:
-    "Andoxa unifie LinkedIn, WhatsApp, le booking et votre CRM dans une seule plateforme. Vos commerciaux arrêtent de copier-coller, vos no-shows divisent par deux.",
+    "Andoxa réunit vos campagnes LinkedIn, vos appels, votre inbox, le booking et votre CRM dans une seule plateforme.",
   openGraph: {
-    title: "Andoxa, le revenue engine pour les équipes sales",
-    description: "Une seule stack. Deux fois moins de no-shows.",
+    title: "Andoxa, vendez sur LinkedIn sans gérer la prospection",
+    description: "Campagnes LinkedIn, appels, booking et CRM dans une seule plateforme.",
     locale: "fr_FR",
     type: "website",
   },
@@ -30,28 +29,7 @@ export const metadata: Metadata = {
 // are created in a follow-up; `/demo` resolves to `/contact?objet=demo`.
 const NAV_ITEMS: NavItem[] = [
   { name: "Tarifs", href: "/pricing" },
-  {
-    name: "Ressources",
-    href: "/resources",
-    children: [
-      {
-        name: "Guide détaillé d'Andoxa",
-        href: "/resources/guide",
-        description: "Tour complet du produit, module par module.",
-      },
-      {
-        name: "Calculateur de ROI",
-        href: "/resources/roi-calculator",
-        description: "Estimez le gain mensuel pour votre équipe.",
-      },
-      {
-        name: "Blog",
-        href: "/resources/blog",
-        description: "Outbound, no-shows, conformité, par les sales.",
-      },
-    ],
-  },
-  { name: "À propos", href: "/about" },
+  RESOURCES_MENU,
   { name: "Contact", href: "/contact" },
 ];
 
@@ -64,15 +42,13 @@ export default function Home() {
       <FloatingNav navItems={NAV_ITEMS} />
       <main>
         <MarketingHero />
-        <MarketingProblemeSection />
-        <MarketingSolutionSection />
-        <MarketingPersonasSection />
-        <MarketingParcoursSection />
+        <MarketingFlowSection />
         <section id="modules">
           <MarketingModulesBentoSection />
         </section>
-        <MarketingWorkflowPromiseSection />
+        <MarketingLinkedInSafeSection />
         <MarketingPricingSection />
+        <MarketingFaqSection />
         <MarketingFinalCtaSection />
       </main>
       <Footer />

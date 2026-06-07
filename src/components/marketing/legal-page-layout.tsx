@@ -6,20 +6,41 @@ import { Footer } from "@/components/marketing/footer";
 import { Container } from "@/components/marketing/ui/container";
 import { Eyebrow } from "@/components/marketing/ui/eyebrow";
 import { ScrollProgress } from "@/components/marketing/ui/scroll-progress";
+import { COMPARISONS } from "@/lib/marketing/comparisons";
 
 // English slugs per the route-reconciliation decision.
+
+/**
+ * Shared "Ressources" mega-menu. The "Alternatives à Andoxa" column is driven
+ * by COMPARISONS so adding a comparison page = one entry there. No hub link
+ * yet (no /comparatif index route exists, so no dead link).
+ */
+export const RESOURCES_MENU: NavItem = {
+  name: "Ressources",
+  href: "/resources",
+  columns: [
+    {
+      title: "Ressources",
+      items: [
+        { name: "Guide Andoxa", href: "/resources/guide", description: "Tour complet du produit, module par module.", icon: "guide" as const },
+        { name: "Calculateur de ROI", href: "/resources/roi-calculator", description: "Estimez le gain mensuel pour votre équipe.", icon: "calculator" as const },
+      ],
+    },
+    {
+      title: "Alternatives à Andoxa",
+      cols: 2,
+      items: COMPARISONS.map((c) => ({
+        name: `Andoxa vs ${c.competitor}`,
+        href: c.href,
+        icon: "compare" as const,
+      })),
+    },
+  ],
+};
+
 export const SITE_NAV: NavItem[] = [
   { name: "Tarifs", href: "/pricing" },
-  {
-    name: "Ressources",
-    href: "/resources",
-    children: [
-      { name: "Guide détaillé d'Andoxa", href: "/resources/guide", description: "Tour complet du produit, module par module." },
-      { name: "Calculateur de ROI", href: "/resources/roi-calculator", description: "Estimez le gain mensuel pour votre équipe." },
-      { name: "Blog", href: "/resources/blog", description: "Outbound, no-shows, conformité, par les sales." },
-    ],
-  },
-  { name: "À propos", href: "/about" },
+  RESOURCES_MENU,
   { name: "Contact", href: "/contact" },
 ];
 

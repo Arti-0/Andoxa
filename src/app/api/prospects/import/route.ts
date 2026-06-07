@@ -38,6 +38,7 @@ export const POST = createApiHandler(async (req, ctx) => {
     name?: string;
     bdd_id?: string;
     source?: ImportSource;
+    enrich?: boolean;
     prospects: Array<
       | { name?: string; url?: string }
       | {
@@ -233,11 +234,18 @@ export const POST = createApiHandler(async (req, ctx) => {
     .eq("id", ctx.userId)
     .single();
 
+  // The extension passes an explicit `enrich` flag (its in-panel toggle); other
+  // clients fall back to the user's saved `linkedin_auto_enrich` preference.
+  // Plan gating always wins regardless of the request.
+  const enrichRequested =
+    typeof body.enrich === "boolean"
+      ? body.enrich
+      : profileRow?.linkedin_auto_enrich === true;
   const autoEnrichEligible =
     planAllowsAutoEnrichOnImport(
       ctx.workspace?.plan,
       ctx.workspace?.subscription_status
-    ) && profileRow?.linkedin_auto_enrich === true;
+    ) && enrichRequested;
 
   const linkedInAccountId = await getLinkedInAccountIdForUserId(
     ctx.supabase,

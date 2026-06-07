@@ -4,12 +4,11 @@ import Image from "next/image";
 type IconProps = React.SVGProps<SVGSVGElement> & { size?: number };
 type LogoIconProps = { size?: number; className?: string };
 
-// Real brand assets shipped in /public/assets/logofiles (used by the previous
-// homepage). `logo_mark 1.svg` is the square mark; `logo_1/3.svg` are the
-// light/dark wordmarks. The space in the mark filename is URL-encoded.
-const MARK_SRC = "/assets/logofiles/logo_mark%201.svg";
-const WORDMARK_LIGHT = "/assets/logofiles/logo_1.svg";
-const WORDMARK_DARK = "/assets/logofiles/logo_3.svg";
+// Real brand assets shipped in /public/assets/logofiles. `andoxa-mark-light.svg`
+// is the square mark; `andoxa-logo-light/-dark.svg` are the light/dark wordmarks.
+const MARK_SRC = "/assets/logofiles/andoxa-mark-light.svg";
+const WORDMARK_LIGHT = "/assets/logofiles/andoxa-logo-light.svg";
+const WORDMARK_DARK = "/assets/logofiles/andoxa-logo-dark.svg";
 
 /**
  * Andoxa square mark. Same `size` + `className` API as the lucide icons so it

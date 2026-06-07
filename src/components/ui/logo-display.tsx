@@ -21,12 +21,12 @@ export function LogoDisplay({ className = "", collapsed }: LogoDisplayProps) {
   const isDark = mounted && resolvedTheme === "dark";
 
   const logoSrc = isDark
-    ? "/assets/logofiles/logo_3.svg"
-    : "/assets/logofiles/logo_1.svg";
+    ? "/assets/logofiles/andoxa-logo-dark.svg"
+    : "/assets/logofiles/andoxa-logo-light.svg";
 
   const iconSrc = isDark
-    ? "/assets/logofiles/logo_mark%203.svg"
-    : "/assets/logofiles/logo_mark%201.svg";
+    ? "/assets/logofiles/andoxa-mark-dark.svg"
+    : "/assets/logofiles/andoxa-mark-light.svg";
 
   const iconClasses =
     collapsed === true

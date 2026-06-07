@@ -116,7 +116,7 @@ export function AndoxaLogo({ size = 16, className, title = "Andoxa" }: LogoProps
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src="/assets/logofiles/logo_mark%201.svg"
+      src="/assets/logofiles/andoxa-mark-light.svg"
       alt={title}
       width={size}
       height={size}
