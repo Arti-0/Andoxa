@@ -31,7 +31,6 @@ interface CookieSyncBody {
   li_at?: string;
   li_a?: string | null;
   user_agent?: string;
-  linkedin_member_id?: string | null;
 }
 
 interface ErrorPayload {
@@ -129,15 +128,13 @@ export async function POST(req: NextRequest): Promise<Response> {
       message: "user_agent requis",
     });
   }
-  const memberId = body.linkedin_member_id?.toString().trim() || null;
-
   // Look up the existing LINKEDIN row. Use the service client so the
   // column-level revoke on cookie_payload doesn't trip the read of other
   // columns (we don't select cookie_payload here anyway).
   const service = createServiceClient();
   const { data: row, error: rowErr } = await service
     .from("user_unipile_accounts")
-    .select("unipile_account_id, linkedin_member_id, status")
+    .select("unipile_account_id")
     .eq("user_id", userId)
     .eq("account_type", "LINKEDIN")
     .maybeSingle();
@@ -159,28 +156,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     });
   }
 
-  // Account-switching detection (best-effort): if we previously stored a
-  // member_id and the new one differs, flag it but still update — the cookies
-  // belong to whatever LinkedIn account is currently logged in, and the next
-  // status webhook will surface any underlying account mismatch.
-  if (
-    memberId &&
-    row.linkedin_member_id &&
-    row.linkedin_member_id !== memberId
-  ) {
-    Sentry.captureMessage(
-      "[cookie-sync] linkedin_member_id changed",
-      {
-        level: "warning",
-        extra: {
-          userId,
-          previous: row.linkedin_member_id,
-          incoming: memberId,
-        },
-      }
-    );
-  }
-
+  // NB: linkedin_member_id is no longer captured here. It is derived
+  // server-side from Unipile's account record (connection_params.im.id) by the
+  // `unipile-accounts-reconcile` cron, which also owns the account-switch
+  // (member-id drift) detection. The extension never touches LinkedIn's APIs.
   const payload = encryptCookiePayload(
     { li_at: liAt, li_a: liA, user_agent: userAgent },
     { userId, unipileAccountId: row.unipile_account_id }
@@ -192,7 +171,6 @@ export async function POST(req: NextRequest): Promise<Response> {
       // jsonb column; the generated type may not include the new columns yet
       // until SCHEMA.md is regenerated — cast at the row level.
       cookie_payload: payload,
-      linkedin_member_id: memberId ?? row.linkedin_member_id ?? null,
       date_last_cookie: new Date().toISOString(),
       // Fresh cookies → reset the silent-reconnect failure counter so the
       // cron retries with the new material.

@@ -4,7 +4,10 @@ import * as Sentry from "@sentry/nextjs";
 import { createServiceClient } from "@/lib/supabase/service";
 import { captureRouteError } from "@/lib/sentry/route-error";
 import { UnipileApiError, unipileFetch } from "@/lib/unipile/client";
-import { reconcileUnipileAccountStatusFromAccount } from "@/lib/unipile/account-status";
+import {
+  reconcileUnipileAccountStatusFromAccount,
+  syncLinkedInMemberIdFromAccount,
+} from "@/lib/unipile/account-status";
 import type { UnipileAccount } from "@/lib/unipile/types";
 import {
   decryptCookiePayload,
@@ -248,6 +251,15 @@ export async function POST(req: Request) {
         const account = await unipileFetch<UnipileAccount>(
           `/accounts/${encodeURIComponent(row.unipile_account_id)}`
         );
+
+        // Keep linkedin_member_id fresh from Unipile (replaces the old
+        // extension-side Voyager scrape). Independent of status changes.
+        if (accountType === "LINKEDIN") {
+          await syncLinkedInMemberIdFromAccount(supabase, {
+            userId: row.user_id,
+            unipileAccount: account,
+          });
+        }
 
         const result = await reconcileUnipileAccountStatusFromAccount(
           supabase,

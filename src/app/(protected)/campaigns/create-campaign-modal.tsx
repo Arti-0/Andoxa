@@ -347,6 +347,13 @@ export function CreateCampaignModal({
   const [message, setMessage] = useState("");
   const [attachment, setAttachment] = useState<UploadedAttachment | null>(null);
   const [attachmentUploading, setAttachmentUploading] = useState(false);
+  // invitation_message delivery mode. "message" (default, any account) sends a
+  // post-acceptance message; "note" (Premium only) attaches the text to the
+  // invite so it fires immediately. Only one fires — the toggle picks which,
+  // and "note" maps to invite_with_note server-side.
+  const [inviteDelivery, setInviteDelivery] = useState<"message" | "note">(
+    "message",
+  );
 
   const { workspaceId } = useWorkspace();
   const { data: bdds = [], isLoading: bddsLoading } = useBddOptions(open);
@@ -421,6 +428,7 @@ export function CreateCampaignModal({
     setMessage("");
     setAttachment(null);
     setAttachmentUploading(false);
+    setInviteDelivery("message");
   };
 
   const handleAttachmentSelect = async (file: File | null) => {
@@ -454,6 +462,16 @@ export function CreateCampaignModal({
     }
   }, [open]);
 
+  // The immediate note (invite_with_note) requires a paid LinkedIn account.
+  // If the account isn't Premium, force both note paths off so a non-Premium
+  // user can never reach an invite_with_note payload.
+  useEffect(() => {
+    if (!hasPaidLinkedIn) {
+      setHasNote(false);
+      setInviteDelivery("message");
+    }
+  }, [hasPaidLinkedIn]);
+
   // Seed the wizard from a source campaign when opened in "duplicate" mode.
   // Runs on open so message/type/name are pre-filled; the list stays empty so
   // the user only has to pick prospects.
@@ -479,6 +497,15 @@ export function CreateCampaignModal({
   const step1Valid = selectionMode ? selectionIds.length > 0 : !!bddId;
   const nameValid = name.trim().length >= 3 && name.trim().length <= 80;
   const step2Valid = !!type && nameValid;
+  // Whether the written text rides with the invite as an immediate note
+  // (invite_with_note) vs. a standalone/post-acceptance message.
+  const usesNote =
+    (type === "invitation_only" && hasNote) ||
+    (type === "invitation_message" && inviteDelivery === "note");
+  const usesMessage =
+    type === "message_only" ||
+    (type === "invitation_message" && inviteDelivery === "message");
+
   const step3Valid = (() => {
     if (!type) return false;
     if (type === "invitation_only") {
@@ -489,8 +516,11 @@ export function CreateCampaignModal({
     if (type === "message_only") {
       return message.trim().length > 0 && message.length <= 2000;
     }
-    // invitation_message — bare invite phase 1 (no note), follow-up message
-    // phase 2 dispatched on acceptance. Only the message body is required.
+    // invitation_message — either a post-acceptance message (default) or, for
+    // Premium accounts, an immediate note that rides with the invite.
+    if (inviteDelivery === "note") {
+      return invitationNote.trim().length > 0 && invitationNote.length <= 300;
+    }
     return message.trim().length > 0 && message.length <= 2000;
   })();
 
@@ -509,14 +539,15 @@ export function CreateCampaignModal({
     refine_exclude_contacted: excludeContacted,
     refine_only_with_phone: onlyWithPhone,
     refine_exclude_active: excludeActive,
-    // Notes only flow through for invitation_only — invitation_message is
-    // intentionally bare-invite (higher acceptance rate per LinkedIn data).
-    invitation_note:
-      type === "invitation_only" && hasNote ? invitationNote.trim() : undefined,
-    message: type === "invitation_only" ? undefined : message.trim(),
-    // Attachments only apply to message-bearing types.
+    // invitation_note is set whenever the text rides with the invite as an
+    // immediate note (invitation_only "Avec note", or invitation_message in
+    // "note" delivery). The page maps a present note → invite_with_note.
+    invitation_note: usesNote ? invitationNote.trim() : undefined,
+    message: usesMessage ? message.trim() : undefined,
+    // Attachments only apply to message-bearing sends (invites can't carry
+    // files), so never alongside an immediate note.
     attachment:
-      type !== "invitation_only" && attachment
+      usesMessage && attachment
         ? {
             path: attachment.path,
             name: attachment.name,
@@ -578,7 +609,6 @@ export function CreateCampaignModal({
               name={name}
               setName={setName}
               nameValid={nameValid}
-              hasPaidLinkedIn={hasPaidLinkedIn}
             />
           )}
           {step === 3 && type && (
@@ -594,6 +624,9 @@ export function CreateCampaignModal({
               attachmentUploading={attachmentUploading}
               onSelectFile={handleAttachmentSelect}
               onRemoveAttachment={() => setAttachment(null)}
+              inviteDelivery={inviteDelivery}
+              setInviteDelivery={setInviteDelivery}
+              hasPaidLinkedIn={hasPaidLinkedIn}
               previewProspect={previewProspect}
               previewName={previewName}
               previewCompany={previewCompany}
@@ -613,6 +646,7 @@ export function CreateCampaignModal({
               invitationNote={invitationNote}
               message={message}
               attachment={attachment}
+              inviteDelivery={inviteDelivery}
               previewProspect={previewProspect}
               bookingLink={bookingLink}
             />
@@ -824,14 +858,12 @@ function Step2TypeName({
   name,
   setName,
   nameValid,
-  hasPaidLinkedIn,
 }: {
   type: LinkedInCampaignType | null;
   setType: (t: LinkedInCampaignType) => void;
   name: string;
   setName: (n: string) => void;
   nameValid: boolean;
-  hasPaidLinkedIn: boolean;
 }) {
   return (
     <div className="space-y-5">
@@ -839,34 +871,19 @@ function Step2TypeName({
         {TYPES.map((t) => {
           const Icon = t.icon;
           const active = type === t.id;
-          // Invitation + Message requires a paid LinkedIn account.
-          const locked = t.id === "invitation_message" && !hasPaidLinkedIn;
           return (
             <button
               key={t.id}
               type="button"
-              disabled={locked}
-              onClick={() => !locked && setType(t.id)}
-              title={
-                locked
-                  ? "Nécessite un compte LinkedIn Premium ou Sales Navigator"
-                  : undefined
-              }
+              onClick={() => setType(t.id)}
               className={cn(
                 "relative flex flex-col items-start gap-2 rounded-lg border p-3 text-left transition-all",
-                locked
-                  ? "cursor-not-allowed opacity-60"
-                  : active
-                    ? "border-[var(--brand-blue)] bg-[var(--brand-blue-tint)] shadow-sm"
-                    : "hover:border-[var(--brand-blue)]/40 hover:bg-muted/30",
+                active
+                  ? "border-[var(--brand-blue)] bg-[var(--brand-blue-tint)] shadow-sm"
+                  : "hover:border-[var(--brand-blue)]/40 hover:bg-muted/30",
               )}
             >
-              {locked ? (
-                <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  <Lock className="size-2.5" />
-                  Premium
-                </span>
-              ) : t.recommended ? (
+              {t.recommended ? (
                 <span className="absolute right-2 top-2 rounded-full bg-[var(--brand-orange)]/15 px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-[var(--brand-orange)]">
                   Recommandé
                 </span>
@@ -936,6 +953,9 @@ function Step3Config({
   attachmentUploading,
   onSelectFile,
   onRemoveAttachment,
+  inviteDelivery,
+  setInviteDelivery,
+  hasPaidLinkedIn,
   previewProspect,
   previewName,
   previewCompany,
@@ -952,15 +972,28 @@ function Step3Config({
   attachmentUploading: boolean;
   onSelectFile: (file: File | null) => void;
   onRemoveAttachment: () => void;
+  inviteDelivery: "message" | "note";
+  setInviteDelivery: (v: "message" | "note") => void;
+  hasPaidLinkedIn: boolean;
   previewProspect: ProspectForVariables;
   previewName: string;
   previewCompany: string;
   bookingLink: string | null;
 }) {
-  // invitation_message is bare-invite + post-acceptance message. The phase-1
-  // invite carries no note, so the wizard only collects the follow-up body.
-  const showNote = type === "invitation_only";
-  const showMessage = type === "message_only" || type === "invitation_message";
+  // For invitation_message, Premium users can switch the text to an immediate
+  // note (rides with the invite) instead of a post-acceptance message.
+  const noteDelivery = type === "invitation_message" && inviteDelivery === "note";
+
+  // The note editor is shown for invitation_only (optional via "Avec note") and
+  // for invitation_message in "note" delivery (always, it's the chosen content).
+  const showNote = type === "invitation_only" || noteDelivery;
+  // …and the message editor for direct messages and post-acceptance follow-ups.
+  const showMessage =
+    type === "message_only" ||
+    (type === "invitation_message" && inviteDelivery === "message");
+  // Whether the note section carries an on/off switch (invitation_only only).
+  const noteOptional = type === "invitation_only";
+  const noteActive = noteOptional ? hasNote : true;
 
   // Refs are what makes variable pills insert at caret instead of appending
   // to the end. The helper restores focus + caret position post-insert.
@@ -972,12 +1005,11 @@ function Step3Config({
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
       <div className="space-y-4">
         {type === "invitation_message" && (
-          <div className="rounded-md border border-[var(--brand-blue)]/30 bg-[var(--brand-blue-tint)] px-3 py-2.5 text-[12px] leading-relaxed text-foreground">
-            <strong className="font-semibold">Envoi en deux temps.</strong> Une
-            invitation sans note part d&apos;abord (taux d&apos;acceptation plus
-            élevé). Le message ci-dessous est envoyé automatiquement dès que le
-            prospect accepte la connexion.
-          </div>
+          <DeliveryChooser
+            delivery={inviteDelivery}
+            setDelivery={setInviteDelivery}
+            hasPaidLinkedIn={hasPaidLinkedIn}
+          />
         )}
         {showNote && (
           <div className="rounded-lg border p-4">
@@ -985,12 +1017,24 @@ function Step3Config({
               <Label className="text-sm font-semibold">
                 Note d&apos;invitation
               </Label>
-              <label className="flex cursor-pointer items-center gap-2 text-xs">
-                <Switch checked={hasNote} onCheckedChange={setHasNote} />
-                <span>Avec note</span>
-              </label>
+              {noteOptional && (
+                <label
+                  className={cn(
+                    "flex items-center gap-2 text-xs",
+                    hasPaidLinkedIn ? "cursor-pointer" : "cursor-not-allowed",
+                  )}
+                >
+                  <Switch
+                    checked={hasNote}
+                    disabled={!hasPaidLinkedIn}
+                    onCheckedChange={setHasNote}
+                  />
+                  <span>Avec note</span>
+                  {!hasPaidLinkedIn && <PremiumBadge />}
+                </label>
+              )}
             </div>
-            {hasNote ? (
+            {noteActive ? (
               <>
                 <VariablePills
                   onInsert={(t) =>
@@ -1137,7 +1181,7 @@ function Step3Config({
         <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
           {showNote && (
             <PreviewBubble title="Note d'invitation" tone="blue">
-              {hasNote
+              {noteActive
                 ? applyPreviewVars(invitationNote || "—", previewProspect, bookingLink)
                 : "Demande sans note"}
             </PreviewBubble>
@@ -1207,6 +1251,109 @@ function PreviewBubble({
   );
 }
 
+// Small "Premium" pill reused wherever an immediate-note control is gated.
+function PremiumBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <Lock className="size-2.5" />
+      Premium
+    </span>
+  );
+}
+
+// invitation_message delivery chooser: "message" (after acceptance, any
+// account) vs "note" (rides with the invite, Premium only).
+function DeliveryChooser({
+  delivery,
+  setDelivery,
+  hasPaidLinkedIn,
+}: {
+  delivery: "message" | "note";
+  setDelivery: (v: "message" | "note") => void;
+  hasPaidLinkedIn: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-sm font-semibold">Quand envoyer votre texte ?</Label>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <DeliveryOption
+          icon={Workflow}
+          title="Après acceptation"
+          desc="L'invitation part sans note. Votre message est envoyé dès que le prospect accepte la connexion."
+          active={delivery === "message"}
+          onClick={() => setDelivery("message")}
+        />
+        <DeliveryOption
+          icon={Zap}
+          title="Avec l'invitation"
+          desc="Votre note part immédiatement avec l'invitation, sans attendre l'acceptation."
+          active={delivery === "note"}
+          disabled={!hasPaidLinkedIn}
+          premium={!hasPaidLinkedIn}
+          onClick={() => hasPaidLinkedIn && setDelivery("note")}
+        />
+      </div>
+    </div>
+  );
+}
+
+function DeliveryOption({
+  icon: Icon,
+  title,
+  desc,
+  active,
+  disabled,
+  premium,
+  onClick,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  desc: string;
+  active: boolean;
+  disabled?: boolean;
+  premium?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      title={
+        disabled
+          ? "Nécessite un compte LinkedIn Premium ou Sales Navigator"
+          : undefined
+      }
+      className={cn(
+        "relative flex flex-col items-start gap-1.5 rounded-lg border p-3 text-left transition-all",
+        disabled
+          ? "cursor-not-allowed opacity-60"
+          : active
+            ? "border-[var(--brand-blue)] bg-[var(--brand-blue-tint)] shadow-sm"
+            : "hover:border-[var(--brand-blue)]/40 hover:bg-muted/30",
+      )}
+    >
+      {premium && (
+        <span className="absolute right-2 top-2">
+          <PremiumBadge />
+        </span>
+      )}
+      <span
+        className={cn(
+          "grid size-7 place-items-center rounded-md",
+          active
+            ? "bg-[var(--brand-blue)] text-white"
+            : "bg-muted text-muted-foreground",
+        )}
+      >
+        <Icon className="size-3.5" />
+      </span>
+      <div className="text-[13px] font-semibold">{title}</div>
+      <div className="text-[11px] leading-snug text-muted-foreground">{desc}</div>
+    </button>
+  );
+}
+
 // ─── STEP 4 ─────────────────────────────────────────────────────────────────
 function Step4Recap({
   type,
@@ -1220,6 +1367,7 @@ function Step4Recap({
   invitationNote,
   message,
   attachment,
+  inviteDelivery,
   previewProspect,
   bookingLink,
 }: {
@@ -1234,10 +1382,17 @@ function Step4Recap({
   invitationNote: string;
   message: string;
   attachment: UploadedAttachment | null;
+  inviteDelivery: "message" | "note";
   previewProspect: ProspectForVariables;
   bookingLink: string | null;
 }) {
   const typeLabel = TYPES.find((t) => t.id === type)?.label ?? "—";
+  const usesNote =
+    (type === "invitation_only" && hasNote) ||
+    (type === "invitation_message" && inviteDelivery === "note");
+  const usesMessage =
+    type === "message_only" ||
+    (type === "invitation_message" && inviteDelivery === "message");
   const refines = [
     excludeContacted ? "Déjà contactés exclus" : null,
     excludeActive ? "Pas dans une campagne active" : null,
@@ -1287,7 +1442,7 @@ function Step4Recap({
         </RecapCard>
       </div>
 
-      {type === "invitation_only" && hasNote && (
+      {usesNote && (
         <RecapCard label="Note d'invitation">
           <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-foreground">
             {applyPreviewVars(invitationNote || "—", previewProspect, bookingLink)}
@@ -1297,13 +1452,23 @@ function Step4Recap({
 
       {type === "invitation_message" && (
         <div className="rounded-md border border-[var(--brand-blue)]/30 bg-[var(--brand-blue-tint)] px-3 py-2.5 text-[12px] leading-relaxed text-foreground">
-          <strong className="font-semibold">Envoi en deux temps.</strong>{" "}
-          Invitation sans note d&apos;abord, puis le message ci-dessous part
-          dès l&apos;acceptation.
+          {inviteDelivery === "note" ? (
+            <>
+              <strong className="font-semibold">Note immédiate.</strong> La note
+              ci-dessus part avec l&apos;invitation, sans attendre
+              l&apos;acceptation.
+            </>
+          ) : (
+            <>
+              <strong className="font-semibold">Envoi en deux temps.</strong>{" "}
+              Invitation sans note d&apos;abord, puis le message ci-dessous part
+              dès l&apos;acceptation.
+            </>
+          )}
         </div>
       )}
 
-      {(type === "message_only" || type === "invitation_message") && (
+      {usesMessage && (
         <RecapCard label="Message">
           <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-foreground">
             {applyPreviewVars(message || "—", previewProspect, bookingLink)}

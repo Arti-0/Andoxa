@@ -128,13 +128,19 @@ const NOW_REF = new Date("2026-05-06T12:00:00").getTime();
  *
  *   invitation_only       → invite_with_note when a note is provided, else invite
  *   message_only          → contact
- *   invitation_message    → invite_then_message (bare invite, message after accept)
+ *   invitation_message    → invite_with_note when the user picked the immediate
+ *                           note (Premium), else invite_then_message (bare
+ *                           invite, message dispatched after acceptance)
  *
  * The three backend invite types diverge sharply at dispatch time:
  *   invite             — wire body has no `message`
- *   invite_with_note   — wire body carries the note
+ *   invite_with_note   — wire body carries the note (fires with the invite)
  *   invite_then_message — bare invite phase 1, follow-up message dispatched from
  *                         record-invite-accepted.ts on the `new_relation` webhook
+ *
+ * Both invite-based UI types set `invitation_note` only when the text rides
+ * with the invite immediately, so a present note is the single signal that
+ * selects invite_with_note.
  */
 function mapLinkedInCampaignType(
   data: CreateCampaignPayload,
@@ -145,7 +151,7 @@ function mapLinkedInCampaignType(
     case "message_only":
       return "contact";
     case "invitation_message":
-      return "invite_then_message";
+      return data.invitation_note ? "invite_with_note" : "invite_then_message";
   }
 }
 
@@ -580,12 +586,12 @@ export default function CampaignsPage() {
     refine_exclude_contacted: data.refine_exclude_contacted,
     refine_only_with_phone: data.refine_only_with_phone,
     refine_exclude_active: data.refine_exclude_active,
-    // invitation_only — message_template carries the note (or null when none).
-    // invitation_message — message_template is the post-acceptance follow-up,
-    // dispatched by record-invite-accepted.ts when LinkedIn signals the invite
-    // was accepted. The phase-1 invite is bare (no note).
-    message_template:
-      data.type === "invitation_only" ? data.invitation_note : data.message,
+    // message_template carries whichever text the chosen type sends: the
+    // invite note (invite / invite_with_note paths set invitation_note), the
+    // post-acceptance follow-up (invite_then_message, dispatched by
+    // record-invite-accepted.ts), or the direct message (contact). Exactly one
+    // of invitation_note / message is set, so this picks the right one.
+    message_template: data.invitation_note ?? data.message,
     // Attachments only apply to message-bearing types; the API ignores it for
     // invitation_only. Safe to always forward.
     attachment: data.attachment,

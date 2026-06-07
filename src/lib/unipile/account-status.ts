@@ -152,6 +152,61 @@ export async function reconcileUnipileAccountStatusFromAccount(
 }
 
 /**
+ * Derive and persist `linkedin_member_id` from a freshly fetched Unipile
+ * account (`connection_params.im.id`). This replaces the old extension path
+ * that scraped the id from LinkedIn's Voyager API — it now comes purely from
+ * Unipile, so the browser never touches a LinkedIn endpoint.
+ *
+ * Also carries the account-switch sentinel: if the id changes, the cookies now
+ * belong to a different LinkedIn account than before — flag it (the cron still
+ * stored the new cookies; this just surfaces the mismatch).
+ *
+ * Best-effort: returns void, never throws. LinkedIn accounts only.
+ */
+export async function syncLinkedInMemberIdFromAccount(
+  supabase: SupabaseClient<Database>,
+  params: { userId: string; unipileAccount: UnipileAccount }
+): Promise<void> {
+  const memberId =
+    params.unipileAccount.connection_params?.im?.id?.toString().trim() || null;
+  if (!memberId) return;
+
+  try {
+    const { data: existing } = await supabase
+      .from("user_unipile_accounts")
+      .select("linkedin_member_id")
+      .eq("user_id", params.userId)
+      .eq("account_type", "LINKEDIN")
+      .maybeSingle();
+
+    if (!existing) return;
+    if (existing.linkedin_member_id === memberId) return;
+
+    if (existing.linkedin_member_id) {
+      Sentry.captureMessage("[unipile reconcile] linkedin_member_id changed", {
+        level: "warning",
+        extra: {
+          userId: params.userId,
+          previous: existing.linkedin_member_id,
+          incoming: memberId,
+        },
+      });
+    }
+
+    await supabase
+      .from("user_unipile_accounts")
+      .update({
+        linkedin_member_id: memberId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", params.userId)
+      .eq("account_type", "LINKEDIN");
+  } catch (e) {
+    console.error("[unipile] syncLinkedInMemberIdFromAccount:", e);
+  }
+}
+
+/**
  * When a consumer (campaign send, workflow step, ad-hoc API call) gets a
  * UnipileApiError that screams "account is broken", flip the row to error so
  * the UI banner appears even if Unipile's webhook never arrived.
