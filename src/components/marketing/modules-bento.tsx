@@ -86,7 +86,12 @@ export function MarketingModulesBentoSection() {
             title="Tableau de bord"
             description="Invitations, taux de réponse, RDV, closings, performance par commercial."
             icon={<LayoutDashboard size={16} />}
-            header={<Cell><Screenshot src="/dashboard-hero.png" srcDark="/dashboard-dark.png" alt="Tableau de bord Andoxa" /></Cell>}
+            // Same capture as the hero, but a distinct URL (query suffix) on purpose:
+            // next/image keys its LCP-detection map by resolved URL, so a second
+            // <Image> with the hero's exact URL (and default lazy loading) would
+            // overwrite the hero's eager entry and trigger a false LCP warning.
+            // The query is ignored when serving the static file.
+            header={<Cell><Screenshot src="/dashboard-hero.png?in=bento" srcDark="/dashboard-dark.png?in=bento" alt="Tableau de bord Andoxa" /></Cell>}
           />
           <BentoGridItem
             title="Messagerie"

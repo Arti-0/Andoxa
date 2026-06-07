@@ -1,61 +1,70 @@
-import type { Metadata } from "next";
-import type { ReactNode } from "react";
-import { GeistSans } from "geist/font/sans";
-import { GeistMono } from "geist/font/mono";
-import { ThemeProvider } from "next-themes";
-import QueryProvider from "@/components/QueryProvider";
-import { WorkspaceProvider } from "@/lib/workspace";
-import { SentryClientInit } from "@/components/SentryClientInit";
-import { Toaster } from "@/components/ui/sonner";
-import "@/app/globals.css";
+import type { Metadata } from 'next';
+import type { ReactNode } from 'react';
+import { GeistSans } from 'geist/font/sans';
+import { GeistMono } from 'geist/font/mono';
+import { ThemeProvider } from 'next-themes';
+import QueryProvider from '@/components/QueryProvider';
+import { WorkspaceProvider } from '@/lib/workspace';
+import { SentryClientInit } from '@/components/SentryClientInit';
+import { Toaster } from '@/components/ui/sonner';
+import '@/app/globals.css';
 
 export const metadata: Metadata = {
-  title: "Andoxa",
-  description: "CRM moderne pour gérer vos prospects et campagnes",
-  icons: {
-    icon: [
-      { url: "/assets/favicon/icon0.svg", type: "image/svg+xml" },
-      { url: "/assets/favicon/icon-32.png", type: "image/png", sizes: "32x32" },
-      { url: "/assets/favicon/icon-192.png", type: "image/png", sizes: "192x192" },
-      { url: "/assets/favicon/favicon.ico", sizes: "any" },
-    ],
-    apple: "/assets/favicon/apple-touch-icon.png",
-  },
-  manifest: "/assets/favicon/manifest.json",
+    title: 'Andoxa',
+    description: 'CRM moderne pour gérer vos prospects et campagnes',
+    icons: {
+        icon: [
+            { url: '/assets/favicon/icon0.svg', type: 'image/svg+xml' },
+            {
+                url: '/assets/favicon/icon-32.png',
+                type: 'image/png',
+                sizes: '32x32',
+            },
+            {
+                url: '/assets/favicon/icon-192.png',
+                type: 'image/png',
+                sizes: '192x192',
+            },
+            { url: '/assets/favicon/favicon.ico', sizes: 'any' },
+        ],
+        apple: '/assets/favicon/apple-touch-icon.png',
+    },
+    manifest: '/assets/favicon/manifest.json',
 };
 
 /**
  * Root Layout
- * 
+ *
  * Minimal setup:
  * - Theme provider (dark/light mode)
  * - Global styles
- * 
+ *
  * Note: Auth gates live in src/proxy.ts (middleware); workspace context is in (protected)/protected-layout-content.
  */
 export default function RootLayout({ children }: { children: ReactNode }) {
-  return (
-    <html
-      lang="fr"
-      suppressHydrationWarning
-      className={`${GeistSans.variable} ${GeistMono.variable}`}
-    >
-      <body className="min-h-screen bg-background font-sans antialiased">
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
+    return (
+        <html
+            lang="fr"
+            suppressHydrationWarning
+            data-scroll-behavior="smooth"
+            className={`${GeistSans.variable} ${GeistMono.variable}`}
         >
-          <QueryProvider>
-            <WorkspaceProvider>
-              {children}
-              <Toaster richColors position="bottom-right" />
-              <SentryClientInit />
-            </WorkspaceProvider>
-          </QueryProvider>
-        </ThemeProvider>
-      </body>
-    </html>
-  );
+            <body className="min-h-screen bg-background font-sans antialiased">
+                <ThemeProvider
+                    attribute="class"
+                    defaultTheme="system"
+                    enableSystem
+                    disableTransitionOnChange
+                >
+                    <QueryProvider>
+                        <WorkspaceProvider>
+                            {children}
+                            <Toaster richColors position="bottom-right" />
+                            <SentryClientInit />
+                        </WorkspaceProvider>
+                    </QueryProvider>
+                </ThemeProvider>
+            </body>
+        </html>
+    );
 }

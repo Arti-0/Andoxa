@@ -39,27 +39,17 @@ export function AndoxaWordmark({
   height?: number;
   className?: string;
 }) {
-  const width = Math.round(height * 5.64);
+  // Plain <img> (not next/image) on purpose: these are tiny inline SVG
+  // wordmarks sized purely by CSS (height from the parent, width auto). next/image
+  // compares rendered px against the width/height attributes and warns on the
+  // inevitable sub-pixel rounding mismatch — see logo-display.tsx for the same
+  // pattern. h-full/w-auto keeps the aspect ratio intact.
   return (
     <span className={className} style={{ display: "inline-flex", height }}>
-      <Image
-        src={WORDMARK_LIGHT}
-        alt="Andoxa"
-        width={width}
-        height={height}
-        priority
-        className="block h-full w-auto dark:hidden"
-        style={{ width: "auto", height: "auto" }}
-      />
-      <Image
-        src={WORDMARK_DARK}
-        alt="Andoxa"
-        width={width}
-        height={height}
-        priority
-        className="hidden h-full w-auto dark:block"
-        style={{ width: "auto", height: "auto" }}
-      />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={WORDMARK_LIGHT} alt="Andoxa" className="block h-full w-auto dark:hidden" />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={WORDMARK_DARK} alt="Andoxa" className="hidden h-full w-auto dark:block" />
     </span>
   );
 }

@@ -391,7 +391,8 @@ export function MarketingHero() {
                 fill
                 unoptimized
                 className="object-cover object-top dark:hidden"
-                priority
+                loading="eager"
+                fetchPriority="high"
               />
               <Image
                 src="/dashboard-dark.png"
@@ -399,7 +400,8 @@ export function MarketingHero() {
                 fill
                 unoptimized
                 className="hidden object-cover object-top dark:block"
-                priority
+                loading="eager"
+                fetchPriority="high"
               />
             </div>
           </div>
