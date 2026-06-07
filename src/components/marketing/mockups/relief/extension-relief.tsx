@@ -80,7 +80,7 @@ export function ExtensionRelief({ className }: { className?: string }) {
           {/* Floating Andoxa extension panel (hero) */}
           <div className={s.floatPanel}>
             <div className={s.extHead}>
-              <AndoxaLogoIcon style={{ width: 22, height: 22 }} />
+              <AndoxaLogoIcon size={22} />
               <span className={s.name}>Andoxa</span>
               <span className={s.tag}>Extension</span>
               <X className={s.x} size={14} />

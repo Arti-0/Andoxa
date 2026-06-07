@@ -1,5 +1,6 @@
 import { createApiHandler, Errors, parseBody } from "../../../../lib/api";
 import { NextRequest } from "next/server";
+import { invalidate } from "@/lib/cache/redis";
 
 /**
  * GET /api/bdd/[id]
@@ -96,8 +97,19 @@ export const PATCH = createApiHandler(async (req, ctx) => {
 });
 
 /**
- * DELETE /api/bdd/[id]
- * Delete a BDD (liste). Sets bdd_id=null on linked prospects, then deletes the BDD.
+ * DELETE /api/bdd/[id]?action=...
+ * Delete a BDD (liste) and resolve its prospects in one of three ways. The
+ * list itself is always deleted; `action` decides what happens to prospects
+ * (which carry a single nullable `bdd_id`, so each belongs to exactly one
+ * list — there is no shared-prospect case to reconcile):
+ *
+ *   • "unlink" (default) — keep prospects, just clear their bdd_id.
+ *   • "move"             — re-point prospects to `target` (another list id).
+ *   • "purge"            — soft-delete the prospects (deleted_at → now, sent
+ *                          to Trash, recoverable) before removing the list.
+ *
+ * Every path clears bdd_id on the affected rows so the list delete never
+ * leaves a prospect referencing a now-deleted list.
  */
 export const DELETE = createApiHandler(async (req: NextRequest, ctx) => {
   const url = new URL(req.url);
@@ -110,19 +122,73 @@ export const DELETE = createApiHandler(async (req: NextRequest, ctx) => {
     throw Errors.badRequest("Workspace required");
   }
 
-  // 1. Unlink prospects (set bdd_id to null)
-  const { error: unlinkError } = await ctx.supabase
-    .from("prospects")
-    .update({ bdd_id: null })
-    .eq("bdd_id", id)
-    .eq("organization_id", ctx.workspaceId);
+  const action = (url.searchParams.get("action") ?? "unlink") as
+    | "unlink"
+    | "move"
+    | "purge";
 
-  if (unlinkError) {
-    console.error("[API] BDD unlink prospects error:", unlinkError);
-    throw Errors.internal("Failed to unlink prospects");
+  if (action === "move") {
+    const target = url.searchParams.get("target");
+    if (!target || target === id) {
+      throw Errors.badRequest("Liste de destination invalide");
+    }
+    // Confirm the destination belongs to this workspace before pointing at it.
+    const { data: dest } = await ctx.supabase
+      .from("bdd")
+      .select("id")
+      .eq("id", target)
+      .eq("organization_id", ctx.workspaceId)
+      .maybeSingle();
+    if (!dest) {
+      throw Errors.notFound("Liste de destination");
+    }
+    const { error: moveError } = await ctx.supabase
+      .from("prospects")
+      .update({ bdd_id: target })
+      .eq("bdd_id", id)
+      .eq("organization_id", ctx.workspaceId);
+    if (moveError) {
+      console.error("[API] BDD move prospects error:", moveError);
+      throw Errors.internal("Failed to move prospects");
+    }
+  } else if (action === "purge") {
+    // Soft-delete the still-live prospects (preserve the original deleted_at
+    // of any already-trashed rows by only stamping those with deleted_at null).
+    const { error: trashError } = await ctx.supabase
+      .from("prospects")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("bdd_id", id)
+      .eq("organization_id", ctx.workspaceId)
+      .is("deleted_at", null);
+    if (trashError) {
+      console.error("[API] BDD purge prospects error:", trashError);
+      throw Errors.internal("Failed to delete prospects");
+    }
+    // Unlink everyone (including already-trashed rows) so the list delete
+    // below doesn't leave any prospect pointing at a deleted list.
+    const { error: unlinkError } = await ctx.supabase
+      .from("prospects")
+      .update({ bdd_id: null })
+      .eq("bdd_id", id)
+      .eq("organization_id", ctx.workspaceId);
+    if (unlinkError) {
+      console.error("[API] BDD purge unlink error:", unlinkError);
+      throw Errors.internal("Failed to delete prospects");
+    }
+  } else {
+    // "unlink" (default): keep prospects, clear their bdd_id.
+    const { error: unlinkError } = await ctx.supabase
+      .from("prospects")
+      .update({ bdd_id: null })
+      .eq("bdd_id", id)
+      .eq("organization_id", ctx.workspaceId);
+    if (unlinkError) {
+      console.error("[API] BDD unlink prospects error:", unlinkError);
+      throw Errors.internal("Failed to unlink prospects");
+    }
   }
 
-  // 2. Delete the BDD
+  // Delete the BDD itself.
   const { error: deleteError } = await ctx.supabase
     .from("bdd")
     .delete()
@@ -133,6 +199,9 @@ export const DELETE = createApiHandler(async (req: NextRequest, ctx) => {
     console.error("[API] BDD delete error:", deleteError);
     throw Errors.internal("Failed to delete liste");
   }
+
+  // bdd_id / deleted_at changed on prospect rows — drop the cached lists.
+  await invalidate.prospects(ctx.workspaceId);
 
   return { deleted: true };
 });

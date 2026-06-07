@@ -25,7 +25,7 @@ export function BookingRelief({ className }: { className?: string }) {
           {/* Connected calendar (depth) */}
           <div className={j(s.layer, s.winAgenda)}>
             <div className={s.agBar}>
-              <AndoxaLogoIcon style={{ width: 18, height: 18 }} />
+              <AndoxaLogoIcon size={18} />
               <span className={s.gcalSync}>
                 <Calendar className={s.gc} />
                 <span className={s.gname}>Google Calendar</span>

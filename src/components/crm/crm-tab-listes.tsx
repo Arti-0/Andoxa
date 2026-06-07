@@ -37,7 +37,6 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "@/lib/toast";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ProspectImportDialog } from "@/components/crm/prospect-import-dialog";
 import {
@@ -66,6 +65,10 @@ interface BddApiResponse {
 }
 
 type SortBy = "recent" | "conversion" | "volume" | "alpha";
+
+/** How the deletion modal resolves a list's prospects. Mirrors the API's
+ *  `?action=` param on DELETE /api/bdd/[id]. */
+type ListDeleteAction = "unlink" | "move" | "purge";
 
 const LISTES_SORT_OPTIONS: { id: SortBy; label: string }[] = [
   { id: "recent", label: "Plus récente" },
@@ -183,7 +186,7 @@ export function ListesTab({
   const [sortBy, setSortBy] = useState<SortBy>("recent");
   const [menuId, setMenuId] = useState<string | null>(null);
   const [openList, setOpenList] = useState<BddRow | null>(null);
-  const [bddToDelete, setBddToDelete] = useState<string | null>(null);
+  const [listToDelete, setListToDelete] = useState<BddRow | null>(null);
   const [renameTarget, setRenameTarget] = useState<BddRow | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [filters, setFilters] = useState<ListesFilterState>({
@@ -227,16 +230,32 @@ export function ListesTab({
 
   /* ---------- mutations ---------- */
   const deleteBddMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(`/api/bdd/${id}`, {
+    mutationFn: async (vars: {
+      id: string;
+      action: ListDeleteAction;
+      target?: string;
+    }) => {
+      const params = new URLSearchParams({ action: vars.action });
+      if (vars.action === "move" && vars.target) {
+        params.set("target", vars.target);
+      }
+      const res = await fetch(`/api/bdd/${vars.id}?${params.toString()}`, {
         method: "DELETE",
         credentials: "include",
       });
       if (!res.ok) throw new Error(String(res.status));
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["bdd"] });
-      toast.success("Liste supprimée");
+      // "move" and "purge" both mutate prospect rows — refresh those too.
+      queryClient.invalidateQueries({ queryKey: ["prospects"] });
+      toast.success(
+        vars.action === "move"
+          ? "Prospects déplacés, liste supprimée"
+          : vars.action === "purge"
+            ? "Liste et prospects supprimés"
+            : "Liste supprimée",
+      );
     },
     onError: () => toast.error("Impossible de supprimer la liste"),
   });
@@ -492,7 +511,7 @@ export function ListesTab({
                 onSelect={() => onSelectList(l.id)}
                 onLaunchCampaign={() => launchCampaign(l.id)}
                 onLaunchCallSession={() => launchCallSession(l.id)}
-                onAskDelete={() => setBddToDelete(l.id)}
+                onAskDelete={() => setListToDelete(l)}
                 onRename={() => handleRename(l)}
                 onExport={() => void exportListAsCsv(l.id, l.name)}
               />
@@ -533,7 +552,7 @@ export function ListesTab({
           }}
           onExport={() => void exportListAsCsv(openList.id, openList.name)}
           onAskDelete={() => {
-            setBddToDelete(openList.id);
+            setListToDelete(openList);
             setOpenList(null);
           }}
         />
@@ -550,18 +569,15 @@ export function ListesTab({
         />
       )}
 
-      <ConfirmDialog
-        open={!!bddToDelete}
-        onOpenChange={(open) => {
-          if (!open) setBddToDelete(null);
-        }}
-        title="Supprimer cette liste ?"
-        description="Les prospects associés seront conservés."
-        confirmLabel="Supprimer"
-        variant="destructive"
-        onConfirm={() => {
-          if (bddToDelete) deleteBddMutation.mutate(bddToDelete);
-          setBddToDelete(null);
+      <ListDeleteDialog
+        list={listToDelete}
+        otherLists={items.filter((l) => l.id !== listToDelete?.id)}
+        onClose={() => setListToDelete(null)}
+        onConfirm={(action, target) => {
+          if (listToDelete) {
+            deleteBddMutation.mutate({ id: listToDelete.id, action, target });
+          }
+          setListToDelete(null);
         }}
       />
       {/* Listes view keeps the manual-add path (per product decision). */}
@@ -645,6 +661,244 @@ function RenameListDialog({
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Action-based list-deletion modal. Replaces the binary confirm: when a list
+ * still holds prospects, the user picks how to resolve them (keep / move /
+ * delete) before the list is removed. With zero prospects it collapses to a
+ * plain "delete the list" confirmation.
+ *
+ * `otherLists` is the move-target pool (the parent already excludes the list
+ * being deleted); it's filtered client-side by the search box.
+ */
+function ListDeleteDialog({
+  list,
+  otherLists,
+  onClose,
+  onConfirm,
+}: {
+  list: BddRow | null;
+  otherLists: BddRow[];
+  onClose: () => void;
+  onConfirm: (action: ListDeleteAction, target?: string) => void;
+}) {
+  const [action, setAction] = useState<ListDeleteAction>("unlink");
+  const [target, setTarget] = useState<string>("");
+  const [search, setSearch] = useState("");
+
+  // Reset to the safe default each time the modal opens on a new list.
+  useEffect(() => {
+    if (list) {
+      setAction("unlink");
+      setTarget("");
+      setSearch("");
+    }
+  }, [list]);
+
+  if (!list) return null;
+
+  const count = list.prospects_count ?? 0;
+  const noOtherLists = otherLists.length === 0;
+  const filteredLists = otherLists.filter((l) =>
+    l.name.toLowerCase().includes(search.trim().toLowerCase()),
+  );
+  const targetName = otherLists.find((l) => l.id === target)?.name ?? "";
+  const canConfirm = action !== "move" || !!target;
+
+  const confirm = () => {
+    if (!canConfirm) return;
+    onConfirm(action, action === "move" ? target : undefined);
+  };
+
+  const confirmLabel =
+    action === "move"
+      ? "Déplacer et supprimer la liste"
+      : action === "purge"
+        ? "Supprimer liste et prospects"
+        : "Supprimer la liste";
+  // Move is non-destructive (prospects survive) → primary blue; the two
+  // delete paths use red. Purge is still recoverable (Trash), so red alone is
+  // enough friction — no type-to-confirm.
+  const confirmClass =
+    action === "move"
+      ? "bg-blue-600 hover:bg-blue-700"
+      : "bg-red-600 hover:bg-red-700";
+
+  return (
+    <>
+      <div onClick={onClose} className="fixed inset-0 z-modal bg-black/30" />
+      <div className="fixed left-1/2 top-1/2 z-modal w-[min(94vw,480px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-background p-5 shadow-2xl">
+        <div className="text-[15px] font-semibold">
+          Supprimer «&nbsp;{list.name}&nbsp;» ?
+        </div>
+        <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+          {count > 0
+            ? `Cette liste contient ${count} prospect${count > 1 ? "s" : ""}. Que faut-il en faire ?`
+            : "Cette liste ne contient aucun prospect."}
+        </p>
+
+        {count > 0 && (
+          <div className="mt-4 flex flex-col gap-2">
+            <DeleteOption
+              selected={action === "unlink"}
+              onSelect={() => setAction("unlink")}
+              icon={Users}
+              title="Supprimer la liste uniquement"
+              desc={`Les ${count} prospect${count > 1 ? "s" : ""} restent dans votre CRM, sans cette liste.`}
+            />
+
+            <DeleteOption
+              selected={action === "move"}
+              onSelect={() => !noOtherLists && setAction("move")}
+              icon={ArrowRight}
+              title="Déplacer les prospects vers une autre liste"
+              desc={
+                noOtherLists
+                  ? "Aucune autre liste disponible."
+                  : "Les prospects rejoignent la liste que vous choisissez."
+              }
+              disabled={noOtherLists}
+            >
+              {action === "move" && (
+                <div className="mt-2.5 rounded-lg border border-border bg-muted/30 p-2">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      autoFocus
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Rechercher une liste…"
+                      className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-2 text-[12.5px] outline-none focus:border-[#0052D9]"
+                    />
+                  </div>
+                  <div className="mt-1.5 max-h-[168px] overflow-y-auto">
+                    {filteredLists.length === 0 ? (
+                      <div className="px-2 py-3 text-center text-[12px] text-muted-foreground">
+                        Aucun résultat
+                      </div>
+                    ) : (
+                      filteredLists.map((l) => (
+                        <button
+                          key={l.id}
+                          type="button"
+                          onClick={() => setTarget(l.id)}
+                          className={`flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] hover:bg-accent ${
+                            target === l.id ? "bg-accent font-medium" : ""
+                          }`}
+                        >
+                          <span className="min-w-0 truncate">{l.name}</span>
+                          <span className="shrink-0 text-[11px] text-muted-foreground">
+                            {l.prospects_count ?? 0}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </DeleteOption>
+
+            <DeleteOption
+              selected={action === "purge"}
+              onSelect={() => setAction("purge")}
+              icon={Trash2}
+              title="Supprimer la liste et les prospects"
+              desc={`Les ${count} prospect${count > 1 ? "s" : ""} sont envoyés à la corbeille (récupérables).`}
+              danger
+            />
+          </div>
+        )}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border px-3 py-1.5 text-[13px] font-medium hover:bg-accent"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={confirm}
+            disabled={!canConfirm}
+            className={`rounded-md px-3 py-1.5 text-[13px] font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${confirmClass}`}
+          >
+            {action === "move" && targetName
+              ? `Déplacer vers « ${targetName} » et supprimer`
+              : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** One selectable row in the deletion modal — a radio dot, icon, title and
+ *  description, with optional nested content (e.g. the move-target picker). */
+function DeleteOption({
+  selected,
+  onSelect,
+  icon: Icon,
+  title,
+  desc,
+  danger,
+  disabled,
+  children,
+}: {
+  selected: boolean;
+  onSelect: () => void;
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  desc: string;
+  danger?: boolean;
+  disabled?: boolean;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div
+      onClick={disabled ? undefined : onSelect}
+      className={`rounded-lg border p-3 transition-colors ${
+        disabled
+          ? "cursor-not-allowed border-border opacity-55"
+          : "cursor-pointer"
+      } ${
+        selected
+          ? danger
+            ? "border-red-500 bg-red-50 dark:bg-red-900/15"
+            : "border-[#0052D9] bg-blue-50 dark:bg-blue-900/15"
+          : "border-border hover:bg-accent"
+      }`}
+    >
+      <div className="flex items-start gap-2.5">
+        <span
+          className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
+            selected
+              ? danger
+                ? "border-red-500"
+                : "border-[#0052D9]"
+              : "border-muted-foreground/40"
+          }`}
+        >
+          {selected && (
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${danger ? "bg-red-500" : "bg-[#0052D9]"}`}
+            />
+          )}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 text-[13px] font-medium">
+            <Icon
+              className={`h-3.5 w-3.5 ${danger ? "text-red-500" : "text-muted-foreground"}`}
+            />
+            {title}
+          </div>
+          <p className="mt-0.5 text-[11.5px] text-muted-foreground">{desc}</p>
+          {children}
+        </div>
+      </div>
+    </div>
   );
 }
 

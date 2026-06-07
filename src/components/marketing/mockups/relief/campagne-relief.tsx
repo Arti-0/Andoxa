@@ -39,7 +39,7 @@ export function CampagneRelief({ className }: { className?: string }) {
             </div>
             <div className={s.app}>
               <nav className={s.rail}>
-                <span className={s.rmark}><AndoxaLogoIcon style={{ width: 28, height: 28 }} /></span>
+                <span className={s.rmark}><AndoxaLogoIcon size={28} /></span>
                 <span className={s.ritem}><LayoutGrid /></span>
                 <span className={s.ritem}><Users /></span>
                 <span className={j(s.ritem, s.active)}><Phone /></span>

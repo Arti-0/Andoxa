@@ -71,7 +71,7 @@ export function MessagerieRelief({ className }: { className?: string }) {
               {/* Sidebar */}
               <aside className={s.side}>
                 <div className={s.sideTop}>
-                  <AndoxaLogoIcon style={{ width: 22, height: 22 }} />
+                  <AndoxaLogoIcon size={22} />
                   <span className={s.word}>Andoxa</span>
                   <span className={s.chev}><ChevronLeft size={15} /></span>
                 </div>

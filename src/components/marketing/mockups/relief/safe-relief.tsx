@@ -31,7 +31,7 @@ export function SafeRelief({ className }: { className?: string }) {
           <div className={j(s.layer, s.winFront)}>
             <div className={s.winBar}>
               <span className={s.mark}>
-                <AndoxaLogoIcon style={{ width: 22, height: 22 }} />
+                <AndoxaLogoIcon size={22} />
               </span>
               <span className={s.title}>Sécurité du compte</span>
               <span className={s.pillOk}>

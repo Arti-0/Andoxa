@@ -10,6 +10,7 @@ import {
 import { isProspectAutomationExcluded, type ProspectWithMetadata } from "@/lib/prospects/automation-opt-out";
 import { CAMPAIGN_ATTACHMENT_MAX_BYTES } from "@/lib/campaigns/attachment";
 import type { CampaignAttachment } from "@/lib/campaigns/types";
+import type { Json } from "@/lib/types/supabase";
 
 /**
  * POST /api/campaigns/jobs
@@ -151,7 +152,7 @@ export const POST = createApiHandler(
           batch_size: body.batch_size ?? 10,
           delay_ms: body.delay_ms ?? 120000,
           message_template: body.message_template ?? null,
-          metadata: Object.keys(metadata).length > 0 ? metadata : null,
+          metadata: (Object.keys(metadata).length > 0 ? metadata : null) as Json | null,
         })
         .select()
         .single();
@@ -254,7 +255,7 @@ export const POST = createApiHandler(
           batch_size: body.batch_size ?? 10,
           delay_ms: body.delay_ms ?? 120000,
           message_template: body.message_template ?? null,
-          metadata: Object.keys(metadata).length > 0 ? metadata : null,
+          metadata: (Object.keys(metadata).length > 0 ? metadata : null) as Json | null,
         })
         .select()
         .single();
@@ -308,7 +309,7 @@ export const POST = createApiHandler(
         batch_size: body.batch_size ?? 10,
         delay_ms: body.delay_ms ?? 120000,
         message_template: body.message_template ?? null,
-        metadata: Object.keys(metadata).length > 0 ? metadata : null,
+        metadata: (Object.keys(metadata).length > 0 ? metadata : null) as Json | null,
       })
       .select()
       .single();
