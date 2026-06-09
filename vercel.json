@@ -89,6 +89,16 @@
       "source": "/www/(.*)",
       "destination": "/$1",
       "permanent": true
+    },
+    {
+      "source": "/terms",
+      "destination": "/mentions-legales",
+      "permanent": true
+    },
+    {
+      "source": "/terms-of-use",
+      "destination": "/cgu",
+      "permanent": true
     }
   ],
   "env": {

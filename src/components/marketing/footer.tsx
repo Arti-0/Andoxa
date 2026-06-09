@@ -7,11 +7,11 @@ import { Mail, ShieldCheck } from "lucide-react";
 import { AndoxaWordmark, LinkedinIcon } from "@/components/marketing/icons/brand-icons";
 import { Container } from "@/components/marketing/ui/container";
 
-// English slugs per the route-reconciliation decision.
+// French slugs per the route-reconciliation decision.
 const LEGAL_LINKS: { label: string; href: string }[] = [
-  { label: "CGU", href: "/terms-of-use" },
+  { label: "CGU", href: "/cgu" },
   { label: "CGV", href: "/cgv" },
-  { label: "Mentions légales", href: "/terms" },
+  { label: "Mentions légales", href: "/mentions-legales" },
   { label: "Confidentialité", href: "/privacy" },
 ];
 

@@ -578,7 +578,7 @@ export default function AdditionalForm() {
                             <Balancer>
                               J&apos;accepte les{" "}
                               <Link
-                                href="/terms"
+                                href="/cgu"
                                 className="text-primary hover:underline font-semibold"
                                 target="_blank"
                                 rel="noopener noreferrer"

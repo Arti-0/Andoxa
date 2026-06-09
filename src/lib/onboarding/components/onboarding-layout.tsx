@@ -102,7 +102,7 @@ export function OnboardingLayout({
               <p className="text-sm text-slate-600 dark:text-slate-400">
                 En utilisant ce service, vous acceptez nos{" "}
                 <Link
-                  href="/terms"
+                  href="/cgu"
                   className="text-blue-600 dark:text-blue-400 hover:underline"
                 >
                   conditions d&apos;utilisation
