@@ -116,6 +116,12 @@ export function Footer() {
             © {year} Andoxa. Tous droits réservés.
           </p>
           <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-5">
+            <Link href="/changelog" className="text-[13px] text-white/55 transition-colors hover:text-white">
+              Changelog
+            </Link>
+            <span aria-hidden="true" className="hidden text-white/25 sm:inline">
+              ·
+            </span>
             <ul className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-white/55 sm:gap-x-4">
               {LEGAL_LINKS.map((link, i) => (
                 <React.Fragment key={link.href}>

@@ -20,40 +20,136 @@ interface ChangelogEntry {
 const changelogEntries: ChangelogEntry[] = [
     {
         version: 'v2.0.0',
-        date: 'Bientôt disponible',
-        title: 'Andoxa 2.0 : Acquisition client et gestion de leads optimisée',
+        date: '9 juin 2026',
+        title: 'Refonte du site, performances et exports',
         description:
-            'Une refonte majeure axée sur la création de valeur pour votre business. Acquisition client via LinkedIn, campagnes multi-canaux optimisées, enrichissement automatique, et interface de lead simplifiée pour ne jamais perdre une opportunité.',
+            "Une nouvelle page d'accueil, un tableau de bord nettement plus rapide, des exports PDF et une messagerie enrichie. Andoxa devient plus rapide et plus agréable à utiliser au quotidien.",
+        features: [
+            {
+                type: 'improved',
+                title: "Nouvelle page d'accueil",
+                description:
+                    "Page d'accueil entièrement repensée avec captures produit, logos clients et un parcours plus clair, de LinkedIn à la signature.",
+            },
+            {
+                type: 'improved',
+                title: 'Tableau de bord jusqu’à 10× plus rapide',
+                description:
+                    'Votre tableau de bord et votre vue d’ensemble s’affichent quasi instantanément, même avec beaucoup de données.',
+            },
+            {
+                type: 'new',
+                title: "Export PDF et performance d'équipe",
+                description:
+                    "Exportez votre tableau de bord en PDF et suivez la performance de chaque membre de votre équipe.",
+            },
+            {
+                type: 'improved',
+                title: 'Messagerie enrichie',
+                description:
+                    'Joignez des fichiers à vos conversations et voyez quand vos messages ont été lus.',
+            },
+            {
+                type: 'improved',
+                title: 'Campagnes unifiées',
+                description:
+                    'Un parcours de création de campagne plus simple et plus clair, avec invitations et notes intégrées.',
+            },
+            {
+                type: 'fix',
+                title: 'Stabilité et corrections',
+                description:
+                    'Andoxa est plus rapide et plus stable au quotidien, avec de nombreuses corrections.',
+            },
+        ],
+    },
+    {
+        version: 'v1.9.0',
+        date: '23 mai 2026',
+        title: 'Workflows visuels, calendrier et thème sombre',
+        description:
+            "L'éditeur de workflows fait peau neuve, le calendrier est repensé et un thème sombre complet arrive sur toute l'application.",
         features: [
             {
                 type: 'new',
-                title: 'Acquisition client via LinkedIn',
+                title: 'Éditeur de workflows visuel',
                 description:
-                    'Intégration complète avec LinkedIn pour identifier et contacter vos prospects directement depuis Andoxa. Automatisation de la prospection avec templates de messages personnalisables et suivi des interactions.',
+                    'Construisez vos séquences de prospection visuellement, avec des conditions et des embranchements. Un même contact n’est jamais relancé deux fois, sur LinkedIn comme sur WhatsApp.',
+            },
+            {
+                type: 'improved',
+                title: 'Calendrier repensé',
+                description:
+                    "Nouvelle interface de calendrier, meilleure gestion des rendez-vous et création d'événements simplifiée.",
             },
             {
                 type: 'new',
-                title: 'Campagnes optimisées multi-canaux',
+                title: 'Thème sombre complet',
                 description:
-                    'Lancez des campagnes coordonnées par LinkedIn (et WhatsApp) depuis une seule interface. Optimisation automatique des envois avec respect des rate limits, et analytics unifiés pour maximiser votre taux de conversion.',
+                    'Thème sombre disponible sur le tableau de bord, la messagerie et le calendrier.',
+            },
+            {
+                type: 'improved',
+                title: 'Réservation et rendez-vous',
+                description:
+                    "Prise de rendez-vous plus fluide, panneau d'événement amélioré et nouveau formulaire pour créer vos événements.",
             },
             {
                 type: 'new',
-                title: 'Enrichissement automatique de prospects',
+                title: 'Reconnexion LinkedIn',
                 description:
-                    'Enrichissement intelligent de vos leads avec données vérifiées : emails, téléphones, informations entreprise. Gain de temps considérable et données toujours à jour pour vos campagnes.',
+                    'Reconnectez votre compte LinkedIn en un clic lorsque la session expire, sans repartir de zéro.',
             },
             {
-                type: 'new',
-                title: 'Interface de lead simplifiée et intuitive',
+                type: 'improved',
+                title: 'CRM unifié',
                 description:
-                    "Une interface repensée pour que l'information ne soit jamais perdue. Templates de messages contextuels, statistiques en temps réel, scoring intelligent, et questions pertinentes suggérées pour chaque prospect. Tout ce dont vous avez besoin au bon moment.",
+                    'Des statuts de pipeline propres à chaque organisation, une barre d’outils unifiée et une gestion simplifiée du changement de plan.',
             },
             {
-                type: 'new',
-                title: 'Rappels et relances via WhatsApp',
+                type: 'improved',
+                title: 'Nouvelle typographie',
                 description:
-                    'Réduisez les no-shows avec des rappels automatiques via WhatsApp. Relances intelligentes pour vos rendez-vous et campagnes, avec templates personnalisables et suivi des ouvertures et réponses.',
+                    'Passage à la police Geist pour une lecture plus nette sur toute la plateforme.',
+            },
+        ],
+    },
+    {
+        version: 'v1.8.5',
+        date: '11 avril 2026',
+        title: 'Onboarding repensé, invitations et fondations backend',
+        description:
+            "Un nouveau parcours d'onboarding, des invitations d'équipe fiabilisées et une consolidation en profondeur du backend en préparation de la mise en production.",
+        features: [
+            {
+                type: 'new',
+                title: "Nouveau parcours d'onboarding",
+                description:
+                    "Onboarding repensé qui gère les trois scénarios d'arrivée (nouveau compte, invitation, organisation existante) directement depuis la connexion.",
+            },
+            {
+                type: 'improved',
+                title: "Invitations d'équipe simplifiées",
+                description:
+                    "Invitez vos coéquipiers en toute confiance : que leur compte existe déjà ou non, chacun arrive directement au bon endroit.",
+            },
+            {
+                type: 'improved',
+                title: 'Plus rapide et plus stable',
+                description:
+                    'De nombreuses améliorations en coulisses pour une plateforme plus rapide, plus fiable et une messagerie plus agréable à utiliser.',
+            },
+            {
+                type: 'improved',
+                title: 'CRM et campagnes',
+                description:
+                    'Nombreuses améliorations sur la gestion des prospects et la création de campagnes.',
+            },
+            {
+                type: 'improved',
+                title: 'Abonnements plus fiables',
+                description:
+                    "Gestion des abonnements et des paiements plus robuste.",
             },
         ],
     },
@@ -676,22 +772,25 @@ export default function Changelog() {
                 <Container>
                     <div className="mx-auto max-w-3xl space-y-12">
                     {changelogEntries.map((entry, index) => (
-                        <article key={entry.version} className="relative pl-8 border-l border-slate-200 dark:border-slate-800">
-                            <div className="absolute -left-1.5 top-1.5 h-3 w-3 rounded-full border-2 border-white dark:border-slate-950 bg-slate-400 dark:bg-slate-600" />
+                        <article key={entry.version} className="relative border-l border-[var(--border)] pl-8">
+                            <div className={cn(
+                                'absolute -left-1.5 top-1.5 h-3 w-3 rounded-full border-2 border-background',
+                                index === 0 ? 'bg-[var(--brand-blue)]' : 'bg-[var(--border)]'
+                            )} />
 
                             <div className="flex items-baseline gap-3 mb-3">
                                 <Badge variant="secondary" className="text-xs font-mono">
                                     {entry.version}
                                 </Badge>
-                                <time className="text-sm text-slate-500 dark:text-slate-400">
+                                <time className="text-sm text-muted-foreground">
                                     {entry.date}
                                 </time>
                             </div>
 
-                            <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+                            <h2 className="text-lg font-semibold text-foreground mb-2">
                                 {entry.title}
                             </h2>
-                            <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-5">
+                            <p className="text-sm text-muted-foreground leading-relaxed mb-5">
                                 {entry.description}
                             </p>
 
@@ -706,9 +805,9 @@ export default function Changelog() {
                                             )}>
                                                 {getFeatureLabel(feature.type)}
                                             </span>
-                                            <span className="font-medium text-slate-900 dark:text-white">{feature.title}</span>
+                                            <span className="font-medium text-foreground">{feature.title}</span>
                                             {index < 3 && (
-                                                <p className="mt-1 text-slate-500 dark:text-slate-400 leading-relaxed">
+                                                <p className="mt-1 text-muted-foreground leading-relaxed">
                                                     {feature.description}
                                                 </p>
                                             )}
