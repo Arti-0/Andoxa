@@ -37,6 +37,7 @@ const PUBLIC_ROUTES = [
     '/help',
     '/privacy',
     '/terms',
+    '/terms-of-use',
     '/cgv',
     '/security',
     '/changelog',
