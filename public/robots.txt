@@ -1,4 +1,10 @@
 User-agent: *
 Allow: /
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /onboarding
+Disallow: /settings
+Disallow: /success
+Disallow: /checkout
 
-Sitemap: https://andoxa.fr/sitemap.xml
+Sitemap: https://www.andoxa.fr/sitemap.xml

@@ -10,6 +10,9 @@ import { Toaster } from '@/components/ui/sonner';
 import '@/app/globals.css';
 
 export const metadata: Metadata = {
+    // Canonical host for resolving relative OG/canonical URLs. Keep in sync with
+    // BASE_URL in app/sitemap.ts and the Sitemap line in public/robots.txt.
+    metadataBase: new URL('https://www.andoxa.fr'),
     title: 'Andoxa',
     description: 'CRM moderne pour gérer vos prospects et campagnes',
     icons: {

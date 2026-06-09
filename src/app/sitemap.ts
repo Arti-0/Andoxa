@@ -1,98 +1,46 @@
 import { MetadataRoute } from 'next'
+import { COMPARISONS } from '@/lib/marketing/comparisons'
+
+// Canonical host is the www apex (matches the live Vercel project and the
+// /www → / redirect). Keep this in sync with metadataBase in app/layout.tsx
+// and the Sitemap line in public/robots.txt.
+const BASE_URL = 'https://www.andoxa.fr'
+
+type SitemapEntry = MetadataRoute.Sitemap[number]
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = 'https://andoxa.fr'
+  const now = new Date()
+
+  const entry = (
+    path: string,
+    priority: number,
+    changeFrequency: SitemapEntry['changeFrequency'] = 'monthly',
+  ): SitemapEntry => ({
+    url: `${BASE_URL}${path}`,
+    lastModified: now,
+    changeFrequency,
+    priority,
+  })
 
   return [
-    {
-      url: baseUrl,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 1,
-    },
-    {
-      url: `${baseUrl}/pricing`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/comparatif`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/comparatif/andoxa-vs-waalaxy`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/comparatif/andoxa-vs-lemlist`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/comparatif/andoxa-vs-la-growth-machine`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/comparatif/andoxa-vs-phantombuster`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/comparatif/andoxa-vs-hubspot`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/comparatif/andoxa-vs-calendly`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/comparatif/andoxa-vs-monday`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/comparatif/andoxa-vs-odoo`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/changelog`,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 0.6,
-    },
-    {
-      url: `${baseUrl}/auth/login`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.6,
-    },
-    {
-      url: `${baseUrl}/auth/forgot-password`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.5,
-    },
-    {
-      url: `${baseUrl}/auth/update-password`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.5,
-    },
+    entry('', 1, 'weekly'),
+    entry('/pricing', 0.9),
+    // Comparison pages are driven by COMPARISONS so adding one = one entry there.
+    entry('/comparatif', 0.7),
+    ...COMPARISONS.map((c) => entry(c.href, 0.6)),
+    // Resources / content
+    entry('/resources', 0.6),
+    entry('/resources/guide', 0.6),
+    entry('/resources/roi-calculator', 0.6),
+    entry('/changelog', 0.5, 'weekly'),
+    entry('/contact', 0.5),
+    entry('/help', 0.4),
+    entry('/security', 0.4),
+    entry('/auth/login', 0.4),
+    // Legal
+    entry('/cgu', 0.3),
+    entry('/cgv', 0.3),
+    entry('/mentions-legales', 0.3),
+    entry('/privacy', 0.3),
   ]
 }
