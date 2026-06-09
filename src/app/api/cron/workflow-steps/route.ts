@@ -6,6 +6,7 @@ import {
   resetStaleProcessingExecutions,
 } from "@/lib/workflows";
 import { captureRouteError } from "@/lib/sentry/route-error";
+import { isFeatureEnabled } from "@/lib/config/feature-flags";
 
 const MAX_PER_RUN = 8;
 
@@ -26,6 +27,14 @@ export async function POST(req: Request) {
   const auth = req.headers.get("Authorization")?.replace("Bearer ", "");
   if (auth !== secret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Workflows are gated behind the `workflows` experiment flag. While it's off,
+  // the feature is invisible in the UI and no new runs are enrolled, so this
+  // processor has nothing legitimate to do — skip it entirely instead of
+  // polling the DB every minute for runs that can't progress.
+  if (!isFeatureEnabled("workflows")) {
+    return NextResponse.json({ skipped: "workflows_disabled" });
   }
 
   const supabase = createServiceClient();

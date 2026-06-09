@@ -1079,7 +1079,7 @@ export async function pickDueWorkflowExecution(
 
   const { data: rows, error } = await supabase
     .from("workflow_step_executions")
-    .select("id, run_id, run_after, status")
+    .select("id, run_id")
     .eq("status", "pending")
     .lte("run_after", nowIso)
     .order("run_after", { ascending: true })
@@ -1088,24 +1088,38 @@ export async function pickDueWorkflowExecution(
 
   if (error || !rows?.length) return null;
 
+  // Resolve which candidates belong to a *running* run whose workflow is still
+  // active — batched into two `.in()` queries instead of one run + one workflow
+  // lookup per row (the old N+1). Executions on paused/failed/completed runs
+  // stay pending and are simply skipped here; they become eligible again if the
+  // run returns to `running` — no data mutation needed to ignore them.
+  const runIds = [...new Set(rows.map((r) => r.run_id))];
+  const { data: runs } = await supabase
+    .from("workflow_runs")
+    .select("id, workflow_id")
+    .in("id", runIds)
+    .eq("status", "running");
+
+  if (!runs?.length) return null;
+
+  const workflowIds = [...new Set(runs.map((r) => r.workflow_id))];
+  const { data: activeWorkflows } = await supabase
+    .from("workflows")
+    .select("id")
+    .in("id", workflowIds)
+    .eq("is_active", true);
+
+  const activeWorkflowIds = new Set((activeWorkflows ?? []).map((w) => w.id));
+  const runnableRunIds = new Set(
+    runs
+      .filter((r) => activeWorkflowIds.has(r.workflow_id))
+      .map((r) => r.id)
+  );
+
+  // `rows` is still in run_after / created_at order — return the earliest-due
+  // execution whose run is runnable.
   for (const row of rows) {
-    const { data: run } = await supabase
-      .from("workflow_runs")
-      .select("status, workflow_id")
-      .eq("id", row.run_id)
-      .maybeSingle();
-
-    if (run?.status !== "running") continue;
-
-    const { data: wf } = await supabase
-      .from("workflows")
-      .select("is_active")
-      .eq("id", run.workflow_id)
-      .maybeSingle();
-
-    if (wf?.is_active) {
-      return row.id;
-    }
+    if (runnableRunIds.has(row.run_id)) return row.id;
   }
 
   return null;
