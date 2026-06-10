@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { processCampaignJobBatch } from "@/lib/campaigns/process-job-batch";
+import { drainScheduledFollowUps } from "@/lib/linkedin/record-invite-accepted";
 import { captureRouteError } from "@/lib/sentry/route-error";
 
 const MAX_JOBS_PER_RUN = 8;
@@ -78,7 +79,10 @@ export async function POST(req: Request) {
     });
   }
 
-  return NextResponse.json({ checked: runningJobs?.length ?? 0, results });
+  // Send any due, paced invite_then_message follow-ups (scheduled on acceptance).
+  const followUps = await drainScheduledFollowUps(supabase);
+
+  return NextResponse.json({ checked: runningJobs?.length ?? 0, results, followUps });
   } catch (error) {
     captureRouteError(route, error, { extra: { step: "unhandled" } });
     return NextResponse.json(

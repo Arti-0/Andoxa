@@ -2,6 +2,7 @@
  * Limites LinkedIn par type d'action et par palier produit LinkedIn (Standard / Premium / Sales Navigator).
  * Les valeurs restent indicatives ; Phase 9+ affinera (import listes Navigator, quotas réels observés).
  */
+import { LINKEDIN_CEILINGS } from "@/lib/linkedin/pacing";
 import type { LinkedInAccountTier } from "@/lib/linkedin/tier";
 
 export const LINKEDIN_LIMITS = {
@@ -31,14 +32,17 @@ export const LINKEDIN_LIMITS = {
   },
 } as const;
 
-/** Plafonds hebdo pour `usage_counters` (action `linkedin_invite`) — CRM + campagnes */
+/**
+ * Plafonds hebdo pour `usage_counters` (action `linkedin_invite`) — CRM +
+ * campagnes + workflows. Source unique : les plafonds par palier de `pacing.ts`.
+ */
 export const LINKEDIN_INVITE_WEEKLY_USAGE_CAP: Record<
   LinkedInAccountTier,
   number
 > = {
-  standard: 200,
-  premium: 200,
-  sales_navigator: 200,
+  standard: LINKEDIN_CEILINGS.standard.inviteWeekly,
+  premium: LINKEDIN_CEILINGS.premium.inviteWeekly,
+  sales_navigator: LINKEDIN_CEILINGS.sales_navigator.inviteWeekly,
 } as const;
 
 export function getInviteMaxChars(tier: LinkedInAccountTier): number {

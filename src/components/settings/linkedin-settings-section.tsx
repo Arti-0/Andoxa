@@ -68,14 +68,14 @@ function LinkedInDailyActivitySection({
     }[] = [
         {
             label: "Invitations",
-            used: usage?.invitations_sent ?? null,
-            max: DAILY_QUOTAS.invitations,
+            used: usage?.invitations_today ?? usage?.invitations_sent ?? null,
+            max: usage?.budget?.inviteDailyCap ?? DAILY_QUOTAS.invitations,
             note: "envoyées",
         },
         {
             label: "Messages",
             used: usage?.messages_sent ?? null,
-            max: DAILY_QUOTAS.messages,
+            max: usage?.budget?.messageDailyCap ?? DAILY_QUOTAS.messages,
             note: "envoyés",
         },
         {

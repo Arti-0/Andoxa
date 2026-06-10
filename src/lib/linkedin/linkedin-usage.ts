@@ -1,3 +1,5 @@
+import type { LinkedInBudget } from "@/lib/linkedin/pacing";
+
 export type LinkedInUsagePayload = {
   invitations_sent: number;
   invitations_workflow: number;
@@ -6,6 +8,8 @@ export type LinkedInUsagePayload = {
   messages_sent: number;
   profile_views: number;
   invitations_week: number;
+  invitations_today: number;
+  budget: LinkedInBudget;
 };
 
 export async function fetchLinkedInUsage(): Promise<LinkedInUsagePayload> {

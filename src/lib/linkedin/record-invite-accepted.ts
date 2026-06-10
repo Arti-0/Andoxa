@@ -15,7 +15,8 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import * as Sentry from "@sentry/nextjs";
-import type { Database } from "@/lib/types/supabase";
+import type { Database, Json } from "@/lib/types/supabase";
+import { computeFollowUpDelayMs, isWithinSendWindow } from "@/lib/linkedin/pacing";
 import { insertProspectActivity } from "@/lib/prospect-activity";
 import { emitWorkflowTrigger } from "@/lib/workflows/fire-trigger";
 import { applyMessageVariables, sendLinkedInChatMessage } from "@/lib/unipile/campaign";
@@ -65,8 +66,9 @@ export interface RecordInviteAcceptedResult {
   chatLinkUpserted: boolean;
   /** Number of workflow runs enrolled by the `on_invite_accepted` trigger. */
   workflowEnrolled: number;
-  /** Number of phase-2 follow-up messages dispatched (invite_then_message). */
-  followUpsSent: number;
+  /** Number of phase-2 follow-ups *scheduled* (invite_then_message). They are
+   *  sent later, paced, by `drainScheduledFollowUps` — not inline here. */
+  followUpsScheduled: number;
 }
 
 export async function recordLinkedInInviteAccepted(
@@ -78,7 +80,7 @@ export async function recordLinkedInInviteAccepted(
     relationUpserted: false,
     chatLinkUpserted: false,
     workflowEnrolled: 0,
-    followUpsSent: 0,
+    followUpsScheduled: 0,
   };
 
   // 1. Upsert linkedin_relations — the user is now 1st-degree with this
@@ -161,6 +163,23 @@ export async function recordLinkedInInviteAccepted(
     const { data: existing } = await dedupeQuery.limit(1).maybeSingle();
     if (existing) continue;
 
+    // Phase 2 of invite_then_message: rather than firing the follow-up message
+    // inline (instant reply = bot tell), we *schedule* it on this acceptance row
+    // and let `drainScheduledFollowUps` send it later, paced and in business
+    // hours. The schedule rides on the linkedin_invite_accepted row's details so
+    // we don't introduce a queue table or a timeline-polluting activity verb.
+    const invDetails = (inv.details ?? null) as { job_type?: string | null } | null;
+    const isFollowUp =
+      invDetails?.job_type === "invite_then_message" && Boolean(inv.campaign_job_id);
+    const followUp = isFollowUp
+      ? {
+          followup_status: "pending" as const,
+          followup_scheduled_at: new Date(
+            Date.now() + computeFollowUpDelayMs(),
+          ).toISOString(),
+        }
+      : null;
+
     await insertProspectActivity(supabase, {
       organization_id: inv.organization_id,
       prospect_id: inv.prospect_id,
@@ -173,9 +192,11 @@ export async function recordLinkedInInviteAccepted(
         account_id: args.accountId,
         source: args.source,
         ...(args.chatId ? { chat_id: args.chatId } : {}),
+        ...(followUp ?? {}),
       },
     });
     result.inserted += 1;
+    if (followUp) result.followUpsScheduled += 1;
 
     // Workflow trigger — fires once per acceptance event. Dedup is enforced
     // server-side via the `uq_workflow_runs_dedupe` partial index on
@@ -195,40 +216,6 @@ export async function recordLinkedInInviteAccepted(
       result.workflowEnrolled += triggerResult.enrolled;
     } catch (err) {
       console.error("[invite-accepted] workflow trigger:", err);
-    }
-
-    // Phase 2 of invite_then_message: the invite activity carries job_type in
-    // its details. When that's the marker, send the follow-up message stored
-    // on the campaign_job's message_template. Dedupe via prospect_activity
-    // (we never send linkedin_message_outbound for the same job+prospect pair
-    // twice — the matching invite activity is unique per pair already).
-    const invDetails = (inv.details ?? null) as
-      | { job_type?: string | null }
-      | null;
-    if (
-      invDetails?.job_type === "invite_then_message" &&
-      inv.campaign_job_id &&
-      inv.prospect_id
-    ) {
-      try {
-        const dispatched = await dispatchInviteThenMessageFollowUp(supabase, {
-          campaignJobId: inv.campaign_job_id,
-          prospectId: inv.prospect_id,
-          providerId: args.providerId,
-          accountId: args.accountId,
-          chatId: args.chatId ?? null,
-          userId: inv.actor_id ?? args.userId,
-        });
-        if (dispatched) result.followUpsSent += 1;
-      } catch (err) {
-        console.error("[invite-accepted] follow-up dispatch:", err);
-        Sentry.captureException(err, {
-          tags: {
-            feature: "linkedin",
-            action: "invite_then_message_followup",
-          },
-        });
-      }
     }
   }
 
@@ -270,6 +257,107 @@ export async function recordLinkedInInviteAccepted(
   }
 
   return result;
+}
+
+/** Max scheduled follow-ups inspected per drain tick. */
+const FOLLOWUP_DRAIN_BATCH = 50;
+
+type ScheduledFollowUpDetails = {
+  provider_id?: string;
+  account_id?: string;
+  chat_id?: string;
+};
+
+/**
+ * Sends due, paced phase-2 follow-up messages.
+ *
+ * Reads `linkedin_invite_accepted` rows that were marked `followup_status:
+ * 'pending'` with a `followup_scheduled_at` now in the past, and sends at most
+ * **one per user per tick** (so a clutch of acceptances doesn't fire back-to-back)
+ * and only inside the business-hours window. The actual send + dedupe lives in
+ * {@link dispatchInviteThenMessageFollowUp}; here we just gate timing and flip
+ * the row's status so it leaves the queue. Best-effort: called from the
+ * campaign-jobs cron every minute.
+ */
+export async function drainScheduledFollowUps(
+  supabase: SupabaseClient<Database>,
+): Promise<{ checked: number; sent: number }> {
+  // Same window as outbound sends — never reply outside business hours.
+  if (!isWithinSendWindow()) return { checked: 0, sent: 0 };
+
+  const nowIso = new Date().toISOString();
+  const { data: due, error } = await supabase
+    .from("prospect_activity")
+    .select("id, prospect_id, organization_id, actor_id, campaign_job_id, details")
+    .eq("action", "linkedin_invite_accepted")
+    .filter("details->>followup_status", "eq", "pending")
+    .filter("details->>followup_scheduled_at", "lte", nowIso)
+    .limit(FOLLOWUP_DRAIN_BATCH);
+
+  if (error || !due?.length) return { checked: 0, sent: 0 };
+
+  const handledUsers = new Set<string>();
+  let sent = 0;
+
+  for (const row of due) {
+    const userId = row.actor_id;
+    if (!userId || !row.campaign_job_id || !row.prospect_id) continue;
+    // One follow-up per user per tick keeps the cadence human.
+    if (handledUsers.has(userId)) continue;
+
+    const details = (row.details ?? {}) as ScheduledFollowUpDetails;
+    if (!details.provider_id || !details.account_id) {
+      await markFollowUpDone(supabase, row.id, row.details, "skipped");
+      continue;
+    }
+
+    handledUsers.add(userId);
+    try {
+      const dispatched = await dispatchInviteThenMessageFollowUp(supabase, {
+        campaignJobId: row.campaign_job_id,
+        prospectId: row.prospect_id,
+        providerId: details.provider_id,
+        accountId: details.account_id,
+        chatId: details.chat_id ?? null,
+        userId,
+      });
+      if (dispatched) sent += 1;
+      // Either way it's resolved (sent, or skipped because already-sent / no
+      // template) — flip status so it doesn't clog the next drain.
+      await markFollowUpDone(supabase, row.id, row.details, dispatched ? "sent" : "skipped");
+    } catch (err) {
+      // Transient (e.g. Unipile hiccup) — leave pending for the next tick.
+      console.error("[followup drain] dispatch:", err);
+      Sentry.captureException(err, {
+        tags: { feature: "linkedin", action: "followup_drain" },
+      });
+    }
+  }
+
+  return { checked: due.length, sent };
+}
+
+/** Flip a scheduled follow-up row's status so it leaves the pending queue. */
+async function markFollowUpDone(
+  supabase: SupabaseClient<Database>,
+  id: string,
+  details: Json,
+  status: "sent" | "skipped",
+): Promise<void> {
+  const base =
+    details && typeof details === "object" && !Array.isArray(details)
+      ? (details as Record<string, unknown>)
+      : {};
+  const merged = {
+    ...base,
+    followup_status: status,
+    followup_sent_at: new Date().toISOString(),
+  } as Json;
+  const { error } = await supabase
+    .from("prospect_activity")
+    .update({ details: merged })
+    .eq("id", id);
+  if (error) console.error("[followup drain] mark done:", error.message);
 }
 
 /**

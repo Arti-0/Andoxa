@@ -38,7 +38,7 @@ export const POST = createApiHandler(async (req, ctx) => {
   const accountId = await getAccountIdForUser(ctx);
 
   // Quota is enforced atomically inside sendLinkedInInviteForProspect via
-  // consumeLinkedInInviteQuota. If the cap is reached we get a typed error.
+  // reserveInviteSlot (daily + weekly caps). If a cap is reached we get a typed error.
   try {
     await sendLinkedInInviteForProspect(ctx, prospect, accountId, body.message);
   } catch (err) {

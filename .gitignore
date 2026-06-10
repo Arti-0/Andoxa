@@ -72,6 +72,10 @@ test-results/
 !/supabase/config.toml
 src/supabase_issues
 
+# graphify knowledge-graph artifacts (rebuilt locally by the post-commit hook)
+graphify-out/
+src/graphify-out/
+
 # vscode
 .vscode
 

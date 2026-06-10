@@ -6,7 +6,7 @@
  *  - API-level tests (request fixture) exercise the POST /api/workflows/[id]/runs
  *    endpoint directly and assert on the returned payload.
  *  - WhatsApp step validation: we intercept the internal
- *    /api/workflows/*/execute endpoint at the page layer so we can assert
+ *    /api/workflows/[id]/execute endpoint at the page layer so we can assert
  *    the correct normalised phone format reaches our server. Because Unipile
  *    calls happen server-side, a unit test for `normalizePhoneForWhatsApp`
  *    lives in tests/unit/phone.spec.ts; here we verify the enrollment API

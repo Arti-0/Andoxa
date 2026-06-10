@@ -21,14 +21,10 @@ import {
 import type { UnipileChat } from "@/lib/unipile/types";
 import type { Database, Json } from "@/lib/types/supabase";
 import {
-  incrementUsageCounter,
-  weeklyPeriodKey,
-} from "@/lib/campaigns/throttle";
-import {
-  consumeLinkedInInviteQuota,
-  fetchLinkedInInviteWeeklyQuotaState,
+  computeInviteBudget,
+  inviteQuotaErrorFor,
   LinkedInInviteWeeklyQuotaError,
-  nextUtcInstantWhenWeeklyInviteCounterResets,
+  reserveInviteSlot,
 } from "@/lib/linkedin/weekly-invite-quota";
 import {
   insertProspectActivity,
@@ -317,22 +313,19 @@ async function handleLinkedInInvite(
     return { awaitingConnection: false };
   }
 
-  // Atomic invite-quota reservation: check-and-increment in a single statement
+  // Atomic invite reservation against the warm-up daily cap + weekly ceiling
   // (race-free against concurrent workflow runs / campaigns for the same user).
-  const inviteWeekKey = weeklyPeriodKey();
-  const quota = await fetchLinkedInInviteWeeklyQuotaState(
+  const inviteBudget = await computeInviteBudget(
+    ctx.supabase,
+    ctx.startedByUserId
+  );
+  const reserved = await reserveInviteSlot(
     ctx.supabase,
     ctx.startedByUserId,
-    inviteWeekKey
+    inviteBudget
   );
-  const consumed = await consumeLinkedInInviteQuota(
-    ctx.supabase,
-    ctx.startedByUserId,
-    quota.cap,
-    inviteWeekKey
-  );
-  if (!consumed.ok) {
-    throw new LinkedInInviteWeeklyQuotaError(quota.cap, consumed.used);
+  if (!reserved.ok) {
+    throw inviteQuotaErrorFor(reserved);
   }
 
   try {
@@ -853,7 +846,8 @@ export async function processWorkflowStepExecution(
         .update({
           status: "pending",
           last_error: err.message,
-          run_after: nextUtcInstantWhenWeeklyInviteCounterResets(),
+          // Daily cap → retry next UTC midnight; weekly cap → next week.
+          run_after: err.retryAfter,
           updated_at: new Date().toISOString(),
         })
         .eq("id", executionId);

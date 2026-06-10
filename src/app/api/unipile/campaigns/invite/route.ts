@@ -61,7 +61,7 @@ export const POST = createApiHandler(async (req, ctx) => {
 
   const accountId = await getAccountIdForUser(ctx);
 
-  // Quota enforcement is atomic inside the helper (consumeLinkedInInviteQuota).
+  // Quota enforcement is atomic inside the helper (reserveInviteSlot, daily + weekly).
   // On cap reached → LinkedInInviteWeeklyQuotaError; stop the loop with a
   // single explanatory line rather than spamming one error per prospect.
   let successCount = 0;

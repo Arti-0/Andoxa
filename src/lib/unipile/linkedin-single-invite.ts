@@ -4,13 +4,12 @@ import type { ApiContext } from "@/lib/api";
 import {
   dailyPeriodKey,
   incrementUsageCounter,
-  weeklyPeriodKey,
 } from "@/lib/campaigns/throttle";
 import { ensureLinkedInRelationFromUnipileProfile } from "@/lib/linkedin/ensure-relation-from-unipile-profile";
 import {
-  consumeLinkedInInviteQuota,
-  fetchLinkedInInviteWeeklyQuotaState,
-  LinkedInInviteWeeklyQuotaError,
+  computeInviteBudget,
+  inviteQuotaErrorFor,
+  reserveInviteSlot,
 } from "@/lib/linkedin/weekly-invite-quota";
 import { createServiceClient } from "@/lib/supabase/service";
 import { applyMessageVariables, extractLinkedInSlug } from "@/lib/unipile/campaign";
@@ -80,20 +79,10 @@ export async function sendLinkedInInviteForProspect(
   // concurrent senders (workflows / batch campaigns / single sends) cannot all
   // pass an in-memory check and then collectively overshoot the cap.
   const serviceSupabase = createServiceClient();
-  const weekKey = weeklyPeriodKey();
-  const quota = await fetchLinkedInInviteWeeklyQuotaState(
-    serviceSupabase,
-    ctx.userId,
-    weekKey
-  );
-  const consumed = await consumeLinkedInInviteQuota(
-    serviceSupabase,
-    ctx.userId,
-    quota.cap,
-    weekKey
-  );
-  if (!consumed.ok) {
-    throw new LinkedInInviteWeeklyQuotaError(quota.cap, consumed.used);
+  const inviteBudget = await computeInviteBudget(serviceSupabase, ctx.userId);
+  const reserved = await reserveInviteSlot(serviceSupabase, ctx.userId, inviteBudget);
+  if (!reserved.ok) {
+    throw inviteQuotaErrorFor(reserved);
   }
 
   await unipileFetch("/users/invite", {
@@ -105,9 +94,9 @@ export async function sendLinkedInInviteForProspect(
     }),
   });
 
-  // The weekly linkedin_invite counter is already incremented inside
-  // consumeLinkedInInviteQuota above. Only the (uncapped) daily direct-invite
-  // counter remains to track here.
+  // The daily + weekly linkedin_invite counters are already incremented inside
+  // reserveInviteSlot above. Only the daily direct-invite breakdown counter
+  // (used by the dashboard) remains to track here.
   await incrementUsageCounter(
     serviceSupabase,
     ctx.userId,

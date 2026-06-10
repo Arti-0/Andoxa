@@ -26,13 +26,13 @@ import {
   incrementUsageCounter,
   randomDelay,
   THROTTLE_MS,
-  weeklyPeriodKey,
 } from "./throttle";
 import { insertProspectActivity } from "@/lib/prospect-activity";
 import {
-  consumeLinkedInInviteQuota,
-  fetchLinkedInInviteWeeklyQuotaState,
+  computeInviteBudget,
+  reserveInviteSlot,
 } from "@/lib/linkedin/weekly-invite-quota";
+import { computeNextSendDelayMs, isWithinSendWindow } from "@/lib/linkedin/pacing";
 
 const LOCK_STALE_SECONDS = 900;
 
@@ -143,12 +143,16 @@ async function runBatchLinkedIn(
       .eq("id", jobId);
   }
 
+  // One action per tick: the pacer (computeNextSendDelayMs, written onto
+  // delay_ms below) governs *when* the next send fires, so a LinkedIn batch
+  // never sends more than a single humanized action at a time. job.batch_size
+  // is ignored for LinkedIn — kept only for the WhatsApp path.
   const { data: pendingProspects } = await supabase
     .from("campaign_job_prospects")
     .select("id, prospect_id")
     .eq("job_id", jobId)
     .eq("status", "pending")
-    .limit(job.batch_size);
+    .limit(1);
 
   if (!pendingProspects?.length) {
     await supabase
@@ -167,6 +171,20 @@ async function runBatchLinkedIn(
       remaining: false,
       message: "Job completed",
     };
+  }
+
+  // Business-hours gate: never send outside the weekday window, even on a job's
+  // very first tick (when last_batch_at is null and the cron's delay gate is
+  // skipped). Defer to the next window opening and let the cron retry then.
+  if (!isWithinSendWindow()) {
+    await supabase
+      .from("campaign_jobs")
+      .update({
+        last_batch_at: new Date().toISOString(),
+        delay_ms: computeNextSendDelayMs({ dailyCap: 1, usedToday: 0 }),
+      })
+      .eq("id", jobId);
+    return { ok: true, skipped: true, reason: "delay" };
   }
 
   const accountId = await getLinkedInAccountIdForUserId(supabase, job.created_by);
@@ -207,22 +225,35 @@ async function runBatchLinkedIn(
     (inboundRows ?? []).map((r) => r.prospect_id)
   );
 
-  // Invite-type batches go through atomic per-prospect consume below; we still
-  // fetch the cap once so the per-iteration consume call knows the limit.
+  // Invite-type batches reserve a slot atomically below against the budget.
   // `invite_then_message` counts as an invite for quota purposes — the phase-1
-  // wire call is a bare /users/invite. The phase-2 follow-up message is sent
-  // from `record-invite-accepted.ts` when LinkedIn signals acceptance, and is
-  // tracked under the daily linkedin_contact counter at that point.
-  const weekKey = weeklyPeriodKey();
+  // wire call is a bare /users/invite. The phase-2 follow-up message is scheduled
+  // (paced) from `record-invite-accepted.ts` when LinkedIn signals acceptance,
+  // and tracked under the daily linkedin_contact counter at that point.
   const linkedInJobType = job.type as CampaignJobType;
   const isInviteBatch =
     linkedInJobType === "invite" ||
     linkedInJobType === "invite_with_note" ||
     linkedInJobType === "invite_then_message";
-  const inviteCap = isInviteBatch
-    ? (await fetchLinkedInInviteWeeklyQuotaState(supabase, job.created_by, weekKey))
-        .cap
-    : 0;
+  // Effective pacing budget (warm-up daily invite cap + weekly ceiling + message
+  // cap) computed once per tick. Invite batches reserve a slot against it
+  // atomically; every LinkedIn job uses it to schedule its next send below.
+  const budgetState = await computeInviteBudget(supabase, job.created_by);
+
+  // Message-cap pacing needs today's message count; invites read theirs back
+  // from the atomic reservation instead.
+  let inviteDailyUsed: number | null = null;
+  let contactUsedToday = 0;
+  if (linkedInJobType === "contact") {
+    const { data: contactCounter } = await supabase
+      .from("usage_counters")
+      .select("count")
+      .eq("user_id", job.created_by)
+      .eq("action", "linkedin_contact")
+      .eq("period_key", dailyPeriodKey())
+      .maybeSingle();
+    contactUsedToday = contactCounter?.count ?? 0;
+  }
 
   // Single-file attachment — contact campaigns only (LinkedIn invitations
   // can't carry files). Downloaded once and reused across the whole batch.
@@ -244,6 +275,8 @@ async function runBatchLinkedIn(
   let batchSuccess = 0;
   let batchError = 0;
   let rateLimited = false;
+  let unipileThrottled = false;
+  let capReached = false;
 
   for (const cjp of pendingProspects) {
     if (inboundReplyProspectIds.has(cjp.prospect_id)) {
@@ -287,19 +320,17 @@ async function runBatchLinkedIn(
       continue;
     }
 
-    // Atomic invite-quota reservation: must happen BEFORE the Unipile call.
-    // Two concurrent batches for the same user no longer race past the cap.
+    // Atomic invite reservation: must happen BEFORE the Unipile call. Two
+    // concurrent batches for the same user no longer race past the daily/weekly
+    // caps. A denial (either cap) pauses the batch; the cron retries later.
     if (isInviteBatch) {
-      const consumed = await consumeLinkedInInviteQuota(
-        supabase,
-        job.created_by,
-        inviteCap,
-        weekKey
-      );
-      if (!consumed.ok) {
+      const reserved = await reserveInviteSlot(supabase, job.created_by, budgetState);
+      if (!reserved.ok) {
         rateLimited = true;
+        capReached = true;
         break;
       }
+      inviteDailyUsed = reserved.daily;
     }
 
     try {
@@ -412,8 +443,8 @@ async function runBatchLinkedIn(
         });
       }
 
-      // Note: linkedin_invite counter already incremented atomically above via
-      // consumeLinkedInInviteQuota — do not increment again here.
+      // Note: linkedin_invite daily + weekly counters already incremented
+      // atomically above via reserveInviteSlot — do not increment again here.
       if (job.type === "contact") {
         void incrementUsageCounter(
           supabase,
@@ -433,6 +464,7 @@ async function runBatchLinkedIn(
           })
           .eq("id", cjp.id);
         rateLimited = true;
+        unipileThrottled = true;
         break;
       }
       const msg = err instanceof UnipileApiError ? err.message : String(err);
@@ -450,10 +482,38 @@ async function runBatchLinkedIn(
         .eq("id", cjp.id);
       batchError++;
     }
+    // No trailing delay here: a LinkedIn batch is a single action, and the
+    // humanized gap until the *next* one is set on delay_ms below.
+  }
 
-    if (!rateLimited) {
-      await randomDelay(THROTTLE_MS.linkedin.minDelay, THROTTLE_MS.linkedin.maxDelay);
-    }
+  // Schedule the next send. This delay_ms drives the cron's next-tick gate, so
+  // the pacer fully owns the campaign cadence. Three cases:
+  //   - cap reached → defer until the budget refreshes (computeNextSendDelayMs
+  //     returns the next window opening once remaining ≤ 0);
+  //   - a send happened → humanized gap spreading the rest of today's budget;
+  //   - nothing sent (the single prospect was skipped/errored, no LinkedIn call)
+  //     → retry shortly to advance to the next prospect, still in-window.
+  const dailyCap = isInviteBatch
+    ? budgetState.budget.inviteDailyCap
+    : budgetState.budget.messageDailyCap;
+  const usedToday = isInviteBatch
+    ? inviteDailyUsed ?? 0
+    : contactUsedToday + batchSuccess;
+
+  let nextDelayMs: number;
+  if (capReached) {
+    nextDelayMs = computeNextSendDelayMs({ dailyCap, usedToday: dailyCap });
+  } else if (batchSuccess > 0) {
+    nextDelayMs = computeNextSendDelayMs({ dailyCap, usedToday });
+  } else {
+    // No action taken — a short retry (next cron tick) drains skips quickly
+    // without burning the budget, but never sends outside the window.
+    nextDelayMs = isWithinSendWindow()
+      ? 60_000
+      : computeNextSendDelayMs({ dailyCap, usedToday: dailyCap });
+  }
+  if (unipileThrottled) {
+    nextDelayMs = Math.max(nextDelayMs, 15 * 60_000);
   }
 
   const nowIso = new Date().toISOString();
@@ -464,6 +524,7 @@ async function runBatchLinkedIn(
       success_count: (job.success_count ?? 0) + batchSuccess,
       error_count: (job.error_count ?? 0) + batchError,
       last_batch_at: nowIso,
+      delay_ms: nextDelayMs,
     })
     .eq("id", jobId);
 

@@ -1,27 +1,38 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { weeklyPeriodKey } from "@/lib/campaigns/throttle";
-import { getLinkedInInviteWeeklyUsageCap } from "@/lib/linkedin/limits";
-import { inferLinkedInAccountTier, type LinkedInAccountTier } from "@/lib/linkedin/tier";
+import { dailyPeriodKey, weeklyPeriodKey } from "@/lib/campaigns/throttle";
+import {
+  computeLinkedInBudget,
+  daysSince,
+  type LinkedInBudget,
+} from "@/lib/linkedin/pacing";
+import { inferLinkedInAccountTier } from "@/lib/linkedin/tier";
 import type { Database } from "@/lib/types/supabase";
 
-export type LinkedInInviteWeeklyQuotaState = {
-  tier: LinkedInAccountTier;
-  cap: number;
-  used: number;
-  week: string;
-};
+/** Minimum invites sent (last 30 days) before an acceptance rate is trusted. */
+const ACCEPTANCE_MIN_SAMPLE = 10;
+const ACCEPTANCE_WINDOW_MS = 30 * 24 * 3_600_000;
 
+/**
+ * Thrown when an invite can't be reserved because a pacing cap is reached.
+ * Name kept as `LinkedInInviteWeeklyQuotaError` for existing `instanceof` checks;
+ * `scope` distinguishes the daily warm-up cap from the weekly ceiling and
+ * `retryAfter` is the UTC instant the relevant counter next resets.
+ */
 export class LinkedInInviteWeeklyQuotaError extends Error {
-  readonly code = "LINKEDIN_INVITE_WEEKLY_QUOTA" as const;
+  readonly code = "LINKEDIN_INVITE_QUOTA" as const;
 
   constructor(
     readonly cap: number,
     readonly used: number,
-    message?: string
+    readonly scope: "daily" | "weekly" = "weekly",
+    readonly retryAfter: string = nextUtcInstantWhenWeeklyInviteCounterResets(),
+    message?: string,
   ) {
     super(
       message ??
-        `Limite hebdomadaire d'invitations LinkedIn atteinte (${cap}). Réessayez la semaine prochaine.`
+        (scope === "daily"
+          ? `Budget quotidien d'invitations LinkedIn atteint (${cap}). Andoxa reprendra demain.`
+          : `Limite hebdomadaire d'invitations LinkedIn atteinte (${cap}). Réessayez la semaine prochaine.`),
     );
     this.name = "LinkedInInviteWeeklyQuotaError";
   }
@@ -33,84 +44,151 @@ function toPremiumFeatureStrings(features: unknown): string[] {
 }
 
 /**
- * Weekly LinkedIn invite usage for `usage_counters.action = linkedin_invite`
- * (campagnes + workflows + plafond partagé avec la limite CRM).
+ * Recent invite acceptance over the last 30 days for the user. `rate` is
+ * accepted / sent, or `null` when there isn't enough data to trust it; `accepted`
+ * is the absolute accepted count. Together they feed the warm-up fast lane (rate
+ * + volume floor) and the acceptance brake.
  */
-export async function fetchLinkedInInviteWeeklyQuotaState(
+async function fetchRecentAcceptance(
   supabase: SupabaseClient<Database>,
   userId: string,
-  week: string = weeklyPeriodKey()
-): Promise<LinkedInInviteWeeklyQuotaState> {
+): Promise<{ rate: number | null; accepted: number }> {
+  const since = new Date(Date.now() - ACCEPTANCE_WINDOW_MS).toISOString();
+  const [sentRes, acceptedRes] = await Promise.all([
+    supabase
+      .from("prospect_activity")
+      .select("*", { count: "exact", head: true })
+      .eq("actor_id", userId)
+      .eq("action", "linkedin_invite_sent")
+      .gte("created_at", since),
+    supabase
+      .from("prospect_activity")
+      .select("*", { count: "exact", head: true })
+      .eq("actor_id", userId)
+      .eq("action", "linkedin_invite_accepted")
+      .gte("created_at", since),
+  ]);
+  const sent = sentRes.count ?? 0;
+  const accepted = acceptedRes.count ?? 0;
+  if (sent < ACCEPTANCE_MIN_SAMPLE) return { rate: null, accepted };
+  return { rate: Math.min(1, accepted / sent), accepted };
+}
+
+export type InviteBudgetState = {
+  budget: LinkedInBudget;
+  dayKey: string;
+  weekKey: string;
+};
+
+/**
+ * Compute the effective invite budget for a user once (per batch / per send).
+ * Reads tier + connection age + account health from `user_unipile_accounts` and
+ * a recent acceptance rate, then runs the pure pacing model.
+ */
+export async function computeInviteBudget(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  dayKey: string = dailyPeriodKey(),
+  weekKey: string = weeklyPeriodKey(),
+): Promise<InviteBudgetState> {
   const { data: acct } = await supabase
     .from("user_unipile_accounts")
-    .select("is_premium, premium_features")
+    .select("is_premium, premium_features, created_at, status")
     .eq("user_id", userId)
     .eq("account_type", "LINKEDIN")
     .maybeSingle();
 
   const tier = inferLinkedInAccountTier(
     acct?.is_premium ?? false,
-    toPremiumFeatureStrings(acct?.premium_features)
+    toPremiumFeatureStrings(acct?.premium_features),
   );
-  const cap = getLinkedInInviteWeeklyUsageCap(tier);
+  const acceptance = await fetchRecentAcceptance(supabase, userId);
 
-  const { data: counterRow } = await supabase
-    .from("usage_counters")
-    .select("count")
-    .eq("user_id", userId)
-    .eq("action", "linkedin_invite")
-    .eq("period_key", week)
-    .maybeSingle();
+  const budget = computeLinkedInBudget({
+    tier,
+    daysSinceConnected: daysSince(acct?.created_at),
+    acceptanceRate: acceptance.rate,
+    acceptedCount: acceptance.accepted,
+    healthy: (acct?.status ?? "connected") !== "error",
+  });
 
-  const used = counterRow?.count ?? 0;
-  return { tier, cap, used, week };
+  return { budget, dayKey, weekKey };
 }
 
+export type ReserveInviteResult =
+  | { ok: true; daily: number; weekly: number }
+  | { ok: false; scope: "daily" | "weekly"; cap: number; used: number };
+
 /**
- * Atomically reserves one LinkedIn invite against the weekly cap.
- *
- * Race-free replacement for "fetch quota → check cap in memory → fire-and-forget
- * increment" — backed by the `consume_linkedin_invite_quota` SQL function which
- * does an UPDATE ... WHERE count < cap RETURNING count under a row lock.
- *
- * Returns `{ ok: true, used }` after the increment, or `{ ok: false, used, cap }`
- * if the cap was already reached (no write performed). On a transport/DB error
- * (rare), returns `{ ok: false, used: 0, cap }` and logs to console — callers
- * should treat that as "denied" so we never over-send.
+ * Atomically reserve one invite slot against the daily + weekly caps in `budget`.
+ * Race-free: backed by the `reserve_linkedin_invite` SQL function, which checks
+ * and increments both counters under row locks. On any transport/DB error we
+ * return `{ ok: false }` so callers treat it as "denied" and never over-send.
  */
-export async function consumeLinkedInInviteQuota(
+export async function reserveInviteSlot(
   supabase: SupabaseClient<Database>,
   userId: string,
-  cap: number,
-  periodKey: string = weeklyPeriodKey()
-): Promise<{ ok: true; used: number } | { ok: false; used: number; cap: number }> {
+  state: InviteBudgetState,
+): Promise<ReserveInviteResult> {
+  const { budget, dayKey, weekKey } = state;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any).rpc(
-    "consume_linkedin_invite_quota",
-    {
-      p_user_id: userId,
-      p_period_key: periodKey,
-      p_cap: cap,
-    }
-  );
+  const { data, error } = await (supabase as any).rpc("reserve_linkedin_invite", {
+    p_user_id: userId,
+    p_daily_key: dayKey,
+    p_daily_cap: budget.inviteDailyCap,
+    p_weekly_key: weekKey,
+    p_weekly_cap: budget.inviteWeeklyCap,
+  });
 
   if (error) {
-    console.error("[linkedin quota] consume_linkedin_invite_quota rpc error", error);
-    return { ok: false, used: 0, cap };
+    console.error("[linkedin pacing] reserve_linkedin_invite rpc error", error);
+    return { ok: false, scope: "weekly", cap: budget.inviteWeeklyCap, used: 0 };
   }
 
-  if (typeof data === "number") {
-    return { ok: true, used: data };
+  const row = Array.isArray(data) ? data[0] : data;
+  if (row?.allowed) {
+    return { ok: true, daily: row.daily_used, weekly: row.weekly_used };
   }
 
-  // RPC returned NULL → cap already reached. Re-read the current count for the
-  // error message so the user sees the real value (= cap).
-  return { ok: false, used: cap, cap };
+  // Denied: surface whichever ceiling is responsible (weekly takes precedence).
+  const weeklyUsed = row?.weekly_used ?? budget.inviteWeeklyCap;
+  if (weeklyUsed >= budget.inviteWeeklyCap) {
+    return { ok: false, scope: "weekly", cap: budget.inviteWeeklyCap, used: weeklyUsed };
+  }
+  return {
+    ok: false,
+    scope: "daily",
+    cap: budget.inviteDailyCap,
+    used: row?.daily_used ?? budget.inviteDailyCap,
+  };
+}
+
+/** Build the typed error for a denied reservation, with the right retry instant. */
+export function inviteQuotaErrorFor(
+  denied: Extract<ReserveInviteResult, { ok: false }>,
+): LinkedInInviteWeeklyQuotaError {
+  const retryAfter =
+    denied.scope === "daily"
+      ? nextUtcMidnight()
+      : nextUtcInstantWhenWeeklyInviteCounterResets();
+  return new LinkedInInviteWeeklyQuotaError(
+    denied.cap,
+    denied.used,
+    denied.scope,
+    retryAfter,
+  );
+}
+
+/** Next UTC midnight — when the daily counter resets. */
+export function nextUtcMidnight(from: Date = new Date()): string {
+  const d = new Date(from);
+  d.setUTCHours(24, 0, 0, 0);
+  return d.toISOString();
 }
 
 /** Prochain instant UTC où `weeklyPeriodKey(date)` change (compteur hebdo). */
 export function nextUtcInstantWhenWeeklyInviteCounterResets(
-  from: Date = new Date()
+  from: Date = new Date(),
 ): string {
   const key = weeklyPeriodKey(from);
   let probe = new Date(from.getTime() + 3_600_000);

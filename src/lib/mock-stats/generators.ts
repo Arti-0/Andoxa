@@ -1,4 +1,5 @@
 import type { DashboardPeriod } from "@/lib/dashboard/period";
+import { computeLinkedInBudget } from "@/lib/linkedin/pacing";
 import { mockCalendarKpiBundle } from "./calendar-events";
 import { funnelCounts, mockUuid, randInt, randPct, randSpark, randTrend } from "./random";
 import { isFeatureEnabled } from "@/lib/config/feature-flags";
@@ -288,6 +289,15 @@ export function mockLinkedInUsage() {
   const inv = randInt(18, 42);
   const wf = randInt(8, Math.max(9, inv - 4));
   const cmp = randInt(2, Math.max(3, inv - wf - 1));
+  // A proven, healthy premium account so the demo card shows the fast-lane
+  // ("Compte établi") state: strong acceptance over a meaningful volume.
+  const budget = computeLinkedInBudget({
+    tier: "premium",
+    daysSinceConnected: 45,
+    acceptanceRate: 0.42,
+    acceptedCount: 40,
+    healthy: true,
+  });
   return {
     invitations_sent: inv,
     invitations_workflow: wf,
@@ -296,6 +306,8 @@ export function mockLinkedInUsage() {
     messages_sent: randInt(24, 68),
     profile_views: randInt(8, 32),
     invitations_week: randInt(62, 118),
+    invitations_today: randInt(6, budget.inviteDailyCap),
+    budget,
   };
 }
 

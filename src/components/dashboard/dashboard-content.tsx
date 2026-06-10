@@ -58,8 +58,6 @@ import {
   fetchLinkedInUsage,
   type LinkedInUsagePayload,
 } from "@/lib/linkedin/linkedin-usage";
-import { getLinkedInInviteWeeklyUsageCap } from "@/lib/linkedin/limits";
-import { DAILY_QUOTAS } from "@/lib/linkedin/quotas";
 import { MiniLineChart } from "@/components/ui/mini-line-chart";
 import { isFeatureEnabled } from "@/lib/config/feature-flags";
 
@@ -1434,58 +1432,43 @@ function LinkedInQuotasCard({
     );
   }
 
-  const weeklyCap = getLinkedInInviteWeeklyUsageCap(linkedIn.linkedin_tier);
+  const budget = usage?.budget;
+  const inviteUsed = usage?.invitations_today ?? usage?.invitations_sent ?? 0;
+  const inviteCap = budget?.inviteDailyCap ?? 20;
+  const weekUsed = usage?.invitations_week ?? 0;
+  const weekCap = budget?.inviteWeeklyCap ?? 100;
+  const msgUsed = usage?.messages_sent ?? 0;
+  const msgCap = budget?.messageDailyCap ?? 40;
+  const warmup = budget?.warmup;
+  const health = budget?.health ?? "ok";
+  const isWarming = warmup ? !warmup.isPlateau : false;
+
+  // Header status: acceptance brake (red) wins, then warm-up (blue), then healthy (green).
+  const ui =
+    health === "poor"
+      ? { color: "bg-rose-500", label: "Acceptation faible — rythme réduit", tone: "text-rose-600" }
+      : isWarming
+        ? { color: "bg-blue-500", label: `Montée en charge — jour ${warmup?.day ?? 0}`, tone: "text-blue-600" }
+        : warmup?.fastLane
+          ? { color: "bg-emerald-500", label: "Compte établi", tone: "text-emerald-600" }
+          : { color: "bg-emerald-500", label: "Rythme nominal", tone: "text-emerald-600" };
 
   const rows = [
     {
-      label: "Invitations",
-      used: usage?.invitations_sent ?? 0,
-      max: DAILY_QUOTAS.invitations,
+      label: "Invitations (jour)",
+      used: inviteUsed,
+      max: inviteCap,
       color: "#0052D9",
-      footnote: usage
-        ? `${usage.invitations_week} / ${weeklyCap} cette semaine`
-        : null,
+      footnote: usage ? `${weekUsed} / ${weekCap} cette semaine` : null,
     },
     {
-      label: "Messages",
-      used: usage?.messages_sent ?? 0,
-      max: DAILY_QUOTAS.messages,
+      label: "Messages (jour)",
+      used: msgUsed,
+      max: msgCap,
       color: "#1A6AFF",
       footnote: null,
     },
-    {
-      label: "Vues profil",
-      used: usage?.profile_views ?? 0,
-      max: DAILY_QUOTAS.profile_views,
-      color: "#93c5fd",
-      footnote: null,
-    },
   ];
-
-  const overall =
-    rows.reduce((s, q) => s + (q.max ? q.used / q.max : 0), 0) / rows.length;
-  const status = overall < 0.7 ? "ok" : overall < 0.9 ? "warn" : "high";
-  const statusUI: Record<
-    "ok" | "warn" | "high",
-    { color: string; label: string; tone: string }
-  > = {
-    ok: {
-      color: "bg-emerald-500",
-      label: "Quotas sains",
-      tone: "text-emerald-600",
-    },
-    warn: {
-      color: "bg-amber-500",
-      label: "Approche limite",
-      tone: "text-amber-600",
-    },
-    high: {
-      color: "bg-rose-500",
-      label: "Quasi-saturés",
-      tone: "text-rose-600",
-    },
-  };
-  const ui = statusUI[status];
 
   return (
     <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
@@ -1496,7 +1479,7 @@ function LinkedInQuotasCard({
           </div>
           <div>
             <h3 className="text-[14px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
-              Quotas LinkedIn
+              Limites LinkedIn
             </h3>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className={`w-1.5 h-1.5 rounded-full ${ui.color}`} />
@@ -1507,6 +1490,30 @@ function LinkedInQuotasCard({
           </div>
         </div>
       </div>
+
+      {/* Warm-up progress — only while ramping toward the plateau. */}
+      {isWarming && warmup && (
+        <div className="mb-3.5 rounded-lg bg-blue-50/70 dark:bg-blue-950/30 px-3 py-2.5">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11px] font-medium text-blue-700 dark:text-blue-300">
+              Période de chauffe
+            </span>
+            <span className="text-[10.5px] tabular-nums text-blue-600/80 dark:text-blue-400/80">
+              jour {warmup.day} / {warmup.plateauDay}
+            </span>
+          </div>
+          <div className="h-1.5 bg-blue-100 dark:bg-blue-900/40 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full bg-blue-500 transition-all"
+              style={{ width: `${Math.min((warmup.day / warmup.plateauDay) * 100, 100)}%` }}
+            />
+          </div>
+          <p className="mt-1.5 text-[10.5px] leading-relaxed text-blue-600/80 dark:text-blue-400/80">
+            Andoxa augmente progressivement vos limites pour protéger votre compte.
+          </p>
+        </div>
+      )}
+
       <div className="space-y-3">
         {rows.map((q) => {
           const pct = q.max ? Math.min((q.used / q.max) * 100, 100) : 0;
@@ -1534,8 +1541,9 @@ function LinkedInQuotasCard({
         })}
       </div>
       <div className="mt-4 pt-3 border-t border-slate-100 dark:border-zinc-800 text-[10.5px] sm:text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
-        Réinitialisation à minuit (UTC). Andoxa lisse l&apos;envoi pour rester
-        sous les seuils de sécurité.
+        {health === "poor"
+          ? "Vos invitations sont peu acceptées : Andoxa réduit le rythme pour préserver la réputation de votre compte."
+          : "Réinitialisation à minuit (UTC). Andoxa lisse l’envoi pour rester sous les seuils de sécurité de LinkedIn."}
       </div>
       {usageLoading && (
         <div className="mt-2 text-[10.5px] text-slate-400 dark:text-zinc-500">Actualisation…</div>

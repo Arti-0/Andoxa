@@ -1,5 +1,7 @@
 import { createApiHandler, Errors, type ApiContext } from "@/lib/api";
 import { dailyPeriodKey, weeklyPeriodKey } from "@/lib/campaigns/throttle";
+import { computeInviteBudget } from "@/lib/linkedin/weekly-invite-quota";
+import type { LinkedInBudget } from "@/lib/linkedin/pacing";
 import { isMockStatsEnabled, mockLinkedInUsage } from "@/lib/mock-stats";
 
 export interface LinkedInUsagePayload {
@@ -10,6 +12,10 @@ export interface LinkedInUsagePayload {
   messages_sent: number;
   profile_views: number;
   invitations_week: number;
+  /** Invites reserved today (enforced daily counter) — what the warm-up cap gates. */
+  invitations_today: number;
+  /** Effective pacing budget the gate enforces (daily/weekly caps, warm-up, health). */
+  budget: LinkedInBudget;
 }
 
 /**
@@ -52,6 +58,7 @@ export async function getLinkedInUsage(
     contactTodayRes,
     invitesWeekRes,
     invitesDirectTodayRes,
+    inviteDailyCounterRes,
   ] = await Promise.all([
     ctx.supabase
       .from("prospect_activity")
@@ -97,7 +104,18 @@ export async function getLinkedInUsage(
       .eq("action", "linkedin_invite_direct")
       .eq("period_key", todayKey)
       .maybeSingle(),
+    ctx.supabase
+      .from("usage_counters")
+      .select("count")
+      .eq("user_id", ctx.userId)
+      .eq("action", "linkedin_invite")
+      .eq("period_key", todayKey)
+      .maybeSingle(),
   ]);
+
+  // Effective pacing budget (tier ceiling + warm-up ramp + acceptance health).
+  // Computed once here so the card renders exactly what the gate enforces.
+  const { budget } = await computeInviteBudget(ctx.supabase, ctx.userId, todayKey, weekKey);
 
   const invitations_workflow = invitesTodayRes.count ?? 0;
   const invitations_campaign = invitesCampaignTodayRes.count ?? 0;
@@ -116,6 +134,8 @@ export async function getLinkedInUsage(
     messages_sent,
     profile_views: 0,
     invitations_week: invitesWeekRes.data?.count ?? 0,
+    invitations_today: inviteDailyCounterRes.data?.count ?? 0,
+    budget,
   };
 }
 
