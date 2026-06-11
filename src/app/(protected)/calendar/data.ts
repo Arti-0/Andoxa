@@ -131,7 +131,6 @@ export const PROSPECT_ACTIVITY = {
   default: [
     { label: "Premier échange",    date: "4 nov. 2025" },
     { label: "Booking lien public",date: "20 avr. 2026" },
-    { label: "Rappel J-1 WhatsApp",date: "Hier 18:02" },
   ],
 };
 

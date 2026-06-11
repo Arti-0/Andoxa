@@ -45,6 +45,33 @@ const TARGET_FIELD_LABELS: Record<TargetField, string> = {
 
 const TARGET_FIELDS = Object.keys(TARGET_FIELD_LABELS) as TargetField[];
 
+/**
+ * A CSV column mapped to a user-named custom field. On import these ride as
+ * extra keys on each prospect row; the server stores any non-standard key under
+ * `prospects.metadata`, and the CRM table surfaces them as toggleable columns.
+ */
+interface CustomMapping {
+  id: string;
+  /** CSV header to read the value from. */
+  source: string;
+  /** Display name / metadata key for the custom column. */
+  name: string;
+}
+
+// Standard keys the import route treats as first-class columns — a custom
+// column must not reuse one of these names (it would land as a standard field
+// instead of metadata).
+const RESERVED_FIELD_NAMES = new Set<string>([
+  "full_name",
+  "name",
+  "email",
+  "phone",
+  "company",
+  "job_title",
+  "linkedin",
+  "url",
+]);
+
 const NONE_OPTION = "__none__";
 const MAX_CLIENT_ROWS = 5000;
 /** How many rows to render in the preview table (the rest still import). */
@@ -109,6 +136,33 @@ export function ProspectImportDialog({
     job_title: NONE_OPTION,
     linkedin: NONE_OPTION,
   });
+  // Custom columns: CSV column → user-named metadata field (HubSpot-style, kept
+  // deliberately simple). Empty by default; the user adds rows on demand.
+  const [customMappings, setCustomMappings] = useState<CustomMapping[]>([]);
+
+  const validCustomMappings = useMemo(
+    () =>
+      customMappings.filter(
+        (m) =>
+          m.source &&
+          m.source !== NONE_OPTION &&
+          m.name.trim().length > 0 &&
+          !RESERVED_FIELD_NAMES.has(m.name.trim().toLowerCase()),
+      ),
+    [customMappings],
+  );
+
+  const addCustomMapping = () =>
+    setCustomMappings((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), source: NONE_OPTION, name: "" },
+    ]);
+  const updateCustomMapping = (id: string, patch: Partial<CustomMapping>) =>
+    setCustomMappings((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+    );
+  const removeCustomMapping = (id: string) =>
+    setCustomMappings((prev) => prev.filter((m) => m.id !== id));
 
   const { workspace } = useWorkspace();
   const autoEnrichEnabled = useMemo(() => {
@@ -187,6 +241,7 @@ export function ProspectImportDialog({
       job_title: NONE_OPTION,
       linkedin: NONE_OPTION,
     });
+    setCustomMappings([]);
     setError(null);
   };
 
@@ -237,14 +292,26 @@ export function ProspectImportDialog({
 
   const buildMappedRows = () =>
     mappedRows
-      .map((normalized) => ({
-        full_name: String(normalized.full_name ?? "").trim(),
-        email: String(normalized.email ?? "").trim(),
-        phone: String(normalized.phone ?? "").trim(),
-        company: String(normalized.company ?? "").trim(),
-        job_title: String(normalized.job_title ?? "").trim(),
-        linkedin: String(normalized.linkedin ?? "").trim(),
-      }))
+      .map((normalized, i) => {
+        const base: Record<string, string> = {
+          full_name: String(normalized.full_name ?? "").trim(),
+          email: String(normalized.email ?? "").trim(),
+          phone: String(normalized.phone ?? "").trim(),
+          company: String(normalized.company ?? "").trim(),
+          job_title: String(normalized.job_title ?? "").trim(),
+          linkedin: String(normalized.linkedin ?? "").trim(),
+        };
+        // Custom columns ride as extra keys; the import route stores any
+        // non-standard key under prospects.metadata. Values come from the
+        // original CSV row (parsedRows is index-aligned with mappedRows).
+        const raw = parsedRows[i] ?? {};
+        for (const cm of validCustomMappings) {
+          const v = raw[cm.source];
+          const s = v == null ? "" : String(v).trim();
+          if (s) base[cm.name.trim()] = s;
+        }
+        return base;
+      })
       .filter((row) => row.full_name || row.email || row.linkedin);
 
   const handleSubmit = async () => {
@@ -403,6 +470,92 @@ export function ProspectImportDialog({
             </div>
           </div>
 
+          {/* Custom columns — map any other CSV column to a named field that
+              lands in the CRM (stored in prospects.metadata server-side). */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Colonnes personnalisées</Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={addCustomMapping}
+                className="gap-1"
+              >
+                <Plus className="h-4 w-4" />
+                Colonne
+              </Button>
+            </div>
+            {customMappings.length === 0 ? (
+              <p className="text-[11.5px] text-muted-foreground">
+                Importez un champ qui n&apos;existe pas par défaut (ex&nbsp;:
+                Région, Score). Il devient une colonne du CRM, affichable via le
+                sélecteur de colonnes.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {customMappings.map((cm) => {
+                  const reserved =
+                    cm.name.trim().length > 0 &&
+                    RESERVED_FIELD_NAMES.has(cm.name.trim().toLowerCase());
+                  return (
+                    <div key={cm.id} className="flex items-center gap-2">
+                      <Input
+                        placeholder="Nom de la colonne (ex : Région)"
+                        value={cm.name}
+                        onChange={(e) =>
+                          updateCustomMapping(cm.id, { name: e.target.value })
+                        }
+                        className={`flex-1 ${reserved ? "border-amber-400" : ""}`}
+                      />
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        ←
+                      </span>
+                      <Select
+                        value={cm.source}
+                        onValueChange={(value) =>
+                          updateCustomMapping(cm.id, { source: value })
+                        }
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Colonne CSV" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE_OPTION}>— Aucune —</SelectItem>
+                          {fields.map((field) => (
+                            <SelectItem key={field} value={field}>
+                              {field}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeCustomMapping(cm.id)}
+                        aria-label="Retirer la colonne"
+                      >
+                        <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  );
+                })}
+                {customMappings.some(
+                  (cm) =>
+                    cm.name.trim().length > 0 &&
+                    RESERVED_FIELD_NAMES.has(cm.name.trim().toLowerCase()),
+                ) && (
+                  <p className="text-[11px] text-amber-600">
+                    Un nom réutilise un champ standard (Nom, Email, Téléphone,
+                    Société, Poste, LinkedIn) et sera ignoré. Choisissez un autre
+                    nom.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Full datatable preview */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -432,6 +585,14 @@ export function ProspectImportDialog({
                         {TARGET_FIELD_LABELS[target]}
                       </th>
                     ))}
+                    {validCustomMappings.map((cm) => (
+                      <th
+                        key={cm.id}
+                        className="whitespace-nowrap border-b border-border px-2.5 py-1.5 text-left font-semibold text-muted-foreground"
+                      >
+                        {cm.name.trim()}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -456,6 +617,22 @@ export function ProspectImportDialog({
                             )}
                           </td>
                         ))}
+                        {validCustomMappings.map((cm) => {
+                          const raw = parsedRows[index] ?? {};
+                          const v = raw[cm.source];
+                          const s = v == null ? "" : String(v).trim();
+                          return (
+                            <td
+                              key={cm.id}
+                              className="max-w-[200px] truncate px-2.5 py-1"
+                              title={s}
+                            >
+                              {s || (
+                                <span className="text-muted-foreground/40">—</span>
+                              )}
+                            </td>
+                          );
+                        })}
                       </tr>
                     );
                   })}

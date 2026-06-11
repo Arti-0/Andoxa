@@ -250,6 +250,15 @@ export function formatRelativeDate(iso: string | null | undefined): string {
   return `${d.getDate()} ${months[d.getMonth()]}`;
 }
 
+/** "27 mai 2026" — used by the campaign-detail header launch line. */
+export function formatDayMonthYear(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const months = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 export function formatLongDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);

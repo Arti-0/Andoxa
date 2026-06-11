@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { IntegrationCard } from "./integration-card";
 import { LinkedInMark } from "@/lib/utils/onboarding-helpers";
 import { useLinkedInAccount } from "@/hooks/use-linkedin-account";
+import { useLinkedInProfile } from "@/hooks/use-linkedin-profile";
 import { useWorkspace } from "@/lib/workspace";
 import { planAllowsAutoEnrichOnImport } from "@/lib/enrichment/queue-helpers";
 import { fetchLinkedInUsage } from "@/lib/linkedin/linkedin-usage";
@@ -209,6 +210,7 @@ export function LinkedInSettingsSection() {
     const { profile, workspace, refresh } = useWorkspace();
     const { data: unipileMe } = useLinkedInAccount();
     const [status, setStatus] = useState<LinkedInStatus>("loading");
+    const { data: liProfile } = useLinkedInProfile(status === "connected");
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [connecting, setConnecting] = useState(false);
     const [autoEnrich, setAutoEnrich] = useState(
@@ -370,14 +372,29 @@ export function LinkedInSettingsSection() {
         </Button>
     );
 
+    // The connected LinkedIn identity comes from /api/profile/linkedin
+    // (Unipile), not /api/unipile/me — which only reports connection status.
+    const enriched = liProfile?.enriched ?? null;
+    const enrichedName = [enriched?.first_name, enriched?.last_name]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
     const accountName =
-        (unipileMe as { name?: string | null } | undefined)?.name ??
-        (unipileMe as { full_name?: string | null } | undefined)?.full_name ??
-        profile?.full_name ??
+        enrichedName ||
+        liProfile?.full_name ||
+        profile?.full_name ||
         "Compte LinkedIn";
     const accountAvatar =
-        (unipileMe as { picture_url?: string | null } | undefined)
-            ?.picture_url ?? null;
+        enriched?.profile_picture_url ?? liProfile?.avatar_url ?? null;
+    const accountHandle = enriched?.public_identifier
+        ? `linkedin.com/in/${enriched.public_identifier}`
+        : null;
+    // Real LinkedIn subtitle: the headline, else the public handle. Falls back
+    // to a plain label rather than the old "compte standard · session active".
+    const accountSubtitle =
+        enriched?.headline?.trim() ||
+        accountHandle ||
+        "Profil LinkedIn connecté";
     const tier = unipileMe?.linkedin_tier ?? "standard";
     const tierLabel =
         tier === "sales_navigator"
@@ -410,8 +427,8 @@ export function LinkedInSettingsSection() {
                         <div className="text-[13.5px] font-medium">
                             {accountName}
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                            Compte {tierLabel.toLowerCase()} · session active
+                        <div className="truncate text-xs text-muted-foreground">
+                            {accountSubtitle}
                         </div>
                     </div>
                     <Badge variant="outline" className="shrink-0">

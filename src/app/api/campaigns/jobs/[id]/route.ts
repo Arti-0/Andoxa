@@ -36,21 +36,29 @@ export const GET = createApiHandler(async (req, ctx) => {
 
   const prospectIds = (jobProspects ?? []).map((p) => p.prospect_id);
   let prospectNames: Record<string, string> = {};
+  const prospectAvatars: Record<string, string | null> = {};
   if (prospectIds.length > 0) {
     const { data: prospectRows } = await ctx.supabase
       .from("prospects")
-      .select("id, full_name, company")
+      .select("id, full_name, company, enrichment_metadata")
       .in("id", prospectIds);
     if (prospectRows) {
       prospectNames = Object.fromEntries(
         prospectRows.map((r) => [r.id, r.full_name ?? r.company ?? r.id.slice(0, 8)])
       );
+      for (const r of prospectRows) {
+        const em = r.enrichment_metadata as
+          | { profile_picture_url?: string | null }
+          | null;
+        prospectAvatars[r.id] = em?.profile_picture_url ?? null;
+      }
     }
   }
 
   const enriched = (jobProspects ?? []).map((p) => ({
     ...p,
     prospect_name: prospectNames[p.prospect_id] ?? p.prospect_id.slice(0, 8),
+    avatar_url: prospectAvatars[p.prospect_id] ?? null,
   }));
 
   return { ...job, prospects: enriched };

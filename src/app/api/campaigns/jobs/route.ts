@@ -44,6 +44,14 @@ export const POST = createApiHandler(
       refine_only_with_phone?: boolean;
       refine_exclude_active?: boolean;
       message_template?: string;
+      /**
+       * Optional phase-1 invite note for `invite_then_message` (the
+       * "invite-with-note + follow-up message" flow). Stored on
+       * `metadata.invite_note_template`; the batch worker attaches it to the
+       * invite while `message_template` remains the post-acceptance follow-up.
+       * Ignored for any other type.
+       */
+      invite_note_template?: string;
       batch_size?: number;
       delay_ms?: number;
       launch_now?: boolean;
@@ -140,6 +148,9 @@ export const POST = createApiHandler(
       if (overrides && Object.keys(overrides).length > 0) metadata.message_overrides = overrides;
       if (body.name?.trim()) metadata.name = body.name.trim();
       if (attachmentMeta) metadata.attachment = attachmentMeta;
+    if (body.type === "invite_then_message" && body.invite_note_template?.trim()) {
+      metadata.invite_note_template = body.invite_note_template.trim();
+    }
 
       const { data: job, error: jobError } = await ctx.supabase
         .from("campaign_jobs")
@@ -234,6 +245,9 @@ export const POST = createApiHandler(
     if (overrides && Object.keys(overrides).length > 0) metadata.message_overrides = overrides;
     if (body.name?.trim()) metadata.name = body.name.trim();
     if (attachmentMeta) metadata.attachment = attachmentMeta;
+    if (body.type === "invite_then_message" && body.invite_note_template?.trim()) {
+      metadata.invite_note_template = body.invite_note_template.trim();
+    }
 
     // When every targeted prospect was filtered out, a launch can't proceed —
     // but a draft must still save so the user doesn't lose their work. The

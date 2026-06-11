@@ -110,6 +110,8 @@ export interface CampaignJobProspectRow {
   error: string | null;
   processed_at: string | null;
   prospect_name: string;
+  /** LinkedIn profile picture (enrichment_metadata.profile_picture_url) or null. */
+  avatar_url: string | null;
 }
 
 interface ApiCampaignJob {
@@ -631,6 +633,27 @@ export function useLaunchJob() {
     },
     onError: (err) => {
       toast.error(err instanceof Error ? err.message : "Impossible de lancer la campagne");
+    },
+  });
+}
+
+export function useRetryJobErrors() {
+  const qc = useQueryClient();
+  const { workspaceId } = useWorkspace();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const env = (await postJson(`/api/campaigns/jobs/${id}/retry-errors`)) as {
+        data?: { ok?: boolean; requeued?: number; message?: string };
+      };
+      return env.data ?? {};
+    },
+    onSuccess: (_d, id) => {
+      void qc.invalidateQueries({ queryKey: ["campaigns", "jobs", workspaceId] });
+      void qc.invalidateQueries({ queryKey: ["campaigns", "job", workspaceId, id] });
+      invalidateCampaignKpis(qc);
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Réessai impossible");
     },
   });
 }

@@ -35,11 +35,13 @@ export function readCampaignAttachment(
 /**
  * Action LinkedIn — non applicable à WhatsApp.
  *
- * `invite_then_message` sends a bare invitation in phase 1 (no attached note,
- * higher acceptance rate than invite_with_note in practice) and a personalised
+ * `invite_then_message` sends an invitation in phase 1 and a personalised
  * message in phase 2 once LinkedIn signals acceptance via the `new_relation`
- * webhook. The phase-2 message is stored in `campaign_jobs.metadata
- * .followup_message_template` and dispatched from `record-invite-accepted.ts`.
+ * webhook. The phase-2 message is stored in `campaign_jobs.message_template`
+ * and dispatched from `record-invite-accepted.ts`. Phase 1 is bare by default;
+ * the "invite-with-note + message" flow opts into a phase-1 note by storing it
+ * in `campaign_jobs.metadata.invite_note_template`, which the batch worker then
+ * attaches to the invite (Premium-gated, like invite_with_note).
  */
 export type LinkedInAction =
   | "invite"

@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import type { CampaignAttachment } from "@/lib/campaigns/types";
 import { isFeatureEnabled } from "@/lib/config/feature-flags";
+import { PersonAvatar } from "@/components/ui/person-avatar";
 import { ProgressBar } from "../primitives";
 import type { Campaign, CampaignType } from "../data";
 import type {
@@ -668,6 +669,15 @@ const PROSPECT_STATUS_META: Record<string, { label: string; bg: string; fg: stri
   skipped: { label: "Ignoré", bg: "#F1F2F4", fg: "#5B6072", dot: "#94A0AE" },
 };
 
+/** Sort order for the Statut column — Traité (success) first, then Échec. */
+const STATUS_RANK: Record<string, number> = {
+  success: 0,
+  error: 1,
+  skipped: 2,
+  processing: 3,
+  pending: 4,
+};
+
 function StatusPill({ status }: { status: string }) {
   const m = PROSPECT_STATUS_META[status] ?? PROSPECT_STATUS_META.pending;
   return (
@@ -719,31 +729,40 @@ export function CampaignProspectsTable({
 }) {
   const showExport = isFeatureEnabled("campaignDetailExport");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  const [filterOpen, setFilterOpen] = useState(false);
   const [page, setPage] = useState(0);
-  const filterRef = useRef<HTMLDivElement>(null);
-
-  const availStatuses = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.status))),
-    [rows],
-  );
+  // Statut column sort: click the header to cycle none → Traité-first → Échec-first.
+  const [statusSort, setStatusSort] = useState<null | "asc" | "desc">(null);
 
   const filtered = useMemo(() => {
     return rows.filter((p) => {
       if (search && !p.prospect_name.toLowerCase().includes(search.toLowerCase())) return false;
-      if (statusFilter.length > 0 && !statusFilter.includes(p.status)) return false;
       if (dateFilter && ymdLocal(p.processed_at) !== dateFilter) return false;
       return true;
     });
-  }, [rows, search, statusFilter, dateFilter]);
+  }, [rows, search, dateFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // Only two outcomes ever land on a finished campaign: Traité (success) and
+  // Échec (error). Surface both counts instead of a generic total.
+  const treatedCount = useMemo(
+    () => filtered.filter((p) => p.status === "success").length,
+    [filtered],
+  );
+  const failedCount = useMemo(
+    () => filtered.filter((p) => p.status === "error").length,
+    [filtered],
+  );
+
+  const sorted = useMemo(() => {
+    if (!statusSort) return filtered;
+    const dir = statusSort === "asc" ? 1 : -1;
+    return [...filtered].sort(
+      (a, b) => ((STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9)) * dir,
+    );
+  }, [filtered, statusSort]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
-  const pageRows = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
-
-  const toggleStatus = (s: string) =>
-    setStatusFilter((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+  const pageRows = sorted.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   const exportCsv = () => {
     const headers = ["Prospect", "Statut", "Traité le", "Erreur"];
@@ -806,48 +825,6 @@ export function CampaignProspectsTable({
               className="h-8 w-full rounded-lg border bg-background pl-8 pr-2 text-[12.5px] outline-none focus:border-[var(--brand-blue,#0052D9)]"
             />
           </div>
-          {availStatuses.length > 1 && (
-            <div ref={filterRef} className="relative">
-              <button
-                onClick={() => setFilterOpen((o) => !o)}
-                className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px] font-medium ${
-                  statusFilter.length > 0
-                    ? "border-[var(--brand-blue,#0052D9)] bg-[var(--brand-blue-tint)]"
-                    : "bg-background"
-                }`}
-              >
-                Statut
-                {statusFilter.length > 0 && (
-                  <span className="rounded-full bg-[var(--brand-blue,#0052D9)] px-1.5 text-[10.5px] font-bold text-white">
-                    {statusFilter.length}
-                  </span>
-                )}
-                <ChevronDown className="size-3 opacity-60" />
-              </button>
-              {filterOpen && (
-                <div className="absolute left-0 top-[calc(100%+4px)] z-30 min-w-[180px] rounded-lg border bg-popover p-1 shadow-lg">
-                  {availStatuses.map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => toggleStatus(s)}
-                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] hover:bg-accent"
-                    >
-                      <span
-                        className="inline-flex size-3.5 items-center justify-center rounded border"
-                        style={{
-                          background: statusFilter.includes(s) ? "var(--brand-blue,#0052D9)" : "transparent",
-                          borderColor: statusFilter.includes(s) ? "var(--brand-blue,#0052D9)" : "var(--border)",
-                        }}
-                      >
-                        {statusFilter.includes(s) && <X className="size-2.5 text-white" />}
-                      </span>
-                      <StatusPill status={s} />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
           {dateFilter && (
             <button
               type="button"
@@ -859,8 +836,15 @@ export function CampaignProspectsTable({
               <X className="size-3" />
             </button>
           )}
-          <span className="ml-auto text-[12px] text-muted-foreground tabular-nums">
-            {filtered.length} résultat{filtered.length > 1 ? "s" : ""}
+          <span className="ml-auto flex items-center gap-3 text-[12px] font-medium tabular-nums">
+            <span className="inline-flex items-center gap-1.5 text-[#0E7A3A]">
+              <span className="size-1.5 rounded-full" style={{ background: "#16A34A" }} />
+              {treatedCount} Traité{treatedCount > 1 ? "s" : ""}
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-[#A8221C]">
+              <span className="size-1.5 rounded-full" style={{ background: "#DC2626" }} />
+              {failedCount} Échec{failedCount > 1 ? "s" : ""}
+            </span>
           </span>
         </div>
 
@@ -874,14 +858,46 @@ export function CampaignProspectsTable({
           </colgroup>
           <thead>
             <tr>
-              {["Prospect", "Statut", "Traité le", "Erreur"].map((h) => (
-                <th
-                  key={h}
-                  className="h-[38px] border-b bg-muted/40 px-3.5 text-left text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground"
-                >
-                  {h}
-                </th>
-              ))}
+              {["Prospect", "Statut", "Traité le", "Erreur"].map((h) => {
+                if (h === "Statut") {
+                  return (
+                    <th
+                      key={h}
+                      className="h-[38px] border-b bg-muted/40 px-3.5 text-left text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground"
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setStatusSort((s) =>
+                            s === null ? "asc" : s === "asc" ? "desc" : null,
+                          )
+                        }
+                        className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-foreground"
+                        title="Trier par statut (Traité / Échec)"
+                      >
+                        {h}
+                        <ChevronDown
+                          className={`size-3 transition-transform ${
+                            statusSort === "asc"
+                              ? "rotate-180 opacity-100"
+                              : statusSort === "desc"
+                                ? "opacity-100"
+                                : "opacity-40"
+                          }`}
+                        />
+                      </button>
+                    </th>
+                  );
+                }
+                return (
+                  <th
+                    key={h}
+                    className="h-[38px] border-b bg-muted/40 px-3.5 text-left text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground"
+                  >
+                    {h}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -894,8 +910,16 @@ export function CampaignProspectsTable({
             ) : (
               pageRows.map((p) => (
                 <tr key={p.id} className="border-b border-border/60 last:border-0">
-                  <td className="truncate p-3.5 text-[13px] font-medium" title={p.prospect_name}>
-                    {p.prospect_name}
+                  <td className="p-3.5">
+                    <div className="flex items-center gap-2.5">
+                      <PersonAvatar name={p.prospect_name} src={p.avatar_url} size={30} />
+                      <span
+                        className="truncate text-[13px] font-medium"
+                        title={p.prospect_name}
+                      >
+                        {p.prospect_name}
+                      </span>
+                    </div>
                   </td>
                   <td className="p-3.5">
                     <StatusPill status={p.status} />
@@ -918,11 +942,11 @@ export function CampaignProspectsTable({
           </tbody>
         </table>
 
-        {filtered.length > PAGE_SIZE && (
+        {sorted.length > PAGE_SIZE && (
           <div className="flex items-center justify-between border-t bg-muted/30 px-4 py-2.5">
             <span className="text-[12px] text-muted-foreground tabular-nums">
-              {safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, filtered.length)} sur{" "}
-              {filtered.length}
+              {safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, sorted.length)} sur{" "}
+              {sorted.length}
             </span>
             <div className="flex gap-1.5">
               <button

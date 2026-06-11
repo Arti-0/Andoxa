@@ -59,6 +59,7 @@ import {
   type LinkedInUsagePayload,
 } from "@/lib/linkedin/linkedin-usage";
 import { MiniLineChart } from "@/components/ui/mini-line-chart";
+import { PersonAvatar } from "@/components/ui/person-avatar";
 import { isFeatureEnabled } from "@/lib/config/feature-flags";
 
 /**
@@ -201,6 +202,8 @@ interface ActivityApiRow {
   target_url?: string | null;
   actor_name?: string | null;
   actor_avatar?: string | null;
+  subject_name?: string | null;
+  subject_avatar?: string | null;
 }
 
 /* ============================================================
@@ -1453,20 +1456,53 @@ function LinkedInQuotasCard({
           ? { color: "bg-emerald-500", label: "Compte établi", tone: "text-emerald-600" }
           : { color: "bg-emerald-500", label: "Rythme nominal", tone: "text-emerald-600" };
 
-  const rows = [
+  // Acceptance rate is accepted/sent over the pacer's recent window (null until
+  // there's enough signal).
+  const acc = budget?.acceptanceRate;
+
+  // Each quadrant gets a status dot + a short keyword reflecting where its limit
+  // sits right now (warming up, near the cap, healthy, or a soft limit).
+  const usageState = (ratio: number, warming: boolean) =>
+    warming
+      ? { dot: "bg-blue-500", keyword: "Chauffe", tone: "text-blue-600" }
+      : ratio >= 1
+        ? { dot: "bg-rose-500", keyword: "Atteint", tone: "text-rose-600" }
+        : ratio >= 0.8
+          ? { dot: "bg-amber-500", keyword: "Bientôt", tone: "text-amber-600" }
+          : { dot: "bg-emerald-500", keyword: "OK", tone: "text-emerald-600" };
+
+  const acceptState =
+    health === "poor"
+      ? { dot: "bg-rose-500", keyword: "Faible", tone: "text-rose-600" }
+      : warmup?.fastLane
+        ? { dot: "bg-emerald-500", keyword: "Établi", tone: "text-emerald-600" }
+        : isWarming
+          ? { dot: "bg-blue-500", keyword: "Chauffe", tone: "text-blue-600" }
+          : { dot: "bg-emerald-500", keyword: "Nominal", tone: "text-emerald-600" };
+
+  const quadrants = [
     {
-      label: "Invitations (jour)",
-      used: inviteUsed,
-      max: inviteCap,
-      color: "#0052D9",
-      footnote: usage ? `${weekUsed} / ${weekCap} cette semaine` : null,
+      label: "Invitations · jour",
+      value: `${inviteUsed} / ${inviteCap}`,
+      ...usageState(inviteCap ? inviteUsed / inviteCap : 0, isWarming),
     },
     {
-      label: "Messages (jour)",
-      used: msgUsed,
-      max: msgCap,
-      color: "#1A6AFF",
-      footnote: null,
+      label: "Invitations · semaine",
+      value: `${weekUsed} / ${weekCap}`,
+      ...usageState(weekCap ? weekUsed / weekCap : 0, false),
+    },
+    {
+      // Soft limit — the cap only steers the humanized cadence, it never blocks.
+      label: "Messages · jour",
+      value: `${msgUsed} / ~${msgCap}`,
+      dot: "bg-sky-400",
+      keyword: "Souple",
+      tone: "text-sky-600",
+    },
+    {
+      label: "Acceptation",
+      value: acc != null ? `${Math.round(acc * 100)}%` : "—",
+      ...acceptState,
     },
   ];
 
@@ -1489,61 +1525,42 @@ function LinkedInQuotasCard({
             </div>
           </div>
         </div>
+        {isWarming && warmup && (
+          <span className="text-[10.5px] tabular-nums text-blue-600/80 dark:text-blue-400/80">
+            jour {warmup.day}/{warmup.plateauDay}
+          </span>
+        )}
       </div>
 
-      {/* Warm-up progress — only while ramping toward the plateau. */}
-      {isWarming && warmup && (
-        <div className="mb-3.5 rounded-lg bg-blue-50/70 dark:bg-blue-950/30 px-3 py-2.5">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] font-medium text-blue-700 dark:text-blue-300">
-              Période de chauffe
-            </span>
-            <span className="text-[10.5px] tabular-nums text-blue-600/80 dark:text-blue-400/80">
-              jour {warmup.day} / {warmup.plateauDay}
-            </span>
-          </div>
-          <div className="h-1.5 bg-blue-100 dark:bg-blue-900/40 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full bg-blue-500 transition-all"
-              style={{ width: `${Math.min((warmup.day / warmup.plateauDay) * 100, 100)}%` }}
-            />
-          </div>
-          <p className="mt-1.5 text-[10.5px] leading-relaxed text-blue-600/80 dark:text-blue-400/80">
-            Andoxa augmente progressivement vos limites pour protéger votre compte.
-          </p>
-        </div>
-      )}
-
-      <div className="space-y-3">
-        {rows.map((q) => {
-          const pct = q.max ? Math.min((q.used / q.max) * 100, 100) : 0;
-          return (
-            <div key={q.label}>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[12px] text-slate-700 dark:text-zinc-300">{q.label}</span>
-                <span className="text-[11.5px] tabular-nums text-slate-500 dark:text-zinc-400">
-                  {q.used} <span className="text-slate-300 dark:text-zinc-600">/</span> {q.max}
+      {/* 2×2 status grid — one quadrant per limit, with dot + keyword. */}
+      <div className="grid grid-cols-2 gap-2.5">
+        {quadrants.map((q) => (
+          <div
+            key={q.label}
+            className="rounded-lg border border-slate-200 dark:border-zinc-800 p-3"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="truncate text-[11px] font-medium text-slate-500 dark:text-zinc-400">
+                {q.label}
+              </span>
+              <span className="inline-flex shrink-0 items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${q.dot}`} />
+                <span className={`text-[10.5px] font-semibold ${q.tone}`}>
+                  {q.keyword}
                 </span>
-              </div>
-              <div className="h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all"
-                  style={{ width: `${pct}%`, background: q.color }}
-                />
-              </div>
-              {q.footnote && (
-                <div className="mt-1 text-[10.5px] text-slate-400 dark:text-zinc-500">
-                  {q.footnote}
-                </div>
-              )}
+              </span>
             </div>
-          );
-        })}
+            <div className="mt-1.5 text-[18px] font-semibold tabular-nums text-slate-900 dark:text-zinc-100">
+              {q.value}
+            </div>
+          </div>
+        ))}
       </div>
-      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-zinc-800 text-[10.5px] sm:text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
+
+      <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-zinc-800 text-[10.5px] sm:text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
         {health === "poor"
           ? "Vos invitations sont peu acceptées : Andoxa réduit le rythme pour préserver la réputation de votre compte."
-          : "Réinitialisation à minuit (UTC). Andoxa lisse l’envoi pour rester sous les seuils de sécurité de LinkedIn."}
+          : "Messages lissés (limite souple). Réinitialisation à minuit (UTC) ; Andoxa reste sous les seuils LinkedIn."}
       </div>
       {usageLoading && (
         <div className="mt-2 text-[10.5px] text-slate-400 dark:text-zinc-500">Actualisation…</div>
@@ -1872,11 +1889,26 @@ function RecentActivityCard({
                     {...(e.target_url ? { href: e.target_url } : {})}
                     className="-mx-2 flex items-start gap-3 rounded px-2 py-3 transition-colors hover:bg-slate-50/70 dark:hover:bg-zinc-800/50"
                   >
-                    <div
-                      className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${t.bg} ${t.text}`}
-                    >
-                      <EvIcon size={14} />
-                    </div>
+                    {e.subject_name || e.subject_avatar ? (
+                      <div className="relative mt-0.5 flex-shrink-0">
+                        <PersonAvatar
+                          name={e.subject_name}
+                          src={e.subject_avatar}
+                          size={32}
+                        />
+                        <span
+                          className={`absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full ring-2 ring-white dark:ring-zinc-900 ${t.bg} ${t.text}`}
+                        >
+                          <EvIcon size={9} />
+                        </span>
+                      </div>
+                    ) : (
+                      <div
+                        className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${t.bg} ${t.text}`}
+                      >
+                        <EvIcon size={14} />
+                      </div>
+                    )}
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12.5px] leading-snug sm:text-[13px]">
                         <span className="font-semibold text-slate-900 dark:text-zinc-100">
@@ -1978,6 +2010,16 @@ export function DashboardContent() {
           onExport={handleExport}
         />
         <PrioritiesBand data={overview?.priorities} isLoading={isLoading} />
+
+        {/* LinkedIn limits — placed directly under the daily priorities as a
+            compact 2×2 status card. */}
+        <div className="mb-5 sm:mb-6">
+          <LinkedInQuotasCard
+            usage={overview?.linkedinUsage}
+            usageLoading={isLoading}
+          />
+        </div>
+
         <KpiGrid stats={stats} isLoading={statsLoading} />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-5 sm:mb-6">
@@ -2000,10 +2042,6 @@ export function DashboardContent() {
             defaultLoading={isLoading}
           />
           <div className="flex flex-col gap-3 sm:gap-4">
-            <LinkedInQuotasCard
-              usage={overview?.linkedinUsage}
-              usageLoading={isLoading}
-            />
             <ActiveCampaignsCard
               data={overview?.activeCampaigns}
               isLoading={isLoading}

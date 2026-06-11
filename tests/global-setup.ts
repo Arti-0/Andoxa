@@ -25,7 +25,13 @@ export default async function globalSetup() {
   fs.mkdirSync(path.dirname(AUTH_FILE), { recursive: true });
 
   const browser = await chromium.launch();
-  const page = await browser.newPage();
+  // A manually-launched context does NOT inherit `use.baseURL` from the
+  // Playwright config (that only applies to the test `page` fixture), so set it
+  // here — otherwise relative gotos like '/auth/login' throw "invalid URL".
+  const baseURL =
+    process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000';
+  const context = await browser.newContext({ baseURL });
+  const page = await context.newPage();
 
   await page.goto('/auth/login');
 

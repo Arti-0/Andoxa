@@ -3,13 +3,21 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { use, useState } from "react";
-import { ArrowLeft, Check, Copy } from "lucide-react";
+import { ArrowLeft, Check, Copy, MoreVertical, Pause, Play, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import type { CampaignJobStatus } from "@/lib/campaigns/types";
-import { formatRelativeDate } from "../data";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import type { CampaignJobStatus } from "@/lib/campaigns/types";
+import { formatDayMonthYear, formatRelativeDate } from "../data";
+import {
+  Avatar,
   ChannelPill,
   StatusBadge,
   TypeBadge,
@@ -22,12 +30,14 @@ import {
   CampaignActivity,
 } from "./detail-sections";
 import {
+  creatorFromCampaign,
   useCampaignJobDetail,
   useCampaignTimeline,
   useCancelJob,
   useDuplicateJob,
   useLaunchJob,
   useOrgMembersForCampaigns,
+  useRetryJobErrors,
   useUpdateJobStatus,
 } from "../queries";
 
@@ -48,10 +58,13 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
   const launchJob = useLaunchJob();
   const duplicateJob = useDuplicateJob();
   const cancelJob = useCancelJob();
+  const retryErrors = useRetryJobErrors();
   const [confirm, setConfirm] = useState<{
     title: string;
     message: string;
     onConfirm: () => void;
+    confirmLabel?: string;
+    variant?: "destructive" | "default";
   } | null>(null);
 
   // Timeline period — same keys as the campaigns-section KPI bar (7/30/90/all).
@@ -70,7 +83,8 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
     duplicateJob.isPending ||
     updateStatus.isPending ||
     launchJob.isPending ||
-    cancelJob.isPending;
+    cancelJob.isPending ||
+    retryErrors.isPending;
 
   if (detail.isPending || (members.isLoading && !detail.data)) {
     return (
@@ -118,6 +132,27 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
   const canPauseResume =
     apiStatus === "running" || apiStatus === "paused" || apiStatus === "pending";
   const showLaunch = apiStatus === "draft";
+  const isLive = apiStatus === "running" || apiStatus === "pending";
+
+  // Owner chip: prefer the live org-members entry (carries the avatar URL); fall
+  // back to the campaign's denormalised name/id (initials + colour, no photo).
+  const owner =
+    members.data?.find((m) => m.id === campaign.creator) ??
+    creatorFromCampaign(campaign);
+
+  // "Dernière action" — the most recent timeline event we have loaded. The
+  // timeline is period-scoped and may still be loading, so this is best-effort:
+  // when there's nothing yet, the segment is simply omitted.
+  const lastActionAt = (timeline.data?.events ?? []).reduce<string | null>(
+    (latest, e) => (e.at && (!latest || e.at > latest) ? e.at : latest),
+    null,
+  );
+
+  // Retry-errored is only meaningful once the job has settled and some actions
+  // failed (e.g. "Compte déconnecté"). It probes one, then re-queues the rest.
+  const erroredCount = prospects.filter((p) => p.status === "error").length;
+  const canRetryErrors =
+    (apiStatus === "completed" || apiStatus === "failed") && erroredCount > 0;
 
   const onPauseResume = () => {
     if (busy) return;
@@ -143,6 +178,23 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
     });
   };
 
+  const onRetryErrors = () => {
+    if (busy) return;
+    setConfirm({
+      title: "Réessayer les actions en erreur ?",
+      message: `${erroredCount} action${erroredCount > 1 ? "s" : ""} en erreur ${
+        erroredCount > 1 ? "seront remises" : "sera remise"
+      } en file d'attente. L'envoi reprend au rythme habituel (heures ouvrées, cadence humanisée) — rien n'est envoyé immédiatement.`,
+      confirmLabel: "Réessayer",
+      variant: "default",
+      onConfirm: () =>
+        retryErrors.mutate(id, {
+          onSuccess: (res) =>
+            toast.success(res?.message ?? "Actions remises en file"),
+        }),
+    });
+  };
+
   // Duplicate = open the creation wizard prefilled (handled on the list page),
   // not a direct row create. We route there with ?duplicate=<id>; the lock /
   // "Dupliqué ✓" state (declared up top with the other hooks) gives immediate
@@ -155,74 +207,132 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
 
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-5 bg-[#FAFAFB] p-6 dark:bg-background lg:p-8">
-      <div>
-        <BackLink />
-      </div>
-
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{campaign.name}</h1>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <StatusBadge status={campaign.status} />
+      <div className="flex flex-col gap-3">
+        <div className="min-w-0">
+          {/* Title + badges, inline on one row (per the detail-header design). */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h1 className="text-2xl font-semibold tracking-tight">{campaign.name}</h1>
             <ChannelPill channel={campaign.channel} />
             <TypeBadge type={campaign.type} />
-            <span className="text-[12.5px] text-muted-foreground">
-              · {activityLabel(apiStatus)} {formatRelativeDate(campaign.launchedAt)}
+            <StatusBadge status={campaign.status} />
+          </div>
+
+          {/* Meta line: launch date · owner · prospect count · live · last action. */}
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-muted-foreground">
+            {campaign.launchedAt && (
+              <span>
+                {activityLabel(apiStatus)} le{" "}
+                <span className="font-medium text-foreground">
+                  {formatDayMonthYear(campaign.launchedAt)}
+                </span>
+              </span>
+            )}
+            <span aria-hidden>·</span>
+            <span className="inline-flex items-center gap-1.5">
+              par
+              <Avatar creator={owner} size={18} />
+              <span className="font-medium text-foreground">{owner.name}</span>
             </span>
+            <span aria-hidden>·</span>
+            <span>
+              <span className="font-medium text-foreground">{campaign.total}</span>{" "}
+              prospects
+            </span>
+            {isLive && (
+              <>
+                <span aria-hidden>·</span>
+                <span className="inline-flex items-center gap-1.5 font-medium text-emerald-600">
+                  <span
+                    className="size-1.5 rounded-full bg-emerald-500"
+                    style={{ animation: "pulse 1.6s ease-in-out infinite" }}
+                  />
+                  en direct
+                </span>
+              </>
+            )}
+            {lastActionAt && (
+              <>
+                <span aria-hidden>·</span>
+                <span>dernière action {formatRelativeDate(lastActionAt)}</span>
+              </>
+            )}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+
+        {/* Actions row, beneath the title/meta: primary launch/pause/resume,
+            retry-errored (settled jobs only), and an overflow menu. */}
+        <div className="flex flex-wrap items-center gap-2">
           {showLaunch && (
             <Button variant="default" disabled={busy} onClick={onLaunch}>
+              <Play className="size-3.5" />
               Lancer
             </Button>
           )}
           {canPauseResume && apiStatus !== "paused" && (
-            <Button variant="outline" disabled={busy} onClick={onPauseResume}>
+            <Button variant="default" disabled={busy} onClick={onPauseResume}>
+              <Pause className="size-3.5" />
               Mettre en pause
             </Button>
           )}
           {canPauseResume && apiStatus === "paused" && (
-            <Button variant="outline" disabled={busy} onClick={onPauseResume}>
+            <Button variant="default" disabled={busy} onClick={onPauseResume}>
+              <Play className="size-3.5" />
               Reprendre
             </Button>
           )}
-          <Button
-            variant="outline"
-            disabled={busy || duplicated}
-            onClick={onDuplicate}
-          >
-            {duplicated ? (
-              <>
-                <Check className="size-3.5" />
-                Dupliqué
-              </>
-            ) : (
-              <>
-                <Copy className="size-3.5" />
-                Dupliquer
-              </>
-            )}
-          </Button>
-          <Button
-            variant="destructive"
-            disabled={busy}
-            onClick={() =>
-              setConfirm({
-                title: "Supprimer cette campagne ?",
-                message: `« ${campaign.name} » sera supprimée selon les règles actuelles de l'espace.`,
-                onConfirm: () =>
-                  cancelJob.mutate(id, {
-                    onSuccess: () => {
-                      toast.success(`« ${campaign.name} » supprimée`);
-                      router.push("/campaigns");
-                    },
-                  }),
-              })
-            }
-          >
-            Supprimer
-          </Button>
+          {canRetryErrors && (
+            <Button variant="outline" disabled={busy} onClick={onRetryErrors}>
+              <RefreshCw
+                className={`size-3.5 ${retryErrors.isPending ? "animate-spin" : ""}`}
+              />
+              Réessayer les erreurs ({erroredCount})
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                disabled={busy}
+                aria-label="Plus d'actions"
+              >
+                <MoreVertical className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem disabled={busy || duplicated} onClick={onDuplicate}>
+                {duplicated ? (
+                  <Check className="size-3.5" />
+                ) : (
+                  <Copy className="size-3.5" />
+                )}
+                {duplicated ? "Dupliqué" : "Dupliquer"}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={busy}
+                onClick={() =>
+                  setConfirm({
+                    title: "Supprimer cette campagne ?",
+                    message: `« ${campaign.name} » sera supprimée selon les règles actuelles de l'espace.`,
+                    confirmLabel: "Supprimer",
+                    variant: "destructive",
+                    onConfirm: () =>
+                      cancelJob.mutate(id, {
+                        onSuccess: () => {
+                          toast.success(`« ${campaign.name} » supprimée`);
+                          router.push("/campaigns");
+                        },
+                      }),
+                  })
+                }
+              >
+                <Trash2 className="size-3.5" />
+                Supprimer
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -295,8 +405,8 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
         }}
         title={confirm?.title ?? ""}
         description={confirm?.message ?? ""}
-        confirmLabel="Supprimer"
-        variant="destructive"
+        confirmLabel={confirm?.confirmLabel ?? "Confirmer"}
+        variant={confirm?.variant ?? "default"}
         onConfirm={() => confirm?.onConfirm()}
       />
     </div>

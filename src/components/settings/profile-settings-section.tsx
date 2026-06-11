@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,22 +12,12 @@ import {
     settingsFieldClass,
     settingsLabelClass,
 } from "@/components/settings/settings-card";
+import {
+    useLinkedInProfile,
+    LINKEDIN_PROFILE_QUERY_KEY,
+    type LinkedinProfileData,
+} from "@/hooks/use-linkedin-profile";
 import { cn } from "@/lib/utils";
-
-interface LinkedinProfileData {
-    linkedin_url: string | null;
-    full_name: string | null;
-    avatar_url: string | null;
-    enriched: {
-        first_name?: string | null;
-        last_name?: string | null;
-        headline?: string | null;
-        location?: string | null;
-        profile_picture_url?: string | null;
-        public_identifier?: string | null;
-        summary?: string | null;
-    } | null;
-}
 
 function namesEqual(a: string | null | undefined, b: string | null | undefined) {
     const x = (a ?? "").trim();
@@ -46,27 +37,14 @@ export function ProfileSettingsSection({
     const [name, setName] = useState(fullName ?? "");
     const [savingName, setSavingName] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [linkedinData, setLinkedinData] = useState<LinkedinProfileData | null>(
-        null
-    );
-    const [linkedinLoading, setLinkedinLoading] = useState(false);
     const [enriching, setEnriching] = useState(false);
+    const queryClient = useQueryClient();
+    const { data: linkedinData, isLoading: linkedinLoading } =
+        useLinkedInProfile();
 
     useEffect(() => {
         setName(fullName ?? "");
     }, [fullName]);
-
-    useEffect(() => {
-        setLinkedinLoading(true);
-        fetch("/api/profile/linkedin", { credentials: "include" })
-            .then((res) => res.json())
-            .then((json) => {
-                const data = json?.data ?? json;
-                setLinkedinData(data as LinkedinProfileData);
-            })
-            .catch(() => setLinkedinData(null))
-            .finally(() => setLinkedinLoading(false));
-    }, []);
 
     const saveFullNameIfChanged = async () => {
         if (namesEqual(name, fullName)) return;
@@ -115,12 +93,16 @@ export function ProfileSettingsSection({
             const linkedinFromEnrich = enriched?.public_identifier
                 ? `https://www.linkedin.com/in/${enriched.public_identifier}`
                 : null;
-            setLinkedinData((prev) => ({
-                linkedin_url: linkedinFromEnrich ?? prev?.linkedin_url ?? null,
-                enriched: enriched ?? prev?.enriched ?? null,
-                full_name: prev?.full_name ?? null,
-                avatar_url: prev?.avatar_url ?? null,
-            }));
+            queryClient.setQueryData<LinkedinProfileData>(
+                LINKEDIN_PROFILE_QUERY_KEY,
+                (prev) => ({
+                    linkedin_url:
+                        linkedinFromEnrich ?? prev?.linkedin_url ?? null,
+                    enriched: enriched ?? prev?.enriched ?? null,
+                    full_name: prev?.full_name ?? null,
+                    avatar_url: prev?.avatar_url ?? null,
+                })
+            );
             onSuccess?.();
         } catch (err) {
             setError(

@@ -151,6 +151,11 @@ function mapLinkedInCampaignType(
     case "message_only":
       return "contact";
     case "invitation_message":
+      // A post-acceptance message → two-phase invite_then_message; the note (if
+      // any) rides phase 1 via metadata.invite_note_template. A note with no
+      // follow-up message stays the immediate invite_with_note. Neither →
+      // bare invite_then_message (matches the prior default).
+      if (data.message?.trim()) return "invite_then_message";
       return data.invitation_note ? "invite_with_note" : "invite_then_message";
   }
 }
@@ -578,25 +583,34 @@ export default function CampaignsPage() {
    * booleans let the server resolve the prospect list — the client only
    * passes booleans, never raw ids.
    */
-  const buildCampaignPayload = (data: CreateCampaignPayload, launchNow: boolean) => ({
-    type: mapLinkedInCampaignType(data),
-    name: data.name.trim(),
-    bdd_id: data.bdd_id,
-    prospect_ids: data.prospect_ids,
-    refine_exclude_contacted: data.refine_exclude_contacted,
-    refine_only_with_phone: data.refine_only_with_phone,
-    refine_exclude_active: data.refine_exclude_active,
-    // message_template carries whichever text the chosen type sends: the
-    // invite note (invite / invite_with_note paths set invitation_note), the
-    // post-acceptance follow-up (invite_then_message, dispatched by
-    // record-invite-accepted.ts), or the direct message (contact). Exactly one
-    // of invitation_note / message is set, so this picks the right one.
-    message_template: data.invitation_note ?? data.message,
-    // Attachments only apply to message-bearing types; the API ignores it for
-    // invitation_only. Safe to always forward.
-    attachment: data.attachment,
-    launch_now: launchNow,
-  });
+  const buildCampaignPayload = (data: CreateCampaignPayload, launchNow: boolean) => {
+    const jobType = mapLinkedInCampaignType(data);
+    return {
+      type: jobType,
+      name: data.name.trim(),
+      bdd_id: data.bdd_id,
+      prospect_ids: data.prospect_ids,
+      refine_exclude_contacted: data.refine_exclude_contacted,
+      refine_only_with_phone: data.refine_only_with_phone,
+      refine_exclude_active: data.refine_exclude_active,
+      // message_template holds the text this type *sends as a message*:
+      //   invite_with_note → the note itself (fires with the invite)
+      //   invite_then_message → the post-acceptance follow-up (data.message)
+      //   contact → the direct message
+      // For invite_then_message the phase-1 note (when present) travels
+      // separately in invite_note_template below, never in message_template.
+      message_template:
+        jobType === "invite_with_note" ? data.invitation_note : data.message,
+      // Phase-1 note for the "invite-with-note + message" flow. Only meaningful
+      // for invite_then_message; the API ignores it otherwise.
+      invite_note_template:
+        jobType === "invite_then_message" ? data.invitation_note : undefined,
+      // Attachments only apply to message-bearing types; the API ignores it for
+      // invitation_only. Safe to always forward.
+      attachment: data.attachment,
+      launch_now: launchNow,
+    };
+  };
 
   const onDraftCampaign = async (data: CreateCampaignPayload) => {
     try {

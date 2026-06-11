@@ -200,8 +200,16 @@ async function runBatchLinkedIn(
 
   const prospectMap = new Map((prospects ?? []).map((p) => [p.id, p]));
   const messageTemplate = job.message_template ?? "";
-  const meta = job.metadata as { message_overrides?: Record<string, string> } | null;
+  const meta = job.metadata as {
+    message_overrides?: Record<string, string>;
+    // Optional phase-1 note for invite_then_message: when set, the invite goes
+    // out *with* this note attached (still Premium-gated client-side) AND the
+    // follow-up message (message_template) is dispatched on acceptance. Without
+    // it, invite_then_message keeps its bare-invite behaviour.
+    invite_note_template?: string;
+  } | null;
   const messageOverrides = meta?.message_overrides ?? {};
+  const inviteNoteTemplate = meta?.invite_note_template?.trim() ?? "";
 
   let bookingLink: string | null = null;
   const { data: profile } = await supabase
@@ -348,6 +356,14 @@ async function runBatchLinkedIn(
           ? override
           : applyMessageVariables(messageTemplate, prospect, { bookingLink });
 
+      // Phase-1 note for invite_then_message (the "invite-with-note + message"
+      // flow): the note template lives in metadata.invite_note_template, never
+      // in message_template (that holds the phase-2 follow-up). Empty when the
+      // campaign uses the classic bare-invite-then-message path.
+      const inviteNoteText = inviteNoteTemplate
+        ? applyMessageVariables(inviteNoteTemplate, prospect, { bookingLink })
+        : "";
+
       if (
         linkedInJobType === "invite" ||
         linkedInJobType === "invite_with_note" ||
@@ -357,11 +373,18 @@ async function runBatchLinkedIn(
           account_id: accountId,
           provider_id: providerId,
         };
-        // invite_then_message is a two-phase send: phase 1 is a bare invite
-        // (no note attached), phase 2 fires from record-invite-accepted.ts
-        // using the template stored on the job row.
+        // invite_with_note attaches the note text (message_template); the
+        // two-phase invite_then_message stays bare *unless* the campaign opted
+        // into a phase-1 note (metadata.invite_note_template), in which case the
+        // note rides with the invite and the phase-2 message still fires from
+        // record-invite-accepted.ts on acceptance.
         if (linkedInJobType === "invite_with_note" && text?.trim()) {
           inviteBody.message = text;
+        } else if (
+          linkedInJobType === "invite_then_message" &&
+          inviteNoteText.trim()
+        ) {
+          inviteBody.message = inviteNoteText;
         }
         await unipileFetch("/users/invite", {
           method: "POST",
@@ -416,7 +439,9 @@ async function runBatchLinkedIn(
             message:
               linkedInJobType === "invite_with_note"
                 ? clipDetailMessage(text ?? "", 500)
-                : "",
+                : linkedInJobType === "invite_then_message" && inviteNoteText
+                  ? clipDetailMessage(inviteNoteText, 500)
+                  : "",
             campaign_job_id: jobId,
             // Stored so the Unipile new_relation webhook can match the
             // acceptance back to this exact invite and emit

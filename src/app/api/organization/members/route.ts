@@ -45,7 +45,15 @@ export const GET = createApiHandler(async (_req, ctx) => {
             }) => [
                 p.id,
                 {
-                    name: p.full_name ?? 'Inconnu',
+                    // full_name can be an empty string (account created but the
+                    // onboarding name step skipped) — `?? 'Inconnu'` wouldn't
+                    // catch that, so the campaign author chip rendered blank with
+                    // a "?" avatar. Fall back to the email local-part, then a
+                    // generic label, so there's always a readable name.
+                    name:
+                        p.full_name?.trim() ||
+                        p.email?.split('@')[0] ||
+                        'Membre',
                     avatar_url: p.avatar_url ?? null,
                     email: p.email ?? null,
                 },

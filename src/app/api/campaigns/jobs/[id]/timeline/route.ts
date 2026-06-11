@@ -154,13 +154,18 @@ export const GET = createApiHandler(async (req, ctx): Promise<CampaignTimelinePa
     new Set(recent.map((r) => r.prospect_id).filter((v): v is string => !!v)),
   );
   const nameById = new Map<string, string>();
+  const avatarById = new Map<string, string | null>();
   if (prospectIds.length > 0) {
     const { data: prospectRows } = await ctx.supabase
       .from("prospects")
-      .select("id, full_name, company")
+      .select("id, full_name, company, enrichment_metadata")
       .in("id", prospectIds);
     for (const p of prospectRows ?? []) {
       nameById.set(p.id, p.full_name ?? p.company ?? p.id.slice(0, 8));
+      const em = p.enrichment_metadata as
+        | { profile_picture_url?: string | null }
+        | null;
+      avatarById.set(p.id, em?.profile_picture_url ?? null);
     }
   }
 
@@ -175,6 +180,7 @@ export const GET = createApiHandler(async (req, ctx): Promise<CampaignTimelinePa
       title: desc.title,
       body: desc.body(details),
       prospect_name: r.prospect_id ? (nameById.get(r.prospect_id) ?? null) : null,
+      prospect_avatar: r.prospect_id ? (avatarById.get(r.prospect_id) ?? null) : null,
     };
   });
 

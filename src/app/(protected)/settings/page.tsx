@@ -15,9 +15,8 @@ function resolveTabFromSearch(searchParams: ReturnType<typeof useSearchParams>):
 }
 
 function SettingsPageInner() {
-  const { profile, user, refresh } = useWorkspace();
+  const { profile, refresh } = useWorkspace();
   const searchParams = useSearchParams();
-  const userId = user?.id ?? profile?.id ?? null;
   const defaultTab = resolveTabFromSearch(searchParams);
 
   return (
@@ -52,7 +51,7 @@ function SettingsPageInner() {
         </TabsContent>
 
         <TabsContent value="integrations">
-          <IntegrationsSettingsTab userId={userId} />
+          <IntegrationsSettingsTab />
         </TabsContent>
 
         <TabsContent value="organization">

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { type Prospect } from '@/lib/types/prospects';
 import { extractCleanRole } from '@/lib/utils/extract-role';
+import { PersonAvatar } from '@/components/ui/person-avatar';
 import { StatusPill } from './crm-shared';
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -195,26 +196,33 @@ export function getProspectColumns(
             cell: ({ row }) => {
                 const p = row.original;
                 return (
-                    <>
-                        {onUpdate ? (
-                            <InlineEditCell
-                                value={p.full_name ?? ''}
-                                onSave={(v) => onUpdate(p.id, 'full_name', v)}
-                                className="font-medium"
-                                onBeginEditing={options?.clearPendingRowNavigation}
-                            />
-                        ) : (
-                            <p className="font-medium">{p.full_name ?? '—'}</p>
-                        )}
-                        {p.job_title && (
-                            <p
-                                className="min-w-0 truncate text-sm text-muted-foreground"
-                                title={p.job_title}
-                            >
-                                {extractCleanRole(p.job_title)}
-                            </p>
-                        )}
-                    </>
+                    <div className="flex items-center gap-2.5">
+                        <PersonAvatar
+                            name={p.full_name}
+                            src={p.enrichment_metadata?.profile_picture_url ?? null}
+                            size={32}
+                        />
+                        <div className="min-w-0">
+                            {onUpdate ? (
+                                <InlineEditCell
+                                    value={p.full_name ?? ''}
+                                    onSave={(v) => onUpdate(p.id, 'full_name', v)}
+                                    className="font-medium"
+                                    onBeginEditing={options?.clearPendingRowNavigation}
+                                />
+                            ) : (
+                                <p className="font-medium">{p.full_name ?? '—'}</p>
+                            )}
+                            {p.job_title && (
+                                <p
+                                    className="min-w-0 truncate text-sm text-muted-foreground"
+                                    title={p.job_title}
+                                >
+                                    {extractCleanRole(p.job_title)}
+                                </p>
+                            )}
+                        </div>
+                    </div>
                 );
             },
         },

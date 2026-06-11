@@ -36,10 +36,22 @@ export interface Activity {
   target_url?: string | null;
   actor_name?: string | null;
   actor_avatar?: string | null;
+  // The person the event is *about* (the prospect), distinct from the actor
+  // (the team member who triggered it). Drives the avatar shown in the feed.
+  subject_name?: string | null;
+  subject_avatar?: string | null;
 }
 
 // Per-org status labels are fetched once per request below; this const is
 // kept as a placeholder for the legacy import surface only.
+
+/** Prospect photo lives in the `enrichment_metadata` JSONB blob. */
+function photoFromEnrichment(em: unknown): string | null {
+  return (
+    (em as { profile_picture_url?: string | null } | null)
+      ?.profile_picture_url ?? null
+  );
+}
 
 /**
  * GET /api/dashboard/activity?scope=all|mine|team|system
@@ -89,7 +101,7 @@ export async function getDashboardActivity(
     await Promise.all([
       ctx.supabase
         .from("prospects")
-        .select("id, full_name, source, created_at")
+        .select("id, full_name, enrichment_metadata, source, created_at")
         .eq("organization_id", ctx.workspaceId)
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
@@ -135,7 +147,7 @@ export async function getDashboardActivity(
       // Recent enrichments
       ctx.supabase
         .from("prospects")
-        .select("id, full_name, enriched_at")
+        .select("id, full_name, enrichment_metadata, enriched_at")
         .eq("organization_id", ctx.workspaceId)
         .is("deleted_at", null)
         .not("enriched_at", "is", null)
@@ -159,7 +171,7 @@ export async function getDashboardActivity(
   }
 
   const profileMap = new Map<string, { name: string; avatar: string | null }>();
-  const prospectNameMap = new Map<string, string>();
+  const prospectNameMap = new Map<string, { name: string; avatar: string | null }>();
 
   const profileIds = [...allActorIds];
   if (profileIds.length > 0) {
@@ -179,10 +191,13 @@ export async function getDashboardActivity(
   if (pIds.length > 0) {
     const { data: prospects } = await ctx.supabase
       .from("prospects")
-      .select("id, full_name")
+      .select("id, full_name, enrichment_metadata")
       .in("id", pIds);
     for (const p of prospects ?? []) {
-      prospectNameMap.set(p.id, p.full_name ?? "Prospect");
+      prospectNameMap.set(p.id, {
+        name: p.full_name ?? "Prospect",
+        avatar: photoFromEnrichment(p.enrichment_metadata),
+      });
     }
   }
 
@@ -210,6 +225,8 @@ export async function getDashboardActivity(
       type: "prospect_added",
       title: "Nouveau prospect",
       description: `${p.full_name ?? "Sans nom"} — ajouté via ${src} · ${formatTs(p.created_at ?? new Date().toISOString())}`,
+      subject_name: p.full_name ?? null,
+      subject_avatar: photoFromEnrichment(p.enrichment_metadata),
       target_url: `/prospect/${p.id}`,
       timestamp: p.created_at ?? new Date().toISOString(),
     });
@@ -241,7 +258,8 @@ export async function getDashboardActivity(
   }
 
   for (const b of bookingsRes.data ?? []) {
-    const prospectName = prospectNameMap.get(b.prospect_id);
+    const prospect = prospectNameMap.get(b.prospect_id);
+    const prospectName = prospect?.name;
     const when = b.scheduled_for
       ? new Date(b.scheduled_for).toLocaleDateString("fr-FR", {
           day: "numeric",
@@ -259,6 +277,8 @@ export async function getDashboardActivity(
         : when
           ? `Prévu le ${when}`
           : "Nouveau rendez-vous",
+      subject_name: prospectName ?? null,
+      subject_avatar: prospect?.avatar ?? null,
       target_url: "/calendar",
       timestamp: b.created_at,
     });
@@ -278,9 +298,8 @@ export async function getDashboardActivity(
   }
 
   for (const sa of prospectFeedRes.data ?? []) {
-    const prospectName = sa.prospect_id
-      ? prospectNameMap.get(sa.prospect_id) ?? "Prospect"
-      : "Prospect";
+    const prospect = sa.prospect_id ? prospectNameMap.get(sa.prospect_id) : null;
+    const prospectName = prospect?.name ?? "Prospect";
     const actor = sa.actor_id ? profileMap.get(sa.actor_id) : null;
 
     const desc = describeActivity(sa.action);
@@ -306,6 +325,8 @@ export async function getDashboardActivity(
       description: body
         ? `${prospectName} · ${body}`
         : prospectName,
+      subject_name: prospect?.name ?? null,
+      subject_avatar: prospect?.avatar ?? null,
       actor_name: actor?.name ?? null,
       actor_avatar: actor?.avatar ?? null,
       target_url: targetUrl,
@@ -335,6 +356,8 @@ export async function getDashboardActivity(
       type: "enrichment_completed",
       title: "Profil enrichi",
       description: `${e.full_name ?? "Prospect"} · ${formatTs(e.enriched_at)}`,
+      subject_name: e.full_name ?? null,
+      subject_avatar: photoFromEnrichment(e.enrichment_metadata),
       target_url: `/prospect/${e.id}`,
       timestamp: e.enriched_at,
     });
