@@ -9,12 +9,9 @@
  * Auth: X-API-KEY header
  */
 
-import {
-  UNIPILE_ERROR_MESSAGES,
-  type UnipileError,
-} from "./types";
+import { UNIPILE_ERROR_MESSAGES, type UnipileError } from './types';
 
-const UNIPILE_API_PATH = "/api/v1";
+const UNIPILE_API_PATH = '/api/v1';
 
 let cachedApiRoot: string | null = null;
 
@@ -22,79 +19,99 @@ let cachedApiRoot: string | null = null;
  * Unipile host root without path (no trailing slash), e.g. https://api2.unipile.com:13219
  */
 export function getUnipileApiRoot(): string {
-  if (cachedApiRoot) return cachedApiRoot;
-  const raw = process.env.UNIPILE_API_URL?.trim();
-  if (!raw) {
-    throw new Error(
-      "UNIPILE_API_URL n'est pas configurée. Définissez l'URL de l'API de messagerie (UNIPILE_API_URL) et la clé d'accès (UNIPILE_API_KEY) sur le serveur."
-    );
-  }
-  const withScheme = raw.startsWith("http")
-    ? raw
-    : `https://${raw.replace(/^\/+/, "")}`;
-  cachedApiRoot = withScheme.replace(/\/$/, "");
-  return cachedApiRoot;
+    if (cachedApiRoot) return cachedApiRoot;
+    const raw = process.env.UNIPILE_API_URL?.trim();
+    if (!raw) {
+        throw new Error(
+            "UNIPILE_API_URL n'est pas configurée. Définissez l'URL de l'API de messagerie (UNIPILE_API_URL) et la clé d'accès (UNIPILE_API_KEY) sur le serveur."
+        );
+    }
+    const withScheme = raw.startsWith('http')
+        ? raw
+        : `https://${raw.replace(/^\/+/, '')}`;
+    cachedApiRoot = withScheme.replace(/\/$/, '');
+    return cachedApiRoot;
 }
 
 /** Base URL including `/api/v1` (no trailing slash). */
 export function getUnipileV1BaseUrl(): string {
-  return `${getUnipileApiRoot()}${UNIPILE_API_PATH}`;
+    return `${getUnipileApiRoot()}${UNIPILE_API_PATH}`;
 }
 
 function getV1BaseUrl(): string {
-  return getUnipileV1BaseUrl();
+    return getUnipileV1BaseUrl();
+}
+
+function localizeUnipileErrorMessage(message: string): string {
+    const normalized = message.trim().toLowerCase();
+    if (
+        normalized.includes('invitation has already been sent recently') ||
+        normalized.includes('already been sent recently to this recipient') ||
+        normalized.includes('already sent recently')
+    ) {
+        return 'Une invitation a déjà été envoyée récemment à ce destinataire. Réessayez plus tard ou choisissez un autre contact.';
+    }
+    return message;
 }
 
 export class UnipileApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public unipileType?: string
-  ) {
-    super(message);
-    this.name = "UnipileApiError";
-  }
+    constructor(
+        message: string,
+        public status: number,
+        public unipileType?: string
+    ) {
+        super(message);
+        this.name = 'UnipileApiError';
+    }
 }
 
 /** HTTP 429 from Unipile — batch runners should abort and release lock without marking prospects as hard errors. */
 export class UnipileRateLimitError extends UnipileApiError {
-  constructor(
-    message: string,
-    status: number,
-    public retryAfterSec?: number
-  ) {
-    super(message, status);
-    this.name = "UnipileRateLimitError";
-  }
+    constructor(
+        message: string,
+        status: number,
+        public retryAfterSec?: number
+    ) {
+        super(message, status);
+        this.name = 'UnipileRateLimitError';
+    }
 }
 
 export function getUnipileHeaders(): Record<string, string> {
-  const key = process.env.UNIPILE_API_KEY?.trim();
-  if (!key) {
-    throw new Error("UNIPILE_API_KEY is not configured");
-  }
-  return {
-    "X-API-KEY": key,
-    "Content-Type": "application/json",
-  };
+    const key = process.env.UNIPILE_API_KEY?.trim();
+    if (!key) {
+        throw new Error('UNIPILE_API_KEY is not configured');
+    }
+    return {
+        'X-API-KEY': key,
+        'Content-Type': 'application/json',
+    };
 }
 
 function parseUnipileError(res: Response, text: string): UnipileApiError {
-  try {
-    const json = JSON.parse(text) as UnipileError;
-    const type = json.type ?? "";
-    const userMsg =
-      UNIPILE_ERROR_MESSAGES[type] ??
-      json.detail ??
-      json.title ??
-      (text || res.statusText);
-    return new UnipileApiError(userMsg, res.status, type);
-  } catch {
-    return new UnipileApiError(
-      text || res.statusText || `Erreur du service de messagerie (${res.status})`,
-      res.status
-    );
-  }
+    try {
+        const json = JSON.parse(text) as UnipileError;
+        const type = json.type ?? '';
+        const userMsg =
+            UNIPILE_ERROR_MESSAGES[type] ??
+            json.detail ??
+            json.title ??
+            (text || res.statusText);
+        return new UnipileApiError(
+            localizeUnipileErrorMessage(userMsg),
+            res.status,
+            type
+        );
+    } catch {
+        return new UnipileApiError(
+            localizeUnipileErrorMessage(
+                text ||
+                    res.statusText ||
+                    `Erreur du service de messagerie (${res.status})`
+            ),
+            res.status
+        );
+    }
 }
 
 /** Default upper bound for any single Unipile call. Without this, a hung
@@ -104,75 +121,83 @@ function parseUnipileError(res: Response, text: string): UnipileApiError {
 const UNIPILE_DEFAULT_TIMEOUT_MS = 30_000;
 
 export async function unipileFetch<T>(
-  path: string,
-  options?: RequestInit & { timeoutMs?: number }
+    path: string,
+    options?: RequestInit & { timeoutMs?: number }
 ): Promise<T> {
-  const { timeoutMs = UNIPILE_DEFAULT_TIMEOUT_MS, signal: callerSignal, ...init } =
-    options ?? {};
-  const baseUrl = getV1BaseUrl();
-  const url = path.startsWith("http") ? path : `${baseUrl}${path}`;
-  const baseHeaders = getUnipileHeaders();
-  // Si le body est un FormData, on laisse fetch poser lui-même le Content-Type
-  // (avec la bonne boundary multipart). Forcer application/json casse l'upload.
-  const isFormData =
-    typeof FormData !== "undefined" && init.body instanceof FormData;
-  const headers: Record<string, string> = isFormData
-    ? { "X-API-KEY": baseHeaders["X-API-KEY"] }
-    : baseHeaders;
+    const {
+        timeoutMs = UNIPILE_DEFAULT_TIMEOUT_MS,
+        signal: callerSignal,
+        ...init
+    } = options ?? {};
+    const baseUrl = getV1BaseUrl();
+    const url = path.startsWith('http') ? path : `${baseUrl}${path}`;
+    const baseHeaders = getUnipileHeaders();
+    // Si le body est un FormData, on laisse fetch poser lui-même le Content-Type
+    // (avec la bonne boundary multipart). Forcer application/json casse l'upload.
+    const isFormData =
+        typeof FormData !== 'undefined' && init.body instanceof FormData;
+    const headers: Record<string, string> = isFormData
+        ? { 'X-API-KEY': baseHeaders['X-API-KEY'] }
+        : baseHeaders;
 
-  // Abort on timeout, while still honoring a caller-provided signal.
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  if (callerSignal) {
-    if (callerSignal.aborted) controller.abort();
-    else
-      callerSignal.addEventListener("abort", () => controller.abort(), {
-        once: true,
-      });
-  }
-
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      ...init,
-      headers: { ...headers, ...init.headers },
-      signal: controller.signal,
-    });
-  } catch (e) {
-    if (controller.signal.aborted && !callerSignal?.aborted) {
-      throw new UnipileApiError(
-        "Le service de messagerie a mis trop de temps à répondre.",
-        504
-      );
+    // Abort on timeout, while still honoring a caller-provided signal.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    if (callerSignal) {
+        if (callerSignal.aborted) controller.abort();
+        else
+            callerSignal.addEventListener('abort', () => controller.abort(), {
+                once: true,
+            });
     }
-    throw e;
-  } finally {
-    clearTimeout(timer);
-  }
 
-  const text = await res.text();
-
-  if (!res.ok) {
-    if (res.status === 429) {
-      const retryRaw = res.headers.get("Retry-After");
-      const retryAfterSec = retryRaw ? Number.parseInt(retryRaw, 10) : undefined;
-      const parsed = parseUnipileError(res, text);
-      throw new UnipileRateLimitError(
-        parsed.message,
-        429,
-        Number.isFinite(retryAfterSec) ? retryAfterSec : undefined
-      );
+    let res: Response;
+    try {
+        res = await fetch(url, {
+            ...init,
+            headers: { ...headers, ...init.headers },
+            signal: controller.signal,
+        });
+    } catch (e) {
+        if (controller.signal.aborted && !callerSignal?.aborted) {
+            throw new UnipileApiError(
+                'Le service de messagerie a mis trop de temps à répondre.',
+                504
+            );
+        }
+        throw e;
+    } finally {
+        clearTimeout(timer);
     }
-    throw parseUnipileError(res, text);
-  }
 
-  if (res.status === 204 || !text.trim()) {
-    return {} as T;
-  }
+    const text = await res.text();
 
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    throw new UnipileApiError("Réponse invalide du service de messagerie", res.status);
-  }
+    if (!res.ok) {
+        if (res.status === 429) {
+            const retryRaw = res.headers.get('Retry-After');
+            const retryAfterSec = retryRaw
+                ? Number.parseInt(retryRaw, 10)
+                : undefined;
+            const parsed = parseUnipileError(res, text);
+            throw new UnipileRateLimitError(
+                parsed.message,
+                429,
+                Number.isFinite(retryAfterSec) ? retryAfterSec : undefined
+            );
+        }
+        throw parseUnipileError(res, text);
+    }
+
+    if (res.status === 204 || !text.trim()) {
+        return {} as T;
+    }
+
+    try {
+        return JSON.parse(text) as T;
+    } catch {
+        throw new UnipileApiError(
+            'Réponse invalide du service de messagerie',
+            res.status
+        );
+    }
 }

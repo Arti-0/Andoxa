@@ -15,23 +15,9 @@ import {
 } from "../onboarding-layout-classes";
 import type { StepProps } from "../types";
 
-/** Delay before the "continue without LinkedIn" escape hatch appears. */
-const ESCAPE_DELAY_MS = 30_000;
-
 export function LinkedInStep({ onNext, onError }: StepProps) {
   const [connectingLi, setConnectingLi] = useState(false);
   const [linkedinConnected, setLinkedinConnected] = useState(false);
-  // The step blocks until connected; the escape only shows after a failed
-  // Unipile return, a connect error, or ESCAPE_DELAY_MS — so an outage or a
-  // hesitant user isn't hard-stuck in the wizard.
-  const [escapeVisible, setEscapeVisible] = useState(false);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("linkedin_connected") === "0") setEscapeVisible(true);
-    const t = setTimeout(() => setEscapeVisible(true), ESCAPE_DELAY_MS);
-    return () => clearTimeout(t);
-  }, []);
 
   const checkLinkedIn = async () => {
     try {
@@ -80,10 +66,8 @@ export function LinkedInStep({ onNext, onError }: StepProps) {
       toast.error(
         (json?.error?.message as string) ?? "Impossible de lancer LinkedIn"
       );
-      setEscapeVisible(true);
     } catch {
       onError("Connexion LinkedIn impossible");
-      setEscapeVisible(true);
     } finally {
       setConnectingLi(false);
     }
@@ -160,13 +144,14 @@ export function LinkedInStep({ onNext, onError }: StepProps) {
               >
                 Continuer
               </OnboardingContinueButton>
-              {!linkedinConnected && escapeVisible ? (
+              {!linkedinConnected ? (
                 <button
                   type="button"
                   onClick={onNext}
                   className="text-xs font-medium text-zinc-400 underline-offset-2 transition-colors hover:text-zinc-600 hover:underline dark:text-zinc-500 dark:hover:text-zinc-300"
                 >
-                  Continuer sans LinkedIn pour l&apos;instant
+                  Plus tard — vous pourrez le connecter depuis le tableau de
+                  bord
                 </button>
               ) : null}
             </div>

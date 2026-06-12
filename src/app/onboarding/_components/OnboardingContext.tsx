@@ -3,8 +3,13 @@
 import { createContext, useContext } from "react";
 import type { StepId, OnboardingScenario } from "../config";
 
+/** Qualification answer from owner.qualify — drives the owner.trial recommendation. */
+export type OnboardingTeamSize = "solo" | "team" | "large";
+
 export type OnboardingRuntimeContextValue = {
   scenario: OnboardingScenario;
+  teamSize: OnboardingTeamSize | null;
+  setTeamSize: (s: OnboardingTeamSize) => void;
   orgId: string | null;
   setOrgId: (id: string | null) => void;
   fullName: string;

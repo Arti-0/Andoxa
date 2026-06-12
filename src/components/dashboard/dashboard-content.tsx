@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * Dashboard (cockpit) — Andoxa "Tableau de bord" UX.
@@ -17,194 +17,195 @@
  */
 
 import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
-import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { toast as sonnerToast } from "sonner";
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type CSSProperties,
+    type ReactNode,
+} from 'react';
+import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
+import { toast as sonnerToast } from 'sonner';
 import {
-  Activity,
-  AlertTriangle,
-  ArrowRight,
-  BadgeCheck,
-  Calendar,
-  Check,
-  ChevronDown,
-  Download,
-  Filter,
-  Flame,
-  Linkedin,
-  Megaphone,
-  MessageCircle,
-  MessageSquare,
-  Rocket,
-  Snowflake,
-  Target,
-  TrendingDown,
-  TrendingUp,
-  Upload,
-  Workflow,
-  Zap,
-  type LucideIcon,
-} from "lucide-react";
+    Activity,
+    AlertTriangle,
+    ArrowRight,
+    BadgeCheck,
+    Calendar,
+    Check,
+    ChevronDown,
+    Download,
+    Filter,
+    Flame,
+    Linkedin,
+    Megaphone,
+    MessageCircle,
+    MessageSquare,
+    Loader2,
+    Rocket,
+    Snowflake,
+    Target,
+    TrendingDown,
+    TrendingUp,
+    Upload,
+    Workflow,
+    Zap,
+    type LucideIcon,
+} from 'lucide-react';
 
-import { useWorkspace } from "@/lib/workspace";
-import { useLinkedInAccount } from "@/hooks/use-linkedin-account";
+import { useWorkspace } from '@/lib/workspace';
+import { useLinkedInAccount } from '@/hooks/use-linkedin-account';
 import {
-  fetchLinkedInUsage,
-  type LinkedInUsagePayload,
-} from "@/lib/linkedin/linkedin-usage";
-import { MiniLineChart } from "@/components/ui/mini-line-chart";
-import { PersonAvatar } from "@/components/ui/person-avatar";
-import { isFeatureEnabled } from "@/lib/config/feature-flags";
+    fetchLinkedInUsage,
+    type LinkedInUsagePayload,
+} from '@/lib/linkedin/linkedin-usage';
+import { MiniLineChart } from '@/components/ui/mini-line-chart';
+import { PersonAvatar } from '@/components/ui/person-avatar';
+import { isFeatureEnabled } from '@/lib/config/feature-flags';
 
 /**
  * #FF flags resolved once at module load (zero render cost):
  *  - dashboardAvatarGreeting: profile picture next to "Bonjour <name>".
  *  - dashboardDealCards: "Top deals en cours" + "Deals à risque" cards.
  */
-const SHOW_AVATAR_GREETING = isFeatureEnabled("dashboardAvatarGreeting");
-const SHOW_DEAL_CARDS = isFeatureEnabled("dashboardDealCards");
+const SHOW_AVATAR_GREETING = isFeatureEnabled('dashboardAvatarGreeting');
+const SHOW_DEAL_CARDS = isFeatureEnabled('dashboardDealCards');
 
 /* ============================================================
    API TYPES
    ============================================================ */
 
 interface DashboardStatsPayload {
-  prospects: number;
-  campaignsThisMonth: number;
-  rdvEffectues: number;
-  conversionRate: number;
-  charts?: {
-    activityVolume?: {
-      week: string;
-      calls: number;
-      messages: number;
-      bookings: number;
-    }[];
-  };
-  period: string;
-  pipeline: {
-    active_total: number;
-    by_stage: { rdv: number; proposal: number; qualified: number };
-    sparkline: number[];
-    trend_pts: number;
-  };
-  rdv: {
-    booked_count: number;
-    target: number;
-    realisation_pct: number;
-    sparkline: number[];
-    trend_pts: number;
-  };
-  linkedin: {
-    messages_sent: number;
-    invitations_sent: number;
-    responses_received: number;
-    acceptances_received: number;
-    response_rate_pct: number;
-    acceptance_rate_pct: number;
-    sparkline: number[];
-    trend_pts: number;
-  };
-  closings: {
-    won_count: number;
-    target: number;
-    progress_pct: number;
-    sparkline: number[];
-    trend_pts: number;
-  };
-  week_labels: string[];
+    prospects: number;
+    campaignsThisMonth: number;
+    rdvEffectues: number;
+    conversionRate: number;
+    charts?: {
+        activityVolume?: {
+            week: string;
+            calls: number;
+            messages: number;
+            bookings: number;
+        }[];
+    };
+    period: string;
+    pipeline: {
+        active_total: number;
+        by_stage: { rdv: number; proposal: number; qualified: number };
+        sparkline: number[];
+        trend_pts: number;
+    };
+    rdv: {
+        booked_count: number;
+        target: number;
+        realisation_pct: number;
+        sparkline: number[];
+        trend_pts: number;
+    };
+    linkedin: {
+        messages_sent: number;
+        invitations_sent: number;
+        responses_received: number;
+        acceptances_received: number;
+        response_rate_pct: number;
+        acceptance_rate_pct: number;
+        sparkline: number[];
+        trend_pts: number;
+    };
+    closings: {
+        won_count: number;
+        target: number;
+        progress_pct: number;
+        sparkline: number[];
+        trend_pts: number;
+    };
+    week_labels: string[];
 }
 
 interface PriorityItem {
-  key:
-    | "rdv_today"
-    | "stale_conversations"
-    | "unread_responses"
-    | "proposals_to_follow"
-    | "active_campaigns"
-    | "pending_workflows";
-  count: number;
-  label: string;
-  sub: string;
-  href: string;
+    key:
+        | 'rdv_today'
+        | 'stale_conversations'
+        | 'unread_responses'
+        | 'proposals_to_follow'
+        | 'active_campaigns'
+        | 'pending_workflows';
+    count: number;
+    label: string;
+    sub: string;
+    href: string;
 }
 
 interface PrioritiesPayload {
-  generated_at: string;
-  items: PriorityItem[];
+    generated_at: string;
+    items: PriorityItem[];
 }
 
 interface FunnelStep {
-  key: "invitations" | "accepted" | "conversations" | "rdvs" | "closings";
-  label: string;
-  count: number;
-  conversion_pct_from_prev: number | null;
-  trend_pts: number;
+    key: 'invitations' | 'accepted' | 'conversations' | 'rdvs' | 'closings';
+    label: string;
+    count: number;
+    conversion_pct_from_prev: number | null;
+    trend_pts: number;
 }
 
 interface FunnelPayload {
-  steps: FunnelStep[];
-  global_rate_pct: number;
-  avg_cycle_days: number | null;
-  pipeline_target_closings: number;
-  period: string;
+    steps: FunnelStep[];
+    global_rate_pct: number;
+    avg_cycle_days: number | null;
+    pipeline_target_closings: number;
+    period: string;
 }
 
 interface TopDealRow {
-  prospect_id: string;
-  name: string;
-  company: string | null;
-  stage: string;
-  stage_label: string;
-  last_activity_label: string;
-  initials: string;
-  /** Enriched profile picture, when the prospect has been enriched. */
-  avatar_url?: string | null;
-  href: string;
+    prospect_id: string;
+    name: string;
+    company: string | null;
+    stage: string;
+    stage_label: string;
+    last_activity_label: string;
+    initials: string;
+    /** Enriched profile picture, when the prospect has been enriched. */
+    avatar_url?: string | null;
+    href: string;
 }
 
 interface AtRiskRow {
-  prospect_id: string;
-  name: string;
-  company: string | null;
-  stage: string;
-  stage_label: string;
-  silence_days: number;
-  severity: "high" | "med" | "low";
-  initials: string;
-  /** Enriched profile picture, when the prospect has been enriched. */
-  avatar_url?: string | null;
-  href: string;
+    prospect_id: string;
+    name: string;
+    company: string | null;
+    stage: string;
+    stage_label: string;
+    silence_days: number;
+    severity: 'high' | 'med' | 'low';
+    initials: string;
+    /** Enriched profile picture, when the prospect has been enriched. */
+    avatar_url?: string | null;
+    href: string;
 }
 
 interface ActiveCampaign {
-  workflow_id: string;
-  name: string;
-  channel: "linkedin" | "whatsapp" | "linkedin+whatsapp" | "other";
-  state: "running" | "paused" | "completed";
-  done: number;
-  total: number;
-  href: string;
+    workflow_id: string;
+    name: string;
+    channel: 'linkedin' | 'whatsapp' | 'linkedin+whatsapp' | 'other';
+    state: 'running' | 'paused' | 'completed';
+    done: number;
+    total: number;
+    href: string;
 }
 
 interface ActivityApiRow {
-  id: string;
-  type: string;
-  title: string;
-  description: string;
-  timestamp: string;
-  target_url?: string | null;
-  actor_name?: string | null;
-  actor_avatar?: string | null;
-  subject_name?: string | null;
-  subject_avatar?: string | null;
+    id: string;
+    type: string;
+    title: string;
+    description: string;
+    timestamp: string;
+    target_url?: string | null;
+    actor_name?: string | null;
+    actor_avatar?: string | null;
+    subject_name?: string | null;
+    subject_avatar?: string | null;
 }
 
 /* ============================================================
@@ -212,26 +213,26 @@ interface ActivityApiRow {
    ============================================================ */
 
 async function jsonFetch<T>(url: string): Promise<T> {
-  const res = await fetch(url, { credentials: "include" });
-  if (!res.ok) throw new Error(`Failed: ${url}`);
-  const json = await res.json();
-  return (json.data ?? json) as T;
+    const res = await fetch(url, { credentials: 'include' });
+    if (!res.ok) throw new Error(`Failed: ${url}`);
+    const json = await res.json();
+    return (json.data ?? json) as T;
 }
 
 const fetchDashboardStats = (period: ApiPeriod) =>
-  jsonFetch<DashboardStatsPayload>(`/api/dashboard/stats?period=${period}`);
+    jsonFetch<DashboardStatsPayload>(`/api/dashboard/stats?period=${period}`);
 const fetchPriorities = () =>
-  jsonFetch<PrioritiesPayload>("/api/dashboard/priorities");
+    jsonFetch<PrioritiesPayload>('/api/dashboard/priorities');
 const fetchFunnel = (period: ApiPeriod) =>
-  jsonFetch<FunnelPayload>(`/api/dashboard/funnel?period=${period}`);
+    jsonFetch<FunnelPayload>(`/api/dashboard/funnel?period=${period}`);
 const fetchTopDeals = () =>
-  jsonFetch<TopDealRow[]>("/api/dashboard/top-deals?limit=5");
+    jsonFetch<TopDealRow[]>('/api/dashboard/top-deals?limit=5');
 const fetchAtRisk = () =>
-  jsonFetch<AtRiskRow[]>("/api/dashboard/at-risk?limit=5");
+    jsonFetch<AtRiskRow[]>('/api/dashboard/at-risk?limit=5');
 const fetchActiveCampaigns = () =>
-  jsonFetch<ActiveCampaign[]>("/api/dashboard/active-campaigns");
-const fetchActivity = (scope: "all" | "mine" | "team" | "system") =>
-  jsonFetch<ActivityApiRow[]>(`/api/dashboard/activity?scope=${scope}`);
+    jsonFetch<ActiveCampaign[]>('/api/dashboard/active-campaigns');
+const fetchActivity = (scope: 'all' | 'mine' | 'team' | 'system') =>
+    jsonFetch<ActivityApiRow[]>(`/api/dashboard/activity?scope=${scope}`);
 
 // Aggregated dashboard fetch — one request, one auth pass, parallel fan-out
 // on the server. Halves the wall-clock dashboard load and cuts ~1s of
@@ -239,136 +240,130 @@ const fetchActivity = (scope: "all" | "mine" | "team" | "system") =>
 // /api/dashboard/* routes still exist for direct callers (PDF export,
 // targeted refetches when a filter changes).
 interface DashboardOverviewPayload {
-  stats: DashboardStatsPayload;
-  priorities: PrioritiesPayload;
-  funnel: FunnelPayload;
-  topDeals: TopDealRow[];
-  atRisk: AtRiskRow[];
-  activeCampaigns: ActiveCampaign[];
-  activity: ActivityApiRow[];
-  linkedinUsage: LinkedInUsagePayload;
+    stats: DashboardStatsPayload;
+    priorities: PrioritiesPayload;
+    funnel: FunnelPayload;
+    topDeals: TopDealRow[];
+    atRisk: AtRiskRow[];
+    activeCampaigns: ActiveCampaign[];
+    activity: ActivityApiRow[];
+    linkedinUsage: LinkedInUsagePayload;
 }
 const fetchDashboardOverview = (period: ApiPeriod) =>
-  jsonFetch<DashboardOverviewPayload>(
-    `/api/dashboard/overview?period=${period}&scope=all`,
-  );
+    jsonFetch<DashboardOverviewPayload>(
+        `/api/dashboard/overview?period=${period}&scope=all`
+    );
 
 /* ============================================================
    PRIMITIVES — Pill / Trend / Avatar / Sparkline
    ============================================================ */
 
-type Tone =
-  | "slate"
-  | "blue"
-  | "violet"
-  | "amber"
-  | "green"
-  | "rose"
-  | "cyan";
+type Tone = 'slate' | 'blue' | 'violet' | 'amber' | 'green' | 'rose' | 'cyan';
 
 const PILL_TONES: Record<Tone, string> = {
-  slate: "bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300",
-  blue: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
-  violet: "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300",
-  amber: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
-  green: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
-  rose: "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300",
-  cyan: "bg-cyan-50 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300",
+    slate: 'bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300',
+    blue: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+    violet: 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300',
+    amber: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
+    green: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+    rose: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300',
+    cyan: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300',
 };
 
 function Pill({
-  children,
-  tone = "slate",
+    children,
+    tone = 'slate',
 }: {
-  children: ReactNode;
-  tone?: Tone;
+    children: ReactNode;
+    tone?: Tone;
 }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${PILL_TONES[tone]}`}
-    >
-      {children}
-    </span>
-  );
+    return (
+        <span
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${PILL_TONES[tone]}`}
+        >
+            {children}
+        </span>
+    );
 }
 
 function Trend({
-  delta,
-  suffix = "pts",
-  invert = false,
+    delta,
+    suffix = 'pts',
+    invert = false,
 }: {
-  delta: number;
-  suffix?: string;
-  invert?: boolean;
+    delta: number;
+    suffix?: string;
+    invert?: boolean;
 }) {
-  if (delta === 0) {
+    if (delta === 0) {
+        return (
+            <span className="inline-flex items-center gap-0.5 text-[11.5px] font-medium text-slate-400 dark:text-zinc-500">
+                — {suffix}
+            </span>
+        );
+    }
+    const up = delta > 0;
+    const positive = invert ? !up : up;
+    const Icon = up ? TrendingUp : TrendingDown;
     return (
-      <span className="inline-flex items-center gap-0.5 text-[11.5px] font-medium text-slate-400 dark:text-zinc-500">
-        — {suffix}
-      </span>
+        <span
+            className={`inline-flex items-center gap-0.5 text-[11.5px] font-medium ${
+                positive ? 'text-emerald-600' : 'text-rose-500'
+            }`}
+        >
+            <Icon size={11} />
+            {up ? '+' : ''}
+            {delta} {suffix}
+        </span>
     );
-  }
-  const up = delta > 0;
-  const positive = invert ? !up : up;
-  const Icon = up ? TrendingUp : TrendingDown;
-  return (
-    <span
-      className={`inline-flex items-center gap-0.5 text-[11.5px] font-medium ${
-        positive ? "text-emerald-600" : "text-rose-500"
-      }`}
-    >
-      <Icon size={11} />
-      {up ? "+" : ""}
-      {delta} {suffix}
-    </span>
-  );
 }
 
 function colorForName(name: string): string {
-  const palette = ["#0052D9", "#FF6700", "#10b981", "#8b5cf6", "#0891b2"];
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return palette[h % palette.length];
+    const palette = ['#0052D9', '#FF6700', '#10b981', '#8b5cf6', '#0891b2'];
+    let h = 0;
+    for (let i = 0; i < name.length; i++)
+        h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return palette[h % palette.length];
 }
 
 function Avatar({
-  initials,
-  size = 32,
-  color,
-  photo,
+    initials,
+    size = 32,
+    color,
+    photo,
 }: {
-  initials: string;
-  size?: number;
-  color?: string;
-  /** Enriched profile picture; falls back to coloured initials when absent. */
-  photo?: string | null;
+    initials: string;
+    size?: number;
+    color?: string;
+    /** Enriched profile picture; falls back to coloured initials when absent. */
+    photo?: string | null;
 }) {
-  if (photo) {
+    if (photo) {
+        return (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+                src={photo}
+                alt={initials}
+                width={size}
+                height={size}
+                className="rounded-full object-cover flex-shrink-0"
+                style={{ width: size, height: size }}
+            />
+        );
+    }
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={photo}
-        alt={initials}
-        width={size}
-        height={size}
-        className="rounded-full object-cover flex-shrink-0"
-        style={{ width: size, height: size }}
-      />
+        <div
+            className="rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0"
+            style={{
+                width: size,
+                height: size,
+                background: color ?? colorForName(initials),
+                fontSize: size * 0.36,
+            }}
+        >
+            {initials}
+        </div>
     );
-  }
-  return (
-    <div
-      className="rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0"
-      style={{
-        width: size,
-        height: size,
-        background: color ?? colorForName(initials),
-        fontSize: size * 0.36,
-      }}
-    >
-      {initials}
-    </div>
-  );
 }
 
 /**
@@ -378,104 +373,97 @@ function Avatar({
  * 12-bucket weekly series from /api/dashboard/stats.
  */
 function Sparkline({
-  data,
-  color = "#0052D9",
-  className = "",
-  label = "Valeur",
+    data,
+    color = '#0052D9',
+    className = '',
+    label = 'Valeur',
 }: {
-  data: number[];
-  color?: string;
-  className?: string;
-  label?: string;
+    data: number[];
+    color?: string;
+    className?: string;
+    label?: string;
 }) {
-  const total = data?.length ?? 0;
-  return (
-    <MiniLineChart
-      data={data}
-      color={color}
-      label={label}
-      bucketLabel={(i) => {
-        // Oldest bucket → newest. Convert index to "S-N" (week offset).
-        const offset = total - 1 - i;
-        if (offset === 0) return "Cette semaine";
-        return `Il y a ${offset} sem.`;
-      }}
-      className={`block w-full h-full min-h-10 ${className}`}
-    />
-  );
+    const total = data?.length ?? 0;
+    return (
+        <MiniLineChart
+            data={data}
+            color={color}
+            label={label}
+            bucketLabel={(i) => {
+                // Oldest bucket → newest. Convert index to "S-N" (week offset).
+                const offset = total - 1 - i;
+                if (offset === 0) return 'Cette semaine';
+                return `Il y a ${offset} sem.`;
+            }}
+            className={`block w-full h-full min-h-10 ${className}`}
+        />
+    );
 }
 
-const TONE_BG: Record<
-  Tone,
-  { bg: string; text: string; ring: string }
-> = {
-  slate: {
-    bg: "bg-slate-100 dark:bg-zinc-800",
-    text: "text-slate-600 dark:text-zinc-300",
-    ring: "ring-slate-200 dark:ring-zinc-700",
-  },
-  blue: {
-    bg: "bg-blue-50 dark:bg-blue-950/40",
-    text: "text-blue-600 dark:text-blue-300",
-    ring: "ring-blue-100 dark:ring-blue-900/40",
-  },
-  amber: {
-    bg: "bg-amber-50 dark:bg-amber-950/40",
-    text: "text-amber-600 dark:text-amber-300",
-    ring: "ring-amber-100 dark:ring-amber-900/40",
-  },
-  violet: {
-    bg: "bg-violet-50 dark:bg-violet-950/40",
-    text: "text-violet-600 dark:text-violet-300",
-    ring: "ring-violet-100 dark:ring-violet-900/40",
-  },
-  green: {
-    bg: "bg-emerald-50 dark:bg-emerald-950/40",
-    text: "text-emerald-600 dark:text-emerald-300",
-    ring: "ring-emerald-100 dark:ring-emerald-900/40",
-  },
-  cyan: {
-    bg: "bg-cyan-50 dark:bg-cyan-950/40",
-    text: "text-cyan-600 dark:text-cyan-300",
-    ring: "ring-cyan-100 dark:ring-cyan-900/40",
-  },
-  rose: {
-    bg: "bg-rose-50 dark:bg-rose-950/40",
-    text: "text-rose-600 dark:text-rose-300",
-    ring: "ring-rose-100 dark:ring-rose-900/40",
-  },
+const TONE_BG: Record<Tone, { bg: string; text: string; ring: string }> = {
+    slate: {
+        bg: 'bg-slate-100 dark:bg-zinc-800',
+        text: 'text-slate-600 dark:text-zinc-300',
+        ring: 'ring-slate-200 dark:ring-zinc-700',
+    },
+    blue: {
+        bg: 'bg-blue-50 dark:bg-blue-950/40',
+        text: 'text-blue-600 dark:text-blue-300',
+        ring: 'ring-blue-100 dark:ring-blue-900/40',
+    },
+    amber: {
+        bg: 'bg-amber-50 dark:bg-amber-950/40',
+        text: 'text-amber-600 dark:text-amber-300',
+        ring: 'ring-amber-100 dark:ring-amber-900/40',
+    },
+    violet: {
+        bg: 'bg-violet-50 dark:bg-violet-950/40',
+        text: 'text-violet-600 dark:text-violet-300',
+        ring: 'ring-violet-100 dark:ring-violet-900/40',
+    },
+    green: {
+        bg: 'bg-emerald-50 dark:bg-emerald-950/40',
+        text: 'text-emerald-600 dark:text-emerald-300',
+        ring: 'ring-emerald-100 dark:ring-emerald-900/40',
+    },
+    cyan: {
+        bg: 'bg-cyan-50 dark:bg-cyan-950/40',
+        text: 'text-cyan-600 dark:text-cyan-300',
+        ring: 'ring-cyan-100 dark:ring-cyan-900/40',
+    },
+    rose: {
+        bg: 'bg-rose-50 dark:bg-rose-950/40',
+        text: 'text-rose-600 dark:text-rose-300',
+        ring: 'ring-rose-100 dark:ring-rose-900/40',
+    },
 };
 
 const STAGE_TONE: Record<string, Tone> = {
-  new: "slate",
-  contacted: "amber",
-  qualified: "cyan",
-  rdv: "blue",
-  proposal: "violet",
-  won: "green",
-  lost: "rose",
+    new: 'slate',
+    contacted: 'amber',
+    qualified: 'cyan',
+    rdv: 'blue',
+    proposal: 'violet',
+    won: 'green',
+    lost: 'rose',
 };
 
 /* ============================================================
    PERIOD MAPPING
    ============================================================ */
 
-const PERIODS = [
-  "Aujourd'hui",
-  "Cette semaine",
-  "Ce mois",
-] as const;
+const PERIODS = ["Aujourd'hui", 'Cette semaine', 'Ce mois'] as const;
 export type Period = (typeof PERIODS)[number];
 
-export type ApiPeriod = "today" | "week" | "month";
+export type ApiPeriod = 'today' | 'week' | 'month';
 
 const PERIOD_TO_API: Record<Period, ApiPeriod> = {
-  "Aujourd'hui": "today",
-  "Cette semaine": "week",
-  "Ce mois": "month",
+    "Aujourd'hui": 'today',
+    'Cette semaine': 'week',
+    'Ce mois': 'month',
 };
 
-export type PdfOrientation = "portrait" | "landscape";
+export type PdfOrientation = 'portrait' | 'landscape';
 
 /* ============================================================
    PDF EXPORT — background runner
@@ -500,27 +488,28 @@ let dashboardExportInFlight = false;
  * l'équipe" PDF.
  */
 async function runTeamExport(opts: {
-  apiPeriod: ApiPeriod;
-  orientation: PdfOrientation;
+    apiPeriod: ApiPeriod;
+    orientation: PdfOrientation;
 }): Promise<void> {
-  if (dashboardExportInFlight) {
-    sonnerToast.info("Un export est déjà en cours…");
-    return;
-  }
-  dashboardExportInFlight = true;
-  const toastId = sonnerToast.loading("Génération du PDF équipe…");
-  try {
-    const { exportTeamPerformancePdf } = await import("./team-performance-pdf");
-    await exportTeamPerformancePdf(opts);
-    sonnerToast.success("Export PDF téléchargé", { id: toastId });
-  } catch (e) {
-    console.error("Team performance PDF export failed", e);
-    sonnerToast.error("L'export a échoué. Réessaie dans un instant.", {
-      id: toastId,
-    });
-  } finally {
-    dashboardExportInFlight = false;
-  }
+    if (dashboardExportInFlight) {
+        sonnerToast.info('Un export est déjà en cours…');
+        return;
+    }
+    dashboardExportInFlight = true;
+    const toastId = sonnerToast.loading('Génération du PDF équipe…');
+    try {
+        const { exportTeamPerformancePdf } =
+            await import('./team-performance-pdf');
+        await exportTeamPerformancePdf(opts);
+        sonnerToast.success('Export PDF téléchargé', { id: toastId });
+    } catch (e) {
+        console.error('Team performance PDF export failed', e);
+        sonnerToast.error("L'export a échoué. Réessaie dans un instant.", {
+            id: toastId,
+        });
+    } finally {
+        dashboardExportInFlight = false;
+    }
 }
 
 /* ============================================================
@@ -528,180 +517,194 @@ async function runTeamExport(opts: {
    ============================================================ */
 
 function formatLongDate(date: Date): string {
-  return date
-    .toLocaleDateString("fr-FR", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    })
-    .replace(/^./, (c) => c.toUpperCase());
+    return date
+        .toLocaleDateString('fr-FR', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+        })
+        .replace(/^./, (c) => c.toUpperCase());
 }
 
 function getISOWeek(date: Date): number {
-  const d = new Date(
-    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
-  );
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil(
-    ((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
-  );
+    const d = new Date(
+        Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+    );
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 }
 
 function PageHeader({
-  firstName,
-  avatarUrl,
-  period,
-  setPeriod,
-  onExport,
+    firstName,
+    avatarUrl,
+    period,
+    setPeriod,
+    onExport,
 }: {
-  firstName: string;
-  avatarUrl?: string | null;
-  period: Period;
-  setPeriod: (p: Period) => void;
-  onExport: (p: Period, orientation: PdfOrientation) => void;
+    firstName: string;
+    avatarUrl?: string | null;
+    period: Period;
+    setPeriod: (p: Period) => void;
+    onExport: (p: Period, orientation: PdfOrientation) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
-  const exportRef = useRef<HTMLDivElement | null>(null);
-  const today = useMemo(() => new Date(), []);
+    const [open, setOpen] = useState(false);
+    const [exportOpen, setExportOpen] = useState(false);
+    const ref = useRef<HTMLDivElement | null>(null);
+    const exportRef = useRef<HTMLDivElement | null>(null);
+    const today = useMemo(() => new Date(), []);
 
-  useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node))
-        setOpen(false);
-      if (exportRef.current && !exportRef.current.contains(e.target as Node))
-        setExportOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
+    useEffect(() => {
+        const onDoc = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node))
+                setOpen(false);
+            if (
+                exportRef.current &&
+                !exportRef.current.contains(e.target as Node)
+            )
+                setExportOpen(false);
+        };
+        document.addEventListener('mousedown', onDoc);
+        return () => document.removeEventListener('mousedown', onDoc);
+    }, []);
 
-  return (
-    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6 mb-5 sm:mb-6">
-      <div className="flex min-w-0 items-center gap-3">
-        {/* #FF: dashboardAvatarGreeting — profile picture before the greeting. */}
-        {SHOW_AVATAR_GREETING &&
-          (avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={avatarUrl}
-              alt={firstName}
-              className="h-11 w-11 shrink-0 rounded-full object-cover ring-1 ring-slate-200 dark:ring-zinc-800"
-            />
-          ) : (
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[15px] font-semibold text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">
-              {(firstName || "?").charAt(0).toUpperCase()}
-            </span>
-          ))}
-        <h1 className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[22px] font-semibold leading-tight tracking-tight text-slate-900 dark:text-zinc-100 sm:text-[28px]">
-          <span>
-            Bonjour{" "}
-            <span className="text-slate-900 dark:text-zinc-100">{firstName}</span>
-          </span>
-          <span className="text-slate-300 dark:text-zinc-600" aria-hidden>
-            ·
-          </span>
-          <span className="text-[17px] font-normal text-slate-600 dark:text-zinc-400 sm:text-xl">
-            {formatLongDate(today)}
-          </span>
-          <span className="text-slate-300 dark:text-zinc-600" aria-hidden>
-            ·
-          </span>
-          <span className="text-[17px] font-normal text-slate-600 dark:text-zinc-400 sm:text-xl">
-            Semaine {getISOWeek(today)}
-          </span>
-        </h1>
-      </div>
-
-      <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap sm:flex-shrink-0">
-        <div className="relative" ref={ref}>
-          <button
-            onClick={() => setOpen((o) => !o)}
-            className="h-9 px-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-800 rounded-md bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
-          >
-            <Calendar size={13} className="text-slate-400 dark:text-zinc-500" />
-            {period}
-            <ChevronDown
-              size={13}
-              className={`text-slate-400 dark:text-zinc-500 transition-transform ${open ? "rotate-180" : ""}`}
-            />
-          </button>
-          {open && (
-            <div className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-md shadow-lg p-1 z-30">
-              {PERIODS.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => {
-                    setPeriod(p);
-                    setOpen(false);
-                  }}
-                  className={`w-full text-left px-2.5 py-1.5 text-[12.5px] rounded transition-colors flex items-center justify-between ${
-                    period === p
-                      ? "text-blue-700 bg-blue-50 dark:text-blue-300 dark:bg-blue-950/40"
-                      : "text-slate-700 hover:bg-slate-50 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                  }`}
-                >
-                  {p}
-                  {period === p && <Check size={12} />}
-                </button>
-              ))}
+    return (
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6 mb-5 sm:mb-6">
+            <div className="flex min-w-0 items-center gap-3">
+                {/* #FF: dashboardAvatarGreeting — profile picture before the greeting. */}
+                {SHOW_AVATAR_GREETING &&
+                    (avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                            src={avatarUrl}
+                            alt={firstName}
+                            className="h-11 w-11 shrink-0 rounded-full object-cover ring-1 ring-slate-200 dark:ring-zinc-800"
+                        />
+                    ) : (
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[15px] font-semibold text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">
+                            {(firstName || '?').charAt(0).toUpperCase()}
+                        </span>
+                    ))}
+                <h1 className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[22px] font-semibold leading-tight tracking-tight text-slate-900 dark:text-zinc-100 sm:text-[28px]">
+                    <span>
+                        Bonjour{' '}
+                        <span className="text-slate-900 dark:text-zinc-100">
+                            {firstName}
+                        </span>
+                    </span>
+                    <span
+                        className="text-slate-300 dark:text-zinc-600"
+                        aria-hidden
+                    >
+                        ·
+                    </span>
+                    <span className="text-[17px] font-normal text-slate-600 dark:text-zinc-400 sm:text-xl">
+                        {formatLongDate(today)}
+                    </span>
+                    <span
+                        className="text-slate-300 dark:text-zinc-600"
+                        aria-hidden
+                    >
+                        ·
+                    </span>
+                    <span className="text-[17px] font-normal text-slate-600 dark:text-zinc-400 sm:text-xl">
+                        Semaine {getISOWeek(today)}
+                    </span>
+                </h1>
             </div>
-          )}
-        </div>
 
-        <div className="relative" ref={exportRef}>
-          <button
-            type="button"
-            onClick={() => setExportOpen((o) => !o)}
-            className="h-9 px-3 sm:px-3.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-800 rounded-md bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
-            title="Exporter la performance de l'équipe en PDF"
-          >
-            <Download size={14} />
-            <span className="hidden sm:inline">Exporter</span>
-            <ChevronDown
-              size={13}
-              className={`text-slate-400 dark:text-zinc-500 transition-transform ${exportOpen ? "rotate-180" : ""}`}
-            />
-          </button>
-          {exportOpen && (
-            <div className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-md shadow-lg p-1 z-30">
-              {(
-                [
-                  { key: "portrait", label: "Vertical" },
-                  { key: "landscape", label: "Horizontal" },
-                ] as const
-              ).map((o) => (
-                <button
-                  key={o.key}
-                  onClick={() => {
-                    setExportOpen(false);
-                    onExport(period, o.key);
-                  }}
-                  className="w-full text-left px-2.5 py-1.5 text-[12.5px] rounded transition-colors flex items-center justify-between text-slate-700 hover:bg-slate-50 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap sm:flex-shrink-0">
+                <div className="relative" ref={ref}>
+                    <button
+                        onClick={() => setOpen((o) => !o)}
+                        className="h-9 px-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-800 rounded-md bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
+                    >
+                        <Calendar
+                            size={13}
+                            className="text-slate-400 dark:text-zinc-500"
+                        />
+                        {period}
+                        <ChevronDown
+                            size={13}
+                            className={`text-slate-400 dark:text-zinc-500 transition-transform ${open ? 'rotate-180' : ''}`}
+                        />
+                    </button>
+                    {open && (
+                        <div className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-md shadow-lg p-1 z-30">
+                            {PERIODS.map((p) => (
+                                <button
+                                    key={p}
+                                    onClick={() => {
+                                        setPeriod(p);
+                                        setOpen(false);
+                                    }}
+                                    className={`w-full text-left px-2.5 py-1.5 text-[12.5px] rounded transition-colors flex items-center justify-between ${
+                                        period === p
+                                            ? 'text-blue-700 bg-blue-50 dark:text-blue-300 dark:bg-blue-950/40'
+                                            : 'text-slate-700 hover:bg-slate-50 dark:text-zinc-300 dark:hover:bg-zinc-800'
+                                    }`}
+                                >
+                                    {p}
+                                    {period === p && <Check size={12} />}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <div className="relative" ref={exportRef}>
+                    <button
+                        type="button"
+                        onClick={() => setExportOpen((o) => !o)}
+                        className="h-9 px-3 sm:px-3.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-800 rounded-md bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
+                        title="Exporter la performance de l'équipe en PDF"
+                    >
+                        <Download size={14} />
+                        <span className="hidden sm:inline">Exporter</span>
+                        <ChevronDown
+                            size={13}
+                            className={`text-slate-400 dark:text-zinc-500 transition-transform ${exportOpen ? 'rotate-180' : ''}`}
+                        />
+                    </button>
+                    {exportOpen && (
+                        <div className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-md shadow-lg p-1 z-30">
+                            {(
+                                [
+                                    { key: 'portrait', label: 'Vertical' },
+                                    { key: 'landscape', label: 'Horizontal' },
+                                ] as const
+                            ).map((o) => (
+                                <button
+                                    key={o.key}
+                                    onClick={() => {
+                                        setExportOpen(false);
+                                        onExport(period, o.key);
+                                    }}
+                                    className="w-full text-left px-2.5 py-1.5 text-[12.5px] rounded transition-colors flex items-center justify-between text-slate-700 hover:bg-slate-50 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                                >
+                                    {o.label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <Link
+                    href="/campaigns"
+                    className="h-9 px-3 sm:px-3.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-white rounded-md transition-colors hover:opacity-90"
+                    style={{ background: '#0052D9' }}
                 >
-                  {o.label}
-                </button>
-              ))}
+                    <Rocket size={14} />
+                    <span className="hidden sm:inline">
+                        Lancer une campagne
+                    </span>
+                    <span className="sm:hidden">Campagne</span>
+                </Link>
             </div>
-          )}
         </div>
-
-        <Link
-          href="/campaigns"
-          className="h-9 px-3 sm:px-3.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-white rounded-md transition-colors hover:opacity-90"
-          style={{ background: "#0052D9" }}
-        >
-          <Rocket size={14} />
-          <span className="hidden sm:inline">Lancer une campagne</span>
-          <span className="sm:hidden">Campagne</span>
-        </Link>
-      </div>
-    </div>
-  );
+    );
 }
 
 /* ============================================================
@@ -709,132 +712,131 @@ function PageHeader({
    ============================================================ */
 
 const PRIORITY_VISUAL: Record<
-  PriorityItem["key"],
-  { icon: LucideIcon; tone: Tone }
+    PriorityItem['key'],
+    { icon: LucideIcon; tone: Tone }
 > = {
-  rdv_today: { icon: Calendar, tone: "blue" },
-  stale_conversations: { icon: MessageSquare, tone: "amber" },
-  unread_responses: { icon: Zap, tone: "violet" },
-  proposals_to_follow: { icon: Target, tone: "green" },
-  active_campaigns: { icon: Megaphone, tone: "cyan" },
-  pending_workflows: { icon: Workflow, tone: "cyan" },
+    rdv_today: { icon: Calendar, tone: 'blue' },
+    stale_conversations: { icon: MessageSquare, tone: 'amber' },
+    unread_responses: { icon: Zap, tone: 'violet' },
+    proposals_to_follow: { icon: Target, tone: 'green' },
+    active_campaigns: { icon: Megaphone, tone: 'cyan' },
+    pending_workflows: { icon: Workflow, tone: 'cyan' },
 };
 
 const pulseDotStyle: CSSProperties = {
-  background: "#0052D9",
-  animation: "andoxa-pulseDot 1.6s ease-in-out infinite",
+    background: '#0052D9',
+    animation: 'andoxa-pulseDot 1.6s ease-in-out infinite',
 };
 
 function relativeTimeFr(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diffMs / 60000);
-  if (m < 1) return "à l'instant";
-  if (m < 60) return `il y a ${m} min`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `il y a ${h} h`;
-  const d = Math.floor(h / 24);
-  return `il y a ${d} j`;
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const m = Math.floor(diffMs / 60000);
+    if (m < 1) return "à l'instant";
+    if (m < 60) return `il y a ${m} min`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `il y a ${h} h`;
+    const d = Math.floor(h / 24);
+    return `il y a ${d} j`;
 }
 
 function PrioritiesBand({
-  data,
-  isLoading,
+    data,
+    isLoading,
 }: {
-  data: PrioritiesPayload | undefined;
-  isLoading: boolean;
+    data: PrioritiesPayload | undefined;
+    isLoading: boolean;
 }) {
-  const items = data?.items ?? [];
+    const items = data?.items ?? [];
 
-  return (
-    <section
-      className="rounded-xl border border-blue-100 dark:border-blue-900/40 p-4 sm:p-5 mb-5 sm:mb-6 bg-[linear-gradient(180deg,rgba(232,240,253,0.55)_0%,rgba(232,240,253,0.15)_100%)] dark:bg-[linear-gradient(180deg,rgba(30,58,138,0.18)_0%,rgba(30,58,138,0.05)_100%)]"
-    >
-      <div className="flex items-center justify-between mb-3 sm:mb-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={pulseDotStyle}
-            />
-            <span className="text-[10.5px] font-semibold tracking-[0.08em] uppercase text-blue-700 dark:text-blue-300">
-              Cockpit du matin
-            </span>
-          </div>
-          <h2 className="mt-1 text-[16px] sm:text-[17px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
-            Mes priorités du jour
-          </h2>
-        </div>
-        <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400">
-          {data?.generated_at
-            ? `Mis à jour ${relativeTimeFr(data.generated_at)}`
-            : isLoading
-              ? "Chargement…"
-              : ""}
-        </div>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
-        {(isLoading && items.length === 0
-          ? Array.from({ length: 5 }).map((_, i) => ({
-              key: `s-${i}` as never,
-              count: 0,
-              label: "",
-              sub: "",
-              href: "#",
-              loading: true,
-            }))
-          : items.map((it) => ({ ...it, loading: false }))
-        ).map((p, i) => {
-          if (p.loading) {
-            return (
-              <div
-                key={i}
-                className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg p-3.5 animate-pulse"
-              >
-                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-zinc-800 mb-2.5" />
-                <div className="h-6 w-10 bg-slate-100 dark:bg-zinc-800 rounded mb-1.5" />
-                <div className="h-3 w-24 bg-slate-100 dark:bg-zinc-800 rounded" />
-              </div>
-            );
-          }
-          const visual =
-            PRIORITY_VISUAL[p.key as PriorityItem["key"]] ?? {
-              icon: Target,
-              tone: "slate" as Tone,
-            };
-          const t = TONE_BG[visual.tone];
-          const Icon = visual.icon;
-          return (
-            <a
-              key={p.key as string}
-              href={p.href}
-              className="text-left bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg p-3 sm:p-3.5 hover:border-blue-200 dark:hover:border-blue-900/60 hover:shadow-[0_2px_8px_rgba(0,82,217,0.08)] transition-all group block"
-            >
-              <div className="flex items-start justify-between mb-2 sm:mb-2.5">
-                <div
-                  className={`w-8 h-8 rounded-lg ${t.bg} ${t.text} flex items-center justify-center`}
-                >
-                  <Icon size={16} />
+    return (
+        <section className="rounded-xl border border-blue-100 dark:border-blue-900/40 p-4 sm:p-5 mb-5 sm:mb-6 bg-[linear-gradient(180deg,rgba(232,240,253,0.55)_0%,rgba(232,240,253,0.15)_100%)] dark:bg-[linear-gradient(180deg,rgba(30,58,138,0.18)_0%,rgba(30,58,138,0.05)_100%)]">
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
+                <div>
+                    <div className="flex items-center gap-2">
+                        <span
+                            className="w-1.5 h-1.5 rounded-full"
+                            style={pulseDotStyle}
+                        />
+                        <span className="text-[10.5px] font-semibold tracking-[0.08em] uppercase text-blue-700 dark:text-blue-300">
+                            Cockpit du matin
+                        </span>
+                    </div>
+                    <h2 className="mt-1 text-[16px] sm:text-[17px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
+                        Mes priorités du jour
+                    </h2>
                 </div>
-                <ArrowRight
-                  size={14}
-                  className="text-slate-300 dark:text-zinc-600 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors mt-1"
-                />
-              </div>
-              <div className="text-[22px] sm:text-[26px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100 leading-none mb-1 sm:mb-1.5">
-                {p.count}
-              </div>
-              <div className="text-[12px] sm:text-[12.5px] font-medium text-slate-800 dark:text-zinc-200 leading-tight">
-                {p.label}
-              </div>
-              <div className="mt-1 text-[11px] sm:text-[11.5px] text-slate-500 dark:text-zinc-400 truncate">
-                {p.sub}
-              </div>
-            </a>
-          );
-        })}
-      </div>
-    </section>
-  );
+                <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400">
+                    {data?.generated_at
+                        ? `Mis à jour ${relativeTimeFr(data.generated_at)}`
+                        : isLoading
+                          ? 'Chargement…'
+                          : ''}
+                </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
+                {(isLoading && items.length === 0
+                    ? Array.from({ length: 5 }).map((_, i) => ({
+                          key: `s-${i}` as never,
+                          count: 0,
+                          label: '',
+                          sub: '',
+                          href: '#',
+                          loading: true,
+                      }))
+                    : items.map((it) => ({ ...it, loading: false }))
+                ).map((p, i) => {
+                    if (p.loading) {
+                        return (
+                            <div
+                                key={i}
+                                className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg p-3.5 animate-pulse"
+                            >
+                                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-zinc-800 mb-2.5" />
+                                <div className="h-6 w-10 bg-slate-100 dark:bg-zinc-800 rounded mb-1.5" />
+                                <div className="h-3 w-24 bg-slate-100 dark:bg-zinc-800 rounded" />
+                            </div>
+                        );
+                    }
+                    const visual = PRIORITY_VISUAL[
+                        p.key as PriorityItem['key']
+                    ] ?? {
+                        icon: Target,
+                        tone: 'slate' as Tone,
+                    };
+                    const t = TONE_BG[visual.tone];
+                    const Icon = visual.icon;
+                    return (
+                        <a
+                            key={p.key as string}
+                            href={p.href}
+                            className="text-left bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg p-3 sm:p-3.5 hover:border-blue-200 dark:hover:border-blue-900/60 hover:shadow-[0_2px_8px_rgba(0,82,217,0.08)] transition-all group block"
+                        >
+                            <div className="flex items-start justify-between mb-2 sm:mb-2.5">
+                                <div
+                                    className={`w-8 h-8 rounded-lg ${t.bg} ${t.text} flex items-center justify-center`}
+                                >
+                                    <Icon size={16} />
+                                </div>
+                                <ArrowRight
+                                    size={14}
+                                    className="text-slate-300 dark:text-zinc-600 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors mt-1"
+                                />
+                            </div>
+                            <div className="text-[22px] sm:text-[26px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100 leading-none mb-1 sm:mb-1.5">
+                                {p.count}
+                            </div>
+                            <div className="text-[12px] sm:text-[12.5px] font-medium text-slate-800 dark:text-zinc-200 leading-tight">
+                                {p.label}
+                            </div>
+                            <div className="mt-1 text-[11px] sm:text-[11.5px] text-slate-500 dark:text-zinc-400 truncate">
+                                {p.sub}
+                            </div>
+                        </a>
+                    );
+                })}
+            </div>
+        </section>
+    );
 }
 
 /* ============================================================
@@ -842,116 +844,116 @@ function PrioritiesBand({
    ============================================================ */
 
 interface KpiCardData {
-  label: string;
-  value: string;
-  sub: string;
-  side?: string;
-  trend: number;
-  sparkData: number[];
-  sparkColor?: string;
+    label: string;
+    value: string;
+    sub: string;
+    side?: string;
+    trend: number;
+    sparkData: number[];
+    sparkColor?: string;
 }
 
 function KpiCard({ k, loading }: { k: KpiCardData | null; loading: boolean }) {
-  if (loading || !k) {
+    if (loading || !k) {
+        return (
+            <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5 animate-pulse flex flex-col h-full min-h-[168px]">
+                <div className="h-3 w-24 bg-slate-100 dark:bg-zinc-800 rounded" />
+                <div className="mt-4 h-8 w-16 bg-slate-100 dark:bg-zinc-800 rounded" />
+                <div className="mt-3 h-3 w-32 bg-slate-100 dark:bg-zinc-800 rounded" />
+                <div className="mt-auto h-10 w-full bg-slate-100 dark:bg-zinc-800 rounded" />
+            </div>
+        );
+    }
     return (
-      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5 animate-pulse flex flex-col h-full min-h-[168px]">
-        <div className="h-3 w-24 bg-slate-100 dark:bg-zinc-800 rounded" />
-        <div className="mt-4 h-8 w-16 bg-slate-100 dark:bg-zinc-800 rounded" />
-        <div className="mt-3 h-3 w-32 bg-slate-100 dark:bg-zinc-800 rounded" />
-        <div className="mt-auto h-10 w-full bg-slate-100 dark:bg-zinc-800 rounded" />
-      </div>
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5 hover:shadow-[0_2px_8px_rgba(15,23,42,0.05)] transition-all flex flex-col h-full min-h-[168px]">
+            <div className="flex items-center justify-between gap-2 shrink-0">
+                <div className="text-[10px] sm:text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500 dark:text-zinc-400 truncate">
+                    {k.label}
+                </div>
+                <Trend delta={k.trend} />
+            </div>
+            <div className="mt-3 flex-1 flex flex-col min-h-0">
+                <div className="flex items-end justify-between gap-3 flex-1 min-h-0">
+                    <div className="min-w-0 shrink-0">
+                        <div className="text-[26px] sm:text-[32px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100 leading-none">
+                            {k.value}
+                        </div>
+                        <div className="mt-1.5 text-[12px] sm:text-[12.5px] text-slate-600 dark:text-zinc-400">
+                            {k.sub}
+                        </div>
+                    </div>
+                    <div className="flex-1 min-w-[72px] min-h-10 self-stretch">
+                        <Sparkline
+                            data={k.sparkData}
+                            color={k.sparkColor || '#0052D9'}
+                            label={k.label}
+                        />
+                    </div>
+                </div>
+            </div>
+            {k.side ? (
+                <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 text-[11px] sm:text-[11.5px] text-slate-500 dark:text-zinc-400 shrink-0">
+                    {k.side}
+                </div>
+            ) : null}
+        </div>
     );
-  }
-  return (
-    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5 hover:shadow-[0_2px_8px_rgba(15,23,42,0.05)] transition-all flex flex-col h-full min-h-[168px]">
-      <div className="flex items-center justify-between gap-2 shrink-0">
-        <div className="text-[10px] sm:text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500 dark:text-zinc-400 truncate">
-          {k.label}
-        </div>
-        <Trend delta={k.trend} />
-      </div>
-      <div className="mt-3 flex-1 flex flex-col min-h-0">
-        <div className="flex items-end justify-between gap-3 flex-1 min-h-0">
-          <div className="min-w-0 shrink-0">
-            <div className="text-[26px] sm:text-[32px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100 leading-none">
-              {k.value}
-            </div>
-            <div className="mt-1.5 text-[12px] sm:text-[12.5px] text-slate-600 dark:text-zinc-400">
-              {k.sub}
-            </div>
-          </div>
-          <div className="flex-1 min-w-[72px] min-h-10 self-stretch">
-            <Sparkline
-              data={k.sparkData}
-              color={k.sparkColor || "#0052D9"}
-              label={k.label}
-            />
-          </div>
-        </div>
-      </div>
-      {k.side ? (
-        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 text-[11px] sm:text-[11.5px] text-slate-500 dark:text-zinc-400 shrink-0">
-          {k.side}
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 function KpiGrid({
-  stats,
-  isLoading,
+    stats,
+    isLoading,
 }: {
-  stats: DashboardStatsPayload | undefined;
-  isLoading: boolean;
+    stats: DashboardStatsPayload | undefined;
+    isLoading: boolean;
 }) {
-  const cards: (KpiCardData | null)[] = useMemo(() => {
-    if (!stats) return [null, null, null, null];
-    const { pipeline, rdv, linkedin, closings } = stats;
-    const stagesText = `${pipeline.by_stage.proposal} en proposition · ${pipeline.by_stage.qualified} qualifiés · ${pipeline.by_stage.rdv} en RDV`;
+    const cards: (KpiCardData | null)[] = useMemo(() => {
+        if (!stats) return [null, null, null, null];
+        const { pipeline, rdv, linkedin, closings } = stats;
+        const stagesText = `${pipeline.by_stage.proposal} en proposition · ${pipeline.by_stage.qualified} qualifiés · ${pipeline.by_stage.rdv} en RDV`;
 
-    return [
-      {
-        label: "Pipeline actif",
-        value: String(pipeline.active_total),
-        sub: "prospects en cours",
-        side: stagesText,
-        trend: pipeline.trend_pts,
-        sparkData: pipeline.sparkline,
-      },
-      {
-        label: "RDV bookés",
-        value: String(rdv.booked_count),
-        sub: "rendez-vous planifiés",
-        trend: rdv.trend_pts,
-        sparkData: rdv.sparkline,
-      },
-      {
-        label: "Taux de réponse LinkedIn",
-        value: `${linkedin.response_rate_pct}%`,
-        sub: `${linkedin.responses_received} réponse${linkedin.responses_received > 1 ? "s" : ""} · ${linkedin.invitations_sent} invitation${linkedin.invitations_sent > 1 ? "s" : ""}`,
-        side: `Acceptation ${linkedin.acceptance_rate_pct}%`,
-        trend: linkedin.trend_pts,
-        sparkData: linkedin.sparkline,
-      },
-      {
-        label: "Closings",
-        value: String(closings.won_count),
-        sub: "deals gagnés sur la période",
-        trend: closings.trend_pts,
-        sparkData: closings.sparkline,
-        sparkColor: closings.trend_pts < 0 ? "#ef4444" : "#0052D9",
-      },
-    ];
-  }, [stats]);
+        return [
+            {
+                label: 'Pipeline actif',
+                value: String(pipeline.active_total),
+                sub: 'prospects en cours',
+                side: stagesText,
+                trend: pipeline.trend_pts,
+                sparkData: pipeline.sparkline,
+            },
+            {
+                label: 'RDV bookés',
+                value: String(rdv.booked_count),
+                sub: 'rendez-vous planifiés',
+                trend: rdv.trend_pts,
+                sparkData: rdv.sparkline,
+            },
+            {
+                label: 'Taux de réponse LinkedIn',
+                value: `${linkedin.response_rate_pct}%`,
+                sub: `${linkedin.responses_received} réponse${linkedin.responses_received > 1 ? 's' : ''} · ${linkedin.invitations_sent} invitation${linkedin.invitations_sent > 1 ? 's' : ''}`,
+                side: `Acceptation ${linkedin.acceptance_rate_pct}%`,
+                trend: linkedin.trend_pts,
+                sparkData: linkedin.sparkline,
+            },
+            {
+                label: 'Closings',
+                value: String(closings.won_count),
+                sub: 'deals gagnés sur la période',
+                trend: closings.trend_pts,
+                sparkData: closings.sparkline,
+                sparkColor: closings.trend_pts < 0 ? '#ef4444' : '#0052D9',
+            },
+        ];
+    }, [stats]);
 
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5 sm:mb-6 items-stretch">
-      {cards.map((k, i) => (
-        <KpiCard key={i} k={k} loading={isLoading} />
-      ))}
-    </div>
-  );
+    return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5 sm:mb-6 items-stretch">
+            {cards.map((k, i) => (
+                <KpiCard key={i} k={k} loading={isLoading} />
+            ))}
+        </div>
+    );
 }
 
 /* ============================================================
@@ -959,130 +961,139 @@ function KpiGrid({
    ============================================================ */
 
 function FunnelCard({
-  funnel,
-  isLoading,
+    funnel,
+    isLoading,
 }: {
-  funnel: FunnelPayload | undefined;
-  isLoading: boolean;
+    funnel: FunnelPayload | undefined;
+    isLoading: boolean;
 }) {
-  const steps = funnel?.steps ?? [];
-  const first = steps[0]?.count ?? 0;
-  const MIN_W = 14;
+    const steps = funnel?.steps ?? [];
+    const first = steps[0]?.count ?? 0;
+    const MIN_W = 14;
 
-  return (
-    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
-      <div className="flex items-center justify-between mb-1">
-        <div>
-          <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
-            Funnel de conversion
-          </h3>
-          <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400 mt-0.5">
-            Du premier contact au closing
-          </div>
-        </div>
-      </div>
-      <div className="mt-4 sm:mt-5 space-y-2.5">
-        {(isLoading && steps.length === 0
-          ? (Array.from({ length: 5 }) as null[])
-          : steps
-        ).map((s, i) => {
-          if (!s) {
-            return (
-              <div key={i} className="space-y-1">
-                <div className="h-3 w-1/3 bg-slate-100 dark:bg-zinc-800 rounded animate-pulse" />
-                <div className="h-7 bg-slate-100 dark:bg-zinc-800 rounded-md animate-pulse" />
-              </div>
-            );
-          }
-          const raw = first > 0 ? (s.count / first) * 100 : 0;
-          // 0% means 0% — don't show a phantom sliver. Otherwise reserve
-          // a baseline width so the gradient is readable even at 1–2%.
-          const w =
-            s.count === 0 ? 0 : first > 0 ? MIN_W + (raw / 100) * (100 - MIN_W) : MIN_W;
-          return (
-            <div key={s.key} className="group">
-              <div className="flex items-center justify-between mb-1 gap-2">
-                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-                  <span className="text-[11px] font-mono text-slate-400 dark:text-zinc-500 w-3 tabular-nums shrink-0">
-                    {i + 1}
-                  </span>
-                  <span className="text-[12.5px] sm:text-[13px] text-slate-700 dark:text-zinc-300 font-medium truncate">
-                    {s.label}
-                  </span>
-                  {s.conversion_pct_from_prev != null && (
-                    <Pill tone="blue">
-                      {s.conversion_pct_from_prev}% de passage
-                    </Pill>
-                  )}
+    return (
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
+            <div className="flex items-center justify-between mb-1">
+                <div>
+                    <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
+                        Funnel de conversion
+                    </h3>
+                    <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                        Du premier contact au closing
+                    </div>
                 </div>
-                <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-                  <Trend delta={s.trend_pts} suffix="" />
-                  <span className="text-[13px] sm:text-[14px] font-semibold tabular-nums text-slate-900 dark:text-zinc-100 w-10 sm:w-12 text-right">
-                    {s.count}
-                  </span>
-                </div>
-              </div>
-              <div className="h-7 rounded-md relative overflow-hidden bg-[rgba(232,240,253,0.5)] dark:bg-blue-950/30">
-                <div
-                  className="h-full rounded-md transition-all group-hover:brightness-110"
-                  style={{
-                    width: `${w}%`,
-                    background:
-                      "linear-gradient(90deg, #0052D9 0%, #1A6AFF 100%)",
-                  }}
-                />
-              </div>
             </div>
-          );
-        })}
-      </div>
-      <div className="mt-4 sm:mt-5 pt-4 border-t border-slate-100 dark:border-zinc-800 grid grid-cols-3 gap-3 sm:gap-4">
-        <FunnelStat
-          label="Taux global"
-          value={funnel ? `${funnel.global_rate_pct} %` : "—"}
-          help="invitation → closing"
-        />
-        <FunnelStat
-          label="Cycle moyen"
-          value={
-            funnel?.avg_cycle_days != null
-              ? `${funnel.avg_cycle_days} jours`
-              : "—"
-          }
-          help="premier message → RDV"
-        />
-        <FunnelStat
-          label="Pipeline cible"
-          value={
-            funnel ? `${funnel.pipeline_target_closings} closings` : "—"
-          }
-          help="à période iso"
-        />
-      </div>
-    </div>
-  );
+            <div className="mt-4 sm:mt-5 space-y-2.5">
+                {(isLoading && steps.length === 0
+                    ? (Array.from({ length: 5 }) as null[])
+                    : steps
+                ).map((s, i) => {
+                    if (!s) {
+                        return (
+                            <div key={i} className="space-y-1">
+                                <div className="h-3 w-1/3 bg-slate-100 dark:bg-zinc-800 rounded animate-pulse" />
+                                <div className="h-7 bg-slate-100 dark:bg-zinc-800 rounded-md animate-pulse" />
+                            </div>
+                        );
+                    }
+                    const raw = first > 0 ? (s.count / first) * 100 : 0;
+                    // 0% means 0% — don't show a phantom sliver. Otherwise reserve
+                    // a baseline width so the gradient is readable even at 1–2%.
+                    const w =
+                        s.count === 0
+                            ? 0
+                            : first > 0
+                              ? MIN_W + (raw / 100) * (100 - MIN_W)
+                              : MIN_W;
+                    return (
+                        <div key={s.key} className="group">
+                            <div className="flex items-center justify-between mb-1 gap-2">
+                                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                                    <span className="text-[11px] font-mono text-slate-400 dark:text-zinc-500 w-3 tabular-nums shrink-0">
+                                        {i + 1}
+                                    </span>
+                                    <span className="text-[12.5px] sm:text-[13px] text-slate-700 dark:text-zinc-300 font-medium truncate">
+                                        {s.label}
+                                    </span>
+                                    {s.conversion_pct_from_prev != null && (
+                                        <Pill tone="blue">
+                                            {s.conversion_pct_from_prev}% de
+                                            passage
+                                        </Pill>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                                    <Trend delta={s.trend_pts} suffix="" />
+                                    <span className="text-[13px] sm:text-[14px] font-semibold tabular-nums text-slate-900 dark:text-zinc-100 w-10 sm:w-12 text-right">
+                                        {s.count}
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="h-7 rounded-md relative overflow-hidden bg-[rgba(232,240,253,0.5)] dark:bg-blue-950/30">
+                                <div
+                                    className="h-full rounded-md transition-all group-hover:brightness-110"
+                                    style={{
+                                        width: `${w}%`,
+                                        background:
+                                            'linear-gradient(90deg, #0052D9 0%, #1A6AFF 100%)',
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+            <div className="mt-4 sm:mt-5 pt-4 border-t border-slate-100 dark:border-zinc-800 grid grid-cols-3 gap-3 sm:gap-4">
+                <FunnelStat
+                    label="Taux global"
+                    value={funnel ? `${funnel.global_rate_pct} %` : '—'}
+                    help="invitation → closing"
+                />
+                <FunnelStat
+                    label="Cycle moyen"
+                    value={
+                        funnel?.avg_cycle_days != null
+                            ? `${funnel.avg_cycle_days} jours`
+                            : '—'
+                    }
+                    help="premier message → RDV"
+                />
+                <FunnelStat
+                    label="Pipeline cible"
+                    value={
+                        funnel
+                            ? `${funnel.pipeline_target_closings} closings`
+                            : '—'
+                    }
+                    help="à période iso"
+                />
+            </div>
+        </div>
+    );
 }
 
 function FunnelStat({
-  label,
-  value,
-  help,
+    label,
+    value,
+    help,
 }: {
-  label: string;
-  value: string;
-  help: string;
+    label: string;
+    value: string;
+    help: string;
 }) {
-  return (
-    <div>
-      <div className="text-[10px] sm:text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500 dark:text-zinc-400">
-        {label}
-      </div>
-      <div className="mt-1 text-[16px] sm:text-[18px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
-        {value}
-      </div>
-      <div className="text-[10.5px] sm:text-[11px] text-slate-500 dark:text-zinc-400">{help}</div>
-    </div>
-  );
+    return (
+        <div>
+            <div className="text-[10px] sm:text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500 dark:text-zinc-400">
+                {label}
+            </div>
+            <div className="mt-1 text-[16px] sm:text-[18px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
+                {value}
+            </div>
+            <div className="text-[10.5px] sm:text-[11px] text-slate-500 dark:text-zinc-400">
+                {help}
+            </div>
+        </div>
+    );
 }
 
 /* ============================================================
@@ -1090,109 +1101,122 @@ function FunnelStat({
    ============================================================ */
 
 function LegendStat({
-  color,
-  label,
-  value,
+    color,
+    label,
+    value,
 }: {
-  color: string;
-  label: string;
-  value: number;
+    color: string;
+    label: string;
+    value: number;
 }) {
-  return (
-    <div className="flex items-center gap-2 sm:gap-2.5">
-      <div
-        className="w-2.5 h-2.5 rounded-sm shrink-0"
-        style={{ background: color }}
-      />
-      <div className="flex-1 min-w-0">
-        <div className="text-[10.5px] sm:text-[11px] text-slate-500 dark:text-zinc-400 leading-tight">
-          {label}
+    return (
+        <div className="flex items-center gap-2 sm:gap-2.5">
+            <div
+                className="w-2.5 h-2.5 rounded-sm shrink-0"
+                style={{ background: color }}
+            />
+            <div className="flex-1 min-w-0">
+                <div className="text-[10.5px] sm:text-[11px] text-slate-500 dark:text-zinc-400 leading-tight">
+                    {label}
+                </div>
+                <div className="text-[14px] sm:text-[15px] font-semibold tabular-nums text-slate-900 dark:text-zinc-100 leading-tight">
+                    {value}
+                </div>
+            </div>
         </div>
-        <div className="text-[14px] sm:text-[15px] font-semibold tabular-nums text-slate-900 dark:text-zinc-100 leading-tight">
-          {value}
-        </div>
-      </div>
-    </div>
-  );
+    );
 }
 
 function ActivityVolumeCard({
-  stats,
+    stats,
 }: {
-  stats: DashboardStatsPayload | undefined;
+    stats: DashboardStatsPayload | undefined;
 }) {
-  const data = stats?.charts?.activityVolume ?? [];
-  const max = Math.max(
-    ...data.map((a) => a.calls + a.messages + a.bookings),
-    1,
-  );
-  const totalMsgs = data.reduce((s, a) => s + a.messages, 0);
-  const totalCalls = data.reduce((s, a) => s + a.calls, 0);
-  const totalRdvs = data.reduce((s, a) => s + a.bookings, 0);
+    const data = stats?.charts?.activityVolume ?? [];
+    const max = Math.max(
+        ...data.map((a) => a.calls + a.messages + a.bookings),
+        1
+    );
+    const totalMsgs = data.reduce((s, a) => s + a.messages, 0);
+    const totalCalls = data.reduce((s, a) => s + a.calls, 0);
+    const totalRdvs = data.reduce((s, a) => s + a.bookings, 0);
 
-  return (
-    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5 flex flex-col h-full">
-      <div className="flex items-start justify-between mb-1 shrink-0">
-        <div>
-          <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
-            Volume d&apos;activité
-          </h3>
-          <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400 mt-0.5">
-            Messages, appels et RDV — 8 dernières semaines
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-5 sm:mt-6 flex-1 flex items-stretch gap-2 sm:gap-3 min-h-32 px-1">
-        {data.length === 0
-          ? (
-            <div className="w-full text-center text-[12px] text-slate-400 dark:text-zinc-500 self-center">
-              Aucune donnée
-            </div>
-          )
-          : data.map((a, i) => {
-              const total = a.calls + a.messages + a.bookings;
-              const h = (total / max) * 100;
-              const calH = total ? (a.calls / total) * h : 0;
-              const msgH = total ? (a.messages / total) * h : 0;
-              const rdvH = total ? (a.bookings / total) * h : 0;
-              return (
-                <div
-                  key={i}
-                  className="flex-1 flex flex-col items-center group min-w-0 min-h-0"
-                >
-                  <div className="text-[10px] sm:text-[10.5px] font-medium text-slate-500 dark:text-zinc-400 mb-1 sm:mb-1.5 tabular-nums opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                    {total}
-                  </div>
-                  <div className="w-full flex-1 flex flex-col justify-end min-h-0">
-                    <div
-                      className="w-full rounded-t-sm transition-all group-hover:brightness-110"
-                      style={{ height: `${rdvH}%`, background: "#86efac" }}
-                    />
-                    <div
-                      className="w-full transition-all group-hover:brightness-110"
-                      style={{ height: `${msgH}%`, background: "#0052D9" }}
-                    />
-                    <div
-                      className="w-full rounded-b-sm transition-all group-hover:brightness-110"
-                      style={{ height: `${calH}%`, background: "#93c5fd" }}
-                    />
-                  </div>
-                  <div className="mt-2 text-[10.5px] sm:text-[11px] text-slate-500 dark:text-zinc-400 font-medium truncate w-full text-center shrink-0">
-                    {a.week.replace("Sem. ", "")}
-                  </div>
+    return (
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5 flex flex-col h-full">
+            <div className="flex items-start justify-between mb-1 shrink-0">
+                <div>
+                    <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
+                        Volume d&apos;activité
+                    </h3>
+                    <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                        Messages, appels et RDV — 8 dernières semaines
+                    </div>
                 </div>
-              );
-            })}
-      </div>
+            </div>
 
-      <div className="mt-4 sm:mt-5 pt-4 border-t border-slate-100 dark:border-zinc-800 grid grid-cols-3 gap-2 sm:gap-3 shrink-0">
-        <LegendStat color="#0052D9" label="Messages" value={totalMsgs} />
-        <LegendStat color="#93c5fd" label="Appels" value={totalCalls} />
-        <LegendStat color="#86efac" label="RDV" value={totalRdvs} />
-      </div>
-    </div>
-  );
+            <div className="mt-5 sm:mt-6 flex-1 flex items-stretch gap-2 sm:gap-3 min-h-32 px-1">
+                {data.length === 0 ? (
+                    <div className="w-full text-center text-[12px] text-slate-400 dark:text-zinc-500 self-center">
+                        Aucune donnée
+                    </div>
+                ) : (
+                    data.map((a, i) => {
+                        const total = a.calls + a.messages + a.bookings;
+                        const h = (total / max) * 100;
+                        const calH = total ? (a.calls / total) * h : 0;
+                        const msgH = total ? (a.messages / total) * h : 0;
+                        const rdvH = total ? (a.bookings / total) * h : 0;
+                        return (
+                            <div
+                                key={i}
+                                className="flex-1 flex flex-col items-center group min-w-0 min-h-0"
+                            >
+                                <div className="text-[10px] sm:text-[10.5px] font-medium text-slate-500 dark:text-zinc-400 mb-1 sm:mb-1.5 tabular-nums opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                    {total}
+                                </div>
+                                <div className="w-full flex-1 flex flex-col justify-end min-h-0">
+                                    <div
+                                        className="w-full rounded-t-sm transition-all group-hover:brightness-110"
+                                        style={{
+                                            height: `${rdvH}%`,
+                                            background: '#86efac',
+                                        }}
+                                    />
+                                    <div
+                                        className="w-full transition-all group-hover:brightness-110"
+                                        style={{
+                                            height: `${msgH}%`,
+                                            background: '#0052D9',
+                                        }}
+                                    />
+                                    <div
+                                        className="w-full rounded-b-sm transition-all group-hover:brightness-110"
+                                        style={{
+                                            height: `${calH}%`,
+                                            background: '#93c5fd',
+                                        }}
+                                    />
+                                </div>
+                                <div className="mt-2 text-[10.5px] sm:text-[11px] text-slate-500 dark:text-zinc-400 font-medium truncate w-full text-center shrink-0">
+                                    {a.week.replace('Sem. ', '')}
+                                </div>
+                            </div>
+                        );
+                    })
+                )}
+            </div>
+
+            <div className="mt-4 sm:mt-5 pt-4 border-t border-slate-100 dark:border-zinc-800 grid grid-cols-3 gap-2 sm:gap-3 shrink-0">
+                <LegendStat
+                    color="#0052D9"
+                    label="Messages"
+                    value={totalMsgs}
+                />
+                <LegendStat color="#93c5fd" label="Appels" value={totalCalls} />
+                <LegendStat color="#86efac" label="RDV" value={totalRdvs} />
+            </div>
+        </div>
+    );
 }
 
 /* ============================================================
@@ -1200,89 +1224,100 @@ function ActivityVolumeCard({
    ============================================================ */
 
 function TopDealsCard({
-  data = [],
-  isLoading,
+    data = [],
+    isLoading,
 }: {
-  data: TopDealRow[] | undefined;
-  isLoading: boolean;
+    data: TopDealRow[] | undefined;
+    isLoading: boolean;
 }) {
-
-  return (
-    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
-      <div className="flex items-center justify-between mb-3 sm:mb-4">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300 flex items-center justify-center">
-            <Flame size={15} />
-          </div>
-          <div>
-            <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
-              Top deals en cours
-            </h3>
-            <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400">
-              5 prospects les plus chauds
-            </div>
-          </div>
-        </div>
-        <a
-          href="/crm?view=pipeline"
-          className="text-[12px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300"
-        >
-          Tout le pipeline →
-        </a>
-      </div>
-      <div className="divide-y divide-slate-100 dark:divide-zinc-800">
-        {isLoading
-          ? Array.from({ length: 5 }).map((_, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-3 py-2.5 animate-pulse"
-              >
-                <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-zinc-800" />
-                <div className="flex-1 space-y-1.5">
-                  <div className="h-3 w-1/2 bg-slate-100 dark:bg-zinc-800 rounded" />
-                  <div className="h-3 w-1/3 bg-slate-100 dark:bg-zinc-800 rounded" />
+    return (
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
+                <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300 flex items-center justify-center">
+                        <Flame size={15} />
+                    </div>
+                    <div>
+                        <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
+                            Top deals en cours
+                        </h3>
+                        <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400">
+                            5 prospects les plus chauds
+                        </div>
+                    </div>
                 </div>
-              </div>
-            ))
-          : data.length === 0
-            ? <div className="py-8 text-center text-[12.5px] text-slate-500 dark:text-zinc-400">
-                Aucun deal actif pour le moment.
-              </div>
-            : data.map((d) => (
                 <a
-                  key={d.prospect_id}
-                  href={d.href}
-                  className="flex items-center gap-3 py-2.5 hover:bg-slate-50/60 dark:hover:bg-zinc-800/60 -mx-2 px-2 rounded transition-colors"
+                    href="/crm?view=pipeline"
+                    className="text-[12px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300"
                 >
-                  <Avatar initials={d.initials} size={32} photo={d.avatar_url} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 sm:gap-2">
-                      <span className="text-[12.5px] sm:text-[13px] font-medium text-slate-900 dark:text-zinc-100 truncate">
-                        {d.name}
-                      </span>
-                      <Pill tone={STAGE_TONE[d.stage] ?? "slate"}>
-                        {d.stage_label}
-                      </Pill>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[11px] sm:text-[11.5px] text-slate-500 dark:text-zinc-400 mt-0.5">
-                      {d.company && (
-                        <>
-                          <span className="truncate">{d.company}</span>
-                          <span className="text-slate-300 dark:text-zinc-600">·</span>
-                        </>
-                      )}
-                      <span className="truncate">{d.last_activity_label}</span>
-                    </div>
-                  </div>
-                  <span className="hidden sm:inline-flex text-[11.5px] font-medium text-blue-600 dark:text-blue-400 px-2 py-1 rounded items-center gap-1 flex-shrink-0">
-                    Voir
-                    <ArrowRight size={12} />
-                  </span>
+                    Tout le pipeline →
                 </a>
-              ))}
-      </div>
-    </div>
-  );
+            </div>
+            <div className="divide-y divide-slate-100 dark:divide-zinc-800">
+                {isLoading ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                        <div
+                            key={i}
+                            className="flex items-center gap-3 py-2.5 animate-pulse"
+                        >
+                            <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-zinc-800" />
+                            <div className="flex-1 space-y-1.5">
+                                <div className="h-3 w-1/2 bg-slate-100 dark:bg-zinc-800 rounded" />
+                                <div className="h-3 w-1/3 bg-slate-100 dark:bg-zinc-800 rounded" />
+                            </div>
+                        </div>
+                    ))
+                ) : data.length === 0 ? (
+                    <div className="py-8 text-center text-[12.5px] text-slate-500 dark:text-zinc-400">
+                        Aucun deal actif pour le moment.
+                    </div>
+                ) : (
+                    data.map((d) => (
+                        <a
+                            key={d.prospect_id}
+                            href={d.href}
+                            className="flex items-center gap-3 py-2.5 hover:bg-slate-50/60 dark:hover:bg-zinc-800/60 -mx-2 px-2 rounded transition-colors"
+                        >
+                            <Avatar
+                                initials={d.initials}
+                                size={32}
+                                photo={d.avatar_url}
+                            />
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 sm:gap-2">
+                                    <span className="text-[12.5px] sm:text-[13px] font-medium text-slate-900 dark:text-zinc-100 truncate">
+                                        {d.name}
+                                    </span>
+                                    <Pill tone={STAGE_TONE[d.stage] ?? 'slate'}>
+                                        {d.stage_label}
+                                    </Pill>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-[11px] sm:text-[11.5px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                                    {d.company && (
+                                        <>
+                                            <span className="truncate">
+                                                {d.company}
+                                            </span>
+                                            <span className="text-slate-300 dark:text-zinc-600">
+                                                ·
+                                            </span>
+                                        </>
+                                    )}
+                                    <span className="truncate">
+                                        {d.last_activity_label}
+                                    </span>
+                                </div>
+                            </div>
+                            <span className="hidden sm:inline-flex text-[11.5px] font-medium text-blue-600 dark:text-blue-400 px-2 py-1 rounded items-center gap-1 flex-shrink-0">
+                                Voir
+                                <ArrowRight size={12} />
+                            </span>
+                        </a>
+                    ))
+                )}
+            </div>
+        </div>
+    );
 }
 
 /* ============================================================
@@ -1290,98 +1325,103 @@ function TopDealsCard({
    ============================================================ */
 
 function AtRiskCard({
-  data = [],
-  isLoading,
+    data = [],
+    isLoading,
 }: {
-  data: AtRiskRow[] | undefined;
-  isLoading: boolean;
+    data: AtRiskRow[] | undefined;
+    isLoading: boolean;
 }) {
+    const sevColor: Record<AtRiskRow['severity'], string> = {
+        high: 'text-rose-600 bg-rose-50 dark:text-rose-300 dark:bg-rose-950/40',
+        med: 'text-amber-600 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/40',
+        low: 'text-slate-500 bg-slate-100 dark:text-zinc-400 dark:bg-zinc-800',
+    };
 
-  const sevColor: Record<AtRiskRow["severity"], string> = {
-    high: "text-rose-600 bg-rose-50 dark:text-rose-300 dark:bg-rose-950/40",
-    med: "text-amber-600 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/40",
-    low: "text-slate-500 bg-slate-100 dark:text-zinc-400 dark:bg-zinc-800",
-  };
-
-  return (
-    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
-      <div className="flex items-center justify-between mb-3 sm:mb-4">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 flex items-center justify-center">
-            <Snowflake size={15} />
-          </div>
-          <div>
-            <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
-              Deals à risque
-            </h3>
-            <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400">
-              À relancer pour ne pas perdre le fil
-            </div>
-          </div>
-        </div>
-        <a
-          href="/crm"
-          className="text-[12px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300"
-        >
-          Tout voir →
-        </a>
-      </div>
-      <div className="divide-y divide-slate-100 dark:divide-zinc-800">
-        {isLoading
-          ? Array.from({ length: 5 }).map((_, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-3 py-2.5 animate-pulse"
-              >
-                <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-zinc-800" />
-                <div className="flex-1 space-y-1.5">
-                  <div className="h-3 w-1/2 bg-slate-100 dark:bg-zinc-800 rounded" />
-                  <div className="h-3 w-1/3 bg-slate-100 dark:bg-zinc-800 rounded" />
+    return (
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
+                <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 flex items-center justify-center">
+                        <Snowflake size={15} />
+                    </div>
+                    <div>
+                        <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
+                            Deals à risque
+                        </h3>
+                        <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400">
+                            À relancer pour ne pas perdre le fil
+                        </div>
+                    </div>
                 </div>
-                <div className="w-12 h-8 bg-slate-100 dark:bg-zinc-800 rounded" />
-              </div>
-            ))
-          : data.length === 0
-            ? <div className="py-8 text-center text-[12.5px] text-slate-500 dark:text-zinc-400">
-                Aucun deal silencieux détecté. 🎉
-              </div>
-            : data.map((d) => (
                 <a
-                  key={d.prospect_id}
-                  href={d.href}
-                  className="flex items-center gap-3 py-2.5 hover:bg-slate-50/60 dark:hover:bg-zinc-800/60 -mx-2 px-2 rounded transition-colors"
+                    href="/crm"
+                    className="text-[12px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300"
                 >
-                  <Avatar initials={d.initials} size={32} photo={d.avatar_url} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 sm:gap-2">
-                      <span className="text-[12.5px] sm:text-[13px] font-medium text-slate-900 dark:text-zinc-100 truncate">
-                        {d.name}
-                      </span>
-                      <Pill tone={STAGE_TONE[d.stage] ?? "slate"}>
-                        {d.stage_label}
-                      </Pill>
-                    </div>
-                    {d.company && (
-                      <div className="text-[11px] sm:text-[11.5px] text-slate-500 dark:text-zinc-400 truncate mt-0.5">
-                        {d.company}
-                      </div>
-                    )}
-                  </div>
-                  <div
-                    className={`text-right flex-shrink-0 px-2 py-1 rounded-md ${sevColor[d.severity]}`}
-                  >
-                    <div className="text-[11.5px] sm:text-[12px] font-semibold tabular-nums leading-tight">
-                      {d.silence_days}j
-                    </div>
-                    <div className="text-[9px] sm:text-[9.5px] uppercase tracking-wide leading-tight">
-                      silence
-                    </div>
-                  </div>
+                    Tout voir →
                 </a>
-              ))}
-      </div>
-    </div>
-  );
+            </div>
+            <div className="divide-y divide-slate-100 dark:divide-zinc-800">
+                {isLoading ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                        <div
+                            key={i}
+                            className="flex items-center gap-3 py-2.5 animate-pulse"
+                        >
+                            <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-zinc-800" />
+                            <div className="flex-1 space-y-1.5">
+                                <div className="h-3 w-1/2 bg-slate-100 dark:bg-zinc-800 rounded" />
+                                <div className="h-3 w-1/3 bg-slate-100 dark:bg-zinc-800 rounded" />
+                            </div>
+                            <div className="w-12 h-8 bg-slate-100 dark:bg-zinc-800 rounded" />
+                        </div>
+                    ))
+                ) : data.length === 0 ? (
+                    <div className="py-8 text-center text-[12.5px] text-slate-500 dark:text-zinc-400">
+                        Aucun deal silencieux détecté. 🎉
+                    </div>
+                ) : (
+                    data.map((d) => (
+                        <a
+                            key={d.prospect_id}
+                            href={d.href}
+                            className="flex items-center gap-3 py-2.5 hover:bg-slate-50/60 dark:hover:bg-zinc-800/60 -mx-2 px-2 rounded transition-colors"
+                        >
+                            <Avatar
+                                initials={d.initials}
+                                size={32}
+                                photo={d.avatar_url}
+                            />
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 sm:gap-2">
+                                    <span className="text-[12.5px] sm:text-[13px] font-medium text-slate-900 dark:text-zinc-100 truncate">
+                                        {d.name}
+                                    </span>
+                                    <Pill tone={STAGE_TONE[d.stage] ?? 'slate'}>
+                                        {d.stage_label}
+                                    </Pill>
+                                </div>
+                                {d.company && (
+                                    <div className="text-[11px] sm:text-[11.5px] text-slate-500 dark:text-zinc-400 truncate mt-0.5">
+                                        {d.company}
+                                    </div>
+                                )}
+                            </div>
+                            <div
+                                className={`text-right flex-shrink-0 px-2 py-1 rounded-md ${sevColor[d.severity]}`}
+                            >
+                                <div className="text-[11.5px] sm:text-[12px] font-semibold tabular-nums leading-tight">
+                                    {d.silence_days}j
+                                </div>
+                                <div className="text-[9px] sm:text-[9.5px] uppercase tracking-wide leading-tight">
+                                    silence
+                                </div>
+                            </div>
+                        </a>
+                    ))
+                )}
+            </div>
+        </div>
+    );
 }
 
 /* ============================================================
@@ -1389,313 +1429,412 @@ function AtRiskCard({
    ============================================================ */
 
 function LinkedInQuotasCard({
-  usage,
-  usageLoading,
+    usage,
+    usageLoading,
 }: {
-  usage: LinkedInUsagePayload | undefined;
-  usageLoading: boolean;
+    usage: LinkedInUsagePayload | undefined;
+    usageLoading: boolean;
 }) {
-  const { data: linkedIn, isLoading: liLoading } = useLinkedInAccount();
+    const { data: linkedIn, isLoading: liLoading } = useLinkedInAccount();
+    const [connectingLinkedIn, setConnectingLinkedIn] = useState(false);
 
-  if (liLoading) {
-    return (
-      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
-        <div className="h-4 w-40 animate-pulse rounded bg-slate-100 dark:bg-zinc-800" />
-        <div className="mt-5 space-y-3">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="space-y-1.5">
-              <div className="h-3 w-32 animate-pulse rounded bg-slate-100 dark:bg-zinc-800" />
-              <div className="h-1.5 w-full animate-pulse rounded-full bg-slate-100 dark:bg-zinc-800" />
+    const handleConnectLinkedIn = async () => {
+        if (connectingLinkedIn) return;
+        setConnectingLinkedIn(true);
+        try {
+            const res = await fetch('/api/unipile/connect-linkedin', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ redirect: '/dashboard' }),
+            });
+            const json = await res.json();
+            const data = json?.data ?? json;
+            const url = (data as { url?: string })?.url;
+            if (url) {
+                window.location.href = url;
+                return;
+            }
+            sonnerToast.error(
+                (json?.error?.message as string) ??
+                    'Impossible de lancer LinkedIn'
+            );
+        } catch {
+            sonnerToast.error('Connexion LinkedIn impossible');
+        } finally {
+            setConnectingLinkedIn(false);
+        }
+    };
+
+    if (liLoading) {
+        return (
+            <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
+                <div className="h-4 w-40 animate-pulse rounded bg-slate-100 dark:bg-zinc-800" />
+                <div className="mt-5 space-y-3">
+                    {[0, 1, 2].map((i) => (
+                        <div key={i} className="space-y-1.5">
+                            <div className="h-3 w-32 animate-pulse rounded bg-slate-100 dark:bg-zinc-800" />
+                            <div className="h-1.5 w-full animate-pulse rounded-full bg-slate-100 dark:bg-zinc-800" />
+                        </div>
+                    ))}
+                </div>
             </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+        );
+    }
 
-  if (!linkedIn?.connected) {
-    return (
-      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
-        <div className="flex items-center gap-2 mb-3.5">
-          <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 flex items-center justify-center">
-            <Linkedin size={15} />
-          </div>
-          <div>
-            <h3 className="text-[14px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
-              Quotas LinkedIn
-            </h3>
-            <div className="text-[11px] text-slate-500 dark:text-zinc-400">
-              Compte non connecté
-            </div>
-          </div>
-        </div>
-        <p className="text-[12px] text-slate-500 dark:text-zinc-400 leading-relaxed">
-          Connectez votre compte LinkedIn pour suivre vos quotas en temps réel.
-        </p>
-      </div>
-    );
-  }
-
-  const budget = usage?.budget;
-  const inviteUsed = usage?.invitations_today ?? usage?.invitations_sent ?? 0;
-  const inviteCap = budget?.inviteDailyCap ?? 20;
-  const weekUsed = usage?.invitations_week ?? 0;
-  const weekCap = budget?.inviteWeeklyCap ?? 100;
-  const msgUsed = usage?.messages_sent ?? 0;
-  const msgCap = budget?.messageDailyCap ?? 40;
-  const warmup = budget?.warmup;
-  const health = budget?.health ?? "ok";
-  const isWarming = warmup ? !warmup.isPlateau : false;
-
-  // Header status: blocking states (red) win, then warm-up (blue), then healthy (green).
-  const ui =
-    budget?.status === "low_credibility"
-      ? { color: "bg-rose-500", label: "Profil incomplet, envois en pause", tone: "text-rose-600" }
-      : health === "poor"
-      ? { color: "bg-rose-500", label: "Acceptation faible — rythme réduit", tone: "text-rose-600" }
-      : isWarming
-        ? { color: "bg-blue-500", label: `Montée en charge — jour ${warmup?.day ?? 0}`, tone: "text-blue-600" }
-        : warmup?.fastLane
-          ? { color: "bg-emerald-500", label: "Compte établi", tone: "text-emerald-600" }
-          : { color: "bg-emerald-500", label: "Rythme nominal", tone: "text-emerald-600" };
-
-  // Acceptance rate is accepted/sent over the pacer's recent window (null until
-  // there's enough signal).
-  const acc = budget?.acceptanceRate;
-
-  // Each quadrant gets a status dot + a short keyword reflecting where its limit
-  // sits right now (warming up, near the cap, healthy, or a soft limit).
-  const usageState = (ratio: number, warming: boolean) =>
-    warming
-      ? { dot: "bg-blue-500", keyword: "Chauffe", tone: "text-blue-600" }
-      : ratio >= 1
-        ? { dot: "bg-rose-500", keyword: "Atteint", tone: "text-rose-600" }
-        : ratio >= 0.8
-          ? { dot: "bg-amber-500", keyword: "Bientôt", tone: "text-amber-600" }
-          : { dot: "bg-emerald-500", keyword: "OK", tone: "text-emerald-600" };
-
-  const acceptState =
-    health === "poor"
-      ? { dot: "bg-rose-500", keyword: "Faible", tone: "text-rose-600" }
-      : warmup?.fastLane
-        ? { dot: "bg-emerald-500", keyword: "Établi", tone: "text-emerald-600" }
-        : isWarming
-          ? { dot: "bg-blue-500", keyword: "Chauffe", tone: "text-blue-600" }
-          : { dot: "bg-emerald-500", keyword: "Nominal", tone: "text-emerald-600" };
-
-  const quadrants = [
-    {
-      label: "Invitations · jour",
-      value: `${inviteUsed} / ${inviteCap}`,
-      ...usageState(inviteCap ? inviteUsed / inviteCap : 0, isWarming),
-    },
-    {
-      label: "Invitations · semaine",
-      value: `${weekUsed} / ${weekCap}`,
-      ...usageState(weekCap ? weekUsed / weekCap : 0, false),
-    },
-    {
-      // Soft limit — the cap only steers the humanized cadence, it never blocks.
-      label: "Messages · jour",
-      value: `${msgUsed} / ~${msgCap}`,
-      dot: "bg-sky-400",
-      keyword: "Souple",
-      tone: "text-sky-600",
-    },
-    {
-      label: "Acceptation",
-      value: acc != null ? `${Math.round(acc * 100)}%` : "—",
-      ...acceptState,
-    },
-  ];
-
-  return (
-    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
-      <div className="flex items-center justify-between mb-3 sm:mb-3.5">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 flex items-center justify-center">
-            <Linkedin size={15} />
-          </div>
-          <div>
-            <h3 className="flex items-center gap-1.5 text-[14px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
-              Limites LinkedIn
-              {budget?.verified && (
-                <span
-                  className="inline-flex items-center gap-0.5 rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-600 dark:bg-sky-950/40 dark:text-sky-300"
-                  title="Compte LinkedIn vérifié : montée en charge accélérée"
+    if (!linkedIn?.connected) {
+        return (
+            <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
+                <div className="flex items-center gap-2 mb-3.5">
+                    <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 flex items-center justify-center">
+                        <Linkedin size={15} />
+                    </div>
+                    <div>
+                        <h3 className="text-[14px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
+                            Quotas LinkedIn
+                        </h3>
+                        <div className="text-[11px] text-slate-500 dark:text-zinc-400">
+                            Compte non connecté
+                        </div>
+                    </div>
+                </div>
+                <p className="text-[12px] text-slate-500 dark:text-zinc-400 leading-relaxed">
+                    Connectez votre compte LinkedIn pour suivre vos quotas en
+                    temps réel.
+                </p>
+                <button
+                    type="button"
+                    onClick={() => void handleConnectLinkedIn()}
+                    disabled={connectingLinkedIn}
+                    className="mt-3 inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#0077B5] px-3.5 text-[12.5px] font-semibold text-white transition-colors hover:bg-[#00669c] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <BadgeCheck size={11} />
-                  Vérifié
-                </span>
-              )}
-            </h3>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${ui.color}`} />
-              <span className={`text-[11px] font-medium ${ui.tone}`}>
-                {ui.label}
-              </span>
+                    {connectingLinkedIn ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                    ) : null}
+                    Connecter LinkedIn
+                </button>
             </div>
-          </div>
+        );
+    }
+
+    const budget = usage?.budget;
+    const inviteUsed = usage?.invitations_today ?? usage?.invitations_sent ?? 0;
+    const inviteCap = budget?.inviteDailyCap ?? 20;
+    const weekUsed = usage?.invitations_week ?? 0;
+    const weekCap = budget?.inviteWeeklyCap ?? 100;
+    const msgUsed = usage?.messages_sent ?? 0;
+    const msgCap = budget?.messageDailyCap ?? 40;
+    const warmup = budget?.warmup;
+    const health = budget?.health ?? 'ok';
+    const isWarming = warmup ? !warmup.isPlateau : false;
+
+    // Header status: blocking states (red) win, then warm-up (blue), then healthy (green).
+    const ui =
+        budget?.status === 'low_credibility'
+            ? {
+                  color: 'bg-rose-500',
+                  label: 'Profil incomplet, envois en pause',
+                  tone: 'text-rose-600',
+              }
+            : health === 'poor'
+              ? {
+                    color: 'bg-rose-500',
+                    label: 'Acceptation faible — rythme réduit',
+                    tone: 'text-rose-600',
+                }
+              : isWarming
+                ? {
+                      color: 'bg-blue-500',
+                      label: `Montée en charge — jour ${warmup?.day ?? 0}`,
+                      tone: 'text-blue-600',
+                  }
+                : warmup?.fastLane
+                  ? {
+                        color: 'bg-emerald-500',
+                        label: 'Compte établi',
+                        tone: 'text-emerald-600',
+                    }
+                  : {
+                        color: 'bg-emerald-500',
+                        label: 'Rythme nominal',
+                        tone: 'text-emerald-600',
+                    };
+
+    // Acceptance rate is accepted/sent over the pacer's recent window (null until
+    // there's enough signal).
+    const acc = budget?.acceptanceRate;
+
+    // Each quadrant gets a status dot + a short keyword reflecting where its limit
+    // sits right now (warming up, near the cap, healthy, or a soft limit).
+    const usageState = (ratio: number, warming: boolean) =>
+        warming
+            ? { dot: 'bg-blue-500', keyword: 'Chauffe', tone: 'text-blue-600' }
+            : ratio >= 1
+              ? {
+                    dot: 'bg-rose-500',
+                    keyword: 'Atteint',
+                    tone: 'text-rose-600',
+                }
+              : ratio >= 0.8
+                ? {
+                      dot: 'bg-amber-500',
+                      keyword: 'Bientôt',
+                      tone: 'text-amber-600',
+                  }
+                : {
+                      dot: 'bg-emerald-500',
+                      keyword: 'OK',
+                      tone: 'text-emerald-600',
+                  };
+
+    const acceptState =
+        health === 'poor'
+            ? { dot: 'bg-rose-500', keyword: 'Faible', tone: 'text-rose-600' }
+            : warmup?.fastLane
+              ? {
+                    dot: 'bg-emerald-500',
+                    keyword: 'Établi',
+                    tone: 'text-emerald-600',
+                }
+              : isWarming
+                ? {
+                      dot: 'bg-blue-500',
+                      keyword: 'Chauffe',
+                      tone: 'text-blue-600',
+                  }
+                : {
+                      dot: 'bg-emerald-500',
+                      keyword: 'Nominal',
+                      tone: 'text-emerald-600',
+                  };
+
+    const quadrants = [
+        {
+            label: 'Invitations · jour',
+            value: `${inviteUsed} / ${inviteCap}`,
+            ...usageState(inviteCap ? inviteUsed / inviteCap : 0, isWarming),
+        },
+        {
+            label: 'Invitations · semaine',
+            value: `${weekUsed} / ${weekCap}`,
+            ...usageState(weekCap ? weekUsed / weekCap : 0, false),
+        },
+        {
+            // Soft limit — the cap only steers the humanized cadence, it never blocks.
+            label: 'Messages · jour',
+            value: `${msgUsed} / ~${msgCap}`,
+            dot: 'bg-sky-400',
+            keyword: 'Souple',
+            tone: 'text-sky-600',
+        },
+        {
+            label: 'Acceptation',
+            value: acc != null ? `${Math.round(acc * 100)}%` : '—',
+            ...acceptState,
+        },
+    ];
+
+    return (
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
+            <div className="flex items-center justify-between mb-3 sm:mb-3.5">
+                <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 flex items-center justify-center">
+                        <Linkedin size={15} />
+                    </div>
+                    <div>
+                        <h3 className="flex items-center gap-1.5 text-[14px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
+                            Limites LinkedIn
+                            {budget?.verified && (
+                                <span
+                                    className="inline-flex items-center gap-0.5 rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-600 dark:bg-sky-950/40 dark:text-sky-300"
+                                    title="Compte LinkedIn vérifié : montée en charge accélérée"
+                                >
+                                    <BadgeCheck size={11} />
+                                    Vérifié
+                                </span>
+                            )}
+                        </h3>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                            <span
+                                className={`w-1.5 h-1.5 rounded-full ${ui.color}`}
+                            />
+                            <span
+                                className={`text-[11px] font-medium ${ui.tone}`}
+                            >
+                                {ui.label}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                {isWarming && warmup && (
+                    <span className="text-[10.5px] tabular-nums text-blue-600/80 dark:text-blue-400/80">
+                        jour {warmup.day}/{warmup.plateauDay}
+                    </span>
+                )}
+            </div>
+
+            {/* 2×2 status grid — one quadrant per limit, with dot + keyword. */}
+            <div className="grid grid-cols-2 gap-2.5">
+                {quadrants.map((q) => (
+                    <div
+                        key={q.label}
+                        className="rounded-lg border border-slate-200 dark:border-zinc-800 p-3"
+                    >
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="truncate text-[11px] font-medium text-slate-500 dark:text-zinc-400">
+                                {q.label}
+                            </span>
+                            <span className="inline-flex shrink-0 items-center gap-1.5">
+                                <span
+                                    className={`w-1.5 h-1.5 rounded-full ${q.dot}`}
+                                />
+                                <span
+                                    className={`text-[10.5px] font-semibold ${q.tone}`}
+                                >
+                                    {q.keyword}
+                                </span>
+                            </span>
+                        </div>
+                        <div className="mt-1.5 text-[18px] font-semibold tabular-nums text-slate-900 dark:text-zinc-100">
+                            {q.value}
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-zinc-800 text-[10.5px] sm:text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
+                {health === 'poor'
+                    ? 'Vos invitations sont peu acceptées : Andoxa réduit le rythme pour préserver la réputation de votre compte.'
+                    : 'Messages lissés (limite souple). Réinitialisation à minuit (UTC) ; Andoxa reste sous les seuils LinkedIn.'}
+            </div>
+            {usageLoading && (
+                <div className="mt-2 text-[10.5px] text-slate-400 dark:text-zinc-500">
+                    Actualisation…
+                </div>
+            )}
         </div>
-        {isWarming && warmup && (
-          <span className="text-[10.5px] tabular-nums text-blue-600/80 dark:text-blue-400/80">
-            jour {warmup.day}/{warmup.plateauDay}
-          </span>
-        )}
-      </div>
-
-      {/* 2×2 status grid — one quadrant per limit, with dot + keyword. */}
-      <div className="grid grid-cols-2 gap-2.5">
-        {quadrants.map((q) => (
-          <div
-            key={q.label}
-            className="rounded-lg border border-slate-200 dark:border-zinc-800 p-3"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="truncate text-[11px] font-medium text-slate-500 dark:text-zinc-400">
-                {q.label}
-              </span>
-              <span className="inline-flex shrink-0 items-center gap-1.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${q.dot}`} />
-                <span className={`text-[10.5px] font-semibold ${q.tone}`}>
-                  {q.keyword}
-                </span>
-              </span>
-            </div>
-            <div className="mt-1.5 text-[18px] font-semibold tabular-nums text-slate-900 dark:text-zinc-100">
-              {q.value}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-zinc-800 text-[10.5px] sm:text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
-        {health === "poor"
-          ? "Vos invitations sont peu acceptées : Andoxa réduit le rythme pour préserver la réputation de votre compte."
-          : "Messages lissés (limite souple). Réinitialisation à minuit (UTC) ; Andoxa reste sous les seuils LinkedIn."}
-      </div>
-      {usageLoading && (
-        <div className="mt-2 text-[10.5px] text-slate-400 dark:text-zinc-500">Actualisation…</div>
-      )}
-    </div>
-  );
+    );
 }
 
 /* ============================================================
    ACTIVE CAMPAIGNS CARD
    ============================================================ */
 
-const CHANNEL_LABEL: Record<ActiveCampaign["channel"], string> = {
-  linkedin: "LinkedIn",
-  whatsapp: "WhatsApp",
-  "linkedin+whatsapp": "LinkedIn + WhatsApp",
-  other: "Multi-canaux",
+const CHANNEL_LABEL: Record<ActiveCampaign['channel'], string> = {
+    linkedin: 'LinkedIn',
+    whatsapp: 'WhatsApp',
+    'linkedin+whatsapp': 'LinkedIn + WhatsApp',
+    other: 'Multi-canaux',
 };
 
-const STATE_TONE: Record<ActiveCampaign["state"], Tone> = {
-  running: "green",
-  paused: "amber",
-  completed: "slate",
+const STATE_TONE: Record<ActiveCampaign['state'], Tone> = {
+    running: 'green',
+    paused: 'amber',
+    completed: 'slate',
 };
 
-const STATE_LABEL: Record<ActiveCampaign["state"], string> = {
-  running: "En cours",
-  paused: "En pause",
-  completed: "Terminée",
+const STATE_LABEL: Record<ActiveCampaign['state'], string> = {
+    running: 'En cours',
+    paused: 'En pause',
+    completed: 'Terminée',
 };
 
 function ActiveCampaignsCard({
-  data = [],
-  isLoading,
+    data = [],
+    isLoading,
 }: {
-  data: ActiveCampaign[] | undefined;
-  isLoading: boolean;
+    data: ActiveCampaign[] | undefined;
+    isLoading: boolean;
 }) {
-
-  return (
-    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
-      <div className="flex items-center justify-between mb-3 sm:mb-3.5">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-300 flex items-center justify-center">
-            <Megaphone size={15} />
-          </div>
-          <div>
-            <h3 className="text-[14px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
-              Mes campagnes actives
-            </h3>
-            <div className="text-[11px] text-slate-500 dark:text-zinc-400">
-              {data.length}{" "}
-              {data.length > 1 ? "séquences" : "séquence"} en orchestration
+    return (
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
+            <div className="flex items-center justify-between mb-3 sm:mb-3.5">
+                <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-300 flex items-center justify-center">
+                        <Megaphone size={15} />
+                    </div>
+                    <div>
+                        <h3 className="text-[14px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
+                            Mes campagnes actives
+                        </h3>
+                        <div className="text-[11px] text-slate-500 dark:text-zinc-400">
+                            {data.length}{' '}
+                            {data.length > 1 ? 'séquences' : 'séquence'} en
+                            orchestration
+                        </div>
+                    </div>
+                </div>
+                <Link
+                    href="/campaigns"
+                    className="text-[11.5px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300"
+                >
+                    Toutes →
+                </Link>
             </div>
-          </div>
+            <div className="space-y-3 sm:space-y-3.5">
+                {isLoading ? (
+                    Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="space-y-1.5 animate-pulse">
+                            <div className="h-3 w-2/3 bg-slate-100 dark:bg-zinc-800 rounded" />
+                            <div className="h-1.5 w-full bg-slate-100 dark:bg-zinc-800 rounded-full" />
+                        </div>
+                    ))
+                ) : data.length === 0 ? (
+                    <div className="py-6 text-center text-[12px] text-slate-500 dark:text-zinc-400">
+                        Aucune campagne active. Lancez votre premier parcours.
+                    </div>
+                ) : (
+                    data.map((c) => {
+                        const pct = c.total ? (c.done / c.total) * 100 : 0;
+                        return (
+                            <Link
+                                key={c.workflow_id}
+                                href={c.href}
+                                className="group block"
+                            >
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                    <div className="min-w-0">
+                                        <div className="text-[12.5px] font-medium text-slate-900 dark:text-zinc-100 truncate">
+                                            {c.name}
+                                        </div>
+                                        <div className="text-[10.5px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                                            {CHANNEL_LABEL[c.channel]}
+                                        </div>
+                                    </div>
+                                    <Pill tone={STATE_TONE[c.state]}>
+                                        {STATE_LABEL[c.state]}
+                                    </Pill>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="flex-1 h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full rounded-full"
+                                            style={{
+                                                width: `${pct}%`,
+                                                background:
+                                                    c.state === 'paused'
+                                                        ? '#cbd5e1'
+                                                        : '#0052D9',
+                                            }}
+                                        />
+                                    </div>
+                                    <span className="text-[11px] tabular-nums text-slate-500 dark:text-zinc-400 flex-shrink-0">
+                                        {c.done} / {c.total}
+                                    </span>
+                                </div>
+                            </Link>
+                        );
+                    })
+                )}
+            </div>
+            <Link
+                href="/campaigns"
+                className="mt-4 w-full block text-center text-[12px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 py-1.5 rounded-md transition-colors"
+            >
+                + Nouvelle campagne
+            </Link>
         </div>
-        <Link
-          href="/campaigns"
-          className="text-[11.5px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300"
-        >
-          Toutes →
-        </Link>
-      </div>
-      <div className="space-y-3 sm:space-y-3.5">
-        {isLoading
-          ? Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="space-y-1.5 animate-pulse">
-                <div className="h-3 w-2/3 bg-slate-100 dark:bg-zinc-800 rounded" />
-                <div className="h-1.5 w-full bg-slate-100 dark:bg-zinc-800 rounded-full" />
-              </div>
-            ))
-          : data.length === 0
-            ? <div className="py-6 text-center text-[12px] text-slate-500 dark:text-zinc-400">
-                Aucune campagne active. Lancez votre premier parcours.
-              </div>
-            : data.map((c) => {
-                const pct = c.total ? (c.done / c.total) * 100 : 0;
-                return (
-                  <Link
-                    key={c.workflow_id}
-                    href={c.href}
-                    className="group block"
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <div className="min-w-0">
-                        <div className="text-[12.5px] font-medium text-slate-900 dark:text-zinc-100 truncate">
-                          {c.name}
-                        </div>
-                        <div className="text-[10.5px] text-slate-500 dark:text-zinc-400 mt-0.5">
-                          {CHANNEL_LABEL[c.channel]}
-                        </div>
-                      </div>
-                      <Pill tone={STATE_TONE[c.state]}>
-                        {STATE_LABEL[c.state]}
-                      </Pill>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full"
-                          style={{
-                            width: `${pct}%`,
-                            background:
-                              c.state === "paused" ? "#cbd5e1" : "#0052D9",
-                          }}
-                        />
-                      </div>
-                      <span className="text-[11px] tabular-nums text-slate-500 dark:text-zinc-400 flex-shrink-0">
-                        {c.done} / {c.total}
-                      </span>
-                    </div>
-                  </Link>
-                );
-              })}
-      </div>
-      <Link
-        href="/campaigns"
-        className="mt-4 w-full block text-center text-[12px] text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 py-1.5 rounded-md transition-colors"
-      >
-        + Nouvelle campagne
-      </Link>
-    </div>
-  );
+    );
 }
 
 /* ============================================================
@@ -1703,262 +1842,274 @@ function ActiveCampaignsCard({
    ============================================================ */
 
 const ACT_FILTER_LABELS = [
-  "Tous",
-  "Mon activité",
-  "Mon équipe",
-  "Système",
+    'Tous',
+    'Mon activité',
+    'Mon équipe',
+    'Système',
 ] as const;
 type ActFilterLabel = (typeof ACT_FILTER_LABELS)[number];
-const FILTER_TO_SCOPE: Record<ActFilterLabel, "all" | "mine" | "team" | "system"> = {
-  Tous: "all",
-  "Mon activité": "mine",
-  "Mon équipe": "team",
-  Système: "system",
+const FILTER_TO_SCOPE: Record<
+    ActFilterLabel,
+    'all' | 'mine' | 'team' | 'system'
+> = {
+    Tous: 'all',
+    'Mon activité': 'mine',
+    'Mon équipe': 'team',
+    Système: 'system',
 };
 
 function activityVisual(type: string): {
-  icon: LucideIcon;
-  tone: Tone;
+    icon: LucideIcon;
+    tone: Tone;
 } {
-  switch (type) {
-    case "booking_created":
-      return { icon: Calendar, tone: "blue" };
-    case "campaign_started":
-      return { icon: Megaphone, tone: "violet" };
-    case "call_session_completed":
-      return { icon: AlertTriangle, tone: "amber" };
-    case "enrichment_completed":
-      return { icon: Check, tone: "cyan" };
-    case "prospect_imported":
-      return { icon: Upload, tone: "slate" };
-    case "prospect_added":
-      return { icon: Check, tone: "green" };
-    case "status_change":
-      return { icon: ArrowRight, tone: "blue" };
-    case "workflow_enrolled":
-      return { icon: Workflow, tone: "violet" };
-    case "workflow_step_completed":
-      return { icon: Check, tone: "violet" };
-    case "workflow_run_completed":
-      return { icon: Check, tone: "green" };
-    case "workflow_step_failed":
-      return { icon: AlertTriangle, tone: "rose" };
-    default:
-      return { icon: Activity, tone: "slate" };
-  }
+    switch (type) {
+        case 'booking_created':
+            return { icon: Calendar, tone: 'blue' };
+        case 'campaign_started':
+            return { icon: Megaphone, tone: 'violet' };
+        case 'call_session_completed':
+            return { icon: AlertTriangle, tone: 'amber' };
+        case 'enrichment_completed':
+            return { icon: Check, tone: 'cyan' };
+        case 'prospect_imported':
+            return { icon: Upload, tone: 'slate' };
+        case 'prospect_added':
+            return { icon: Check, tone: 'green' };
+        case 'status_change':
+            return { icon: ArrowRight, tone: 'blue' };
+        case 'workflow_enrolled':
+            return { icon: Workflow, tone: 'violet' };
+        case 'workflow_step_completed':
+            return { icon: Check, tone: 'violet' };
+        case 'workflow_run_completed':
+            return { icon: Check, tone: 'green' };
+        case 'workflow_step_failed':
+            return { icon: AlertTriangle, tone: 'rose' };
+        default:
+            return { icon: Activity, tone: 'slate' };
+    }
 }
 
 const ACTIVITY_BUCKET_LABELS: Record<string, string> = {
-  prospect_added: "Prospect",
-  prospect_imported: "Import",
-  campaign_started: "Campagne",
-  booking_created: "Booking",
-  call_session_completed: "Appels",
-  enrichment_completed: "Enrich.",
-  status_change: "Pipeline",
-  workflow_enrolled: "Parcours",
-  workflow_step_completed: "Parcours",
-  workflow_run_completed: "Parcours",
-  workflow_step_failed: "Parcours",
+    prospect_added: 'Prospect',
+    prospect_imported: 'Import',
+    campaign_started: 'Campagne',
+    booking_created: 'Booking',
+    call_session_completed: 'Appels',
+    enrichment_completed: 'Enrich.',
+    status_change: 'Pipeline',
+    workflow_enrolled: 'Parcours',
+    workflow_step_completed: 'Parcours',
+    workflow_run_completed: 'Parcours',
+    workflow_step_failed: 'Parcours',
 };
 
 /** "il y a 2 min" / "il y a 3 h" / "hier · 14:32" / "12 mai · 14:32" */
 function formatActivityTime(iso: string): string {
-  const d = new Date(iso);
-  const diffMs = Date.now() - d.getTime();
-  if (diffMs < 60_000) return "à l'instant";
-  if (diffMs < 3_600_000) {
-    const m = Math.floor(diffMs / 60_000);
-    return `il y a ${m} min`;
-  }
-  if (diffMs < 86_400_000) {
-    const h = Math.floor(diffMs / 3_600_000);
-    return `il y a ${h} h`;
-  }
-  if (diffMs < 2 * 86_400_000) {
+    const d = new Date(iso);
+    const diffMs = Date.now() - d.getTime();
+    if (diffMs < 60_000) return "à l'instant";
+    if (diffMs < 3_600_000) {
+        const m = Math.floor(diffMs / 60_000);
+        return `il y a ${m} min`;
+    }
+    if (diffMs < 86_400_000) {
+        const h = Math.floor(diffMs / 3_600_000);
+        return `il y a ${h} h`;
+    }
+    if (diffMs < 2 * 86_400_000) {
+        return (
+            'hier · ' +
+            d.toLocaleTimeString('fr-FR', {
+                hour: '2-digit',
+                minute: '2-digit',
+            })
+        );
+    }
+    if (diffMs < 7 * 86_400_000) {
+        const days = Math.floor(diffMs / 86_400_000);
+        return `il y a ${days} j`;
+    }
     return (
-      "hier · " +
-      d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
+        d
+            .toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+            .replace('.', '') +
+        ' · ' +
+        d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
     );
-  }
-  if (diffMs < 7 * 86_400_000) {
-    const days = Math.floor(diffMs / 86_400_000);
-    return `il y a ${days} j`;
-  }
-  return (
-    d
-      .toLocaleDateString("fr-FR", { day: "numeric", month: "short" })
-      .replace(".", "") +
-    " · " +
-    d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
-  );
 }
 
 function RecentActivityCard({
-  workspaceId,
-  defaultActivity,
-  defaultLoading,
+    workspaceId,
+    defaultActivity,
+    defaultLoading,
 }: {
-  workspaceId: string | null | undefined;
-  /** Pre-fetched scope="all" activity from /api/dashboard/overview — used so
-   *  the initial paint doesn't need its own request. */
-  defaultActivity: ActivityApiRow[] | undefined;
-  defaultLoading: boolean;
+    workspaceId: string | null | undefined;
+    /** Pre-fetched scope="all" activity from /api/dashboard/overview — used so
+     *  the initial paint doesn't need its own request. */
+    defaultActivity: ActivityApiRow[] | undefined;
+    defaultLoading: boolean;
 }) {
-  const [filter, setFilter] = useState<ActFilterLabel>("Tous");
-  const usingDefault = filter === "Tous";
+    const [filter, setFilter] = useState<ActFilterLabel>('Tous');
+    const usingDefault = filter === 'Tous';
 
-  // For the default "Tous" filter, read from the overview payload. For
-  // narrower filters, fall back to a targeted request — keeps the filter
-  // UX without making the initial dashboard load fetch every scope.
-  const { data: filteredRows = [], isLoading: filteredLoading } = useQuery({
-    queryKey: ["dashboard-activity", workspaceId, filter],
-    queryFn: () => fetchActivity(FILTER_TO_SCOPE[filter]),
-    enabled: !!workspaceId && !usingDefault,
-  });
+    // For the default "Tous" filter, read from the overview payload. For
+    // narrower filters, fall back to a targeted request — keeps the filter
+    // UX without making the initial dashboard load fetch every scope.
+    const { data: filteredRows = [], isLoading: filteredLoading } = useQuery({
+        queryKey: ['dashboard-activity', workspaceId, filter],
+        queryFn: () => fetchActivity(FILTER_TO_SCOPE[filter]),
+        enabled: !!workspaceId && !usingDefault,
+    });
 
-  const rows = usingDefault ? (defaultActivity ?? []) : filteredRows;
-  const isLoading = usingDefault ? defaultLoading : filteredLoading;
+    const rows = usingDefault ? (defaultActivity ?? []) : filteredRows;
+    const isLoading = usingDefault ? defaultLoading : filteredLoading;
 
-  return (
-    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
-      <div className="flex items-start sm:items-center justify-between gap-3 mb-3 sm:mb-4 flex-col sm:flex-row">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 flex items-center justify-center">
-            <Activity size={15} />
-          </div>
-          <div>
-            <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
-              Activité récente
-            </h3>
-            <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400">
-              Événements regroupés et filtrés
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto -mx-1 px-1 sm:mx-0 sm:px-0">
-          <div className="flex items-center bg-slate-100 dark:bg-zinc-800 rounded-md p-0.5">
-            {ACT_FILTER_LABELS.map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                type="button"
-                className={`px-2 sm:px-2.5 py-1 text-[11px] sm:text-[11.5px] rounded transition-all whitespace-nowrap ${
-                  filter === f
-                    ? "bg-white text-slate-900 dark:bg-zinc-700 dark:text-zinc-100 shadow-sm font-medium"
-                    : "text-slate-600 dark:text-zinc-400"
-                }`}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            disabled
-            className="w-8 h-8 rounded-md border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-slate-400 dark:text-zinc-500 flex items-center justify-center shrink-0"
-            title="Filtres avancés (bientôt)"
-          >
-            <Filter size={13} />
-          </button>
-        </div>
-      </div>
-
-      <div>
-        {isLoading
-          ? [0, 1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="flex items-center gap-3 py-3 border-b border-slate-100 dark:border-zinc-800 last:border-0"
-              >
-                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-zinc-800 animate-pulse" />
-                <div className="flex-1 space-y-1.5">
-                  <div className="h-3 w-1/2 bg-slate-100 dark:bg-zinc-800 rounded animate-pulse" />
-                  <div className="h-3 w-1/3 bg-slate-100 dark:bg-zinc-800 rounded animate-pulse" />
-                </div>
-              </div>
-            ))
-          : rows.length === 0
-            ? (
-              <div className="py-8 text-center text-[12.5px] text-slate-500 dark:text-zinc-400">
-                Aucune activité récente.
-              </div>
-            )
-            : rows.slice(0, 8).map((e) => {
-                const { icon: EvIcon, tone } = activityVisual(e.type);
-                const t = TONE_BG[tone];
-                const bucket = ACTIVITY_BUCKET_LABELS[e.type] ?? "Activité";
-                const Wrapper: "a" | "div" = e.target_url ? "a" : "div";
-                // The API already prefixes the description with the
-                // prospect/list name when relevant. Strip the leading
-                // "X · " so we can render it inline as bold while
-                // keeping the rest as muted prose.
-                const [lead, ...rest] = e.description.split(" · ");
-                const tail = rest.join(" · ");
-                return (
-                  <Wrapper
-                    key={e.id}
-                    {...(e.target_url ? { href: e.target_url } : {})}
-                    className="-mx-2 flex items-start gap-3 rounded px-2 py-3 transition-colors hover:bg-slate-50/70 dark:hover:bg-zinc-800/50"
-                  >
-                    {e.subject_name || e.subject_avatar ? (
-                      <div className="relative mt-0.5 flex-shrink-0">
-                        <PersonAvatar
-                          name={e.subject_name}
-                          src={e.subject_avatar}
-                          size={32}
-                        />
-                        <span
-                          className={`absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full ring-2 ring-white dark:ring-zinc-900 ${t.bg} ${t.text}`}
-                        >
-                          <EvIcon size={9} />
-                        </span>
-                      </div>
-                    ) : (
-                      <div
-                        className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${t.bg} ${t.text}`}
-                      >
-                        <EvIcon size={14} />
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12.5px] leading-snug sm:text-[13px]">
-                        <span className="font-semibold text-slate-900 dark:text-zinc-100">
-                          {lead}
-                        </span>
-                        {tail && (
-                          <span className="text-slate-600 dark:text-zinc-300">
-                            {tail}
-                          </span>
-                        )}
-                        <span
-                          className={`ml-1 inline-flex items-center rounded-full ${t.bg} ${t.text} px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider`}
-                        >
-                          {bucket}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-zinc-400">
-                        {e.actor_name && (
-                          <>
-                            <span className="font-medium text-slate-600 dark:text-zinc-300">
-                              {e.actor_name}
-                            </span>
-                            <span aria-hidden className="text-slate-300 dark:text-zinc-600">
-                              ·
-                            </span>
-                          </>
-                        )}
-                        <span className="tabular-nums">
-                          {formatActivityTime(e.timestamp)}
-                        </span>
-                      </div>
+    return (
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
+            <div className="flex items-start sm:items-center justify-between gap-3 mb-3 sm:mb-4 flex-col sm:flex-row">
+                <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 flex items-center justify-center">
+                        <Activity size={15} />
                     </div>
-                  </Wrapper>
-                );
-              })}
-      </div>
-    </div>
-  );
+                    <div>
+                        <h3 className="text-[14px] sm:text-[15px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
+                            Activité récente
+                        </h3>
+                        <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400">
+                            Événements regroupés et filtrés
+                        </div>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto -mx-1 px-1 sm:mx-0 sm:px-0">
+                    <div className="flex items-center bg-slate-100 dark:bg-zinc-800 rounded-md p-0.5">
+                        {ACT_FILTER_LABELS.map((f) => (
+                            <button
+                                key={f}
+                                onClick={() => setFilter(f)}
+                                type="button"
+                                className={`px-2 sm:px-2.5 py-1 text-[11px] sm:text-[11.5px] rounded transition-all whitespace-nowrap ${
+                                    filter === f
+                                        ? 'bg-white text-slate-900 dark:bg-zinc-700 dark:text-zinc-100 shadow-sm font-medium'
+                                        : 'text-slate-600 dark:text-zinc-400'
+                                }`}
+                            >
+                                {f}
+                            </button>
+                        ))}
+                    </div>
+                    <button
+                        type="button"
+                        disabled
+                        className="w-8 h-8 rounded-md border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-slate-400 dark:text-zinc-500 flex items-center justify-center shrink-0"
+                        title="Filtres avancés (bientôt)"
+                    >
+                        <Filter size={13} />
+                    </button>
+                </div>
+            </div>
+
+            <div>
+                {isLoading ? (
+                    [0, 1, 2, 3].map((i) => (
+                        <div
+                            key={i}
+                            className="flex items-center gap-3 py-3 border-b border-slate-100 dark:border-zinc-800 last:border-0"
+                        >
+                            <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-zinc-800 animate-pulse" />
+                            <div className="flex-1 space-y-1.5">
+                                <div className="h-3 w-1/2 bg-slate-100 dark:bg-zinc-800 rounded animate-pulse" />
+                                <div className="h-3 w-1/3 bg-slate-100 dark:bg-zinc-800 rounded animate-pulse" />
+                            </div>
+                        </div>
+                    ))
+                ) : rows.length === 0 ? (
+                    <div className="py-8 text-center text-[12.5px] text-slate-500 dark:text-zinc-400">
+                        Aucune activité récente.
+                    </div>
+                ) : (
+                    rows.slice(0, 8).map((e) => {
+                        const { icon: EvIcon, tone } = activityVisual(e.type);
+                        const t = TONE_BG[tone];
+                        const bucket =
+                            ACTIVITY_BUCKET_LABELS[e.type] ?? 'Activité';
+                        const Wrapper: 'a' | 'div' = e.target_url ? 'a' : 'div';
+                        // The API already prefixes the description with the
+                        // prospect/list name when relevant. Strip the leading
+                        // "X · " so we can render it inline as bold while
+                        // keeping the rest as muted prose.
+                        const [lead, ...rest] = e.description.split(' · ');
+                        const tail = rest.join(' · ');
+                        return (
+                            <Wrapper
+                                key={e.id}
+                                {...(e.target_url
+                                    ? { href: e.target_url }
+                                    : {})}
+                                className="-mx-2 flex items-start gap-3 rounded px-2 py-3 transition-colors hover:bg-slate-50/70 dark:hover:bg-zinc-800/50"
+                            >
+                                {e.subject_name || e.subject_avatar ? (
+                                    <div className="relative mt-0.5 flex-shrink-0">
+                                        <PersonAvatar
+                                            name={e.subject_name}
+                                            src={e.subject_avatar}
+                                            size={32}
+                                        />
+                                        <span
+                                            className={`absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full ring-2 ring-white dark:ring-zinc-900 ${t.bg} ${t.text}`}
+                                        >
+                                            <EvIcon size={9} />
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <div
+                                        className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${t.bg} ${t.text}`}
+                                    >
+                                        <EvIcon size={14} />
+                                    </div>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12.5px] leading-snug sm:text-[13px]">
+                                        <span className="font-semibold text-slate-900 dark:text-zinc-100">
+                                            {lead}
+                                        </span>
+                                        {tail && (
+                                            <span className="text-slate-600 dark:text-zinc-300">
+                                                {tail}
+                                            </span>
+                                        )}
+                                        <span
+                                            className={`ml-1 inline-flex items-center rounded-full ${t.bg} ${t.text} px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider`}
+                                        >
+                                            {bucket}
+                                        </span>
+                                    </div>
+                                    <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-zinc-400">
+                                        {e.actor_name && (
+                                            <>
+                                                <span className="font-medium text-slate-600 dark:text-zinc-300">
+                                                    {e.actor_name}
+                                                </span>
+                                                <span
+                                                    aria-hidden
+                                                    className="text-slate-300 dark:text-zinc-600"
+                                                >
+                                                    ·
+                                                </span>
+                                            </>
+                                        )}
+                                        <span className="tabular-nums">
+                                            {formatActivityTime(e.timestamp)}
+                                        </span>
+                                    </div>
+                                </div>
+                            </Wrapper>
+                        );
+                    })
+                )}
+            </div>
+        </div>
+    );
 }
 
 /* ============================================================
@@ -1966,101 +2117,113 @@ function RecentActivityCard({
    ============================================================ */
 
 export function DashboardContent() {
-  const { workspace, user, profile } = useWorkspace();
-  const [period, setPeriod] = useState<Period>("Ce mois");
-  const apiPeriod = PERIOD_TO_API[period];
+    const { workspace, user, profile } = useWorkspace();
+    const [period, setPeriod] = useState<Period>('Ce mois');
+    const apiPeriod = PERIOD_TO_API[period];
 
-  // One request → one auth pass → parallel fan-out on the server. Was
-  // previously 8 separate /api/dashboard/* calls each paying their own
-  // boilerplate cost.
-  const { data: overview, isLoading } = useQuery({
-    queryKey: ["dashboard-overview", workspace?.id, apiPeriod],
-    queryFn: () => fetchDashboardOverview(apiPeriod),
-    enabled: !!workspace?.id,
-    staleTime: 30 * 1000,
-  });
-
-  const stats = overview?.stats;
-  const funnel = overview?.funnel;
-  const statsLoading = isLoading;
-  const funnelLoading = isLoading;
-
-  const firstName = useMemo(() => {
-    const full = profile?.full_name?.trim();
-    if (full) return full.split(" ")[0];
-    const email = user?.email ?? "";
-    if (email) return email.split("@")[0];
-    return "";
-  }, [profile?.full_name, user?.email]);
-
-  // #FF: dashboardAvatarGreeting — user profile picture for the greeting.
-  const avatarUrl = profile?.avatar_url ?? null;
-
-  // Fire-and-forget: the export runs as a detached module-level job with its
-  // own toast feedback, so it survives navigation and never disables the button.
-  const handleExport = (chosenPeriod: Period, orientation: PdfOrientation) => {
-    void runTeamExport({
-      apiPeriod: PERIOD_TO_API[chosenPeriod],
-      orientation,
+    // One request → one auth pass → parallel fan-out on the server. Was
+    // previously 8 separate /api/dashboard/* calls each paying their own
+    // boilerplate cost.
+    const { data: overview, isLoading } = useQuery({
+        queryKey: ['dashboard-overview', workspace?.id, apiPeriod],
+        queryFn: () => fetchDashboardOverview(apiPeriod),
+        enabled: !!workspace?.id,
+        staleTime: 30 * 1000,
     });
-  };
 
-  return (
-    <div className="min-h-full bg-[#FAFAFA] dark:bg-zinc-950">
-      <style>{`
+    const stats = overview?.stats;
+    const funnel = overview?.funnel;
+    const statsLoading = isLoading;
+    const funnelLoading = isLoading;
+
+    const firstName = useMemo(() => {
+        const full = profile?.full_name?.trim();
+        if (full) return full.split(' ')[0];
+        const email = user?.email ?? '';
+        if (email) return email.split('@')[0];
+        return '';
+    }, [profile?.full_name, user?.email]);
+
+    // #FF: dashboardAvatarGreeting — user profile picture for the greeting.
+    const avatarUrl = profile?.avatar_url ?? null;
+
+    // Fire-and-forget: the export runs as a detached module-level job with its
+    // own toast feedback, so it survives navigation and never disables the button.
+    const handleExport = (
+        chosenPeriod: Period,
+        orientation: PdfOrientation
+    ) => {
+        void runTeamExport({
+            apiPeriod: PERIOD_TO_API[chosenPeriod],
+            orientation,
+        });
+    };
+
+    return (
+        <div className="min-h-full bg-[#FAFAFA] dark:bg-zinc-950">
+            <style>{`
         @keyframes andoxa-pulseDot {
           0%, 100% { opacity: 1; }
           50%      { opacity: 0.35; }
         }
       `}</style>
-      <div className="max-w-[1480px] mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-7">
-        <PageHeader
-          firstName={firstName || "vous"}
-          avatarUrl={avatarUrl}
-          period={period}
-          setPeriod={setPeriod}
-          onExport={handleExport}
-        />
-        <PrioritiesBand data={overview?.priorities} isLoading={isLoading} />
+            <div className="max-w-[1480px] mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-7">
+                <PageHeader
+                    firstName={firstName || 'vous'}
+                    avatarUrl={avatarUrl}
+                    period={period}
+                    setPeriod={setPeriod}
+                    onExport={handleExport}
+                />
+                <PrioritiesBand
+                    data={overview?.priorities}
+                    isLoading={isLoading}
+                />
 
-        {/* LinkedIn limits — placed directly under the daily priorities as a
+                {/* LinkedIn limits — placed directly under the daily priorities as a
             compact 2×2 status card. */}
-        <div className="mb-5 sm:mb-6">
-          <LinkedInQuotasCard
-            usage={overview?.linkedinUsage}
-            usageLoading={isLoading}
-          />
+                <div className="mb-5 sm:mb-6">
+                    <LinkedInQuotasCard
+                        usage={overview?.linkedinUsage}
+                        usageLoading={isLoading}
+                    />
+                </div>
+
+                <KpiGrid stats={stats} isLoading={statsLoading} />
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-5 sm:mb-6">
+                    <FunnelCard funnel={funnel} isLoading={funnelLoading} />
+                    <ActivityVolumeCard stats={stats} />
+                </div>
+
+                {/* #FF: dashboardDealCards — Top deals + Deals à risque (hidden for now). */}
+                {SHOW_DEAL_CARDS && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-5 sm:mb-6">
+                        <TopDealsCard
+                            data={overview?.topDeals}
+                            isLoading={isLoading}
+                        />
+                        <AtRiskCard
+                            data={overview?.atRisk}
+                            isLoading={isLoading}
+                        />
+                    </div>
+                )}
+
+                <div className="grid gap-3 sm:gap-4 mb-5 sm:mb-6 grid-cols-1 lg:[grid-template-columns:minmax(0,1fr)_minmax(0,360px)]">
+                    <RecentActivityCard
+                        workspaceId={workspace?.id}
+                        defaultActivity={overview?.activity}
+                        defaultLoading={isLoading}
+                    />
+                    <div className="flex flex-col gap-3 sm:gap-4">
+                        <ActiveCampaignsCard
+                            data={overview?.activeCampaigns}
+                            isLoading={isLoading}
+                        />
+                    </div>
+                </div>
+            </div>
         </div>
-
-        <KpiGrid stats={stats} isLoading={statsLoading} />
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-5 sm:mb-6">
-          <FunnelCard funnel={funnel} isLoading={funnelLoading} />
-          <ActivityVolumeCard stats={stats} />
-        </div>
-
-        {/* #FF: dashboardDealCards — Top deals + Deals à risque (hidden for now). */}
-        {SHOW_DEAL_CARDS && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-5 sm:mb-6">
-            <TopDealsCard data={overview?.topDeals} isLoading={isLoading} />
-            <AtRiskCard data={overview?.atRisk} isLoading={isLoading} />
-          </div>
-        )}
-
-        <div className="grid gap-3 sm:gap-4 mb-5 sm:mb-6 grid-cols-1 lg:[grid-template-columns:minmax(0,1fr)_minmax(0,360px)]">
-          <RecentActivityCard
-            workspaceId={workspace?.id}
-            defaultActivity={overview?.activity}
-            defaultLoading={isLoading}
-          />
-          <div className="flex flex-col gap-3 sm:gap-4">
-            <ActiveCampaignsCard
-              data={overview?.activeCampaigns}
-              isLoading={isLoading}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+    );
 }

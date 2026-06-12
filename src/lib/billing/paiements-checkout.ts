@@ -293,7 +293,10 @@ export async function performPaiementsCheckout(params: {
     .eq("id", organizationId)
     .single();
 
-  if (planId === "solo" && STRIPE_CONFIG.trial.enabled) {
+  // No-card instant trial — currently granted on both Solo and Team (the
+  // Team trial will be retired once sign-ups ramp up; flip back to
+  // `planId === "solo"` at that point).
+  if ((planId === "solo" || planId === "team") && STRIPE_CONFIG.trial.enabled) {
     const trialAlreadyUsed = Boolean(orgStatus?.trial_ends_at);
     const hasExistingStripeSub = Boolean(orgStatus?.stripe_subscription_id);
 
@@ -305,7 +308,7 @@ export async function performPaiementsCheckout(params: {
       const { error: trialErr } = await supabase
         .from("organizations")
         .update({
-          plan: "solo",
+          plan: planId,
           status: "active",
           subscription_status: "trialing",
           trial_ends_at: trialEndsAt,

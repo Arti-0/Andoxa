@@ -46,6 +46,8 @@ const PUBLIC_ROUTES = [
     '/unsubscribe',
     '/checkout',
     '/event',
+    // Backend-free preview of the redesigned onboarding (see app/onboarding-preview).
+    '/onboarding-preview',
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

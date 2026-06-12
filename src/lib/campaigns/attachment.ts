@@ -7,12 +7,12 @@
  * `campaign_jobs.metadata.attachment`. The batch worker downloads the bytes
  * here at send time and forwards them to the provider.
  */
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/types/supabase";
-import type { CampaignAttachment } from "./types";
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/lib/types/supabase';
+import type { CampaignAttachment } from './types';
 
 /** Shared with the inbox composer's private bucket. */
-export const CAMPAIGN_ATTACHMENT_BUCKET = "messagerie-attachments";
+export const CAMPAIGN_ATTACHMENT_BUCKET = 'messagerie-attachments';
 
 /** Campaign attachment cap. */
 export const CAMPAIGN_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
@@ -23,16 +23,16 @@ export const CAMPAIGN_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
  * silently sending a message that references a file that never went out.
  */
 export async function downloadCampaignAttachment(
-  supabase: SupabaseClient<Database>,
-  attachment: CampaignAttachment
+    supabase: SupabaseClient<Database>,
+    attachment: CampaignAttachment
 ): Promise<{ blob: Blob; name: string }> {
-  const { data, error } = await supabase.storage
-    .from(CAMPAIGN_ATTACHMENT_BUCKET)
-    .download(attachment.path);
-  if (error || !data) {
-    throw new Error(
-      `Échec du téléchargement de la pièce jointe « ${attachment.name} »`
-    );
-  }
-  return { blob: data, name: attachment.name };
+    const { data, error } = await supabase.storage
+        .from(CAMPAIGN_ATTACHMENT_BUCKET)
+        .download(attachment.path);
+    if (error || !data) {
+        throw new Error(
+            `Échec du téléchargement de la pièce jointe « ${attachment.name} »`
+        );
+    }
+    return { blob: data, name: attachment.name };
 }

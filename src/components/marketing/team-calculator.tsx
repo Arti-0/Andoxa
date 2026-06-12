@@ -14,12 +14,22 @@ export function MarketingTeamCalculator({
   pricePerUser,
   monthlyPricePerUser,
   billing,
+  onUsersChange,
 }: {
   pricePerUser: number;
   monthlyPricePerUser: number;
   billing: Billing;
+  /** Notified on every seat change — used by onboarding to pass seats to checkout. */
+  onUsersChange?: (users: number) => void;
 }) {
-  const [users, setUsers] = React.useState(DEFAULT);
+  const [users, setUsersState] = React.useState(DEFAULT);
+  const setUsers = (updater: (u: number) => number) => {
+    setUsersState((prev) => {
+      const next = updater(prev);
+      if (next !== prev) onUsersChange?.(next);
+      return next;
+    });
+  };
   const total = pricePerUser * users;
   const fillPct = ((users - MIN) / (MAX - MIN)) * 100;
   const annualSaving =
@@ -58,7 +68,7 @@ export function MarketingTeamCalculator({
           min={MIN}
           max={MAX}
           value={users}
-          onChange={(e) => setUsers(Number(e.target.value))}
+          onChange={(e) => setUsers(() => Number(e.target.value))}
           aria-label="Nombre d'utilisateurs"
           className="andoxa-range flex-1"
           style={{ ["--range-fill" as string]: `${fillPct}%` }}

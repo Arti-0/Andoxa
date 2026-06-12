@@ -13,6 +13,9 @@ export const ONBOARDING_PROFILE_STEP = {
 export type StepId =
   | "welcome"
   | "user.name"
+  | "owner.welcome"
+  | "owner.qualify"
+  | "owner.trial"
   | "org.create"
   | "org.invite"
   | "org.finish"
@@ -24,16 +27,17 @@ export type StepId =
 
 export type OnboardingScenario = "new_owner" | "new_invited" | "new_org";
 
-// new_owner activation funnel: org.create routes through /onboarding/plan
-// (Stripe checkout grants the trial entitlement required by the proxy before
-// /campagnes is reachable); the wizard resumes at install.linkedin once the
-// org is entitled (see onboarding/page.tsx). source.setup ends the wizard by
-// redirecting into the app (campaign handoff or CRM), never via onNext.
+// new_owner activation funnel: owner.welcome merges name + org creation,
+// owner.qualify drives the plan recommendation, and owner.trial activates the
+// entitlement inline (instant no-card trial, or Stripe checkout fallback —
+// the wizard resumes at install.linkedin once the org is entitled, see
+// onboarding/page.tsx). source.setup ends the wizard by redirecting into the
+// app (campaign handoff or CRM), never via onNext.
 const RAW_SEQUENCES: Record<OnboardingScenario, StepId[]> = {
   new_owner: [
-    "welcome",
-    "user.name",
-    "org.create",
+    "owner.welcome",
+    "owner.qualify",
+    "owner.trial",
     "install.linkedin",
     "source.setup",
   ],
