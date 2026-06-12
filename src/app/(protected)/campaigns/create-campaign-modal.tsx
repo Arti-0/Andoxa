@@ -1130,7 +1130,7 @@ function Step3Config({
                 </Button>
               )}
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Un seul fichier, 10&nbsp;Mo max.
+                Un seul fichier, 20&nbsp;Mo max.
                 {type === "invitation_message"
                   ? " Envoyé avec le message après acceptation."
                   : " Envoyé avec le message."}
