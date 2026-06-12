@@ -31,6 +31,7 @@ import {
   Activity,
   AlertTriangle,
   ArrowRight,
+  BadgeCheck,
   Calendar,
   Check,
   ChevronDown,
@@ -1446,9 +1447,11 @@ function LinkedInQuotasCard({
   const health = budget?.health ?? "ok";
   const isWarming = warmup ? !warmup.isPlateau : false;
 
-  // Header status: acceptance brake (red) wins, then warm-up (blue), then healthy (green).
+  // Header status: blocking states (red) win, then warm-up (blue), then healthy (green).
   const ui =
-    health === "poor"
+    budget?.status === "low_credibility"
+      ? { color: "bg-rose-500", label: "Profil incomplet, envois en pause", tone: "text-rose-600" }
+      : health === "poor"
       ? { color: "bg-rose-500", label: "Acceptation faible — rythme réduit", tone: "text-rose-600" }
       : isWarming
         ? { color: "bg-blue-500", label: `Montée en charge — jour ${warmup?.day ?? 0}`, tone: "text-blue-600" }
@@ -1514,8 +1517,17 @@ function LinkedInQuotasCard({
             <Linkedin size={15} />
           </div>
           <div>
-            <h3 className="text-[14px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
+            <h3 className="flex items-center gap-1.5 text-[14px] font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
               Limites LinkedIn
+              {budget?.verified && (
+                <span
+                  className="inline-flex items-center gap-0.5 rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-600 dark:bg-sky-950/40 dark:text-sky-300"
+                  title="Compte LinkedIn vérifié : montée en charge accélérée"
+                >
+                  <BadgeCheck size={11} />
+                  Vérifié
+                </span>
+              )}
             </h3>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className={`w-1.5 h-1.5 rounded-full ${ui.color}`} />

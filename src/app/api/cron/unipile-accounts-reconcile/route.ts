@@ -326,3 +326,8 @@ export async function POST(req: Request) {
     );
   }
 }
+
+// Vercel Cron invokes with GET — same handler, same Bearer auth.
+export async function GET(req: Request) {
+  return POST(req);
+}

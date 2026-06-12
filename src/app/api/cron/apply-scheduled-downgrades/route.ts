@@ -146,3 +146,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }
+
+// Vercel Cron invokes with GET — same handler, same Bearer auth.
+export async function GET(req: Request) {
+  return POST(req);
+}

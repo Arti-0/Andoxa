@@ -209,7 +209,7 @@ export function ListesTab({
       filters.dateTo,
     ],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: "1", pageSize: "100" });
+      const params = new URLSearchParams({ page: "1", pageSize: "500" });
       if (search.trim()) params.set("search", search.trim());
       if (filters.source.length > 0)
         params.set("source", filters.source.join(","));

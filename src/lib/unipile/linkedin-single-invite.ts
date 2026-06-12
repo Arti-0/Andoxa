@@ -6,6 +6,7 @@ import {
   incrementUsageCounter,
 } from "@/lib/campaigns/throttle";
 import { ensureLinkedInRelationFromUnipileProfile } from "@/lib/linkedin/ensure-relation-from-unipile-profile";
+import { insertProspectActivity } from "@/lib/prospect-activity";
 import {
   computeInviteBudget,
   inviteQuotaErrorFor,
@@ -93,6 +94,26 @@ export async function sendLinkedInInviteForProspect(
       ...(personalizedMessage ? { message: personalizedMessage } : {}),
     }),
   });
+
+  // Stamped activity row — provider_id + account_id let the new_relation
+  // webhook / reconciler pair a future acceptance back to this exact send
+  // (same wiring as campaign sends in process-job-batch.ts). Without it,
+  // direct invites are invisible to the acceptance rate and unmatchable.
+  if (ctx.workspaceId) {
+    await insertProspectActivity(serviceSupabase, {
+      organization_id: ctx.workspaceId,
+      prospect_id: prospect.id,
+      actor_id: ctx.userId,
+      campaign_job_id: null,
+      action: "linkedin_invite_sent",
+      details: {
+        message: personalizedMessage.slice(0, 500),
+        provider_id: providerId,
+        account_id: accountId,
+        source: "direct",
+      },
+    });
+  }
 
   // The daily + weekly linkedin_invite counters are already incremented inside
   // reserveInviteSlot above. Only the daily direct-invite breakdown counter

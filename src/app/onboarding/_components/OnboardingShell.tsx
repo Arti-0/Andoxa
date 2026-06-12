@@ -18,13 +18,13 @@ import type { StepId, OnboardingScenario } from "../config";
 import type { StepProps } from "../_steps/types";
 import { WelcomeStep } from "../_steps/WelcomeStep";
 import { NameStep } from "../_steps/user/NameStep";
-import { ThemeStep } from "../_steps/user/ThemeStep";
 import { CreateOrgStep } from "../_steps/org/CreateOrgStep";
 import { InviteStep } from "../_steps/org/InviteStep";
 import { OrgFinishStep } from "../_steps/org/OrgFinishStep";
 import { LinkedInStep } from "../_steps/install/LinkedInStep";
 import { WhatsAppStep } from "../_steps/install/WhatsAppStep";
 import { ExtensionStep } from "../_steps/install/ExtensionStep";
+import { SourceSetupStep } from "../_steps/source/SourceSetupStep";
 import { FinishStep } from "../_steps/shared/FinishStep";
 import {
   OnboardingRuntimeContext,
@@ -35,13 +35,13 @@ import { OnboardingStepUrlHydration } from "./OnboardingStepUrlHydration";
 const STEP_COMPONENTS: Record<StepId, ComponentType<StepProps>> = {
   welcome: WelcomeStep,
   "user.name": NameStep,
-  "user.theme": ThemeStep,
   "org.create": CreateOrgStep,
   "org.invite": InviteStep,
   "org.finish": OrgFinishStep,
   "install.linkedin": LinkedInStep,
   "install.whatsapp": WhatsAppStep,
   "install.extension": ExtensionStep,
+  "source.setup": SourceSetupStep,
   "shared.finish": FinishStep,
 };
 

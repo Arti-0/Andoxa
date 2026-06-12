@@ -101,9 +101,18 @@ async function getJson<T>(url: string): Promise<T> {
 // Composes: chats (Unipile) + andoxa-ids (chat ↔ prospect map) + prospects.
 // ─────────────────────────────────────────────────────────────────────────────
 
+interface PendingAcceptedProspect {
+  prospect_id: string;
+  provider_id: string;
+  account_id: string;
+  accepted_at: string;
+}
+
 interface AndoxaIdsPayload {
   ids?: string[];
   chatToProspect?: Record<string, string>;
+  /** Accepted invitations with no chat yet — rendered as "à contacter" rows. */
+  pendingProspects?: PendingAcceptedProspect[];
 }
 
 interface ChatsPayload {
@@ -119,9 +128,15 @@ async function fetchChats(): Promise<UnipileChat[]> {
   return data.items ?? [];
 }
 
-async function fetchChatToProspect(): Promise<Record<string, string>> {
+async function fetchAndoxaIds(): Promise<{
+  chatToProspect: Record<string, string>;
+  pendingProspects: PendingAcceptedProspect[];
+}> {
   const data = await getJson<AndoxaIdsPayload>("/api/unipile/chats/andoxa-ids");
-  return data.chatToProspect ?? {};
+  return {
+    chatToProspect: data.chatToProspect ?? {},
+    pendingProspects: data.pendingProspects ?? [],
+  };
 }
 
 // Batch-fetch prospects by IDs in a single round-trip via the `ids=` bulk
@@ -214,6 +229,45 @@ function mergeConversations(
   return rows;
 }
 
+/** Synthetic conversation rows for accepted invitations without a chat: the
+ *  prospect is now 1st-degree and ready to talk, but no Unipile chat exists
+ *  yet. The first send (POST /api/unipile/chats/start) creates the chat and
+ *  swaps the row for the real conversation on the next list refresh. */
+function buildPendingConversations(
+  pendings: PendingAcceptedProspect[],
+  prospects: Map<string, Prospect>,
+): Conversation[] {
+  return pendings.flatMap<Conversation>((pp) => {
+    const p = prospects.get(pp.prospect_id);
+    // No readable prospect row (deleted, or other-user RLS) — skip.
+    if (!p) return [];
+    const enrichedPicture =
+      (p.enrichment_metadata as { profile_picture_url?: string | null } | undefined)
+        ?.profile_picture_url ?? null;
+    return [{
+      id: `pending:${pp.prospect_id}`,
+      prospectId: pp.prospect_id,
+      name: p.full_name?.trim() || "Inconnu",
+      role: p.job_title ?? null,
+      company: p.company ?? null,
+      linkedinUrl: p.linkedin ?? null,
+      phone: p.phone ?? null,
+      email: p.email ?? null,
+      channel: "li" as const,
+      stage: statusToStage(p.status),
+      lastTime: formatChatTimestamp(pp.accepted_at),
+      lastMessageAt: pp.accepted_at,
+      pinnedAt: null,
+      unread: 0,
+      silentDays: silentDaysFrom(pp.accepted_at),
+      pictureUrl: resolveAvatarPhoto(enrichedPicture),
+      pending: true,
+      providerId: pp.provider_id,
+      accountId: pp.account_id,
+    }];
+  });
+}
+
 export function useToggleChatPin() {
   const qc = useQueryClient();
   return useMutation({
@@ -290,17 +344,36 @@ export function useConversations(
   return useQuery({
     queryKey: messagerieKeys.chats(),
     queryFn: async () => {
-      const [chats, chatToProspect] = await Promise.all([
+      const [chats, { chatToProspect, pendingProspects }] = await Promise.all([
         fetchChats(),
-        fetchChatToProspect(),
+        fetchAndoxaIds(),
       ]);
-      const prospectIds = [...new Set(Object.values(chatToProspect))];
+      const prospectIds = [
+        ...new Set([
+          ...Object.values(chatToProspect),
+          ...pendingProspects.map((pp) => pp.prospect_id),
+        ]),
+      ];
       const prospects = await fetchProspects(prospectIds);
       // Hydrate per-prospect cache so cockpit reads are instant when a row is selected.
       for (const [id, p] of prospects) {
         qc.setQueryData(messagerieKeys.prospect(id), p);
       }
-      return mergeConversations(chats, chatToProspect, prospects);
+      const rows = mergeConversations(chats, chatToProspect, prospects);
+      // Accepted-but-chatless prospects ride on top of the merged list; the
+      // shared sort (pinned, then recency) interleaves them by acceptance date.
+      const pendingRows = buildPendingConversations(pendingProspects, prospects);
+      if (pendingRows.length === 0) return rows;
+      const merged = [...rows, ...pendingRows];
+      merged.sort((a, b) => {
+        const ap = a.pinnedAt ? 1 : 0;
+        const bp = b.pinnedAt ? 1 : 0;
+        if (ap !== bp) return bp - ap;
+        const ta = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+        const tb = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+        return tb - ta;
+      });
+      return merged;
     },
     staleTime: FIVE_MIN,
     placeholderData: (prev) => prev,
@@ -336,6 +409,9 @@ export function useThread(
     queryKey: messagerieKeys.thread(chatId ?? "__none__"),
     queryFn: async () => {
       if (!chatId) return [];
+      // Synthetic accepted-invitation rows have no Unipile chat yet — the
+      // thread is empty until the first send creates it.
+      if (chatId.startsWith("pending:")) return [];
       const messages = await fetchMessages(chatId);
       return buildThreadEntries(messages);
     },
@@ -352,6 +428,41 @@ export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (vars: { chatId: string; text: string; file?: File | null }) => {
+      // First message to an accepted-but-chatless prospect: /chats/start
+      // opens the LinkedIn thread and links it to the prospect in one call.
+      if (vars.chatId.startsWith("pending:")) {
+        if (vars.file) {
+          throw new Error(
+            "Envoyez d'abord un premier message texte, la pièce jointe pourra suivre.",
+          );
+        }
+        const prospectId = vars.chatId.slice("pending:".length);
+        const conv = qc
+          .getQueryData<Conversation[]>(messagerieKeys.chats())
+          ?.find((c) => c.id === vars.chatId);
+        if (!conv?.providerId || !conv?.accountId) {
+          throw new Error("Conversation introuvable, rechargez la page");
+        }
+        const res = await fetch("/api/unipile/chats/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            prospect_id: prospectId,
+            provider_id: conv.providerId,
+            account_id: conv.accountId,
+            text: vars.text,
+          }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            (json as { error?: { message?: string } })?.error?.message ||
+              "Erreur lors de l'envoi",
+          );
+        }
+        return json;
+      }
       const url = `/api/unipile/chats/${vars.chatId}/messages`;
       let res: Response;
       if (vars.file) {

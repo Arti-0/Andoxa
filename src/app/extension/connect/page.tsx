@@ -34,6 +34,44 @@ function postTokenToExtension(payload: ExtensionTokenPayload) {
   window.postMessage(payload, window.location.origin);
 }
 
+type ExternalRuntime = {
+  runtime?: {
+    sendMessage?: (
+      extensionId: string,
+      message: unknown,
+      callback: (response?: { ok?: boolean }) => void
+    ) => void;
+    lastError?: unknown;
+  };
+};
+
+/**
+ * Canal direct page → background (externally_connectable, Chromium
+ * uniquement). Double le pont postMessage → content script : fonctionne même
+ * si le content script n'est pas attaché. L'id vient de l'attribut DOM posé
+ * par le content script, sinon de NEXT_PUBLIC_EXTENSION_ID (id publié).
+ */
+function sendTokenViaExternalChannel(
+  payload: ExtensionTokenPayload,
+  onAck: () => void
+) {
+  const ext = (window as unknown as { chrome?: ExternalRuntime }).chrome;
+  if (typeof ext?.runtime?.sendMessage !== "function") return;
+  const extensionId =
+    document.documentElement.getAttribute("data-andoxa-extension-id") ||
+    process.env.NEXT_PUBLIC_EXTENSION_ID;
+  if (!extensionId) return;
+  try {
+    ext.runtime.sendMessage(extensionId, payload, (response) => {
+      // Toujours lire lastError pour éviter "Unchecked runtime.lastError".
+      void ext.runtime?.lastError;
+      if (response?.ok) onAck();
+    });
+  } catch {
+    /* extension absente ou id invalide — le pont postMessage reste actif */
+  }
+}
+
 /** Demande au content script de fermer l'onglet via le background.
  *  window.close() ne fonctionne pas pour les onglets ouverts par l'extension. */
 function requestTabClose() {
@@ -152,13 +190,28 @@ export default function ExtensionConnectPage() {
         // PING pour savoir si le content script est actif sur cette page.
         window.postMessage({ type: "ANDOXA_PING" }, window.location.origin);
 
+        // ACK reçu via le canal externe : même traitement que l'ACK
+        // postMessage (le background ferme l'onglet, fallback à 8 s).
+        const onExternalAck = () => {
+          if (cancelled) return;
+          setHandshake("acknowledged");
+          if (!closeTimer.current) {
+            closeTimer.current = setTimeout(() => {
+              if (cancelled) return;
+              requestTabClose();
+            }, 8000);
+          }
+        };
+
         // Envoi immédiat + renvois espacés pour couvrir les cas où le
         // content script n'était pas encore attaché.
         postTokenToExtension(payload);
+        sendTokenViaExternalChannel(payload, onExternalAck);
         [150, 500, 1200, 2500].forEach((ms) => {
           const t = setTimeout(() => {
             if (cancelled) return;
             postTokenToExtension(payload);
+            sendTokenViaExternalChannel(payload, onExternalAck);
           }, ms);
           retryTimers.current.push(t);
         });

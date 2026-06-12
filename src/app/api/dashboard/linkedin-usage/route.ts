@@ -74,6 +74,10 @@ export async function getLinkedInUsage(
       .eq("organization_id", ctx.workspaceId)
       .eq("actor_id", ctx.userId)
       .eq("action", "linkedin_invite_sent")
+      // Direct CRM invites also stamp a linkedin_invite_sent row (for
+      // acceptance matching) but are already counted via the
+      // linkedin_invite_direct usage counter below — skip them here.
+      .or("details->>source.is.null,details->>source.neq.direct")
       .gte("created_at", startIso),
     ctx.supabase
       .from("prospect_activity")

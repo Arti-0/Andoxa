@@ -426,7 +426,7 @@ export function CreateCampaignModal({
   const handleAttachmentSelect = async (file: File | null) => {
     if (!file) return;
     if (file.size > CAMPAIGN_ATTACHMENT_MAX_BYTES) {
-      toast.error("La pièce jointe dépasse la taille maximale (10 Mo).");
+      toast.error("La pièce jointe dépasse la taille maximale (20 Mo).");
       return;
     }
     if (!workspaceId) {

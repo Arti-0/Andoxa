@@ -61,7 +61,7 @@ export function WorkflowEnrollModal({
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch("/api/workflows?pageSize=100", { credentials: "include" });
+        const res = await fetch("/api/workflows?pageSize=500", { credentials: "include" });
         const json = await res.json();
         if (!res.ok || !json.success) {
           throw new Error(json?.error?.message ?? "Erreur");

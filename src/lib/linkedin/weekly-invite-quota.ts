@@ -3,9 +3,16 @@ import { dailyPeriodKey, weeklyPeriodKey } from "@/lib/campaigns/throttle";
 import {
   computeLinkedInBudget,
   daysSince,
+  CREDIBLE_MIN_CONNECTIONS,
+  MATURE_PROFILE_MIN_CONNECTIONS,
   type LinkedInBudget,
 } from "@/lib/linkedin/pacing";
 import { inferLinkedInAccountTier } from "@/lib/linkedin/tier";
+import {
+  fetchOwnLinkedInProfileSnapshot,
+  fetchPendingInvitationsCount,
+  type OwnLinkedInProfileSnapshot,
+} from "@/lib/unipile/linkedin-own-profile";
 import type { Database } from "@/lib/types/supabase";
 
 /** Minimum invites sent (last 30 days) before an acceptance rate is trusted. */
@@ -80,6 +87,52 @@ export type InviteBudgetState = {
   weekKey: string;
 };
 
+/** Invites reserved over the rolling last 7 UTC days (all Andoxa paths): the
+ *  sum of the daily `linkedin_invite` counters, which `reserve_linkedin_invite`
+ *  increments on every send. Feeds the sliding-window weekly budget (LinkedIn
+ *  counts a rolling 7 days, not a calendar week). */
+async function fetchInvitesUsedLast7Days(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<number> {
+  const keys = Array.from({ length: 7 }, (_, i) =>
+    dailyPeriodKey(new Date(Date.now() - i * 86_400_000)),
+  );
+  const { data } = await supabase
+    .from("usage_counters")
+    .select("count")
+    .eq("user_id", userId)
+    .eq("action", "linkedin_invite")
+    .in("period_key", keys);
+  return (data ?? []).reduce((sum, r) => sum + (r.count ?? 0), 0);
+}
+
+/** Credibility entry gate: photo + headline + minimum connections. `null`
+ *  (unknown profile data) never blocks — the conservative caps protect. */
+function isCredibleProfile(
+  snapshot: OwnLinkedInProfileSnapshot | null,
+): boolean | null {
+  if (!snapshot) return null;
+  if (!snapshot.hasPhoto || !snapshot.hasHeadline) return false;
+  if (
+    snapshot.connectionsCount !== null &&
+    snapshot.connectionsCount < CREDIBLE_MIN_CONNECTIONS
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/** Profile-based maturity: 150+ connections and a filled bio. */
+function isMatureProfile(snapshot: OwnLinkedInProfileSnapshot | null): boolean {
+  return (
+    snapshot !== null &&
+    snapshot.connectionsCount !== null &&
+    snapshot.connectionsCount >= MATURE_PROFILE_MIN_CONNECTIONS &&
+    snapshot.hasSummary
+  );
+}
+
 /**
  * Compute the effective invite budget for a user once (per batch / per send).
  * Reads tier + connection age + account health from `user_unipile_accounts` and
@@ -93,7 +146,7 @@ export async function computeInviteBudget(
 ): Promise<InviteBudgetState> {
   const { data: acct } = await supabase
     .from("user_unipile_accounts")
-    .select("is_premium, premium_features, created_at, status")
+    .select("unipile_account_id, is_premium, premium_features, created_at, status")
     .eq("user_id", userId)
     .eq("account_type", "LINKEDIN")
     .maybeSingle();
@@ -102,7 +155,17 @@ export async function computeInviteBudget(
     acct?.is_premium ?? false,
     toPremiumFeatureStrings(acct?.premium_features),
   );
-  const acceptance = await fetchRecentAcceptance(supabase, userId);
+
+  // Own-account state via Unipile (Redis-cached: profile 24h, pending 6h).
+  // All best-effort: `null` means unknown and the engine degrades safely
+  // (gate stays open, breaker stays disarmed, conservative caps protect).
+  const accountId = acct?.unipile_account_id ?? null;
+  const [acceptance, used7d, snapshot, pendingInvitations] = await Promise.all([
+    fetchRecentAcceptance(supabase, userId),
+    fetchInvitesUsedLast7Days(supabase, userId),
+    accountId ? fetchOwnLinkedInProfileSnapshot(accountId) : Promise.resolve(null),
+    accountId ? fetchPendingInvitationsCount(accountId) : Promise.resolve(null),
+  ]);
 
   const budget = computeLinkedInBudget({
     tier,
@@ -110,6 +173,12 @@ export async function computeInviteBudget(
     acceptanceRate: acceptance.rate,
     acceptedCount: acceptance.accepted,
     healthy: (acct?.status ?? "connected") !== "error",
+    invitesUsedLast7Days: used7d,
+    pendingInvitations,
+    matureProfile: isMatureProfile(snapshot),
+    credibleProfile: isCredibleProfile(snapshot),
+    verified: snapshot?.isVerified ?? null,
+    jitterSeed: `${userId}:${dayKey}`,
   });
 
   return { budget, dayKey, weekKey };

@@ -216,7 +216,7 @@ function ProspectActionDialogs({
   const { data: bddOptions } = useQuery({
     queryKey: ["bdd-row-list-picker"],
     queryFn: async () => {
-      const res = await fetch("/api/bdd?page=1&pageSize=100", {
+      const res = await fetch("/api/bdd?page=1&pageSize=500", {
         credentials: "include",
       });
       if (!res.ok) return { items: [] as { id: string; name: string }[] };

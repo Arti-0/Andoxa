@@ -382,7 +382,7 @@ export function getPagination(request: NextRequest): {
 } {
   const params = getSearchParams(request);
   const page = Math.max(1, parseInt(params.page || "1", 10));
-  const pageSize = Math.min(100, Math.max(1, parseInt(params.pageSize || "20", 10)));
+  const pageSize = Math.min(1000, Math.max(1, parseInt(params.pageSize || "20", 10)));
   const offset = (page - 1) * pageSize;
 
   return { page, pageSize, offset };

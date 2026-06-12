@@ -952,6 +952,19 @@ export function Thread({
         ref={scrollRef}
         style={{ flex: 1, overflowY: "auto", padding: "24px 26px 16px" }}
       >
+        {conv.pending && thread.length === 0 && (
+          <div
+            style={{
+              textAlign: "center",
+              padding: "32px 24px",
+              fontSize: 12.5,
+              color: "var(--m2-slate-500)",
+            }}
+          >
+            Invitation acceptée : envoyez votre premier message pour démarrer
+            la conversation.
+          </div>
+        )}
         {thread.map((m, i) => (
           <Bubble
             key={i}

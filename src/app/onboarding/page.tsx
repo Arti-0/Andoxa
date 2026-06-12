@@ -5,7 +5,9 @@ import {
   deriveScenario,
   ONBOARDING_PROFILE_STEP,
   SEQUENCES,
+  stepNumberForId,
 } from "@/app/onboarding/config";
+import { evaluateDashboardEntitlement } from "@/lib/auth/dashboard-entitlement";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function OnboardingPage({
@@ -26,11 +28,35 @@ export default async function OnboardingPage({
     .eq("id", user.id)
     .single();
 
-  if (
-    params.step == null &&
-    profile?.onboarding_step === ONBOARDING_PROFILE_STEP.PLAN
-  ) {
-    redirect("/onboarding/plan");
+  // PLAN = checkout pending or just completed. Not yet entitled → back to the
+  // pricing page; entitled (returning from Stripe) → resume the wizard at the
+  // LinkedIn step instead of restarting from "welcome".
+  let resumeAfterPlan = false;
+  if (profile?.onboarding_step === ONBOARDING_PROFILE_STEP.PLAN) {
+    let entitled = false;
+    if (profile.active_organization_id) {
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("status, subscription_status, deleted_at, trial_ends_at")
+        .eq("id", profile.active_organization_id)
+        .maybeSingle();
+      entitled = evaluateDashboardEntitlement({
+        org: org
+          ? {
+              status: org.status ?? "",
+              subscription_status: org.subscription_status,
+              deleted_at: org.deleted_at,
+              trial_ends_at: org.trial_ends_at,
+            }
+          : null,
+        personalSub: null,
+      }).allowedForDashboard;
+    }
+    if (entitled) {
+      resumeAfterPlan = true;
+    } else if (params.step == null) {
+      redirect("/onboarding/plan");
+    }
   }
 
   let onboardingStep = profile?.onboarding_step ?? null;
@@ -72,9 +98,12 @@ export default async function OnboardingPage({
   const sequence = SEQUENCES[scenario];
 
   const urlStep = params.step ? parseInt(params.step, 10) : NaN;
+  const fallbackStep = resumeAfterPlan
+    ? stepNumberForId(scenario, "install.linkedin")
+    : 1;
   const initialStep =
     Number.isNaN(urlStep) || urlStep < 1 || urlStep > sequence.length
-      ? 1
+      ? fallbackStep
       : urlStep;
 
   return (

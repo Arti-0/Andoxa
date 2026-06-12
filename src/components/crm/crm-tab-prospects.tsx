@@ -161,7 +161,7 @@ export function ProspectsTab({
   const { data: bddOptions } = useQuery({
     queryKey: ["bdd-bulk-options", workspaceId],
     queryFn: async () => {
-      const res = await fetch("/api/bdd?page=1&pageSize=100", {
+      const res = await fetch("/api/bdd?page=1&pageSize=500", {
         credentials: "include",
       });
       if (!res.ok) return { items: [] as { id: string; name: string }[] };
@@ -199,18 +199,32 @@ export function ProspectsTab({
       statusFilter,
     ],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: "1", pageSize: "150" });
-      if (bddFilter) params.set("bdd_id", bddFilter);
-      if (debouncedSearch) params.set("search", debouncedSearch);
-      if (sourceFilter.length > 0)
-        params.set("source", sourceFilter.join(","));
-      if (statusFilter) params.set("status", statusFilter);
-      const res = await fetch(`/api/prospects?${params.toString()}`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      const json = await res.json();
-      return (json.data ?? json) as ProspectsApiResponse;
+      // Sorting/filtering is client-side, so fetch every page — a single
+      // capped page used to silently drop rows beyond the server limit.
+      const pageSize = 500;
+      const items: Prospect[] = [];
+      let total = 0;
+      for (let page = 1; ; page++) {
+        const params = new URLSearchParams({
+          page: String(page),
+          pageSize: String(pageSize),
+        });
+        if (bddFilter) params.set("bdd_id", bddFilter);
+        if (debouncedSearch) params.set("search", debouncedSearch);
+        if (sourceFilter.length > 0)
+          params.set("source", sourceFilter.join(","));
+        if (statusFilter) params.set("status", statusFilter);
+        const res = await fetch(`/api/prospects?${params.toString()}`, {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        const json = await res.json();
+        const data = (json.data ?? json) as ProspectsApiResponse;
+        items.push(...data.items);
+        total = data.total;
+        if (!data.hasMore || data.items.length === 0) break;
+      }
+      return { items, total };
     },
     enabled: !!workspaceId,
     placeholderData: (prev) => prev,
@@ -328,7 +342,7 @@ export function ProspectsTab({
 
   // Column-header click: toggle direction if it's the active column, otherwise
   // switch to that column at its natural default direction. Sorting is fully
-  // client-side here (the list is capped at ~150 rows), so this is instant.
+  // client-side here (the full list is fetched), so this is instant.
   const handleHeaderSort = (key: ProspectSortKey) => {
     if (key === sortBy) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -732,7 +746,9 @@ function TableView({
         </div>
       )}
       <div className="flex items-center justify-between border-t px-6 py-2.5 text-xs text-muted-foreground">
-        <span>{rows.length} prospects · Page 1 sur 1</span>
+        <span>
+          {rows.length} prospect{rows.length > 1 ? "s" : ""}
+        </span>
         <div />
       </div>
     </div>

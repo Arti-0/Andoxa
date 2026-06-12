@@ -11,7 +11,7 @@ export default function TermsOfUsePage() {
   return (
     <LegalPageLayout
       title="Conditions générales d'utilisation"
-      updatedOn="10 mai 2026"
+      updatedOn="12 juin 2026"
       intro="Les présentes Conditions Générales d'Utilisation (CGU) régissent l'accès et l'utilisation du site andoxa.fr. Elles définissent les droits et obligations des utilisateurs et de l'éditeur concernant l'utilisation des services proposés par Andoxa."
       sections={[
         {
@@ -160,13 +160,36 @@ export default function TermsOfUsePage() {
           id: "responsabilites",
           heading: "9. Responsabilités",
           body: (
-            <p>
-              L&apos;Éditeur ne saurait être tenu responsable des dommages directs ou indirects
-              résultant de l&apos;utilisation du Service. L&apos;Utilisateur est responsable de
-              l&apos;utilisation qu&apos;il fait du Service et des conséquences qui en découlent.
-              En cas de non-respect des CGU, l&apos;Éditeur se réserve le droit de suspendre ou de
-              résilier l&apos;accès au Service.
-            </p>
+            <>
+              <p>
+                L&apos;Éditeur ne saurait être tenu responsable des dommages directs ou indirects
+                résultant de l&apos;utilisation du Service. L&apos;Utilisateur est responsable de
+                l&apos;utilisation qu&apos;il fait du Service et des conséquences qui en découlent.
+                En cas de non-respect des CGU, l&apos;Éditeur se réserve le droit de suspendre ou de
+                résilier l&apos;accès au Service.
+              </p>
+              <p>
+                <strong>Utilisation de LinkedIn et des plateformes tierces.</strong> Andoxa est un
+                outil indépendant, qui n&apos;est ni affilié à, ni approuvé, ni soutenu par
+                LinkedIn Corporation. L&apos;Utilisateur reconnaît que l&apos;utilisation
+                d&apos;outils d&apos;automatisation ou d&apos;assistance à la prospection peut
+                contrevenir aux conditions d&apos;utilisation de LinkedIn ou de toute autre
+                plateforme tierce connectée au Service.
+              </p>
+              <p>
+                En utilisant le Service, l&apos;Utilisateur déclare agir en toute connaissance de
+                cause et assume <strong>seul et entièrement (à 100&nbsp;%) la responsabilité</strong>{" "}
+                de l&apos;utilisation qu&apos;il fait de son ou ses comptes LinkedIn via Andoxa. La
+                responsabilité de l&apos;Éditeur ne pourra en aucun cas être engagée, et
+                l&apos;Utilisateur renonce à tout recours contre l&apos;Éditeur, pour tout
+                événement, prévisible ou imprévisible, affectant son compte LinkedIn ou ses données,
+                y compris notamment&nbsp;: restriction temporaire ou permanente, limitation de
+                visibilité (« shadowban »), suspension, bannissement, suppression de compte, perte
+                de relations, de messages ou de données, ou toute autre mesure prise par LinkedIn ou
+                un tiers. Il appartient à l&apos;Utilisateur de paramétrer et d&apos;utiliser le
+                Service de manière conforme aux conditions des plateformes tierces concernées.
+              </p>
+            </>
           ),
         },
         {
