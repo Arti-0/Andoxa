@@ -3,6 +3,7 @@
 import type { DragEvent } from "react";
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { Upload } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { Label } from "@/components/ui/label";
@@ -13,6 +14,7 @@ import {
 } from "@/lib/onboarding/create-workspace-client";
 import { cn } from "@/lib/utils";
 import { validateImageFile } from "@/lib/utils/image-optimization";
+import { ONBOARDING_PROFILE_STEP } from "../../config";
 import { OnboardingContinueButton } from "../../_components/OnboardingContinueButton";
 import { useOnboardingRuntime } from "../../_components/OnboardingContext";
 import {
@@ -23,7 +25,8 @@ import {
 } from "../onboarding-layout-classes";
 import type { StepProps } from "../types";
 
-export function CreateOrgStep({ onNext, onError }: StepProps) {
+export function CreateOrgStep({ onNext, onError, scenario }: StepProps) {
+  const router = useRouter();
   const {
     fullName,
     orgId,
@@ -90,6 +93,27 @@ export function CreateOrgStep({ onNext, onError }: StepProps) {
 
   const canContinue = !!orgId || orgName.trim().length >= 2;
 
+  // new_owner: the trial entitlement is granted by checkout, so the org step
+  // detours through /onboarding/plan; the wizard resumes at the LinkedIn step
+  // once the org is entitled (see onboarding/page.tsx).
+  const advance = async () => {
+    if (scenario !== "new_owner") {
+      onNext();
+      return;
+    }
+    const res = await fetch("/api/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ onboarding_step: ONBOARDING_PROFILE_STEP.PLAN }),
+    });
+    const json = (await res.json()) as { success?: boolean };
+    if (!res.ok || json.success !== true) {
+      throw new Error("Impossible de poursuivre.");
+    }
+    router.push("/onboarding/plan");
+  };
+
   const handleContinue = async () => {
     if (!canContinue) return;
     if (orgId) {
@@ -115,7 +139,7 @@ export function CreateOrgStep({ onNext, onError }: StepProps) {
           setOrgLogoRemoteUrl(newLogoUrl);
         }
         await refresh();
-        onNext();
+        await advance();
       } catch (e) {
         onError(e instanceof Error ? e.message : "Erreur");
       } finally {
@@ -136,7 +160,7 @@ export function CreateOrgStep({ onNext, onError }: StepProps) {
       }
       setOrgId(created.organizationId);
       await refresh();
-      onNext();
+      await advance();
     } catch (e) {
       onError(e instanceof Error ? e.message : "Erreur");
     } finally {

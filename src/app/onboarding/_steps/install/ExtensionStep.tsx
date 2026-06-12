@@ -1,11 +1,9 @@
 ﻿"use client";
 
-import { useRouter } from "next/navigation";
 import { Puzzle } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ONBOARDING_PROFILE_STEP } from "../../config";
 import { OnboardingContinueButton } from "../../_components/OnboardingContinueButton";
 import {
   cardShell,
@@ -15,40 +13,9 @@ import {
 } from "../onboarding-layout-classes";
 import type { StepProps } from "../types";
 
-export function ExtensionStep({
-  onNext,
-  scenario,
-  isLast,
-}: StepProps) {
-  const router = useRouter();
+export function ExtensionStep({ onNext }: StepProps) {
   const chromeExtUrl = process.env.NEXT_PUBLIC_EXTENSION_CHROME_URL ?? "";
   const firefoxExtUrl = process.env.NEXT_PUBLIC_EXTENSION_FIREFOX_URL ?? "";
-
-  const handleContinue = async () => {
-    if (isLast && scenario === "new_owner") {
-      try {
-        const res = await fetch("/api/profile", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            onboarding_step: ONBOARDING_PROFILE_STEP.PLAN,
-          }),
-        });
-        const json = (await res.json()) as { success?: boolean };
-        if (!res.ok || json.success !== true) {
-          toast.error("Impossible de poursuivre.");
-          return;
-        }
-      } catch {
-        toast.error("Impossible de poursuivre.");
-        return;
-      }
-      router.push("/onboarding/plan");
-      return;
-    }
-    onNext();
-  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col px-1 sm:px-0">
@@ -149,7 +116,7 @@ export function ExtensionStep({
               </div>
             </div>
             <div className="flex w-full justify-center">
-              <OnboardingContinueButton onClick={() => void handleContinue()}>
+              <OnboardingContinueButton onClick={onNext}>
                 Continuer
               </OnboardingContinueButton>
             </div>

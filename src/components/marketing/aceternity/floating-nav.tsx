@@ -13,7 +13,88 @@ import { ArrowRight, BookOpen, Calculator, ChevronDown, GitCompare, Menu, Newspa
 import { Button } from "@/components/marketing/ui/button";
 import { ThemeToggle } from "@/components/marketing/ui/theme-toggle";
 import { AndoxaWordmark } from "@/components/marketing/icons/brand-icons";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+
+/** Detects an active session client-side (same pattern as AuthButton) so the
+ *  marketing header can swap "Se connecter / Commencer" for "Tableau de bord"
+ *  without de-opting any page to dynamic rendering. `null` = still loading. */
+function useIsAuthenticated(): boolean | null {
+  const [authed, setAuthed] = React.useState<boolean | null>(null);
+  React.useEffect(() => {
+    const supabase = createClient();
+    let active = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (active) setAuthed(!!data.session);
+    });
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthed(!!session);
+    });
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+  return authed;
+}
+
+/** Header CTAs, auth-aware. Logged in → single "Tableau de bord" link;
+ *  logged out (or still loading) → "Se connecter" + "Commencer" (account
+ *  creation). */
+function NavAuthActions({
+  authed,
+  onSelect,
+  layout,
+}: {
+  authed: boolean | null;
+  onSelect?: () => void;
+  layout: "desktop" | "mobile";
+}) {
+  const fullWidth = layout === "mobile";
+  if (authed) {
+    return (
+      <Button
+        href="/dashboard"
+        size="md"
+        onClick={onSelect}
+        className={cn(
+          "rounded-full px-4",
+          fullWidth && "col-span-2 w-full justify-center",
+        )}
+      >
+        Tableau de bord
+      </Button>
+    );
+  }
+  return (
+    <>
+      <Button
+        href="/auth/login"
+        variant="ghost"
+        size="md"
+        onClick={onSelect}
+        className={cn(
+          "rounded-full px-4",
+          fullWidth
+            ? "w-full justify-center"
+            : "hidden sm:inline-flex",
+        )}
+      >
+        Se connecter
+      </Button>
+      <Button
+        href="/auth/signup"
+        size="md"
+        onClick={onSelect}
+        className={cn("rounded-full px-4", fullWidth && "w-full justify-center")}
+      >
+        Commencer
+      </Button>
+    </>
+  );
+}
 
 /** Icons are referenced by string key so nav data stays serializable when
  *  passed from a Server Component to this Client Component (function refs are
@@ -62,6 +143,7 @@ export function FloatingNav({
   const { scrollY } = useScroll();
   const [visible, setVisible] = React.useState(true);
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const authed = useIsAuthenticated();
   const lastY = React.useRef(0);
 
   useMotionValueEvent(scrollY, "change", (current) => {
@@ -110,17 +192,7 @@ export function FloatingNav({
 
           <div className="ml-1 flex items-center gap-1.5 md:ml-2">
             <ThemeToggle />
-            <Button
-              href="/auth/login"
-              variant="ghost"
-              size="md"
-              className="hidden rounded-full px-4 sm:inline-flex"
-            >
-              Se connecter
-            </Button>
-            <Button href="/pricing" size="md" className="rounded-full px-4">
-              Commencer
-            </Button>
+            <NavAuthActions authed={authed} layout="desktop" />
             <button
               type="button"
               onClick={() => setMobileOpen(true)}
@@ -136,6 +208,7 @@ export function FloatingNav({
       <MobileMenuSheet
         navItems={navItems}
         homeHref={homeHref}
+        authed={authed}
         open={mobileOpen}
         onClose={() => setMobileOpen(false)}
       />
@@ -146,11 +219,13 @@ export function FloatingNav({
 function MobileMenuSheet({
   navItems,
   homeHref,
+  authed,
   open,
   onClose,
 }: {
   navItems: NavItem[];
   homeHref: string;
+  authed: boolean | null;
   open: boolean;
   onClose: () => void;
 }) {
@@ -243,23 +318,11 @@ function MobileMenuSheet({
             <div className="h-px bg-[var(--border)]" />
 
             <div className="grid grid-cols-2 gap-2 p-4">
-              <Button
-                href="/auth/login"
-                variant="ghost"
-                size="md"
-                className="w-full justify-center rounded-full"
-                onClick={onClose}
-              >
-                Se connecter
-              </Button>
-              <Button
-                href="/pricing"
-                size="md"
-                className="w-full justify-center rounded-full"
-                onClick={onClose}
-              >
-                Commencer
-              </Button>
+              <NavAuthActions
+                authed={authed}
+                layout="mobile"
+                onSelect={onClose}
+              />
             </div>
           </motion.div>
         </motion.div>

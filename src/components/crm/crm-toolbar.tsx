@@ -68,7 +68,7 @@ function unwrapEnvelope<T>(json: unknown): T {
 }
 
 async function fetchBddForDropdown(): Promise<{ items: BddItem[] }> {
-  const res = await fetch("/api/bdd?pageSize=100", { credentials: "include" });
+  const res = await fetch("/api/bdd?pageSize=500", { credentials: "include" });
   if (!res.ok) throw new Error(String(res.status));
   const json = await res.json();
   const data = json.data ?? json;

@@ -14,8 +14,8 @@ import type { CampaignAttachment } from "./types";
 /** Shared with the inbox composer's private bucket. */
 export const CAMPAIGN_ATTACHMENT_BUCKET = "messagerie-attachments";
 
-/** Mirror of the inbox server cap (10 MB) — a realistic LinkedIn message ceiling. */
-export const CAMPAIGN_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+/** Campaign attachment cap. */
+export const CAMPAIGN_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
 
 /**
  * Download a stored campaign attachment for an outbound send. Throws on

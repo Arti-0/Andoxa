@@ -34,12 +34,23 @@ export function CorbeilleTab({
   const { data, isLoading } = useQuery({
     queryKey: ["prospects-trash-v2", workspaceId],
     queryFn: async () => {
-      const res = await fetch("/api/prospects/trash?page=1&pageSize=100", {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      const json = await res.json();
-      return (json.data ?? json) as { items: Prospect[]; total: number };
+      // Fetch every page so a large corbeille never silently drops rows.
+      const pageSize = 500;
+      const items: Prospect[] = [];
+      let total = 0;
+      for (let page = 1; ; page++) {
+        const res = await fetch(
+          `/api/prospects/trash?page=${page}&pageSize=${pageSize}`,
+          { credentials: "include" },
+        );
+        if (!res.ok) throw new Error(String(res.status));
+        const json = await res.json();
+        const data = (json.data ?? json) as { items: Prospect[]; total: number };
+        items.push(...data.items);
+        total = data.total;
+        if (data.items.length < pageSize) break;
+      }
+      return { items, total };
     },
     enabled: !!workspaceId,
     placeholderData: (prev) => prev,

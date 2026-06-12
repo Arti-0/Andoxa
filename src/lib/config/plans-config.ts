@@ -63,7 +63,7 @@ export const PLAN_LIMITS: Record<PlanId, PlanLimits> = {
     trial: {
         // Same surface as Solo, capped for tire-kickers.
         users: 1,
-        prospects: 1000,
+        prospects: -1,
         campaigns: 5,
         enrichment_credits: 0,
         import_csv_xlsx_max_rows: -1,
@@ -145,7 +145,7 @@ export const PLAN_FEATURES_TEXT: Record<PlanId, string[]> = {
         'Inbox LinkedIn unifiée',
         'Calendrier avec lien de booking',
         'CRM complet (listes, pipeline kanban)',
-        'Jusqu’à 1 000 prospects',
+        'Prospects illimités',
     ],
     solo: [
         'Extension Chrome LinkedIn',

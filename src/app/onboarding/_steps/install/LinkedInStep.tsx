@@ -15,9 +15,23 @@ import {
 } from "../onboarding-layout-classes";
 import type { StepProps } from "../types";
 
+/** Delay before the "continue without LinkedIn" escape hatch appears. */
+const ESCAPE_DELAY_MS = 30_000;
+
 export function LinkedInStep({ onNext, onError }: StepProps) {
   const [connectingLi, setConnectingLi] = useState(false);
   const [linkedinConnected, setLinkedinConnected] = useState(false);
+  // The step blocks until connected; the escape only shows after a failed
+  // Unipile return, a connect error, or ESCAPE_DELAY_MS — so an outage or a
+  // hesitant user isn't hard-stuck in the wizard.
+  const [escapeVisible, setEscapeVisible] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("linkedin_connected") === "0") setEscapeVisible(true);
+    const t = setTimeout(() => setEscapeVisible(true), ESCAPE_DELAY_MS);
+    return () => clearTimeout(t);
+  }, []);
 
   const checkLinkedIn = async () => {
     try {
@@ -66,8 +80,10 @@ export function LinkedInStep({ onNext, onError }: StepProps) {
       toast.error(
         (json?.error?.message as string) ?? "Impossible de lancer LinkedIn"
       );
+      setEscapeVisible(true);
     } catch {
       onError("Connexion LinkedIn impossible");
+      setEscapeVisible(true);
     } finally {
       setConnectingLi(false);
     }
@@ -95,9 +111,10 @@ export function LinkedInStep({ onNext, onError }: StepProps) {
                     <LinkedInMark className="size-8 text-[#0077B5]" />
                   </div>
                   <p className={cn(subClass, "!mt-0")}>
-                    Optionnel pour l&apos;instant — vous pourrez le faire plus
-                    tard depuis les paramètres. Andoxa s&apos;appuie sur
-                    LinkedIn pour les prospects et l&apos;automatisation.
+                    Vos campagnes et votre prospection passent par votre compte
+                    LinkedIn. Connectez-le pour continuer — la connexion est
+                    sécurisée, vos identifiants ne sont jamais stockés par
+                    Andoxa.
                   </p>
                   <Button
                     type="button"
@@ -136,10 +153,22 @@ export function LinkedInStep({ onNext, onError }: StepProps) {
                 </div>
               )}
             </div>
-            <div className="flex w-full justify-center">
-              <OnboardingContinueButton onClick={onNext}>
+            <div className="flex w-full flex-col items-center gap-4">
+              <OnboardingContinueButton
+                disabled={!linkedinConnected}
+                onClick={onNext}
+              >
                 Continuer
               </OnboardingContinueButton>
+              {!linkedinConnected && escapeVisible ? (
+                <button
+                  type="button"
+                  onClick={onNext}
+                  className="text-xs font-medium text-zinc-400 underline-offset-2 transition-colors hover:text-zinc-600 hover:underline dark:text-zinc-500 dark:hover:text-zinc-300"
+                >
+                  Continuer sans LinkedIn pour l&apos;instant
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

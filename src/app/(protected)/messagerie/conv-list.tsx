@@ -305,9 +305,39 @@ export function ConvList({
                     marginTop: 5,
                   }}
                 >
-                  {/* Hors-CRM conversations (no linked prospect) have no
-                      pipeline status — don't show a stage pill for them. */}
-                  {c.prospectId !== null && <StagePill stage={c.stage} />}
+                  {/* CRM rows show their pipeline stage; hors-CRM rows (no
+                      linked prospect) get an explicit "Hors CRM" pill so the
+                      two are distinguishable at a glance. */}
+                  {c.prospectId !== null ? (
+                    <StagePill stage={c.stage} />
+                  ) : (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 500,
+                        padding: "2px 7px",
+                        borderRadius: 999,
+                        background: "var(--m2-slate-150)",
+                        color: "var(--m2-slate-500)",
+                      }}
+                    >
+                      Hors CRM
+                    </span>
+                  )}
+                  {c.pending && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        padding: "2px 7px",
+                        borderRadius: 999,
+                        background: "#ECFDF5",
+                        color: "#047857",
+                      }}
+                    >
+                      Invitation acceptée · à contacter
+                    </span>
+                  )}
                   {isStale && (
                     <span
                       style={{ fontSize: 10, color: "var(--m2-slate-500)" }}
@@ -317,7 +347,8 @@ export function ConvList({
                   )}
                 </div>
               </div>
-              {onTogglePin && (
+              {/* Pending rows have no Unipile chat to pin yet. */}
+              {onTogglePin && !c.pending && (
                 <button
                   type="button"
                   className="m2-icon-btn"

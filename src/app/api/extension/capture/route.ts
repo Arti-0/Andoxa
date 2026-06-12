@@ -82,7 +82,12 @@ function errorResponse(status: number, message: string): Response {
 
 export async function POST(req: NextRequest): Promise<Response> {
   const token = getBearer(req);
-  if (!token) return errorResponse(401, "Authentication required");
+  if (!token) {
+    return errorResponse(
+      401,
+      "Jeton d'authentification manquant. Reconnectez l'extension Andoxa."
+    );
+  }
 
   const supabase = createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -97,7 +102,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     token
   );
   if (authError || !authData?.user) {
-    return errorResponse(401, "Authentication required");
+    return errorResponse(
+      401,
+      "Session invalide ou expirée. Reconnectez l'extension Andoxa."
+    );
   }
   const userId = authData.user.id;
 

@@ -92,7 +92,7 @@ export function MessageComposeForm({
   const { data: templatesData, isLoading: templatesLoading } = useQuery({
     queryKey: ["message-templates", "all", "compose-form"],
     queryFn: async () => {
-      const res = await fetch(`/api/message-templates?pageSize=100`, {
+      const res = await fetch(`/api/message-templates?pageSize=500`, {
         credentials: "include",
       });
       if (!res.ok) return [] as MessageTemplate[];

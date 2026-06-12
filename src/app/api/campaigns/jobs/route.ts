@@ -94,7 +94,7 @@ export const POST = createApiHandler(
       }
       if (typeof size === "number" && size > CAMPAIGN_ATTACHMENT_MAX_BYTES) {
         throw Errors.validation({
-          attachment: "La pièce jointe dépasse la taille maximale (10 Mo).",
+          attachment: "La pièce jointe dépasse la taille maximale (20 Mo).",
         });
       }
       attachmentMeta = {

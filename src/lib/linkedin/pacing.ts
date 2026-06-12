@@ -16,27 +16,94 @@
 import type { LinkedInAccountTier } from "@/lib/linkedin/tier";
 import { getTimeZoneOffsetMs } from "@/lib/dashboard/timezone";
 
-/** Hard per-tier ceilings — the plateau the warm-up ramps toward. Deliberately
- *  conservative: invite weekly stays under LinkedIn's ~100–150/week danger zone. */
+/** Hard per-tier backstops. `inviteWeekly` is the ceiling the acceptance-rate
+ *  health cap can never exceed for the tier; the *effective* weekly cap is
+ *  min(this, acceptance band). LinkedIn's real ceiling is ~200/week for mature,
+ *  high-acceptance accounts: we keep a safety margin below it because Unipile
+ *  cannot tell our sends apart from the user's manual sends. */
 export const LINKEDIN_CEILINGS: Record<
   LinkedInAccountTier,
   { inviteDaily: number; inviteWeekly: number; messageDaily: number }
 > = {
-  standard: { inviteDaily: 20, inviteWeekly: 100, messageDaily: 40 },
-  premium: { inviteDaily: 25, inviteWeekly: 120, messageDaily: 50 },
-  sales_navigator: { inviteDaily: 25, inviteWeekly: 140, messageDaily: 55 },
+  standard: { inviteDaily: 35, inviteWeekly: 180, messageDaily: 40 },
+  premium: { inviteDaily: 38, inviteWeekly: 190, messageDaily: 50 },
+  sales_navigator: { inviteDaily: 40, inviteWeekly: 200, messageDaily: 55 },
 } as const;
 
-/** Warm-up ramp: daily invite cap while `day < untilDay`. The tier ceiling is
- *  low and conservative, so the ramp reaches plateau by {@link WARMUP_PLATEAU_DAY}. */
+/** Warm-up ramp: daily invite cap while `day < untilDay`. 5/day on the first
+ *  three days, then climbing one step per week until the health cap takes over
+ *  at {@link WARMUP_PLATEAU_DAY}. */
 const WARMUP_RAMP: readonly { untilDay: number; dailyInvites: number }[] = [
   { untilDay: 3, dailyInvites: 5 },
-  { untilDay: 7, dailyInvites: 10 },
-  { untilDay: 14, dailyInvites: 15 },
+  { untilDay: 10, dailyInvites: 10 },
+  { untilDay: 17, dailyInvites: 15 },
+  { untilDay: 24, dailyInvites: 20 },
+  { untilDay: 31, dailyInvites: 25 },
 ] as const;
 
 /** Day index (since connection) at/after which the account is fully warmed. */
-export const WARMUP_PLATEAU_DAY = 14;
+export const WARMUP_PLATEAU_DAY = 31;
+
+/* -------------------------------------------------------------------------- */
+/*  Acceptance-rate health cap (weekly, rolling 7 days)                        */
+/* -------------------------------------------------------------------------- */
+
+/** Weekly invite cap by rolling acceptance rate. The acceptance rate is the
+ *  lever between LinkedIn's ~100/week floor and ~200/week ceiling: profiles
+ *  whose invites land get more room, profiles that spray get throttled. The
+ *  top band targets 180 (not the absolute 200) as the manual-sends safety
+ *  margin, see {@link LINKEDIN_CEILINGS}. */
+export const ACCEPTANCE_WEEKLY_BANDS: readonly {
+  minRate: number;
+  weeklyCap: number;
+}[] = [
+  { minRate: 0.6, weeklyCap: 180 },
+  { minRate: 0.4, weeklyCap: 140 },
+  { minRate: 0.25, weeklyCap: 100 },
+  { minRate: 0, weeklyCap: 70 },
+] as const;
+
+/** Below this rolling acceptance rate the account needs a human review:
+ *  bottom band applies and a review alert is raised. */
+export const CRITICAL_ACCEPTANCE_THRESHOLD = 0.25;
+
+/** Weekly cap while the acceptance rate is still unmeasurable (not enough
+ *  sends): LinkedIn's floor for unproven accounts. */
+export const UNPROVEN_WEEKLY_CAP = 100;
+
+/** The weekly budget is smeared over this many send days (Mon to Fri), so one
+ *  day can never burn a disproportionate share of the rolling budget. */
+const SMOOTHING_SEND_DAYS = 5;
+
+/** Pending sent-invitations count at/above which invites pause until the user
+ *  withdraws old ones (a large pending pile is a strong spam signal). */
+export const PENDING_INVITES_PAUSE_THRESHOLD = 500;
+
+/** Daily-cap randomization span: the cap is scaled by a deterministic factor
+ *  in [1 - span, 1] derived from `jitterSeed`, so the enforced number varies
+ *  day to day (no robot signature) yet stays stable within a day (what the
+ *  dashboard shows is exactly what the gate enforces). */
+const DAILY_CAP_JITTER_SPAN = 0.15;
+/** No jitter below this cap: the warm-up's small steps stay as designed. */
+const DAILY_CAP_JITTER_MIN_CAP = 6;
+
+function acceptanceBandWeeklyCap(rate: number | null): number {
+  if (rate === null) return UNPROVEN_WEEKLY_CAP;
+  for (const band of ACCEPTANCE_WEEKLY_BANDS) {
+    if (rate >= band.minRate) return band.weeklyCap;
+  }
+  return ACCEPTANCE_WEEKLY_BANDS[ACCEPTANCE_WEEKLY_BANDS.length - 1]!.weeklyCap;
+}
+
+/** FNV-1a 32-bit hash of a string mapped to [0, 1). Deterministic jitter. */
+function hash01(seed: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0) / 0x100000000;
+}
 
 /** Mature-account fast lane: a healthy account that has *proven* itself — a high
  *  acceptance rate over a meaningful volume of accepted invites — skips the rest
@@ -51,26 +118,52 @@ export const FAST_LANE_MIN_AGE_DAYS = 7;
 export const FAST_LANE_MIN_ACCEPTANCE = 0.4;
 export const FAST_LANE_MIN_ACCEPTED = 15;
 
-/** Acceptance brake: below this, halve the daily invite budget (floor 5). */
-export const POOR_ACCEPTANCE_THRESHOLD = 0.15;
-export const POOR_ACCEPTANCE_FACTOR = 0.5;
-const POOR_ACCEPTANCE_FLOOR = 5;
+/** Profile credibility gate (photo + headline + this many connections): an
+ *  account below it gets restricted by LinkedIn almost immediately (observed:
+ *  ~1-connection profile throttled after ~26 invites), so sends are blocked
+ *  until the profile is fixed. Unknown profile data never blocks. */
+export const CREDIBLE_MIN_CONNECTIONS = 20;
+/** Profile-based maturity: 150+ connections with a filled bio is a de facto
+ *  established profile (you cannot accumulate that overnight), so it skips the
+ *  remaining warm-up ramp like the performance fast lane. */
+export const MATURE_PROFILE_MIN_CONNECTIONS = 150;
 
 export type LinkedInPacingInput = {
   tier: LinkedInAccountTier;
   /** Whole days since `user_unipile_accounts.created_at`. */
   daysSinceConnected: number;
-  /** accepted / sent over a recent window; `null` when there isn't enough data. */
+  /** accepted / sent over the rolling acceptance window; `null` when there
+   *  isn't enough data. */
   acceptanceRate: number | null;
   /** Absolute count of accepted invites over the same window — the fast-lane
    *  volume floor, proving sustained healthy activity (not just a thin ratio). */
   acceptedCount: number;
   /** Account currently connected and not in an error state. */
   healthy: boolean;
+  /** Invites sent over the rolling last 7 days (all Andoxa paths). */
+  invitesUsedLast7Days?: number;
+  /** Live pending sent-invitations count; `null` when Unipile can't tell us
+   *  (the breaker stays disarmed). */
+  pendingInvitations?: number | null;
+  /** Profile-based maturity (6+ weeks, 150+ connections, bio filled): skips
+   *  the remaining warm-up ramp like the performance fast lane does. */
+  matureProfile?: boolean;
+  /** Credibility entry gate (photo + headline + minimum connections).
+   *  `false` blocks sends until the profile is fixed; `null`/omitted =
+   *  unknown, never blocks. */
+  credibleProfile?: boolean | null;
+  /** LinkedIn identity verification, when the provider exposes it. `true`
+   *  bumps trust: passes the credibility gate and the maturity fast lane. */
+  verified?: boolean | null;
+  /** Seed for the deterministic daily-cap jitter (e.g. `userId:dayKey`).
+   *  Omitted (tests, mocks): no jitter. */
+  jitterSeed?: string;
 };
 
 export type LinkedInBudget = {
+  /** The one honest daily number: invites Andoxa may send today. */
   inviteDailyCap: number;
+  /** Effective weekly cap (acceptance band, tier backstop) on a rolling 7 days. */
   inviteWeeklyCap: number;
   messageDailyCap: number;
   warmup: {
@@ -80,15 +173,38 @@ export type LinkedInBudget = {
     fastLane: boolean;
   };
   acceptanceRate: number | null;
-  /** "ok" = warmed/healthy, "warming" = still ramping, "poor" = acceptance brake on. */
+  /** "ok" = warmed/healthy, "warming" = still ramping, "poor" = critical acceptance. */
   health: "ok" | "warming" | "poor";
+  /** Why today's number is what it is, one line, user-facing French. */
+  reason: string;
+  /** True when the account carries LinkedIn identity verification (badge). */
+  verified: boolean;
+  /** Engine state, finer-grained than `health` (drives breakers + UI). */
+  status:
+    | "ok"
+    | "warming"
+    | "poor"
+    | "weekly_spent"
+    | "paused_pending_invites"
+    | "blocked_account"
+    | "low_credibility";
+  /** Invites already counted against the rolling 7 day budget. */
+  usedLast7Days: number;
+  pendingInvitations: number | null;
+  /** True when acceptance fell under {@link CRITICAL_ACCEPTANCE_THRESHOLD}:
+   *  the caller should raise a (deduped) review alert. */
+  reviewAlert: boolean;
 };
 
 function rampDailyInvites(day: number): number {
   for (const step of WARMUP_RAMP) {
     if (day < step.untilDay) return step.dailyInvites;
   }
-  return Number.POSITIVE_INFINITY; // plateau handled by the tier ceiling
+  return Number.POSITIVE_INFINITY; // plateau handled by the health cap
+}
+
+function frPercent(rate: number): string {
+  return `${Math.round(rate * 100)} %`;
 }
 
 /** Compute the effective LinkedIn budget for an account. Pure. */
@@ -96,35 +212,97 @@ export function computeLinkedInBudget(input: LinkedInPacingInput): LinkedInBudge
   const ceil = LINKEDIN_CEILINGS[input.tier];
   const day = Math.max(0, Math.floor(input.daysSinceConnected));
   const acc = input.acceptanceRate;
+  const used7d = Math.max(0, input.invitesUsedLast7Days ?? 0);
+  const pending = input.pendingInvitations ?? null;
+
+  const verified = input.verified === true;
 
   const fastLane =
     input.healthy &&
-    day >= FAST_LANE_MIN_AGE_DAYS &&
-    acc !== null &&
-    acc >= FAST_LANE_MIN_ACCEPTANCE &&
-    input.acceptedCount >= FAST_LANE_MIN_ACCEPTED;
+    (input.matureProfile === true ||
+      verified ||
+      (day >= FAST_LANE_MIN_AGE_DAYS &&
+        acc !== null &&
+        acc >= FAST_LANE_MIN_ACCEPTANCE &&
+        input.acceptedCount >= FAST_LANE_MIN_ACCEPTED));
 
   const isPlateau = fastLane || day >= WARMUP_PLATEAU_DAY;
-  let inviteDaily = isPlateau
+
+  // Weekly cap: acceptance band, never above the tier backstop.
+  const inviteWeeklyCap = Math.min(ceil.inviteWeekly, acceptanceBandWeeklyCap(acc));
+  const remainingWeekly = Math.max(0, inviteWeeklyCap - used7d);
+  // Smoothing: a single day never gets more than its share of the weekly cap.
+  const smoothedDaily = Math.ceil(inviteWeeklyCap / SMOOTHING_SEND_DAYS);
+
+  const rampOrPlateauDaily = isPlateau
     ? ceil.inviteDaily
     : Math.min(ceil.inviteDaily, rampDailyInvites(day));
 
+  let inviteDaily = Math.min(rampOrPlateauDaily, smoothedDaily, remainingWeekly);
+
+  // Light deterministic randomization so the enforced daily number is not the
+  // same flat figure every day. Stable within a day (seeded), skipped for the
+  // small warm-up steps.
+  if (input.jitterSeed && inviteDaily >= DAILY_CAP_JITTER_MIN_CAP) {
+    const factor = 1 - hash01(input.jitterSeed) * DAILY_CAP_JITTER_SPAN;
+    inviteDaily = Math.max(DAILY_CAP_JITTER_MIN_CAP - 1, Math.round(inviteDaily * factor));
+  }
+
+  const reviewAlert = acc !== null && acc < CRITICAL_ACCEPTANCE_THRESHOLD;
+
   let health: LinkedInBudget["health"] = isPlateau ? "ok" : "warming";
-  if (acc !== null && acc < POOR_ACCEPTANCE_THRESHOLD) {
-    inviteDaily = Math.max(
-      POOR_ACCEPTANCE_FLOOR,
-      Math.floor(inviteDaily * POOR_ACCEPTANCE_FACTOR),
-    );
-    health = "poor";
+  if (reviewAlert) health = "poor";
+
+  // Circuit breakers override everything.
+  let status: LinkedInBudget["status"];
+  let reason: string;
+  if (!input.healthy) {
+    inviteDaily = 0;
+    status = "blocked_account";
+    reason =
+      "Compte LinkedIn indisponible : reconnectez-le depuis les paramètres pour reprendre les envois.";
+  } else if (input.credibleProfile === false && !verified) {
+    inviteDaily = 0;
+    status = "low_credibility";
+    reason =
+      "Profil LinkedIn incomplet : ajoutez une photo, un titre et quelques relations avant d'envoyer des invitations.";
+  } else if (pending !== null && pending >= PENDING_INVITES_PAUSE_THRESHOLD) {
+    inviteDaily = 0;
+    status = "paused_pending_invites";
+    reason = `Trop d'invitations en attente (${pending}) : retirez les plus anciennes sur LinkedIn pour reprendre.`;
+  } else if (remainingWeekly <= 0) {
+    inviteDaily = 0;
+    status = "weekly_spent";
+    reason =
+      "Budget hebdomadaire utilisé : l'envoi reprend automatiquement quand la fenêtre de 7 jours se libère.";
+  } else if (reviewAlert) {
+    status = "poor";
+    reason = `Taux d'acceptation faible (${frPercent(acc!)}) : rythme réduit pour protéger votre compte.`;
+  } else if (!isPlateau) {
+    status = "warming";
+    reason = `Montée en charge (jour ${day} sur ${WARMUP_PLATEAU_DAY}) : le rythme augmente chaque semaine.`;
+  } else if (acc === null) {
+    status = "ok";
+    reason =
+      "Rythme prudent le temps de mesurer le taux d'acceptation de vos invitations.";
+  } else {
+    status = "ok";
+    reason = `Rythme calculé sur la santé de votre compte (acceptation ${frPercent(acc)}).`;
   }
 
   return {
     inviteDailyCap: inviteDaily,
-    inviteWeeklyCap: ceil.inviteWeekly,
+    inviteWeeklyCap,
     messageDailyCap: ceil.messageDaily,
     warmup: { day, plateauDay: WARMUP_PLATEAU_DAY, isPlateau, fastLane },
+    verified,
     acceptanceRate: acc,
     health,
+    reason,
+    status,
+    usedLast7Days: used7d,
+    pendingInvitations: pending,
+    reviewAlert,
   };
 }
 

@@ -108,6 +108,12 @@ export type Conversation = {
   unread: number;
   silentDays: number;
   pictureUrl: string | null;
+  /** Synthetic row for an accepted invitation with no Unipile chat yet.
+   *  `id` is `pending:<prospectId>`; the first send creates the real chat. */
+  pending?: boolean;
+  /** LinkedIn ids required to open the chat on first send (pending rows). */
+  providerId?: string | null;
+  accountId?: string | null;
   // Loaded lazily by the cockpit when this chat is selected.
   timeline?: TimelineEvent[];
 };

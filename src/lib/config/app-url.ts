@@ -54,9 +54,10 @@ export function resolveAppOrigin(request?: RequestLike): string {
 /** Client-side origin for OAuth redirectTo and similar. */
 export function resolveClientAppOrigin(): string {
   if (typeof window !== "undefined") {
-    if (process.env.NODE_ENV === "development") return window.location.origin;
-    const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
-    if (fromEnv) return fromEnv;
+    // Always stay on the origin the user is actually on: localhost → localhost,
+    // andoxa.fr → andoxa.fr, preview → preview. Preferring NEXT_PUBLIC_APP_URL
+    // here is what bounced signup-confirm / OAuth callbacks across domains and
+    // left the browser extension (configured for one origin) unable to connect.
     return window.location.origin;
   }
   return process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";

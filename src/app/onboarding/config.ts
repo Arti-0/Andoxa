@@ -13,33 +13,33 @@ export const ONBOARDING_PROFILE_STEP = {
 export type StepId =
   | "welcome"
   | "user.name"
-  | "user.theme"
   | "org.create"
   | "org.invite"
   | "org.finish"
   | "install.linkedin"
   | "install.whatsapp"
   | "install.extension"
+  | "source.setup"
   | "shared.finish";
 
 export type OnboardingScenario = "new_owner" | "new_invited" | "new_org";
 
+// new_owner activation funnel: org.create routes through /onboarding/plan
+// (Stripe checkout grants the trial entitlement required by the proxy before
+// /campagnes is reachable); the wizard resumes at install.linkedin once the
+// org is entitled (see onboarding/page.tsx). source.setup ends the wizard by
+// redirecting into the app (campaign handoff or CRM), never via onNext.
 const RAW_SEQUENCES: Record<OnboardingScenario, StepId[]> = {
   new_owner: [
     "welcome",
     "user.name",
-    "user.theme",
     "org.create",
-    "org.invite",
-    "org.finish",
     "install.linkedin",
-    "install.whatsapp",
-    "install.extension",
+    "source.setup",
   ],
   new_invited: [
     "welcome",
     "user.name",
-    "user.theme",
     "install.linkedin",
     "install.whatsapp",
     "install.extension",

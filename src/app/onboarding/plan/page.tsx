@@ -23,7 +23,8 @@ import {
 } from '@/lib/supabase/postgrest-error';
 import { toast } from '@/lib/toast';
 
-const PLAN_BACK_HREF = '/onboarding?step=9';
+/** Back to the org.create step (step 3 of the new_owner sequence). */
+const PLAN_BACK_HREF = '/onboarding?step=3';
 
 const planShellClass =
     'flex min-h-dvh w-full flex-col bg-background transition-colors duration-300';
