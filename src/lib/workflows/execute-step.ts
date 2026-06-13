@@ -18,7 +18,6 @@ import {
   prospectHasInboundReplyAfter,
   prospectHasLinkedInInboundReply,
 } from "@/lib/unipile/linkedin-inbound-reply";
-import type { UnipileChat } from "@/lib/unipile/types";
 import type { Database, Json } from "@/lib/types/supabase";
 import {
   computeInviteBudget,
@@ -420,7 +419,9 @@ async function handleLinkedInMessage(ctx: HandlerContext): Promise<void> {
   const text = applyMessageVariables(template, ctx.prospect, { bookingLink });
 
   let providerId: string | undefined;
-  let chatRes: (UnipileChat & { id: string }) | undefined;
+  // Unipile `/chats` returns the new conversation id under `chat_id`, not `id`
+  // (kept `id` as a fallback across API versions).
+  let chatRes: { chat_id?: string; id?: string } | undefined;
   try {
     const profileRes = await unipileFetch<{ provider_id?: string }>(
       `/users/${encodeURIComponent(slug)}?account_id=${accountId}`
@@ -430,7 +431,7 @@ async function handleLinkedInMessage(ctx: HandlerContext): Promise<void> {
       throw new Error("Impossible de résoudre le profil LinkedIn");
     }
 
-    chatRes = await unipileFetch<UnipileChat & { id: string }>("/chats", {
+    chatRes = await unipileFetch<{ chat_id?: string; id?: string }>("/chats", {
       method: "POST",
       body: JSON.stringify({
         account_id: accountId,
@@ -444,7 +445,7 @@ async function handleLinkedInMessage(ctx: HandlerContext): Promise<void> {
     }
     throw err;
   }
-  const chatId = chatRes?.id;
+  const chatId = chatRes?.chat_id ?? chatRes?.id;
   if (chatId && ctx.run.organization_id) {
     await ctx.supabase.from("unipile_chat_prospects").upsert(
       {
@@ -468,6 +469,10 @@ async function handleLinkedInMessage(ctx: HandlerContext): Promise<void> {
     details: {
       message: text.length > 500 ? `${text.slice(0, 499)}…` : text,
       chat_id: chatId ?? null,
+      // provider_id + account_id let the inbound webhook backfill relink the
+      // chat (and attribute the reply) when no chat link exists yet.
+      provider_id: providerId,
+      account_id: accountId,
       workflow_id: ctx.run.workflow_id,
       workflow_run_id: ctx.run.id,
     },

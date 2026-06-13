@@ -2,6 +2,8 @@
  * Weekly bucketing helpers used by sparklines and the activity chart.
  */
 
+import type { DashboardPeriod } from "./period";
+
 export interface WeekBucket {
   /** ISO Monday of the week (00:00 local). */
   start: Date;
@@ -61,6 +63,74 @@ export function buildWeekBuckets(count: number, now: Date = new Date()): WeekBuc
     });
   }
   return buckets;
+}
+
+function startOfDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+const DAY_LABELS_FR = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+
+/**
+ * Build the bucket series that matches the selected dashboard period, so the
+ * sparklines and the activity chart shrink to the period instead of always
+ * showing a fixed multi-week window:
+ *   • today → 24 hourly buckets (00h–23h of the current day)
+ *   • week  → 7 daily buckets (Mon–Sun of the current ISO week)
+ *   • month → 30 daily buckets (rolling, ending today)
+ *
+ * Returns the same `WeekBucket` shape as `buildWeekBuckets` so callers can keep
+ * using `bucketIndex` unchanged.
+ */
+export function buildPeriodBuckets(
+  period: DashboardPeriod,
+  now: Date = new Date(),
+): WeekBucket[] {
+  if (period === "today") {
+    const day0 = startOfDay(now);
+    return Array.from({ length: 24 }, (_, h) => {
+      const start = new Date(day0);
+      start.setHours(h, 0, 0, 0);
+      const end = new Date(day0);
+      end.setHours(h, 59, 59, 999);
+      return { start, end, label: `${h}h`, key: `h-${h}` };
+    });
+  }
+
+  if (period === "week") {
+    const monday = startOfWeek(now);
+    return Array.from({ length: 7 }, (_, i) => {
+      const start = new Date(monday);
+      start.setDate(monday.getDate() + i);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setHours(23, 59, 59, 999);
+      return {
+        start,
+        end,
+        label: DAY_LABELS_FR[i],
+        key: `d-${start.getFullYear()}-${start.getMonth() + 1}-${start.getDate()}`,
+      };
+    });
+  }
+
+  // month — 30 rolling daily buckets ending today.
+  const today0 = startOfDay(now);
+  return Array.from({ length: 30 }, (_, i) => {
+    const start = new Date(today0);
+    start.setDate(today0.getDate() - (29 - i));
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setHours(23, 59, 59, 999);
+    return {
+      start,
+      end,
+      label: `${start.getDate()}/${start.getMonth() + 1}`,
+      key: `d-${start.getFullYear()}-${start.getMonth() + 1}-${start.getDate()}`,
+    };
+  });
 }
 
 /**

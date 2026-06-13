@@ -54,6 +54,24 @@ function localizeUnipileErrorMessage(message: string): string {
     return message;
 }
 
+/**
+ * True when a `/users/invite` failure means an invitation is *already pending*
+ * for this recipient (we — or the user, earlier — already sent one). For the
+ * `invite_then_message` flow this is non-blocking: the invite is effectively
+ * out there, so the phase-2 message should still fire on acceptance rather than
+ * marking the prospect as a hard error. Matches both the raw Unipile English
+ * markers and the localized French message above.
+ */
+export function isInvitationAlreadySentError(err: unknown): boolean {
+    if (!(err instanceof UnipileApiError)) return false;
+    const m = err.message.trim().toLowerCase();
+    return (
+        m.includes('already been sent recently') ||
+        m.includes('already sent recently') ||
+        m.includes('déjà été envoyée récemment')
+    );
+}
+
 export class UnipileApiError extends Error {
     constructor(
         message: string,

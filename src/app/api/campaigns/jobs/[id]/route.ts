@@ -39,23 +39,43 @@ export const GET = createApiHandler(async (req, ctx) => {
     let prospectNames: Record<string, string> = {};
     const prospectAvatars: Record<string, string | null> = {};
     const acceptedAtByProspect: Record<string, string> = {};
+    // For invite_then_message the phase-2 message is sent later (on acceptance,
+    // or immediately when already connected). Its `linkedin_message_outbound`
+    // activity is the only signal that the *message* step is done — surfaced to
+    // the detail table as a second status pill alongside the invite step.
+    const messageSentAtByProspect: Record<string, string> = {};
     if (prospectIds.length > 0) {
-        const [prospectRowsResult, acceptedRowsResult] = await Promise.all([
-            ctx.supabase
-                .from('prospects')
-                .select('id, full_name, company, enrichment_metadata')
-                .in('id', prospectIds),
-            ctx.supabase
-                .from('prospect_activity')
-                .select('prospect_id, created_at')
-                .eq('organization_id', ctx.workspaceId)
-                .eq('campaign_job_id', id)
-                .eq('action', 'linkedin_invite_accepted')
-                .in('prospect_id', prospectIds)
-                .order('created_at', { ascending: false }),
-        ]);
+        const [prospectRowsResult, acceptedRowsResult, messagedRowsResult] =
+            await Promise.all([
+                ctx.supabase
+                    .from('prospects')
+                    .select('id, full_name, company, enrichment_metadata')
+                    .in('id', prospectIds),
+                ctx.supabase
+                    .from('prospect_activity')
+                    .select('prospect_id, created_at')
+                    .eq('organization_id', ctx.workspaceId)
+                    .eq('campaign_job_id', id)
+                    .eq('action', 'linkedin_invite_accepted')
+                    .in('prospect_id', prospectIds)
+                    .order('created_at', { ascending: false }),
+                ctx.supabase
+                    .from('prospect_activity')
+                    .select('prospect_id, created_at')
+                    .eq('organization_id', ctx.workspaceId)
+                    .eq('campaign_job_id', id)
+                    .eq('action', 'linkedin_message_outbound')
+                    .in('prospect_id', prospectIds)
+                    .order('created_at', { ascending: false }),
+            ]);
         const { data: prospectRows } = prospectRowsResult;
         const { data: acceptedRows } = acceptedRowsResult;
+        const { data: messagedRows } = messagedRowsResult;
+        for (const row of messagedRows ?? []) {
+            if (row.prospect_id && !messageSentAtByProspect[row.prospect_id]) {
+                messageSentAtByProspect[row.prospect_id] = row.created_at;
+            }
+        }
         if (prospectRows) {
             prospectNames = Object.fromEntries(
                 prospectRows.map((r) => [
@@ -83,6 +103,7 @@ export const GET = createApiHandler(async (req, ctx) => {
             prospectNames[p.prospect_id] ?? p.prospect_id.slice(0, 8),
         avatar_url: prospectAvatars[p.prospect_id] ?? null,
         accepted_at: acceptedAtByProspect[p.prospect_id] ?? null,
+        message_sent_at: messageSentAtByProspect[p.prospect_id] ?? null,
     }));
 
     return { ...job, prospects: enriched };
@@ -96,8 +117,16 @@ export const PATCH = createApiHandler(async (req, ctx) => {
     if (!ctx.workspaceId) throw Errors.badRequest('Workspace required');
     const id = extractJobId(req);
 
-    const body = await parseBody<{ status?: string; name?: string }>(req);
+    const body = await parseBody<{
+        status?: string;
+        name?: string;
+        send_on_weekends?: boolean;
+    }>(req);
     const updates: CampaignJobUpdate = {};
+
+    if (typeof body.send_on_weekends === 'boolean') {
+        updates.send_on_weekends = body.send_on_weekends;
+    }
 
     if (body.status !== undefined) {
         if (!['paused', 'running', 'failed'].includes(body.status)) {

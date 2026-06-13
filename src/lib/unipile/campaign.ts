@@ -69,6 +69,15 @@ export function prepareWhatsAppOutboundText(text: string): string {
  * send route. The attachment blob is downloaded by the caller
  * (downloadCampaignAttachment) so this helper stays free of storage concerns.
  */
+/** Unipile `/chats` (start new chat) returns the new conversation id under
+ *  `chat_id` (with `object: "ChatStarted"`), not `id`. Normalize to `{ id }` so
+ *  callers can upsert `unipile_chat_prospects` at send time. We keep an `id`
+ *  fallback in case the field name varies across Unipile API versions. */
+type ChatStartResponse = { chat_id?: string; id?: string };
+function normalizeChatStart(res: ChatStartResponse): { id?: string } {
+  return { id: res.chat_id ?? res.id };
+}
+
 export async function sendLinkedInChatMessage(opts: {
   accountId: string;
   providerId: string;
@@ -81,19 +90,23 @@ export async function sendLinkedInChatMessage(opts: {
     form.append("attendees_ids", opts.providerId);
     if (opts.text?.trim()) form.append("text", opts.text);
     form.append("attachments", opts.attachment.blob, opts.attachment.name);
-    return unipileFetch<{ id?: string }>("/chats", {
-      method: "POST",
-      body: form,
-    });
+    return normalizeChatStart(
+      await unipileFetch<ChatStartResponse>("/chats", {
+        method: "POST",
+        body: form,
+      })
+    );
   }
-  return unipileFetch<{ id?: string }>("/chats", {
-    method: "POST",
-    body: JSON.stringify({
-      account_id: opts.accountId,
-      attendees_ids: [opts.providerId],
-      text: opts.text,
-    }),
-  });
+  return normalizeChatStart(
+    await unipileFetch<ChatStartResponse>("/chats", {
+      method: "POST",
+      body: JSON.stringify({
+        account_id: opts.accountId,
+        attendees_ids: [opts.providerId],
+        text: opts.text,
+      }),
+    })
+  );
 }
 
 export async function sendWhatsAppMessage(opts: {
@@ -105,8 +118,10 @@ export async function sendWhatsAppMessage(opts: {
   form.append("account_id", opts.accountId);
   form.append("attendees_ids", whatsappJid(opts.phone));
   form.append("text", prepareWhatsAppOutboundText(opts.text));
-  return unipileFetch<{ id?: string }>("/chats", {
-    method: "POST",
-    body: form,
-  });
+  return normalizeChatStart(
+    await unipileFetch<ChatStartResponse>("/chats", {
+      method: "POST",
+      body: form,
+    })
+  );
 }

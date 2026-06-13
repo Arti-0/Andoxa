@@ -377,24 +377,23 @@ function Sparkline({
     color = '#0052D9',
     className = '',
     label = 'Valeur',
+    bucketLabels,
 }: {
     data: number[];
     color?: string;
     className?: string;
     label?: string;
+    /** Period bucket labels from the API (week_labels). When provided, the
+     *  tooltip shows the real bucket (e.g. "14h", "Mar", "5/6") so it stays
+     *  correct as the period changes. */
+    bucketLabels?: string[];
 }) {
-    const total = data?.length ?? 0;
     return (
         <MiniLineChart
             data={data}
             color={color}
             label={label}
-            bucketLabel={(i) => {
-                // Oldest bucket → newest. Convert index to "S-N" (week offset).
-                const offset = total - 1 - i;
-                if (offset === 0) return 'Cette semaine';
-                return `Il y a ${offset} sem.`;
-            }}
+            bucketLabel={(i) => bucketLabels?.[i] ?? ''}
             className={`block w-full h-full min-h-10 ${className}`}
         />
     );
@@ -849,8 +848,13 @@ interface KpiCardData {
     sub: string;
     side?: string;
     trend: number;
+    /** Trend unit. '%' for count KPIs (period-over-period change); 'pts' for
+     *  rate KPIs where the value is itself a percentage (point delta). */
+    trendSuffix?: string;
     sparkData: number[];
     sparkColor?: string;
+    /** Period bucket labels for the sparkline tooltip. */
+    bucketLabels?: string[];
 }
 
 function KpiCard({ k, loading }: { k: KpiCardData | null; loading: boolean }) {
@@ -870,7 +874,7 @@ function KpiCard({ k, loading }: { k: KpiCardData | null; loading: boolean }) {
                 <div className="text-[10px] sm:text-[10.5px] font-semibold tracking-[0.08em] uppercase text-slate-500 dark:text-zinc-400 truncate">
                     {k.label}
                 </div>
-                <Trend delta={k.trend} />
+                <Trend delta={k.trend} suffix={k.trendSuffix ?? '%'} />
             </div>
             <div className="mt-3 flex-1 flex flex-col min-h-0">
                 <div className="flex items-end justify-between gap-3 flex-1 min-h-0">
@@ -887,6 +891,7 @@ function KpiCard({ k, loading }: { k: KpiCardData | null; loading: boolean }) {
                             data={k.sparkData}
                             color={k.sparkColor || '#0052D9'}
                             label={k.label}
+                            bucketLabels={k.bucketLabels}
                         />
                     </div>
                 </div>
@@ -911,6 +916,7 @@ function KpiGrid({
         if (!stats) return [null, null, null, null];
         const { pipeline, rdv, linkedin, closings } = stats;
         const stagesText = `${pipeline.by_stage.proposal} en proposition · ${pipeline.by_stage.qualified} qualifiés · ${pipeline.by_stage.rdv} en RDV`;
+        const labels = stats.week_labels;
 
         return [
             {
@@ -919,30 +925,39 @@ function KpiGrid({
                 sub: 'prospects en cours',
                 side: stagesText,
                 trend: pipeline.trend_pts,
+                trendSuffix: '%',
                 sparkData: pipeline.sparkline,
+                bucketLabels: labels,
             },
             {
                 label: 'RDV bookés',
                 value: String(rdv.booked_count),
                 sub: 'rendez-vous planifiés',
                 trend: rdv.trend_pts,
+                trendSuffix: '%',
                 sparkData: rdv.sparkline,
+                bucketLabels: labels,
             },
             {
                 label: 'Taux de réponse LinkedIn',
                 value: `${linkedin.response_rate_pct}%`,
                 sub: `${linkedin.responses_received} réponse${linkedin.responses_received > 1 ? 's' : ''} · ${linkedin.invitations_sent} invitation${linkedin.invitations_sent > 1 ? 's' : ''}`,
-                side: `Acceptation ${linkedin.acceptance_rate_pct}%`,
+                // Rate KPI: the trend is a point delta (rate moved ±N pts), not a
+                // relative % change.
                 trend: linkedin.trend_pts,
+                trendSuffix: 'pts',
                 sparkData: linkedin.sparkline,
+                bucketLabels: labels,
             },
             {
                 label: 'Closings',
                 value: String(closings.won_count),
                 sub: 'deals gagnés sur la période',
                 trend: closings.trend_pts,
+                trendSuffix: '%',
                 sparkData: closings.sparkline,
                 sparkColor: closings.trend_pts < 0 ? '#ef4444' : '#0052D9',
+                bucketLabels: labels,
             },
         ];
     }, [stats]);
@@ -970,6 +985,15 @@ function FunnelCard({
     const steps = funnel?.steps ?? [];
     const first = steps[0]?.count ?? 0;
     const MIN_W = 14;
+
+    // Taux de closing = closings ÷ conversations (conversation → deal). A real
+    // outcome metric that completes the funnel alongside "Taux global" (the
+    // invitation → closing rate) and "Cycle moyen".
+    const convCount =
+        steps.find((s) => s.key === 'conversations')?.count ?? 0;
+    const closeCount = steps.find((s) => s.key === 'closings')?.count ?? 0;
+    const closingRate =
+        convCount > 0 ? Math.round((closeCount / convCount) * 100) : null;
 
     return (
         <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5">
@@ -1059,13 +1083,9 @@ function FunnelCard({
                     help="premier message → RDV"
                 />
                 <FunnelStat
-                    label="Pipeline cible"
-                    value={
-                        funnel
-                            ? `${funnel.pipeline_target_closings} closings`
-                            : '—'
-                    }
-                    help="à période iso"
+                    label="Taux de closing"
+                    value={closingRate != null ? `${closingRate} %` : '—'}
+                    help="conversation → closing"
                 />
             </div>
         </div>
@@ -1127,12 +1147,41 @@ function LegendStat({
     );
 }
 
+/** Cap the bar chart at a readable width regardless of period granularity
+ *  (today = 24 hourly buckets, month = 30 daily). Adjacent buckets are summed
+ *  into ≤ MAX_VOLUME_BARS groups, each labelled by its first bucket. The KPI
+ *  sparklines keep the fine-grained series — only this bar chart is coarsened. */
+const MAX_VOLUME_BARS = 8;
+
+interface VolumeBar {
+    week: string;
+    calls: number;
+    messages: number;
+    bookings: number;
+}
+
+function groupVolume(data: VolumeBar[]): VolumeBar[] {
+    if (data.length <= MAX_VOLUME_BARS) return data;
+    const groupSize = Math.ceil(data.length / MAX_VOLUME_BARS);
+    const out: VolumeBar[] = [];
+    for (let i = 0; i < data.length; i += groupSize) {
+        const slice = data.slice(i, i + groupSize);
+        out.push({
+            week: slice[0].week,
+            calls: slice.reduce((s, a) => s + a.calls, 0),
+            messages: slice.reduce((s, a) => s + a.messages, 0),
+            bookings: slice.reduce((s, a) => s + a.bookings, 0),
+        });
+    }
+    return out;
+}
+
 function ActivityVolumeCard({
     stats,
 }: {
     stats: DashboardStatsPayload | undefined;
 }) {
-    const data = stats?.charts?.activityVolume ?? [];
+    const data = groupVolume(stats?.charts?.activityVolume ?? []);
     const max = Math.max(
         ...data.map((a) => a.calls + a.messages + a.bookings),
         1
@@ -1149,7 +1198,7 @@ function ActivityVolumeCard({
                         Volume d&apos;activité
                     </h3>
                     <div className="text-[11.5px] sm:text-[12px] text-slate-500 dark:text-zinc-400 mt-0.5">
-                        Messages, appels et RDV — 8 dernières semaines
+                        Messages, appels et RDV
                     </div>
                 </div>
             </div>
@@ -2009,7 +2058,10 @@ function RecentActivityCard({
                 </div>
             </div>
 
-            <div>
+            {/* Reserve the height of a full 8-row list so switching filters
+                (loading skeletons ↔ fewer rows ↔ empty state) never resizes the
+                card and shifts everything below it. */}
+            <div className="min-h-[488px]">
                 {isLoading ? (
                     [0, 1, 2, 3].map((i) => (
                         <div
@@ -2180,13 +2232,21 @@ export function DashboardContent() {
                     isLoading={isLoading}
                 />
 
-                {/* LinkedIn limits — placed directly under the daily priorities as a
-            compact 2×2 status card. */}
-                <div className="mb-5 sm:mb-6">
-                    <LinkedInQuotasCard
-                        usage={overview?.linkedinUsage}
-                        usageLoading={isLoading}
-                    />
+                {/* LinkedIn limits (3) beside active campaigns (1), directly under
+            the daily priorities. */}
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 sm:gap-4 mb-5 sm:mb-6 items-start">
+                    <div className="lg:col-span-3">
+                        <LinkedInQuotasCard
+                            usage={overview?.linkedinUsage}
+                            usageLoading={isLoading}
+                        />
+                    </div>
+                    <div className="lg:col-span-1">
+                        <ActiveCampaignsCard
+                            data={overview?.activeCampaigns}
+                            isLoading={isLoading}
+                        />
+                    </div>
                 </div>
 
                 <KpiGrid stats={stats} isLoading={statsLoading} />
@@ -2210,18 +2270,12 @@ export function DashboardContent() {
                     </div>
                 )}
 
-                <div className="grid gap-3 sm:gap-4 mb-5 sm:mb-6 grid-cols-1 lg:[grid-template-columns:minmax(0,1fr)_minmax(0,360px)]">
+                <div className="mb-5 sm:mb-6">
                     <RecentActivityCard
                         workspaceId={workspace?.id}
                         defaultActivity={overview?.activity}
                         defaultLoading={isLoading}
                     />
-                    <div className="flex flex-col gap-3 sm:gap-4">
-                        <ActiveCampaignsCard
-                            data={overview?.activeCampaigns}
-                            isLoading={isLoading}
-                        />
-                    </div>
                 </div>
             </div>
         </div>

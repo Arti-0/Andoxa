@@ -129,7 +129,9 @@ function getFunnelSteps(c: Campaign): FunnelStepData[] {
             big: sent,
             total: c.total,
             label: 'Invitations envoyées',
-            sub: `sur ${c.total} (${pct(sent, c.total)}% du carnet)`,
+            // No sub-line: the "/ total" value and the progress bar's
+            // "% du carnet traité" already convey the carnet ratio.
+            sub: '',
             tip: 'Invitations LinkedIn envoyées en début de séquence.',
             showProgress: true,
             color: '#0052D9',
@@ -162,7 +164,7 @@ function FunnelStep({ step }: { step: FunnelStepData }) {
     const tierColor = step.tier ? TIER_COLORS[step.tier] : null;
     const valuePct = step.total ? (step.big / step.total) * 100 : null;
     return (
-        <div className="relative flex min-w-0 flex-1 flex-col rounded-xl border bg-card px-4 py-3.5 transition-colors hover:border-foreground/20">
+        <div className="relative flex min-h-[122px] min-w-0 flex-1 flex-col rounded-xl border bg-card px-4 py-3.5 transition-colors hover:border-foreground/20">
             <div className="flex items-center justify-between gap-2">
                 <span className="truncate text-[12.5px] font-medium text-muted-foreground">
                     {step.label}
@@ -187,19 +189,10 @@ function FunnelStep({ step }: { step: FunnelStepData }) {
                     </span>
                 )}
             </div>
-            {step.sub && (
-                <div
-                    className="mt-2 inline-flex items-center gap-1 text-[12px] font-medium"
-                    style={{ color: tierColor ?? 'var(--muted-foreground)' }}
-                >
-                    {step.tier === 'good' && <ArrowUp className="size-3" />}
-                    {step.tier === 'bad' && (
-                        <AlertTriangle className="size-3" />
-                    )}
-                    {step.sub}
-                </div>
-            )}
-            {step.showProgress && (
+            {/* Footer pinned to the bottom (mt-auto) so every card aligns the
+                same way — the lead card shows a progress bar, the others their
+                conversion sub-line — instead of clustering content at the top. */}
+            {step.showProgress ? (
                 <div className="mt-auto flex flex-col gap-1 pt-3">
                     <ProgressBar
                         value={step.big}
@@ -211,7 +204,18 @@ function FunnelStep({ step }: { step: FunnelStepData }) {
                         {valuePct?.toFixed(0)}% du carnet traité
                     </span>
                 </div>
-            )}
+            ) : step.sub ? (
+                <div
+                    className="mt-auto inline-flex items-center gap-1 pt-3 text-[12px] font-medium"
+                    style={{ color: tierColor ?? 'var(--muted-foreground)' }}
+                >
+                    {step.tier === 'good' && <ArrowUp className="size-3" />}
+                    {step.tier === 'bad' && (
+                        <AlertTriangle className="size-3" />
+                    )}
+                    {step.sub}
+                </div>
+            ) : null}
         </div>
     );
 }
@@ -842,6 +846,58 @@ function StatusPill({ status }: { status: string }) {
     );
 }
 
+/* ── Two-step status (invite_then_message) ──────────────────────────────────
+   This flow fires two actions per prospect — the invitation, then the follow-up
+   message sent on acceptance. A single pill can't say "invite out, message
+   pending", so we surface both steps. Only 2/2 (invite sent + message sent)
+   counts as fully done; 0/2 and 1/2 read as pending. */
+
+type StepState = 'done' | 'failed' | 'pending';
+
+const STEP_META: Record<StepState, { bg: string; fg: string; dot: string }> = {
+    done: { bg: '#E8F4EC', fg: '#0E7A3A', dot: '#16A34A' },
+    failed: { bg: '#FDECEC', fg: '#A8221C', dot: '#DC2626' },
+    pending: { bg: '#F8F9FA', fg: '#7C8493', dot: '#C7CCD3' },
+};
+
+function StepChip({ label, state }: { label: string; state: StepState }) {
+    const m = STEP_META[state];
+    return (
+        <span
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10.5px] font-semibold"
+            style={{ background: m.bg, color: m.fg }}
+        >
+            <span
+                className="size-1.5 shrink-0 rounded-full"
+                style={{ background: m.dot }}
+            />
+            {label}
+        </span>
+    );
+}
+
+/** Invite step done when the row succeeded (invite sent, already-sent, or
+ *  already-connected all land as `success`); a hard error/skip fails it. */
+function inviteStepState(row: CampaignJobProspectRow): StepState {
+    if (row.status === 'success') return 'done';
+    if (row.status === 'error' || row.status === 'skipped') return 'failed';
+    return 'pending';
+}
+
+/** Message step done only once the phase-2 message has actually been sent. */
+function messageStepState(row: CampaignJobProspectRow): StepState {
+    return row.message_sent_at ? 'done' : 'pending';
+}
+
+function TwoStepStatus({ row }: { row: CampaignJobProspectRow }) {
+    return (
+        <div className="flex flex-col items-start gap-1">
+            <StepChip label="Invitation" state={inviteStepState(row)} />
+            <StepChip label="Message" state={messageStepState(row)} />
+        </div>
+    );
+}
+
 function fmtProcessedAt(iso: string | null): string {
     if (!iso) return '—';
     try {
@@ -870,11 +926,14 @@ const PAGE_SIZE = 12;
 export function CampaignProspectsTable({
     rows,
     campaignName,
+    twoStep = false,
     dateFilter,
     onClearDateFilter,
 }: {
     rows: CampaignJobProspectRow[];
     campaignName: string;
+    /** invite_then_message: render invite + message as two status steps. */
+    twoStep?: boolean;
     /** YYYY-MM-DD set by clicking a day on the chart, or null. */
     dateFilter?: string | null;
     onClearDateFilter?: () => void;
@@ -899,10 +958,17 @@ export function CampaignProspectsTable({
     }, [rows, search, dateFilter]);
 
     // Only two outcomes ever land on a finished campaign: Traité (success) and
-    // Échec (error). Surface both counts instead of a generic total.
+    // Échec (error). Surface both counts instead of a generic total. For
+    // invite_then_message a prospect is only "Traité" once BOTH steps are done
+    // (invite sent + message sent) — 0/2 and 1/2 still read as pending.
     const treatedCount = useMemo(
-        () => filtered.filter((p) => p.status === 'success').length,
-        [filtered]
+        () =>
+            filtered.filter((p) =>
+                twoStep
+                    ? p.status === 'success' && !!p.message_sent_at
+                    : p.status === 'success'
+            ).length,
+        [filtered, twoStep]
     );
     const failedCount = useMemo(
         () => filtered.filter((p) => p.status === 'error').length,
@@ -1132,7 +1198,11 @@ export function CampaignProspectsTable({
                                         </div>
                                     </td>
                                     <td className="p-3.5">
-                                        <StatusPill status={p.status} />
+                                        {twoStep ? (
+                                            <TwoStepStatus row={p} />
+                                        ) : (
+                                            <StatusPill status={p.status} />
+                                        )}
                                     </td>
                                     <td className="p-3.5">
                                         <span

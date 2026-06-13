@@ -1,5 +1,5 @@
 import { createApiHandler, Errors, type ApiContext } from "../../../../lib/api";
-import { buildWeekBuckets, bucketIndex } from "@/lib/dashboard/weeks";
+import { buildPeriodBuckets, bucketIndex } from "@/lib/dashboard/weeks";
 import {
   getPeriodPair,
   parsePeriod,
@@ -93,9 +93,16 @@ export async function getDashboardStats(
   const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
   const sixMonthsAgoIso = sixMonthsAgo.toISOString();
 
-  // 12-week sparkline window — covers the four KPI sparklines.
-  const weekBuckets = buildWeekBuckets(12, now);
-  const sparkStartIso = weekBuckets[0].start.toISOString();
+  // Period-aware buckets — the sparklines and the activity chart shrink to the
+  // selected period (today=24h, week=7d, month=30d) instead of a fixed window.
+  // The data queries below still fetch a wider window (sparkStart/eightWeeks);
+  // rows outside the period buckets simply land at bucketIndex === -1 and are
+  // ignored, so the fetched ranges stay a safe superset of the buckets.
+  const weekBuckets = buildPeriodBuckets(period, now);
+  // Start the fetch 12 weeks back so the previous-period trend windows (up to
+  // ~60 days ago for "month") are always covered; end at the last bucket.
+  const TWELVE_WEEKS_MS = 12 * 7 * 24 * 60 * 60 * 1000;
+  const sparkStartIso = new Date(now.getTime() - TWELVE_WEEKS_MS).toISOString();
   const sparkEndIso = weekBuckets[weekBuckets.length - 1].end.toISOString();
 
   // 8-week activity volume window (used by both v1 and v2 charts).
@@ -381,41 +388,25 @@ export async function getDashboardStats(
     count: monthCounts.get(m) ?? 0,
   }));
 
-  // ── v1 activityVolume (8 weeks, day/month label) ─────────────────
-  function getWeekLabel(date: Date): string {
-    const startOfWeek = new Date(date);
-    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay() + 1);
-    return `${startOfWeek.getDate()}/${startOfWeek.getMonth() + 1}`;
-  }
-
-  const weekLabels: string[] = [];
-  for (let i = 7; i >= 0; i--) {
-    const d = new Date(now.getTime() - i * 7 * 24 * 60 * 60 * 1000);
-    const label = getWeekLabel(d);
-    if (!weekLabels.includes(label)) weekLabels.push(label);
-  }
-
-  const weekMap = new Map(
-    weekLabels.map((w) => [w, { calls: 0, messages: 0, bookings: 0 }]),
-  );
+  // ── activityVolume — bucketed on the period buckets ──────────────
+  // Data is fetched over a wider window (8 weeks); rows outside the period
+  // buckets land at idx === -1 and are ignored.
+  const volAgg = weekBuckets.map(() => ({ calls: 0, messages: 0, bookings: 0 }));
 
   for (const s of callSessionsResult.data ?? []) {
-    const label = getWeekLabel(new Date(s.created_at as string));
-    const entry = weekMap.get(label);
-    if (entry) entry.calls++;
+    const idx = bucketIndex(weekBuckets, new Date(s.created_at as string));
+    if (idx >= 0) volAgg[idx].calls++;
   }
   for (const b of bookingsResult.data ?? []) {
-    const label = getWeekLabel(new Date(b.created_at as string));
-    const entry = weekMap.get(label);
-    if (entry) entry.bookings++;
+    const idx = bucketIndex(weekBuckets, new Date(b.created_at as string));
+    if (idx >= 0) volAgg[idx].bookings++;
   }
 
   // Reuse the rows fetched above for `messagesEnvoyes` — no second query.
   for (const m of msgRowsForWeekBuckets) {
     if (!m.processed_at) continue;
-    const label = getWeekLabel(new Date(m.processed_at));
-    const entry = weekMap.get(label);
-    if (entry) entry.messages++;
+    const idx = bucketIndex(weekBuckets, new Date(m.processed_at));
+    if (idx >= 0) volAgg[idx].messages++;
   }
 
   // Workflow + manual outbound messages (prospect_activity).
@@ -442,14 +433,13 @@ export async function getDashboardStats(
         continue;
       }
     }
-    const label = getWeekLabel(new Date(row.created_at as string));
-    const entry = weekMap.get(label);
-    if (entry) entry.messages++;
+    const idx = bucketIndex(weekBuckets, new Date(row.created_at as string));
+    if (idx >= 0) volAgg[idx].messages++;
   }
 
-  const activityVolume = weekLabels.map((w) => ({
-    week: `Sem. ${w}`,
-    ...(weekMap.get(w) ?? { calls: 0, messages: 0, bookings: 0 }),
+  const activityVolume = weekBuckets.map((b, i) => ({
+    week: b.label,
+    ...volAgg[i],
   }));
 
   // ── v2 — pipeline ────────────────────────────────────────────────
@@ -491,23 +481,42 @@ export async function getDashboardStats(
     }
   }
 
-  // Trend = current period new active prospects vs previous period.
-  let pipelineCurrentNew = 0;
-  let pipelinePreviousNew = 0;
-  for (const p of pipelineHistoryResult.data ?? []) {
-    if (!p.created_at) continue;
-    if (p.status === "lost") continue;
-    const t = new Date(p.created_at).getTime();
-    if (t >= current.start.getTime() && t <= current.end.getTime())
-      pipelineCurrentNew++;
-    if (t >= previous.start.getTime() && t <= previous.end.getTime())
-      pipelinePreviousNew++;
-  }
+  // Trend = net pipeline movement this period vs the previous period:
+  //   inflow  (prospects created in the window)
+  //   outflow (distinct prospects that left active via won/lost in the window)
+  // active_total is a stock, so we pair it with stock-movement rather than a
+  // raw inflow count (which ignored churn and overstated growth).
+  const pipelineEntries = (w: { start: Date; end: Date }): number => {
+    let n = 0;
+    for (const p of pipelineHistoryResult.data ?? []) {
+      if (!p.created_at) continue;
+      const t = new Date(p.created_at).getTime();
+      if (t >= w.start.getTime() && t <= w.end.getTime()) n++;
+    }
+    return n;
+  };
+  const pipelineExits = (w: { start: Date; end: Date }): number => {
+    const ids = new Set<string>();
+    for (const raw of wonHistoryResult.data ?? []) {
+      const row = raw as {
+        prospect_id: string | null;
+        created_at: string | null;
+        details: { to?: string } | null;
+      };
+      if (!row.prospect_id || !row.created_at) continue;
+      if (row.details?.to !== "won" && row.details?.to !== "lost") continue;
+      const t = new Date(row.created_at).getTime();
+      if (t >= w.start.getTime() && t <= w.end.getTime()) ids.add(row.prospect_id);
+    }
+    return ids.size;
+  };
+  const pipelineNetCurrent = pipelineEntries(current) - pipelineExits(current);
+  const pipelineNetPrevious = pipelineEntries(previous) - pipelineExits(previous);
   const pipelineBlock: PipelineBlock = {
     active_total: pipelineActiveTotal,
     by_stage: byStage,
     sparkline: pipelineSparkline,
-    trend_pts: trendPts(pipelineCurrentNew, pipelinePreviousNew),
+    trend_pts: trendPts(pipelineNetCurrent, pipelineNetPrevious),
   };
 
   // ── v2 — RDV ─────────────────────────────────────────────────────

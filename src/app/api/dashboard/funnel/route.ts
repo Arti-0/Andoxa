@@ -76,7 +76,7 @@ async function countInWindow(
   const startIso = start.toISOString();
   const endIso = end.toISOString();
 
-  const [invitesRes, chatsRes, rdvsRes, closingsRes] = await Promise.all([
+  const [invitesRes, acceptedRes, chatsRes, rdvsRes, closingsRes] = await Promise.all([
     // Invitations cover both paths: campaigns (process-job-batch.ts writes
     // `linkedin_invite_sent`) AND workflows (execute-step.ts now writes the
     // same action on the LinkedIn invite step). Previously this only counted
@@ -87,6 +87,19 @@ async function countInWindow(
       .select("prospect_id, created_at")
       .eq("organization_id", ctx.workspaceId!)
       .eq("action", "linkedin_invite_sent")
+      .gte("created_at", startIso)
+      .lte("created_at", endIso),
+    // Acceptances — authoritative `linkedin_invite_accepted` signal written by
+    // recordLinkedInInviteAccepted (new_relation webhook, outbound-message
+    // inference, periodic reconciler). Replaces the old chat-created proxy,
+    // which collapsed to ~0 because a chat's `created_at` rarely lines up with
+    // the invite window. This is the SAME signal the KPI card uses
+    // (stats/route.ts), so the funnel and the cards now agree.
+    ctx.supabase
+      .from("prospect_activity")
+      .select("prospect_id, created_at")
+      .eq("organization_id", ctx.workspaceId!)
+      .eq("action", "linkedin_invite_accepted")
       .gte("created_at", startIso)
       .lte("created_at", endIso),
     // Date-windowed: previously this loaded EVERY chat row for the workspace
@@ -131,13 +144,19 @@ async function countInWindow(
     if (i.prospect_id) invitedIds.add(i.prospect_id);
   }
 
-  let acceptances = 0;
+  // Acceptances = distinct prospects with a `linkedin_invite_accepted` row in
+  // the window (deduped, so the rate stays ≤ 100% when a prospect is invited
+  // across multiple campaigns). Mirrors stats/route.ts.
+  const acceptedIds = new Set<string>();
+  for (const a of (acceptedRes.data ?? []) as ActivityRow[]) {
+    if (a.prospect_id) acceptedIds.add(a.prospect_id);
+  }
+  const acceptances = acceptedIds.size;
+
   let conversations = 0;
   for (const c of chats) {
     if (!c.prospect_id) continue;
-    const opened = inRange(c.created_at, start, end);
     const replied = inRange(c.last_inbound_at, start, end);
-    if (opened && invitedIds.has(c.prospect_id)) acceptances++;
     if (replied) conversations++;
   }
 

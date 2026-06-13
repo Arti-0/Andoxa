@@ -321,9 +321,18 @@ export const SEND_WINDOW = {
   startHour: 8,
   /** Exclusive local end hour (19:00). */
   endHour: 19,
-  /** ISO weekdays allowed to send: 1=Mon … 5=Fri (no weekends). */
+  /** ISO weekdays allowed to send by default: 1=Mon … 5=Fri (no weekends). */
   weekdays: [1, 2, 3, 4, 5] as readonly number[],
 } as const;
+
+/** Every day of the week — used when a campaign opts into weekend sending
+ *  (`campaign_jobs.send_on_weekends`). The 08–19 hour window still applies. */
+const ALL_WEEK_DAYS: readonly number[] = [1, 2, 3, 4, 5, 6, 7];
+
+/** Days a send may fire on, given the per-campaign weekend opt-in. */
+function allowedSendDays(weekendsEnabled: boolean): readonly number[] {
+  return weekendsEnabled ? ALL_WEEK_DAYS : SEND_WINDOW.weekdays;
+}
 
 /** Default timezone for the send window — matches the app-wide default until we
  *  store a per-user timezone. */
@@ -348,15 +357,18 @@ function isoWeekday(d: Date): number {
   return wd === 0 ? 7 : wd;
 }
 
-/** Whether `now` falls inside the weekday business-hours send window. */
+/** Whether `now` falls inside the business-hours send window. By default this
+ *  is weekdays only; pass `weekendsEnabled` for campaigns that opted into
+ *  weekend sending (the 08–19 hour range is unchanged either way). */
 export function isWithinSendWindow(
   now: Date = new Date(),
   timezone: string = DEFAULT_SEND_TIMEZONE,
+  weekendsEnabled = false,
 ): boolean {
   const local = new Date(now.getTime() + getTimeZoneOffsetMs(now, timezone));
   const localHour = local.getUTCHours() + local.getUTCMinutes() / 60;
   return (
-    SEND_WINDOW.weekdays.includes(isoWeekday(local)) &&
+    allowedSendDays(weekendsEnabled).includes(isoWeekday(local)) &&
     localHour >= SEND_WINDOW.startHour &&
     localHour < SEND_WINDOW.endHour
   );
@@ -369,6 +381,8 @@ export type NextSendDelayInput = {
   usedToday: number;
   now?: Date;
   timezone?: string;
+  /** Campaign opted into weekend sending (Sat/Sun within 08–19). */
+  weekendsEnabled?: boolean;
   /** Injectable RNG for deterministic tests; defaults to `Math.random`. */
   rand?: () => number;
 };
@@ -388,6 +402,7 @@ export function computeNextSendDelayMs(input: NextSendDelayInput): number {
   const now = input.now ?? new Date();
   const tz = input.timezone ?? DEFAULT_SEND_TIMEZONE;
   const rand = input.rand ?? Math.random;
+  const weekendsEnabled = input.weekendsEnabled ?? false;
   const remaining = input.dailyCap - input.usedToday;
 
   const offsetMs = getTimeZoneOffsetMs(now, tz);
@@ -395,8 +410,8 @@ export function computeNextSendDelayMs(input: NextSendDelayInput): number {
   const local = new Date(now.getTime() + offsetMs);
   const localHour = local.getUTCHours() + local.getUTCMinutes() / 60;
 
-  if (remaining <= 0 || !isWithinSendWindow(now, tz)) {
-    return msUntilNextWindowOpen(local, now.getTime(), offsetMs, rand);
+  if (remaining <= 0 || !isWithinSendWindow(now, tz, weekendsEnabled)) {
+    return msUntilNextWindowOpen(local, now.getTime(), offsetMs, rand, weekendsEnabled);
   }
 
   const msLeftInWindow = (SEND_WINDOW.endHour - localHour) * HOUR_MS;
@@ -421,16 +436,18 @@ const FOLLOWUP_MAX_DELAY_MS = 45 * 60_000;
 export function computeFollowUpDelayMs(input?: {
   now?: Date;
   timezone?: string;
+  weekendsEnabled?: boolean;
   rand?: () => number;
 }): number {
   const now = input?.now ?? new Date();
   const tz = input?.timezone ?? DEFAULT_SEND_TIMEZONE;
   const rand = input?.rand ?? Math.random;
+  const weekendsEnabled = input?.weekendsEnabled ?? false;
 
   const offsetMs = getTimeZoneOffsetMs(now, tz);
   const local = new Date(now.getTime() + offsetMs);
-  if (!isWithinSendWindow(now, tz)) {
-    return msUntilNextWindowOpen(local, now.getTime(), offsetMs, rand);
+  if (!isWithinSendWindow(now, tz, weekendsEnabled)) {
+    return msUntilNextWindowOpen(local, now.getTime(), offsetMs, rand, weekendsEnabled);
   }
   const localHour = local.getUTCHours() + local.getUTCMinutes() / 60;
   const msLeftInWindow = (SEND_WINDOW.endHour - localHour) * HOUR_MS;
@@ -438,24 +455,26 @@ export function computeFollowUpDelayMs(input?: {
     FOLLOWUP_MIN_DELAY_MS + rand() * (FOLLOWUP_MAX_DELAY_MS - FOLLOWUP_MIN_DELAY_MS);
   // Not enough of today's window left → send at the next opening instead.
   if (gap >= msLeftInWindow) {
-    return msUntilNextWindowOpen(local, now.getTime(), offsetMs, rand);
+    return msUntilNextWindowOpen(local, now.getTime(), offsetMs, rand, weekendsEnabled);
   }
   return Math.round(gap);
 }
 
-/** Delay (ms from `nowMs`) until the next weekday window opening, jittered. */
+/** Delay (ms from `nowMs`) until the next allowed window opening, jittered. */
 function msUntilNextWindowOpen(
   local: Date,
   nowMs: number,
   offsetMs: number,
   rand: () => number,
+  weekendsEnabled = false,
 ): number {
+  const days = allowedSendDays(weekendsEnabled);
   const open = new Date(local);
   open.setUTCHours(SEND_WINDOW.startHour, 0, 0, 0);
-  // Advance to the first weekday whose opening instant is strictly in the future.
+  // Advance to the first allowed day whose opening instant is strictly in the future.
   while (
     open.getTime() <= local.getTime() ||
-    !SEND_WINDOW.weekdays.includes(isoWeekday(open))
+    !days.includes(isoWeekday(open))
   ) {
     open.setTime(open.getTime() + DAY_MS);
     open.setUTCHours(SEND_WINDOW.startHour, 0, 0, 0);

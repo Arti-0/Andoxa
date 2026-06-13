@@ -326,16 +326,18 @@ export function ConvList({
                   )}
                   {c.pending && (
                     <span
+                      title="Invitation acceptée — envoyez un premier message"
                       style={{
-                        fontSize: 10,
+                        fontSize: 9.5,
                         fontWeight: 600,
-                        padding: "2px 7px",
+                        padding: "1px 6px",
                         borderRadius: 999,
                         background: "#ECFDF5",
                         color: "#047857",
+                        whiteSpace: "nowrap",
                       }}
                     >
-                      Invitation acceptée · à contacter
+                      À contacter
                     </span>
                   )}
                   {isStale && (

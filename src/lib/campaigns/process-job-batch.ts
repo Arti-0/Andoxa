@@ -7,6 +7,7 @@ import {
 import {
   UnipileApiError,
   UnipileRateLimitError,
+  isInvitationAlreadySentError,
   unipileFetch,
 } from "@/lib/unipile/client";
 import { markUnipileAccountErroredFromError } from "@/lib/unipile/account-status";
@@ -135,6 +136,9 @@ async function runBatchLinkedIn(
   job: CampaignJobRow
 ): Promise<ProcessCampaignJobBatchResult> {
   const jobId = job.id;
+  // Per-campaign weekend opt-in. Off → weekday-only window; on → 7-day window
+  // (same 08–19 hours). Drives every send-window / next-delay decision below.
+  const weekendsEnabled = job.send_on_weekends === true;
 
   if (job.status === "pending") {
     await supabase
@@ -176,12 +180,12 @@ async function runBatchLinkedIn(
   // Business-hours gate: never send outside the weekday window, even on a job's
   // very first tick (when last_batch_at is null and the cron's delay gate is
   // skipped). Defer to the next window opening and let the cron retry then.
-  if (!isWithinSendWindow()) {
+  if (!isWithinSendWindow(undefined, undefined, weekendsEnabled)) {
     await supabase
       .from("campaign_jobs")
       .update({
         last_batch_at: new Date().toISOString(),
-        delay_ms: computeNextSendDelayMs({ dailyCap: 1, usedToday: 0 }),
+        delay_ms: computeNextSendDelayMs({ dailyCap: 1, usedToday: 0, weekendsEnabled }),
       })
       .eq("id", jobId);
     return { ok: true, skipped: true, reason: "delay" };
@@ -328,27 +332,24 @@ async function runBatchLinkedIn(
       continue;
     }
 
-    // Atomic invite reservation: must happen BEFORE the Unipile call. Two
-    // concurrent batches for the same user no longer race past the daily/weekly
-    // caps. A denial (either cap) pauses the batch; the cron retries later.
-    if (isInviteBatch) {
-      const reserved = await reserveInviteSlot(supabase, job.created_by, budgetState);
-      if (!reserved.ok) {
-        rateLimited = true;
-        capReached = true;
-        break;
-      }
-      inviteDailyUsed = reserved.daily;
-    }
+    // providerId + the resolved invite note are hoisted so the catch block can
+    // stamp a `linkedin_invite_sent` activity when LinkedIn reports the invite
+    // was *already sent recently* — non-blocking for invite_then_message (the
+    // invite is already outstanding; the phase-2 message still fires on accept).
+    let resolvedProviderId: string | undefined;
+    let resolvedInviteNote = "";
 
     try {
       await supabase.from("campaign_job_prospects").update({ status: "processing" }).eq("id", cjp.id);
 
-      const profileRes = await unipileFetch<{ provider_id?: string }>(
-        `/users/${encodeURIComponent(slug)}?account_id=${accountId}`
-      );
-      const providerId = (profileRes as { provider_id?: string })?.provider_id;
+      const profileRes = await unipileFetch<{
+        provider_id?: string;
+        is_relationship?: boolean;
+      }>(`/users/${encodeURIComponent(slug)}?account_id=${accountId}`);
+      const providerId = profileRes?.provider_id;
       if (!providerId) throw new Error("Could not resolve LinkedIn profile");
+      resolvedProviderId = providerId;
+      const isFirstDegree = profileRes?.is_relationship === true;
 
       const override = messageOverrides[cjp.prospect_id]?.trim();
       const text =
@@ -364,11 +365,86 @@ async function runBatchLinkedIn(
         ? applyMessageVariables(inviteNoteTemplate, prospect, { bookingLink })
         : "";
 
+      resolvedInviteNote = inviteNoteText;
+
+      // invite_then_message + already a 1st-degree connection: there is no
+      // invitation to send or to accept, so send the phase-2 message right away
+      // (exactly like a `contact` send). The prospect drops straight into
+      // messagerie as a real conversation. No invite slot is reserved — no
+      // invite leaves the account.
+      if (
+        linkedInJobType === "invite_then_message" &&
+        isFirstDegree &&
+        messageTemplate.trim()
+      ) {
+        const chatRes = await sendLinkedInChatMessage({
+          accountId,
+          providerId,
+          text,
+        });
+        const chatId = chatRes?.id;
+        if (chatId) {
+          await supabase.from("unipile_chat_prospects").upsert(
+            {
+              prospect_id: cjp.prospect_id,
+              unipile_chat_id: chatId,
+              organization_id: job.organization_id,
+            },
+            { onConflict: "prospect_id,unipile_chat_id" }
+          );
+        }
+        await supabase
+          .from("campaign_job_prospects")
+          .update({ status: "success", processed_at: new Date().toISOString() })
+          .eq("id", cjp.id);
+        batchSuccess++;
+        void insertProspectActivity(supabase, {
+          organization_id: job.organization_id,
+          prospect_id: cjp.prospect_id,
+          actor_id: job.created_by,
+          campaign_job_id: jobId,
+          action: "linkedin_message_outbound",
+          details: {
+            message: clipDetailMessage(text ?? "", 500),
+            campaign_job_id: jobId,
+            phase: "invite_then_message_connected",
+            // Let the inbound webhook backfill relink the chat / attribute the
+            // reply when no chat link exists yet.
+            provider_id: providerId,
+            account_id: accountId,
+          },
+        });
+        void incrementUsageCounter(
+          supabase,
+          job.created_by,
+          "linkedin_contact",
+          dailyPeriodKey()
+        );
+        continue;
+      }
+
       if (
         linkedInJobType === "invite" ||
         linkedInJobType === "invite_with_note" ||
         linkedInJobType === "invite_then_message"
       ) {
+        // Atomic invite reservation: must happen BEFORE the wire call so two
+        // concurrent batches for the same user can't race past the daily/weekly
+        // caps. A denial pauses the batch; the cron retries later.
+        if (isInviteBatch) {
+          const reserved = await reserveInviteSlot(
+            supabase,
+            job.created_by,
+            budgetState
+          );
+          if (!reserved.ok) {
+            rateLimited = true;
+            capReached = true;
+            break;
+          }
+          inviteDailyUsed = reserved.daily;
+        }
+
         const inviteBody: Record<string, unknown> = {
           account_id: accountId,
           provider_id: providerId,
@@ -464,6 +540,10 @@ async function runBatchLinkedIn(
           details: {
             message: clipDetailMessage(text ?? "", 500),
             campaign_job_id: jobId,
+            // Let the inbound webhook backfill relink the chat / attribute the
+            // reply when no chat link exists yet.
+            provider_id: providerId,
+            account_id: accountId,
           },
         });
       }
@@ -492,6 +572,43 @@ async function runBatchLinkedIn(
         unipileThrottled = true;
         break;
       }
+
+      // "Invitation already sent recently" is NOT a hard failure for
+      // invite_then_message: an invite is already outstanding for this prospect,
+      // so record it as sent (stamping the provider/account ids the acceptance
+      // webhook needs to pair the future acceptance) and let the phase-2 message
+      // fire on acceptance. The invite step shows "done"; the message step stays
+      // tracked separately via linkedin_message_outbound.
+      if (
+        linkedInJobType === "invite_then_message" &&
+        isInvitationAlreadySentError(err) &&
+        resolvedProviderId
+      ) {
+        await supabase
+          .from("campaign_job_prospects")
+          .update({ status: "success", processed_at: new Date().toISOString() })
+          .eq("id", cjp.id);
+        batchSuccess++;
+        void insertProspectActivity(supabase, {
+          organization_id: job.organization_id,
+          prospect_id: cjp.prospect_id,
+          actor_id: job.created_by,
+          campaign_job_id: jobId,
+          action: "linkedin_invite_sent",
+          details: {
+            message: resolvedInviteNote
+              ? clipDetailMessage(resolvedInviteNote, 500)
+              : "",
+            campaign_job_id: jobId,
+            provider_id: resolvedProviderId,
+            account_id: accountId,
+            job_type: linkedInJobType,
+            already_sent: true,
+          },
+        });
+        continue;
+      }
+
       const msg = err instanceof UnipileApiError ? err.message : String(err);
       // If Unipile told us the account is broken (creds expired, disconnected,
       // etc.), flip user_unipile_accounts.status='error' so the in-app banner
@@ -527,15 +644,15 @@ async function runBatchLinkedIn(
 
   let nextDelayMs: number;
   if (capReached) {
-    nextDelayMs = computeNextSendDelayMs({ dailyCap, usedToday: dailyCap });
+    nextDelayMs = computeNextSendDelayMs({ dailyCap, usedToday: dailyCap, weekendsEnabled });
   } else if (batchSuccess > 0) {
-    nextDelayMs = computeNextSendDelayMs({ dailyCap, usedToday });
+    nextDelayMs = computeNextSendDelayMs({ dailyCap, usedToday, weekendsEnabled });
   } else {
     // No action taken — a short retry (next cron tick) drains skips quickly
     // without burning the budget, but never sends outside the window.
-    nextDelayMs = isWithinSendWindow()
+    nextDelayMs = isWithinSendWindow(undefined, undefined, weekendsEnabled)
       ? 60_000
-      : computeNextSendDelayMs({ dailyCap, usedToday: dailyCap });
+      : computeNextSendDelayMs({ dailyCap, usedToday: dailyCap, weekendsEnabled });
   }
   if (unipileThrottled) {
     nextDelayMs = Math.max(nextDelayMs, 15 * 60_000);

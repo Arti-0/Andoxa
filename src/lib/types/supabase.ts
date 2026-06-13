@@ -315,6 +315,7 @@ export type Database = {
           metadata: Json | null
           organization_id: string
           processed_count: number
+          send_on_weekends: boolean
           started_at: string | null
           status: string
           success_count: number
@@ -336,6 +337,7 @@ export type Database = {
           metadata?: Json | null
           organization_id: string
           processed_count?: number
+          send_on_weekends?: boolean
           started_at?: string | null
           status?: string
           success_count?: number
@@ -357,6 +359,7 @@ export type Database = {
           metadata?: Json | null
           organization_id?: string
           processed_count?: number
+          send_on_weekends?: boolean
           started_at?: string | null
           status?: string
           success_count?: number

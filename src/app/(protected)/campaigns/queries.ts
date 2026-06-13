@@ -119,6 +119,9 @@ export interface CampaignJobProspectRow {
     error: string | null;
     processed_at: string | null;
     accepted_at: string | null;
+    /** When the phase-2 message was sent (invite_then_message only), or null.
+     *  Drives the second "Message" status pill on the detail table. */
+    message_sent_at: string | null;
     prospect_name: string;
     /** LinkedIn profile picture (enrichment_metadata.profile_picture_url) or null. */
     avatar_url: string | null;
@@ -138,6 +141,7 @@ interface ApiCampaignJob {
     message_template: string | null;
     batch_size: number | null;
     delay_ms: number | null;
+    send_on_weekends: boolean | null;
     metadata: Record<string, unknown> | null;
 }
 
@@ -293,6 +297,7 @@ export function useCampaignJobDetail(jobId: string | undefined) {
                     jobRow.metadata
                 ) as CampaignAttachment | null,
                 startedAt: jobRow.started_at ?? null,
+                sendOnWeekends: jobRow.send_on_weekends ?? false,
             };
         },
         // Don't block the whole detail load on the org-members query — member
@@ -720,6 +725,50 @@ export function useUpdateJobStatus() {
             void qc.invalidateQueries({
                 queryKey: ['campaigns', 'jobs', workspaceId],
             });
+            if (variables?.id) {
+                void qc.invalidateQueries({
+                    queryKey: ['campaigns', 'job', workspaceId, variables.id],
+                });
+            }
+        },
+    });
+}
+
+/** Toggle a campaign's weekend-sending opt-in (campaign_jobs.send_on_weekends).
+ *  Optimistically flips the detail cache so the switch responds instantly. */
+export function useSetJobWeekends() {
+    const qc = useQueryClient();
+    const { workspaceId } = useWorkspace();
+    return useMutation({
+        mutationFn: async ({
+            id,
+            sendOnWeekends,
+        }: {
+            id: string;
+            sendOnWeekends: boolean;
+        }) => {
+            await patchJson(`/api/campaigns/jobs/${id}`, {
+                send_on_weekends: sendOnWeekends,
+            });
+        },
+        onMutate: async ({ id, sendOnWeekends }) => {
+            const key = ['campaigns', 'job', workspaceId, id] as const;
+            await qc.cancelQueries({ queryKey: key });
+            const prev = qc.getQueryData(key);
+            qc.setQueryData(key, (old) =>
+                old && typeof old === 'object'
+                    ? { ...(old as object), sendOnWeekends }
+                    : old
+            );
+            return { prev, key };
+        },
+        onError: (err, _vars, ctx) => {
+            if (ctx?.prev) qc.setQueryData(ctx.key, ctx.prev);
+            toast.error(
+                err instanceof Error ? err.message : 'Échec de la mise à jour'
+            );
+        },
+        onSettled: (_d, _e, variables) => {
             if (variables?.id) {
                 void qc.invalidateQueries({
                     queryKey: ['campaigns', 'job', workspaceId, variables.id],

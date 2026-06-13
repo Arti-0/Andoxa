@@ -171,11 +171,22 @@ export async function recordLinkedInInviteAccepted(
     const invDetails = (inv.details ?? null) as { job_type?: string | null } | null;
     const isFollowUp =
       invDetails?.job_type === "invite_then_message" && Boolean(inv.campaign_job_id);
+    // Schedule the paced follow-up respecting the campaign's weekend opt-in: a
+    // weekend acceptance on a weekday-only campaign rolls to Monday's window.
+    let weekendsEnabled = false;
+    if (isFollowUp && inv.campaign_job_id) {
+      const { data: jobRow } = await supabase
+        .from("campaign_jobs")
+        .select("send_on_weekends")
+        .eq("id", inv.campaign_job_id)
+        .maybeSingle();
+      weekendsEnabled = jobRow?.send_on_weekends === true;
+    }
     const followUp = isFollowUp
       ? {
           followup_status: "pending" as const,
           followup_scheduled_at: new Date(
-            Date.now() + computeFollowUpDelayMs(),
+            Date.now() + computeFollowUpDelayMs({ weekendsEnabled }),
           ).toISOString(),
         }
       : null;
@@ -282,13 +293,15 @@ type ScheduledFollowUpDetails = {
 export async function drainScheduledFollowUps(
   supabase: SupabaseClient<Database>,
 ): Promise<{ checked: number; sent: number }> {
-  // Same window as outbound sends — never reply outside business hours.
-  if (!isWithinSendWindow()) return { checked: 0, sent: 0 };
-
+  // Window gating is per-campaign (weekend opt-in), resolved below — so unlike
+  // before we don't bail globally on weekends, only skip rows whose campaign
+  // isn't in its send window right now.
   const nowIso = new Date().toISOString();
   const { data: due, error } = await supabase
     .from("prospect_activity")
-    .select("id, prospect_id, organization_id, actor_id, campaign_job_id, details")
+    .select(
+      "id, prospect_id, organization_id, actor_id, campaign_job_id, created_at, details",
+    )
     .eq("action", "linkedin_invite_accepted")
     .filter("details->>followup_status", "eq", "pending")
     .filter("details->>followup_scheduled_at", "lte", nowIso)
@@ -296,12 +309,37 @@ export async function drainScheduledFollowUps(
 
   if (error || !due?.length) return { checked: 0, sent: 0 };
 
+  // Resolve each campaign's weekend opt-in once for the batch.
+  const jobIds = [
+    ...new Set(due.map((r) => r.campaign_job_id).filter((v): v is string => !!v)),
+  ];
+  const weekendByJob = new Map<string, boolean>();
+  if (jobIds.length > 0) {
+    const { data: jobRows } = await supabase
+      .from("campaign_jobs")
+      .select("id, send_on_weekends")
+      .in("id", jobIds);
+    for (const j of jobRows ?? []) {
+      weekendByJob.set(j.id, j.send_on_weekends === true);
+    }
+  }
+
   const handledUsers = new Set<string>();
   let sent = 0;
 
   for (const row of due) {
     const userId = row.actor_id;
     if (!userId || !row.campaign_job_id || !row.prospect_id) continue;
+    // Never reply outside the campaign's own business-hours window.
+    if (
+      !isWithinSendWindow(
+        undefined,
+        undefined,
+        weekendByJob.get(row.campaign_job_id) ?? false,
+      )
+    ) {
+      continue;
+    }
     // One follow-up per user per tick keeps the cadence human.
     if (handledUsers.has(userId)) continue;
 
@@ -320,6 +358,7 @@ export async function drainScheduledFollowUps(
         accountId: details.account_id,
         chatId: details.chat_id ?? null,
         userId,
+        acceptedAt: row.created_at,
       });
       if (dispatched) sent += 1;
       // Either way it's resolved (sent, or skipped because already-sent / no
@@ -382,17 +421,22 @@ async function dispatchInviteThenMessageFollowUp(
     accountId: string;
     chatId: string | null;
     userId: string;
+    /** Acceptance timestamp — dedupe window start (see below). */
+    acceptedAt: string;
   }
 ): Promise<boolean> {
-  // Dedupe — a previous webhook (or the outbound-inference path) may already
-  // have triggered this follow-up. The pair (campaign_job_id, prospect_id) is
-  // the natural key.
+  // Dedupe — skip if *any* outbound message already went to this prospect since
+  // the invite was accepted. This catches both a previous auto follow-up
+  // (campaign-scoped) AND a manual first message the user sent from the
+  // messagerie "à contacter" row (which writes linkedin_message_outbound with a
+  // null campaign_job_id via /chats/start). Scoping to `>= acceptedAt` avoids
+  // matching unrelated older conversations with the same prospect.
   const { data: existing } = await supabase
     .from("prospect_activity")
     .select("id")
     .eq("action", "linkedin_message_outbound")
-    .eq("campaign_job_id", args.campaignJobId)
     .eq("prospect_id", args.prospectId)
+    .gte("created_at", args.acceptedAt)
     .limit(1)
     .maybeSingle();
   if (existing) return false;
@@ -472,6 +516,10 @@ async function dispatchInviteThenMessageFollowUp(
       campaign_job_id: args.campaignJobId,
       phase: "invite_then_message_followup",
       chat_id: newChatId,
+      // Let the inbound webhook backfill relink the chat / attribute the reply
+      // when the chat link couldn't be created at send time.
+      provider_id: args.providerId,
+      account_id: args.accountId,
     },
   });
 

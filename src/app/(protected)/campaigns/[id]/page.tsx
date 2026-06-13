@@ -6,6 +6,7 @@ import { use, useState } from "react";
 import { ArrowLeft, Check, Copy, MoreVertical, Pause, Play, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   DropdownMenu,
@@ -38,6 +39,7 @@ import {
   useLaunchJob,
   useOrgMembersForCampaigns,
   useRetryJobErrors,
+  useSetJobWeekends,
   useUpdateJobStatus,
 } from "../queries";
 
@@ -59,6 +61,7 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
   const duplicateJob = useDuplicateJob();
   const cancelJob = useCancelJob();
   const retryErrors = useRetryJobErrors();
+  const setWeekends = useSetJobWeekends();
   const [confirm, setConfirm] = useState<{
     title: string;
     message: string;
@@ -205,6 +208,20 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
     router.push(`/campaigns?duplicate=${id}`);
   };
 
+  const onToggleWeekends = (checked: boolean) => {
+    setWeekends.mutate(
+      { id, sendOnWeekends: checked },
+      {
+        onSuccess: () =>
+          toast.success(
+            checked
+              ? "Envois le week-end activés"
+              : "Envois le week-end désactivés",
+          ),
+      },
+    );
+  };
+
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-5 bg-[#FAFAFB] p-6 dark:bg-background lg:p-8">
       <div className="flex flex-col gap-3">
@@ -333,6 +350,22 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Weekend opt-in: LinkedIn pacing is weekdays-only by default; this
+              lets the campaign also send Sat/Sun (still within 08–19 local). */}
+          {campaign.channel === "linkedin" && (
+            <label
+              className="ml-auto inline-flex cursor-pointer select-none items-center gap-2 text-[12.5px] text-muted-foreground"
+              title="Autorise l'envoi le samedi et le dimanche (toujours entre 8h et 19h). Désactivé : envois en semaine uniquement."
+            >
+              <Switch
+                checked={detail.data.sendOnWeekends}
+                onCheckedChange={onToggleWeekends}
+                disabled={setWeekends.isPending}
+              />
+              Envoyer le week-end
+            </label>
+          )}
         </div>
       </div>
 
@@ -388,6 +421,7 @@ export default function Campaign2DetailPage({ params }: { params: Promise<{ id: 
         <CampaignProspectsTable
           rows={prospects}
           campaignName={campaign.name}
+          twoStep={campaign.type === 'invitation_message'}
           dateFilter={selectedDate}
           onClearDateFilter={() => setSelectedDate(null)}
         />
