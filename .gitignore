@@ -95,3 +95,6 @@ andoxa-extension-firefox/*
 ._*
 *.pdf
 .vercel
+
+# Throwaway diagnostic/backfill scripts (kept local, never committed)
+scripts/tmp-*
