@@ -267,15 +267,14 @@ export async function getTeamExportData(
   );
 
   /* ── Pipeline composition ─────────────────────────────────────── */
-  const byStage = pipeline.by_stage ?? { rdv: 0, proposal: 0, qualified: 0 };
+  const byStage = pipeline.by_stage ?? { rdv: 0, proposal: 0 };
   const active = pipeline.active_total ?? 0;
   const toContact = Math.max(
-    active - (byStage.rdv + byStage.proposal + byStage.qualified),
+    active - (byStage.rdv + byStage.proposal),
     0,
   );
   const compRaw = [
     { label: "À contacter", n: toContact },
-    { label: "Qualifiés", n: byStage.qualified },
     { label: "En proposition", n: byStage.proposal },
     { label: "En RDV", n: byStage.rdv },
   ];

@@ -422,9 +422,11 @@ export function computeNextSendDelayMs(input: NextSendDelayInput): number {
 }
 
 /** Random gap before an acceptance-triggered follow-up message, so we never
- *  reply the instant someone accepts (3–45 min, in-window). */
+ *  reply the instant someone accepts (3–45 min, in-window). The max stays
+ *  under an hour so a follow-up always lands within ~1h of acceptance when the
+ *  acceptance happens inside the send window. */
 const FOLLOWUP_MIN_DELAY_MS = 3 * 60_000;
-const FOLLOWUP_MAX_DELAY_MS = 45 * 60_000;
+export const FOLLOWUP_MAX_DELAY_MS = 45 * 60_000;
 
 /**
  * Humanized delay (ms) before an `invite_then_message` follow-up should be sent
@@ -451,13 +453,18 @@ export function computeFollowUpDelayMs(input?: {
   }
   const localHour = local.getUTCHours() + local.getUTCMinutes() / 60;
   const msLeftInWindow = (SEND_WINDOW.endHour - localHour) * HOUR_MS;
-  const gap =
-    FOLLOWUP_MIN_DELAY_MS + rand() * (FOLLOWUP_MAX_DELAY_MS - FOLLOWUP_MIN_DELAY_MS);
-  // Not enough of today's window left → send at the next opening instead.
-  if (gap >= msLeftInWindow) {
+  // No room for even the minimum humanized gap before close → next opening.
+  if (msLeftInWindow <= FOLLOWUP_MIN_DELAY_MS) {
     return msUntilNextWindowOpen(local, now.getTime(), offsetMs, rand, weekendsEnabled);
   }
-  return Math.round(gap);
+  // Otherwise send today: a 3–45 min gap, clamped into the time left so a
+  // late-in-window acceptance still goes out within the hour instead of
+  // rolling to tomorrow (the bug that delayed follow-ups by days).
+  const gap =
+    FOLLOWUP_MIN_DELAY_MS + rand() * (FOLLOWUP_MAX_DELAY_MS - FOLLOWUP_MIN_DELAY_MS);
+  return Math.round(
+    Math.max(FOLLOWUP_MIN_DELAY_MS, Math.min(gap, msLeftInWindow - 60_000)),
+  );
 }
 
 /** Delay (ms from `nowMs`) until the next allowed window opening, jittered. */

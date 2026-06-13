@@ -43,7 +43,7 @@ export const GET = createApiHandler(async (req, ctx) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let query = (ctx.supabase as any)
     .from("prospect_statuses")
-    .select("id, key, name, color, sort_order, is_archived, created_at, updated_at")
+    .select("id, key, name, color, sort_order, is_archived, is_system, created_at, updated_at")
     .eq("organization_id", ctx.workspaceId);
 
   if (!includeArchived) query = query.eq("is_archived", false);

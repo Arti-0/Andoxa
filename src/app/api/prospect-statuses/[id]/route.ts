@@ -46,6 +46,21 @@ export const PATCH = createApiHandler(async (req: NextRequest, ctx) => {
     throw Errors.validation({ _: "Aucune modification fournie" });
   }
 
+  // Permanent (system) statuses can be renamed / recoloured / reordered but
+  // never archived — the CRM and campaign automation rely on them existing.
+  if (parsed.data.is_archived === true) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: row } = await (ctx.supabase as any)
+      .from("prospect_statuses")
+      .select("is_system")
+      .eq("id", id)
+      .eq("organization_id", ctx.workspaceId)
+      .maybeSingle();
+    if (row?.is_system) {
+      throw Errors.badRequest("Ce statut est permanent et ne peut pas être archivé.");
+    }
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (ctx.supabase as any)
     .from("prospect_statuses")

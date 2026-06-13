@@ -3,6 +3,7 @@ import type { Database } from "@/lib/types/supabase";
 import { createNotification } from "@/lib/notifications/create-notification";
 import { enrollOnBooking } from "@/lib/workflows/enroll-on-booking";
 import { insertProspectActivity } from "@/lib/prospect-activity";
+import { advanceProspectStatus } from "@/lib/prospects/advance-status";
 
 /**
  * Shared side effects after any RDV/event is created with a linked prospect —
@@ -87,6 +88,15 @@ export async function afterRdvCreated(
     // helper's own Sentry instrumentation.
     console.error("[afterRdvCreated] rdv_scheduled activity:", err);
   }
+
+  // Advance the prospect to RDV (only forward — won't pull back a prospect
+  // already at Proposition/Signé or on a custom status).
+  void advanceProspectStatus(supabase, {
+    organizationId: params.organizationId,
+    prospectId: params.prospectId,
+    actorId: params.hostUserId,
+    target: "rdv",
+  });
 
   await enrollOnBooking(supabase, {
     organizationId: params.organizationId,

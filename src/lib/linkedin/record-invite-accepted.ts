@@ -16,8 +16,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import * as Sentry from "@sentry/nextjs";
 import type { Database, Json } from "@/lib/types/supabase";
-import { computeFollowUpDelayMs, isWithinSendWindow } from "@/lib/linkedin/pacing";
+import {
+  computeFollowUpDelayMs,
+  isWithinSendWindow,
+  FOLLOWUP_MAX_DELAY_MS,
+} from "@/lib/linkedin/pacing";
 import { insertProspectActivity } from "@/lib/prospect-activity";
+import { advanceProspectStatus } from "@/lib/prospects/advance-status";
 import { emitWorkflowTrigger } from "@/lib/workflows/fire-trigger";
 import { applyMessageVariables, sendLinkedInChatMessage } from "@/lib/unipile/campaign";
 import { readCampaignAttachment } from "@/lib/campaigns/types";
@@ -277,6 +282,7 @@ type ScheduledFollowUpDetails = {
   provider_id?: string;
   account_id?: string;
   chat_id?: string;
+  followup_scheduled_at?: string;
 };
 
 /**
@@ -296,7 +302,12 @@ export async function drainScheduledFollowUps(
   // Window gating is per-campaign (weekend opt-in), resolved below — so unlike
   // before we don't bail globally on weekends, only skip rows whose campaign
   // isn't in its send window right now.
-  const nowIso = new Date().toISOString();
+  // Fetch every pending follow-up (oldest first) and decide due-ness in JS
+  // against the *live* send window — not a frozen `followup_scheduled_at`. A
+  // row scheduled before its campaign changed weekend opt-in, or rolled far
+  // out by an old pacing bug, would otherwise sit idle for days; capping the
+  // wait at FOLLOWUP_MAX_DELAY_MS past acceptance self-heals those and keeps
+  // the message within ~the hour once the window is open.
   const { data: due, error } = await supabase
     .from("prospect_activity")
     .select(
@@ -304,7 +315,7 @@ export async function drainScheduledFollowUps(
     )
     .eq("action", "linkedin_invite_accepted")
     .filter("details->>followup_status", "eq", "pending")
-    .filter("details->>followup_scheduled_at", "lte", nowIso)
+    .order("created_at", { ascending: true })
     .limit(FOLLOWUP_DRAIN_BATCH);
 
   if (error || !due?.length) return { checked: 0, sent: 0 };
@@ -340,10 +351,27 @@ export async function drainScheduledFollowUps(
     ) {
       continue;
     }
+
+    const details = (row.details ?? {}) as ScheduledFollowUpDetails;
+
+    // Due once we've reached the scheduled gap — but never wait longer than
+    // FOLLOWUP_MAX_DELAY_MS past the acceptance, so a stale/over-rolled
+    // `followup_scheduled_at` doesn't strand the message. Skipping a not-yet-due
+    // row here (before claiming the user's per-tick slot) lets an older due row
+    // for the same user go first.
+    const acceptedMs = new Date(row.created_at).getTime();
+    const schedMs = details.followup_scheduled_at
+      ? Date.parse(details.followup_scheduled_at)
+      : NaN;
+    const dueAt = Math.min(
+      Number.isNaN(schedMs) ? Infinity : schedMs,
+      acceptedMs + FOLLOWUP_MAX_DELAY_MS,
+    );
+    if (Date.now() < dueAt) continue;
+
     // One follow-up per user per tick keeps the cadence human.
     if (handledUsers.has(userId)) continue;
 
-    const details = (row.details ?? {}) as ScheduledFollowUpDetails;
     if (!details.provider_id || !details.account_id) {
       await markFollowUpDone(supabase, row.id, row.details, "skipped");
       continue;
@@ -521,6 +549,13 @@ async function dispatchInviteThenMessageFollowUp(
       provider_id: args.providerId,
       account_id: args.accountId,
     },
+  });
+
+  void advanceProspectStatus(supabase, {
+    organizationId: job.organization_id,
+    prospectId: args.prospectId,
+    actorId: args.userId,
+    target: "contacted",
   });
 
   // Daily contact counter — keeps the dashboard's "messages sent today"

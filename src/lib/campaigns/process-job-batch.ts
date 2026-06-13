@@ -29,6 +29,7 @@ import {
   THROTTLE_MS,
 } from "./throttle";
 import { insertProspectActivity } from "@/lib/prospect-activity";
+import { advanceProspectStatus } from "@/lib/prospects/advance-status";
 import {
   computeInviteBudget,
   reserveInviteSlot,
@@ -436,6 +437,12 @@ async function runBatchLinkedIn(
             account_id: accountId,
           },
         });
+        void advanceProspectStatus(supabase, {
+          organizationId: job.organization_id,
+          prospectId: cjp.prospect_id,
+          actorId: job.created_by,
+          target: "contacted",
+        });
         void incrementUsageCounter(
           supabase,
           job.created_by,
@@ -552,6 +559,12 @@ async function runBatchLinkedIn(
             job_type: linkedInJobType,
           },
         });
+        void advanceProspectStatus(supabase, {
+          organizationId: job.organization_id,
+          prospectId: cjp.prospect_id,
+          actorId: job.created_by,
+          target: "invited",
+        });
       } else if (linkedInJobType === "contact") {
         void insertProspectActivity(supabase, {
           organization_id: job.organization_id,
@@ -567,6 +580,12 @@ async function runBatchLinkedIn(
             provider_id: providerId,
             account_id: accountId,
           },
+        });
+        void advanceProspectStatus(supabase, {
+          organizationId: job.organization_id,
+          prospectId: cjp.prospect_id,
+          actorId: job.created_by,
+          target: "contacted",
         });
       }
 
@@ -627,6 +646,12 @@ async function runBatchLinkedIn(
             job_type: linkedInJobType,
             already_sent: true,
           },
+        });
+        void advanceProspectStatus(supabase, {
+          organizationId: job.organization_id,
+          prospectId: cjp.prospect_id,
+          actorId: job.created_by,
+          target: "invited",
         });
         continue;
       }
@@ -872,6 +897,12 @@ async function runBatchWhatsApp(
           message: clipDetailMessage(text ?? "", 500),
           campaign_job_id: jobId,
         },
+      });
+      void advanceProspectStatus(supabase, {
+        organizationId: job.organization_id,
+        prospectId: cjp.prospect_id,
+        actorId: job.created_by,
+        target: "contacted",
       });
 
       batchSuccess++;

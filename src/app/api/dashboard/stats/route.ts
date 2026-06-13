@@ -270,21 +270,30 @@ export async function getDashboardStats(
       .eq("id", workspaceId)
       .maybeSingle(),
 
-    // ── LinkedIn invites + messages (workflow) ─────────────────────
+    // ── LinkedIn invites + messages ────────────────────────────────
+    // Two writers coexist: the canonical verb registry (campaigns →
+    // `linkedin_invite_sent` / `linkedin_message_outbound`) and the legacy
+    // workflow-engine rows (`workflow_step_completed` + details.step_type).
+    // The card must count BOTH, otherwise campaign-driven sends (the common
+    // case) never reach it and the rates sit at 0.
     supabase
       .from("prospect_activity")
       .select("created_at, prospect_id, details")
       .eq("organization_id", workspaceId)
-      .eq("action", "workflow_step_completed")
-      .filter("details->>step_type", "eq", "linkedin_invite")
+      .or(
+        "action.eq.linkedin_invite_sent," +
+          "and(action.eq.workflow_step_completed,details->>step_type.eq.linkedin_invite)",
+      )
       .gte("created_at", sparkStartIso)
       .lte("created_at", sparkEndIso),
     supabase
       .from("prospect_activity")
       .select("created_at, prospect_id, details")
       .eq("organization_id", workspaceId)
-      .eq("action", "workflow_step_completed")
-      .filter("details->>step_type", "eq", "linkedin_message")
+      .or(
+        "action.eq.linkedin_message_outbound," +
+          "and(action.eq.workflow_step_completed,details->>step_type.eq.linkedin_message)",
+      )
       .gte("created_at", sparkStartIso)
       .lte("created_at", sparkEndIso),
     // Inbound chats — still used as the proxy for *response rate*

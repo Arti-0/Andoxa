@@ -40,6 +40,8 @@ interface ProspectStatus {
   color: string;
   sort_order: number;
   is_archived: boolean;
+  /** Permanent status: renameable/reorderable, but not archivable/deletable. */
+  is_system: boolean;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -355,6 +357,11 @@ function SortableStatusRow({
         <span className="min-w-0 truncate text-[13.5px] font-medium text-foreground">
           {status.name}
         </span>
+        {status.is_system && (
+          <span className="rounded bg-muted/60 px-1.5 py-0.5 text-[10.5px] uppercase tracking-wider text-muted-foreground">
+            Permanent
+          </span>
+        )}
         {status.is_archived && (
           <span className="rounded bg-muted/60 px-1.5 py-0.5 text-[10.5px] uppercase tracking-wider text-muted-foreground">
             Archivé
@@ -362,28 +369,32 @@ function SortableStatusRow({
         )}
       </button>
 
-      <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={status.is_archived ? "Restaurer" : "Archiver"}
-          onClick={onToggleArchive}
-          className="size-7 text-muted-foreground hover:text-foreground"
-        >
-          {status.is_archived ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="Supprimer"
-          onClick={onDelete}
-          className="size-7 text-muted-foreground hover:text-destructive"
-        >
-          <Trash2 className="size-3.5" />
-        </Button>
-      </div>
+      {/* Permanent statuses can be renamed/reordered but never archived or
+          deleted — the CRM and campaign automation rely on them existing. */}
+      {!status.is_system && (
+        <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={status.is_archived ? "Restaurer" : "Archiver"}
+            onClick={onToggleArchive}
+            className="size-7 text-muted-foreground hover:text-foreground"
+          >
+            {status.is_archived ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Supprimer"
+            onClick={onDelete}
+            className="size-7 text-muted-foreground hover:text-destructive"
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
+        </div>
+      )}
     </li>
   );
 }

@@ -29,6 +29,8 @@ export interface ProspectStatusRow {
   color: string;
   sort_order: number;
   is_archived: boolean;
+  /** Permanent status: renameable but not archivable/deletable. */
+  is_system: boolean;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -46,7 +48,7 @@ export async function getProspectStatuses(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let q = (supabase as any)
     .from("prospect_statuses")
-    .select("id, key, name, color, sort_order, is_archived, created_at, updated_at")
+    .select("id, key, name, color, sort_order, is_archived, is_system, created_at, updated_at")
     .eq("organization_id", organizationId);
   if (!opts.includeArchived) q = q.eq("is_archived", false);
   const { data, error } = await q.order("sort_order").order("name");
@@ -67,7 +69,7 @@ export async function findStatusByAny(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase as any)
     .from("prospect_statuses")
-    .select("id, key, name, color, sort_order, is_archived, created_at, updated_at")
+    .select("id, key, name, color, sort_order, is_archived, is_system, created_at, updated_at")
     .eq("organization_id", organizationId)
     .or(`id.eq.${value},key.eq.${value},name.ilike.${value}`)
     .limit(1)

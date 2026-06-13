@@ -152,6 +152,21 @@ export async function deleteProspectStatus(
   statusId: string,
   transferToId?: string | null,
 ): Promise<{ prospectsUpdated: number; workflowsUpdated: number }> {
+  // Permanent (system) statuses can't be deleted — the CRM and campaign
+  // automation rely on them. Renaming/recolouring stays available via PATCH.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: sysRow } = await (supabase as any)
+    .from("prospect_statuses")
+    .select("is_system")
+    .eq("id", statusId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (sysRow?.is_system) {
+    throw new StatusActionError(
+      "Ce statut est permanent et ne peut pas être supprimé.",
+    );
+  }
+
   const usage = await getStatusUsage(supabase, organizationId, statusId);
   if (!usage) throw new StatusActionError("Statut introuvable");
 

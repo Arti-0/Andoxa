@@ -92,7 +92,7 @@ interface DashboardStatsPayload {
     period: string;
     pipeline: {
         active_total: number;
-        by_stage: { rdv: number; proposal: number; qualified: number };
+        by_stage: { rdv: number; proposal: number };
         sparkline: number[];
         trend_pts: number;
     };
@@ -440,7 +440,6 @@ const TONE_BG: Record<Tone, { bg: string; text: string; ring: string }> = {
 const STAGE_TONE: Record<string, Tone> = {
     new: 'slate',
     contacted: 'amber',
-    qualified: 'cyan',
     rdv: 'blue',
     proposal: 'violet',
     won: 'green',
@@ -915,7 +914,7 @@ function KpiGrid({
     const cards: (KpiCardData | null)[] = useMemo(() => {
         if (!stats) return [null, null, null, null];
         const { pipeline, rdv, linkedin, closings } = stats;
-        const stagesText = `${pipeline.by_stage.proposal} en proposition · ${pipeline.by_stage.qualified} qualifiés · ${pipeline.by_stage.rdv} en RDV`;
+        const stagesText = `${pipeline.by_stage.proposal} en proposition · ${pipeline.by_stage.rdv} en RDV`;
         const labels = stats.week_labels;
 
         return [
