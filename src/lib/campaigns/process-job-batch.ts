@@ -377,10 +377,32 @@ async function runBatchLinkedIn(
         isFirstDegree &&
         messageTemplate.trim()
       ) {
+        // Already a 1st-degree connection: there's no invite, so the phase-2
+        // message goes out now and must carry the campaign attachment, exactly
+        // like the acceptance-triggered follow-up does. Downloaded lazily here
+        // (not pre-fetched per tick) because most invite_then_message prospects
+        // aren't connected yet — no point pulling the file on every invite tick.
+        const connectedAttachment = readCampaignAttachment(job.metadata);
+        let connectedAttachmentFile: { blob: Blob; name: string } | null = null;
+        if (connectedAttachment) {
+          try {
+            connectedAttachmentFile = await downloadCampaignAttachment(
+              supabase,
+              connectedAttachment
+            );
+          } catch (err) {
+            // Mirror the `contact` path: fail the prospect rather than send a
+            // message that silently drops the promised attachment.
+            throw new Error(
+              err instanceof Error ? err.message : "Pièce jointe indisponible"
+            );
+          }
+        }
         const chatRes = await sendLinkedInChatMessage({
           accountId,
           providerId,
           text,
+          attachment: connectedAttachmentFile,
         });
         const chatId = chatRes?.id;
         if (chatId) {

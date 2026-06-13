@@ -60,6 +60,19 @@ export function aggregateJobStats(
   const byJob = new Map<string, CampaignJobStatsRow>(
     jobIds.map((id) => [id, { job_id: id, accepted: 0, replied: 0, meetings: 0 }]),
   );
+  // "Réponses" is a funnel step (prospects who replied), not a raw message
+  // count — one prospect sending 4 messages must count as 1. Dedupe replies (and
+  // acceptances) by prospect_id per job; `meetings` legitimately counts events.
+  const repliedProspects = new Map<string, Set<string>>();
+  const acceptedProspects = new Map<string, Set<string>>();
+  const addProspect = (m: Map<string, Set<string>>, jobId: string, pid: string) => {
+    let set = m.get(jobId);
+    if (!set) {
+      set = new Set<string>();
+      m.set(jobId, set);
+    }
+    set.add(pid);
+  };
 
   for (const activity of activities) {
     const jobId = resolveJobForActivity(
@@ -75,11 +88,11 @@ export function aggregateJobStats(
 
     switch (activity.action) {
       case "linkedin_invite_accepted":
-        stat.accepted += 1;
+        if (activity.prospect_id) addProspect(acceptedProspects, jobId, activity.prospect_id);
         break;
       case "linkedin_message_inbound":
       case "whatsapp_message_inbound":
-        stat.replied += 1;
+        if (activity.prospect_id) addProspect(repliedProspects, jobId, activity.prospect_id);
         break;
       case "rdv_scheduled":
         stat.meetings += 1;
@@ -87,6 +100,11 @@ export function aggregateJobStats(
       default:
         break;
     }
+  }
+
+  for (const [jobId, stat] of byJob) {
+    stat.accepted = acceptedProspects.get(jobId)?.size ?? 0;
+    stat.replied = repliedProspects.get(jobId)?.size ?? 0;
   }
 
   return [...byJob.values()];
