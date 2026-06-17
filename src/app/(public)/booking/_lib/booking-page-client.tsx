@@ -24,8 +24,10 @@ import { BOOKING_TIMEZONE } from "@/lib/booking/constants";
 import { buildGoogleCalendarUrl } from "@/lib/booking/google-calendar-url";
 import { isFeatureEnabled } from "@/lib/config/feature-flags";
 
-/** WhatsApp surfaces (phone field + post-RDV notice) are gated behind the
- *  `whatsapp` #FF. Resolves to a build-time constant. */
+/** WhatsApp *messaging* surfaces (the post-RDV notice + WhatsApp framing of the
+ *  phone field) are gated behind the `whatsapp` #FF. The phone input itself is
+ *  always shown — it just collects an optional number. Resolves to a build-time
+ *  constant. */
 const SHOW_WHATSAPP = isFeatureEnabled("whatsapp");
 
 interface Slot {
@@ -198,7 +200,7 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
     const timezoneLabel = useMemo(() => formatBookingTimezoneLabel(), []);
 
     const showWaGuestNotice =
-        hasOnBookingWaWorkflow && showPostBookingWaNotice;
+        SHOW_WHATSAPP && hasOnBookingWaWorkflow && showPostBookingWaNotice;
 
     const loadSlots = useCallback(async () => {
         if (!slug) {
@@ -871,22 +873,26 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
                                             </div>
                                         </div>
 
-                                        {SHOW_WHATSAPP && (
                                         <div className="phone-section">
                                             <div className="field">
                                                 <label
                                                     className="field-label"
                                                     htmlFor="guestPhone"
                                                 >
-                                                    <span
-                                                        className="wa-icon"
-                                                        title="WhatsApp"
-                                                    >
-                                                        <MessageCircle
-                                                            size={11}
-                                                        />
-                                                    </span>
-                                                    Téléphone (WhatsApp)
+                                                    {SHOW_WHATSAPP && (
+                                                        <span
+                                                            className="wa-icon"
+                                                            title="WhatsApp"
+                                                        >
+                                                            <MessageCircle
+                                                                size={11}
+                                                            />
+                                                        </span>
+                                                    )}
+                                                    Téléphone
+                                                    {SHOW_WHATSAPP
+                                                        ? " (WhatsApp)"
+                                                        : ""}
                                                 </label>
                                                 <input
                                                     id="guestPhone"
@@ -902,8 +908,9 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
                                                 />
                                             </div>
                                             <div className="field-hint">
-                                                Optionnel — pour recevoir aussi
-                                                une confirmation par WhatsApp.
+                                                {SHOW_WHATSAPP
+                                                    ? "Optionnel — pour recevoir aussi une confirmation par WhatsApp."
+                                                    : "Optionnel."}
                                             </div>
                                             {guestPhone.trim() && showWaGuestNotice && (
                                                 <div className="wa-bonus">
@@ -927,7 +934,6 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
                                                 </div>
                                             )}
                                         </div>
-                                        )}
 
                                         <label
                                             className={`consent-plain ${

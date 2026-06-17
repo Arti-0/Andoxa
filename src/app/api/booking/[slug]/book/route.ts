@@ -114,13 +114,16 @@ export async function POST(
     }
 
     const hasEmail = emailRaw.length > 0 && looksLikeEmail(emailRaw);
+    // Phone is purely optional — we just store it. It never gates the booking
+    // and triggers nothing on its own (the post-RDV WhatsApp, when enabled, is
+    // driven by an active on-booking WhatsApp workflow, not by this field).
     const hasPhone = phoneRaw.length > 0 && guestPhoneLooksValid(normalizedPhone);
 
-    if (!hasEmail && !hasPhone) {
+    if (!hasEmail) {
       return NextResponse.json(
         {
           success: false,
-          error: "Indiquez au moins une adresse e-mail ou un numéro WhatsApp",
+          error: "Indiquez votre adresse e-mail pour recevoir l'invitation.",
         },
         { status: 400 }
       );
