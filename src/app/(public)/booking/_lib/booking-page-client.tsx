@@ -22,6 +22,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { BOOKING_TIMEZONE } from "@/lib/booking/constants";
 import { buildGoogleCalendarUrl } from "@/lib/booking/google-calendar-url";
+import { isFeatureEnabled } from "@/lib/config/feature-flags";
+
+/** WhatsApp surfaces (phone field + post-RDV notice) are gated behind the
+ *  `whatsapp` #FF. Resolves to a build-time constant. */
+const SHOW_WHATSAPP = isFeatureEnabled("whatsapp");
 
 interface Slot {
     start: string;
@@ -270,10 +275,9 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
             .trim();
         if (!selectedSlot || !fullName || !slug) return;
         const emailTrim = guestEmail.trim();
-        const phoneTrim = guestPhone.trim();
-        if (!emailTrim && !phoneTrim) {
+        if (!emailTrim) {
             setSubmitError(
-                "Indiquez au moins une adresse e-mail ou un numéro WhatsApp."
+                "Indiquez votre adresse e-mail pour recevoir l'invitation."
             );
             return;
         }
@@ -820,6 +824,12 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
                                                     htmlFor="guestEmail"
                                                 >
                                                     Adresse e-mail
+                                                    <span
+                                                        className="req"
+                                                        aria-hidden
+                                                    >
+                                                        *
+                                                    </span>
                                                 </label>
                                                 <input
                                                     id="guestEmail"
@@ -833,6 +843,7 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
                                                     }
                                                     placeholder="jean.dupont@exemple.fr"
                                                     autoComplete="email"
+                                                    required
                                                 />
                                             </div>
                                             <div className="field is-wide">
@@ -860,6 +871,7 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
                                             </div>
                                         </div>
 
+                                        {SHOW_WHATSAPP && (
                                         <div className="phone-section">
                                             <div className="field">
                                                 <label
@@ -890,8 +902,8 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
                                                 />
                                             </div>
                                             <div className="field-hint">
-                                                Au moins l&apos;e-mail ou le
-                                                numéro WhatsApp est requis.
+                                                Optionnel — pour recevoir aussi
+                                                une confirmation par WhatsApp.
                                             </div>
                                             {guestPhone.trim() && showWaGuestNotice && (
                                                 <div className="wa-bonus">
@@ -915,6 +927,7 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
                                                 </div>
                                             )}
                                         </div>
+                                        )}
 
                                         <label
                                             className={`consent-plain ${
@@ -964,8 +977,7 @@ export function BookingPageClient({ slug: slugProp }: { slug?: string } = {}) {
                                                 submitting ||
                                                 !guestFirstName.trim() ||
                                                 !guestLastName.trim() ||
-                                                (!guestEmail.trim() &&
-                                                    !guestPhone.trim())
+                                                !guestEmail.trim()
                                             }
                                         >
                                             Confirmer le rendez-vous

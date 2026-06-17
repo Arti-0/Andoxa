@@ -100,14 +100,23 @@ export function dayScheduleRanges(sched: DaySchedule | undefined): TimeRange[] {
   return [];
 }
 
-/** Paris offset: UTC+1 winter, UTC+2 summer (approx Mar-Oct) */
+/**
+ * Paris UTC offset in hours for a given instant. Uses the runtime tz database
+ * (Europe/Paris is always a whole-hour offset: +1 CET / +2 CEST) so the
+ * public booking page renders exactly the Paris wall-clock periods configured
+ * in the personalisation modal — including across DST transitions, which the
+ * previous month-based approximation got wrong in late Oct/Nov/March.
+ */
 function getParisOffsetHours(date: Date): number {
-  const m = date.getUTCMonth();
-  const d = date.getUTCDate();
-  if (m >= 3 && m <= 9) return 2;
-  if (m === 2 && d >= 25) return 2;
-  if (m === 10 && d < 25) return 2;
-  return 1;
+  const tzName =
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Europe/Paris",
+      timeZoneName: "shortOffset",
+    })
+      .formatToParts(date)
+      .find((p) => p.type === "timeZoneName")?.value ?? "GMT+1";
+  const match = tzName.match(/GMT([+-]\d+)/);
+  return match ? parseInt(match[1], 10) : 1;
 }
 
 function dayISO(date: Date): string {
