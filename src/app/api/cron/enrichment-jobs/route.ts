@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { timingSafeEqualStr } from "@/lib/security/timing-safe-equal";
 import { createServiceClient } from "@/lib/supabase/service";
 import { enrichProspectFromUnipile } from "@/lib/enrichment/unipile-enrich";
 import { getLinkedInAccountIdForUserId } from "@/lib/unipile/account";
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
   }
   const auth = req.headers.get("Authorization")?.replace("Bearer ", "");
-  if (auth !== secret) {
+  if (!auth || !timingSafeEqualStr(auth, secret)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

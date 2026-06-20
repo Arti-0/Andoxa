@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/security/client-ip";
 
 /**
  * POST /api/contact
@@ -41,6 +43,16 @@ function escape(s: string): string {
 }
 
 export async function POST(req: Request) {
+  // Public, unauthenticated, sends email on every call — rate-limit by IP so it
+  // can't be turned into a spam relay. Fails open if Upstash is unconfigured.
+  const rl = await checkRateLimit(getClientIp(req), "contact", 5, "1 m");
+  if (rl && !rl.success) {
+    return NextResponse.json(
+      { error: "Trop de tentatives. Réessayez dans une minute." },
+      { status: 429 }
+    );
+  }
+
   let body: Body;
   try {
     body = (await req.json()) as Body;

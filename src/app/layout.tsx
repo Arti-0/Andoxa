@@ -7,14 +7,36 @@ import QueryProvider from '@/components/QueryProvider';
 import { WorkspaceProvider } from '@/lib/workspace';
 import { SentryClientInit } from '@/components/SentryClientInit';
 import { Toaster } from '@/components/ui/sonner';
+import { JsonLd } from '@/components/seo/json-ld';
+import { organizationSchema, websiteSchema } from '@/lib/seo/structured-data';
 import '@/app/globals.css';
 
 export const metadata: Metadata = {
     // Canonical host for resolving relative OG/canonical URLs. Keep in sync with
     // BASE_URL in app/sitemap.ts and the Sitemap line in public/robots.txt.
     metadataBase: new URL('https://www.andoxa.fr'),
-    title: 'Andoxa',
-    description: 'CRM moderne pour gérer vos prospects et campagnes',
+    title: {
+        default: 'Andoxa — La prospection commerciale, de la liste au rendez-vous',
+        template: '%s · Andoxa',
+    },
+    description:
+        'Andoxa réunit CRM, campagnes LinkedIn, prise de rendez-vous et workflows pour transformer vos listes de prospects en rendez-vous signés.',
+    openGraph: {
+        type: 'website',
+        siteName: 'Andoxa',
+        locale: 'fr_FR',
+        url: 'https://www.andoxa.fr',
+        title: 'Andoxa — La prospection commerciale, de la liste au rendez-vous',
+        description:
+            'CRM, campagnes LinkedIn, booking et workflows. Transformez vos listes de prospects en rendez-vous.',
+        // og:image is supplied automatically by app/opengraph-image.tsx.
+    },
+    twitter: {
+        card: 'summary_large_image',
+        title: 'Andoxa — La prospection commerciale, de la liste au rendez-vous',
+        description:
+            'CRM, campagnes LinkedIn, booking et workflows. Transformez vos listes de prospects en rendez-vous.',
+    },
     icons: {
         icon: [
             { url: '/assets/favicon/icon0.svg', type: 'image/svg+xml' },
@@ -53,6 +75,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             className={`${GeistSans.variable} ${GeistMono.variable}`}
         >
             <body className="min-h-screen bg-background font-sans antialiased">
+                <JsonLd data={organizationSchema()} />
+                <JsonLd data={websiteSchema()} />
                 <ThemeProvider
                     attribute="class"
                     defaultTheme="system"

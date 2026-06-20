@@ -3,6 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { ONBOARDING_PROFILE_STEP } from "@/app/onboarding/config";
 import { redeemInvitation } from "@/lib/invitations";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/security/client-ip";
 import type { Database } from "@/lib/types/supabase";
 
 export const runtime = "nodejs";
@@ -21,17 +23,6 @@ function jsonPreservingSessionCookies(
   return out;
 }
 
-function logCookieCarrierBeforeCopy(cookieCarrier: NextResponse) {
-  console.log(
-    "[set-session] cookieCarrier cookies:",
-    cookieCarrier.cookies.getAll()
-  );
-  console.log(
-    "[set-session] cookieCarrier Set-Cookie headers:",
-    cookieCarrier.headers.getSetCookie?.() ?? []
-  );
-}
-
 const INVITE_TOKEN_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -41,6 +32,17 @@ const INVITE_TOKEN_UUID_RE =
  * optionnellement redeem une invitation org. Évite setSession côté navigateur (AbortError).
  */
 export async function POST(request: NextRequest) {
+  // Unauthenticated entry point that establishes a session and can redeem an
+  // invitation — rate-limit by IP to blunt token-stuffing / redeem abuse.
+  // Fails open if Upstash is unconfigured.
+  const rl = await checkRateLimit(getClientIp(request), "set-session", 30, "1 m");
+  if (rl && !rl.success) {
+    return NextResponse.json(
+      { error: "Trop de tentatives. Réessayez dans une minute." },
+      { status: 429 }
+    );
+  }
+
   const cookieCarrier = NextResponse.json({});
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -152,14 +154,12 @@ export async function POST(request: NextRequest) {
       console.error("[set-session] refresh error:", refreshError.message);
     }
 
-    logCookieCarrierBeforeCopy(cookieCarrier);
     return jsonPreservingSessionCookies(cookieCarrier, {
       success: true,
       redirect: `/auth/login?mode=set-password&email=${encodeURIComponent(userEmail)}&next=/onboarding`,
     });
   }
 
-  logCookieCarrierBeforeCopy(cookieCarrier);
   return jsonPreservingSessionCookies(cookieCarrier, {
     success: true,
     redirect: "/dashboard",

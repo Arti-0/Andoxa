@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 import { MarketingPageLayout } from '@/components/marketing/marketing-page-layout';
 import { Container } from '@/components/marketing/ui/container';
+import { JsonLd } from '@/components/seo/json-ld';
+import { faqPageSchema } from '@/lib/seo/structured-data';
 import Balancer from 'react-wrap-balancer';
 import Link from 'next/link';
 
@@ -187,6 +189,14 @@ export default function HelpPage() {
             title="Centre d'aide"
             subtitle="Trouvez des réponses détaillées à vos questions et apprenez à tirer le meilleur parti d'Andoxa pour développer votre activité."
         >
+            <JsonLd
+                data={faqPageSchema(
+                    faqItems.map((it) => ({
+                        question: it.question,
+                        answer: it.answer,
+                    }))
+                )}
+            />
             <section className="py-16 sm:py-20">
                 <Container>
                     <div className="space-y-12">

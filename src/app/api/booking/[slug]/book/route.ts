@@ -11,7 +11,8 @@ import { buildBookingInviteIcs } from "@/lib/booking/build-booking-invite-ics";
 import { resolveMeetingDisplay, resolveAvailabilityDefaults } from "@/lib/booking/meeting-display";
 import { validateBookingSlotRequest } from "@/lib/booking/validate-booking-slot";
 import { resolveProspectMatch } from "@/lib/prospects/dedup-keys";
-import { BOOKING_TIMEZONE } from "@/lib/booking/constants";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/security/client-ip";
 import type { AvailabilityConfig } from "@/lib/booking/slots";
 
 function looksLikeEmail(s: string): boolean {
@@ -34,6 +35,18 @@ export async function POST(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    // Public + unauthenticated; each call can create a prospect, an event, send
+    // emails and a calendar invite. Rate-limit by IP to cap abuse. Window is
+    // generous so legit guests behind shared NAT aren't blocked; fails open if
+    // Upstash is unconfigured.
+    const rl = await checkRateLimit(getClientIp(request), "booking-public", 10, "1 m");
+    if (rl && !rl.success) {
+      return NextResponse.json(
+        { success: false, error: "Trop de tentatives. Réessayez dans une minute." },
+        { status: 429 }
+      );
+    }
+
     const { slug } = await params;
     if (!slug || typeof slug !== "string") {
       return NextResponse.json(
@@ -262,7 +275,7 @@ export async function POST(
       candidates = data ?? [];
     }
 
-    let match = resolveProspectMatch(candidates, {
+    const match = resolveProspectMatch(candidates, {
       linkedin,
       email: hasEmail ? emailRaw : null,
       phone: hasPhone ? phoneRaw : null,

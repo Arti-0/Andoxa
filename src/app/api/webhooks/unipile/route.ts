@@ -400,18 +400,34 @@ export async function POST(req: NextRequest) {
         const isSuccess =
             eventCode === 'CREATION_SUCCESS' || eventCode === 'RECONNECTED';
 
-        let rawName = typeof body.name === 'string' ? body.name.trim() : '';
-        let account: UnipileAccount | null = null;
+        // Security: this branch skips the shared-secret check (Unipile can't
+        // attach a header on notify_url callbacks), so the whole payload —
+        // including `name` (= our user_id) — is attacker-controllable. Resolve
+        // the owning user from the account fetched via our authenticated
+        // Unipile API key instead of trusting the payload. Without this, an
+        // attacker who learns a real `account_id` could map that LinkedIn
+        // account into their own workspace by spoofing `name`. The payload
+        // `name` is used only as a fallback when the account can't be fetched
+        // (e.g. CREATION_ERROR, where the account may not exist server-side).
+        const claimedName = typeof body.name === 'string' ? body.name.trim() : '';
+        let account: UnipileAccount | null = await fetchUnipileAccount(accountId);
+        const authoritativeName = account?.name?.trim() ?? '';
 
-        const needAccountFetch =
-            !rawName || (isSuccess && !rawName.endsWith('__whatsapp'));
-
-        if (needAccountFetch) {
-            account = await fetchUnipileAccount(accountId);
-            if (!rawName && account?.name?.trim()) {
-                rawName = account.name.trim();
-            }
+        if (authoritativeName && claimedName && authoritativeName !== claimedName) {
+            Sentry.captureMessage(
+                '[Unipile webhook] Hosted auth name mismatch (possible spoof)',
+                {
+                    level: 'warning',
+                    extra: {
+                        account_id: accountId,
+                        claimed: claimedName,
+                        status: eventCode,
+                    },
+                }
+            );
         }
+
+        const rawName = authoritativeName || claimedName;
 
         if (!rawName) {
             Sentry.captureMessage(

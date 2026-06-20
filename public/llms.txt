@@ -1,0 +1,32 @@
+# Andoxa
+
+> Andoxa est une plateforme de prospection commerciale qui réunit CRM, campagnes
+> LinkedIn, prise de rendez-vous (booking) et workflows dans un seul outil — de
+> la liste de prospects au rendez-vous signé. SaaS français, hébergement Europe,
+> conforme RGPD.
+
+Andoxa s'adresse aux commerciaux indépendants, équipes sales, agences et cabinets
+de conseil. Les campagnes LinkedIn respectent par défaut les limites quotidiennes
+de la plateforme (envois humanisés, montée progressive).
+
+## Pages principales
+
+- [Accueil](https://www.andoxa.fr/): vue d'ensemble du produit (campagnes LinkedIn, appels, inbox, booking, CRM).
+- [Tarifs](https://www.andoxa.fr/pricing): plans Solo (dès 39 €/mois), Team (dès 36 €/utilisateur/mois) et Custom (devis). Sans engagement.
+- [Centre d'aide](https://www.andoxa.fr/help): questions fréquentes (scoring, campagnes, enrichissement, RGPD, ROI).
+- [Comparatifs](https://www.andoxa.fr/comparatif): Andoxa face à Waalaxy, Lemlist, La Growth Machine, Phantombuster, HubSpot, Calendly, Monday, Odoo.
+- [Sécurité](https://www.andoxa.fr/security): architecture de sécurité et conformité RGPD.
+- [Contact](https://www.andoxa.fr/contact): démo commerciale et demandes Custom.
+
+## Ressources
+
+- [Guide](https://www.andoxa.fr/resources/guide): guide de la prospection commerciale.
+- [Calculateur de ROI](https://www.andoxa.fr/resources/roi-calculator): estimer le retour sur investissement.
+- [Changelog](https://www.andoxa.fr/changelog): nouveautés produit.
+
+## Légal
+
+- [Confidentialité](https://www.andoxa.fr/privacy)
+- [CGU](https://www.andoxa.fr/cgu)
+- [CGV](https://www.andoxa.fr/cgv)
+- [Mentions légales](https://www.andoxa.fr/mentions-legales)

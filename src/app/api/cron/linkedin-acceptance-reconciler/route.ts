@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { timingSafeEqualStr } from "@/lib/security/timing-safe-equal";
 import * as Sentry from "@sentry/nextjs";
 
 import { createServiceClient } from "@/lib/supabase/service";
@@ -128,7 +129,7 @@ export async function POST(req: Request) {
       );
     }
     const auth = req.headers.get("Authorization")?.replace("Bearer ", "");
-    if (auth !== secret) {
+    if (!auth || !timingSafeEqualStr(auth, secret)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

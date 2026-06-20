@@ -12,6 +12,8 @@ import { MarketingModulesBentoSection } from "@/components/marketing/modules-ben
 import { MarketingPricingSection } from "@/components/marketing/sections/pricing";
 import { MarketingFaqSection } from "@/components/marketing/sections/faq";
 import { MarketingFinalCtaSection } from "@/components/marketing/sections/final-cta";
+import { JsonLd } from "@/components/seo/json-ld";
+import { softwareApplicationSchema } from "@/lib/seo/structured-data";
 
 export const metadata: Metadata = {
   title: "Andoxa, vendez sur LinkedIn sans gérer la prospection",
@@ -36,6 +38,7 @@ const NAV_ITEMS: NavItem[] = [
 export default function Home() {
   return (
     <>
+      <JsonLd data={softwareApplicationSchema()} />
       <HomeIntro />
       <SmoothScroll />
       <ScrollProgress />
